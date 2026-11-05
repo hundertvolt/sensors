@@ -22,21 +22,13 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("network_neopixel", "ci_suite._run_9_n
 # ---------------------------------------------------------------------------
 
 
-# @tunable l4.wifi_networking_boot_tail_s = 45.0
 _BOOT_TAIL_S = 45.0
-# @tunable l4.wifi_networking_sync_tail_s = 60.0
 _SYNC_TAIL_S = 60.0
-# @tunable l4.wifi_networking_ntp_fault_tail_s = 90.0
 _ROGUE_TAIL_S = 90.0
-# @tunable l4.wifi_networking_reconnect_timeout_s = 60.0
 _RECONNECT_TIMEOUT_S = 60.0
-# @tunable l4.wifi_networking_association_attempts = 2
 _ASSOCIATION_ATTEMPTS = 2
-# @tunable l4.wifi_networking_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.wifi_networking_ntp_resync_margin_s = 10.0
 _NTP_RESYNC_MARGIN_S = 10.0
-_NTP = "asy_ntp_client.py"
 _RTC_SET_LINE = "RTC set to:"  # src/asy_ntp_client.py, the line a completed sync prints
 
 
@@ -132,13 +124,6 @@ def _networking(dut_ip: str) -> "JSONObject":
 
 
 def _resync_after_block_s() -> float:
-    # The unsynced client's longest wait once the block lifts: each failed attempt doubles its step from the retry period,
-    # up to the cap (src/asy_ntp_client.py _sync_loop()), so attempts from the block's start leave pending the step after
-    # the last one inside it; the attempt that then syncs runs on top.
-    mult, cap = _load.src_number(_NTP, "_NTP_BACKOFF_MULT"), _load.ntp_retry_max_s()
-    at, step = 0.0, _load.ntp_retry_period_s()
-    while True:
-        step = min(step * mult, cap)
-        if at + step > _ROGUE_TAIL_S:
-            return step + _load.ntp_attempt_s()
-        at += step
+    # The unsynced client's longest wait once the block lifts: one retry wait after the last failed attempt inside it
+    # (src/asy_ntp_client.py _sync_loop()), the attempt that then syncs on top.
+    return _load.ntp_retry_period_s() + _load.ntp_attempt_s()

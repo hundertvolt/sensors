@@ -104,9 +104,3 @@ def test_stage_only_skips_the_fixtures_and_freezes_nothing(runs: _Runs) -> None:
     assert "Wrote " not in runs.staged_stdout  # build_frozen_html.sh's own line: it never ran
 
 
-def test_the_inlined_reader_bites(tmp_path: Path) -> None:
-    # The id check must read the served page, not agree with anything: a page naming another id fails.
-    page = gzip.compress(b'<head><script type="application/json" id="inlined-definitions">{"device": {"id": "other"}}</script></head>')
-    module = tmp_path / "frozen_html.py"
-    module.write_text(f"_f0 = const({page!r})\n_files = (\n ( '/index.html.gz',  ( _f0, False, {len(page)} ) ),\n)\n", encoding="utf-8")
-    assert _inlined_device_id(module) == "other"

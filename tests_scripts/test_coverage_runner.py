@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 _RUNNER = "tests/_coverage_runner.py"
 # The unit layout scripts/test.sh runs every file on, from its one definition.
 _UNIT = tomllib.loads((Path(__file__).resolve().parent.parent / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["unit"]
-# @tunable l0.coverage_runner_timeout_s = 60
 _RUN_TIMEOUT_S = 60
 
 

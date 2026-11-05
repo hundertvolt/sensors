@@ -303,3 +303,335 @@ their context). From now on every owner word is appended here as it is given.
   The sessions shall be interruptible anytime without losses (max 10 minutes wait time)" Recorded as: the bench
   sessions write one hand-back file with every detail and push it regularly; any step lasts at most 10 minutes, so a
   stop loses nothing beyond waiting for the current step; go-ahead to push the finished handover (snapshot 20).
+- (2026-10-28 16:57 UTC, the session) "Now pause all activity in this session unless I tell you." Recorded as: nothing runs, is
+  started or pushed in this session until the owner says so.
+- (2026-11-02 15:02 UTC, the bench campaign's results; ends the pause for reading) "On a dedicated branch, the real
+  hardware test recordings were stored. Many more interesting and decisive details than originally requested were
+  investigated. Read this in and understand it." Recorded as: read the bench branch's recordings and understand them;
+  no run, push or other work is started by this.
+- (imported 2026-11-02 15:10 UTC from the bench branch's FINDINGS_20261029.md, ec97953d; given 2026-10-29 in the bench
+  session, times as that file and its commits place them) Session scope: "measure as many values and situations as
+  possible which might be valuable for the planned audit steps"; "There are many open hardware questions in the repo. I
+  want to find as many answers as possible reasonably with the current state."; "Save all the details, push, and then
+  do run what you held back."
+  Radio power save (~17:26): "Power save mode is not an option"
+  LAN/UDP storms (~17:51): "C changes are clearly out of scope." and "If there is no official Micropython way to handle
+  it, we'll have to accept it as is. No patching or tinkering." Recorded there as: a storm stalling the loop is an
+  accepted limitation, the watchdog its backstop; neither the CYW43 packet filter nor a C patch.
+  GPIO interrupt storms (~18:28): "Interrupt storms are not really an issue. That only can happen on a board which is
+  already defective." No mitigation planned.
+  Real flash writes (~18:56): "Try that flash write test once"; under TCP (~19:05): "Try TCP with real flash once".
+  Both run once each (three writes and one remove of one scratch file).
+- (2026-11-02 15:21 UTC, the bench results; plan go-ahead) "The Mac and the IP addresses are no real hassle. The socket
+  cap in Hotspot mode seems to be nothing new and no issues as long as everything stays like now from the global config
+  point of view. The UDP  storm is not nice, but so far any research came up with "can't be fixed easily, especially
+  needs a Micropython patch". If you have better ideas that would be nice, but would have to be a clean and lean Python
+  only solution; otherwise we'll have to live with it. Fold into the plan now." Recorded as: the pushed LAN addresses
+  and MAC stay; the hotspot's 2 UDP sockets are known and fine while the global config stays as it is; the storm stays
+  accepted unless a clean, lean Python-only fix exists; go-ahead to fold the bench results into PLAN.md (no push named).
+- (2026-11-02 15:33 UTC, after the plan fold-in) "So any open questions so far?" A question; answered with the open
+  items that need the owner.
+- (2026-11-02 15:39 UTC, the open items) "Falsification agent at the end: yes.
+  Why not take 4 MHZ and we're on the safer side and still faster?
+  I don't know anything about a uart guard, probably introduced by one of the excess excursions?" Recorded as: a
+  falsification agent at the end of each R1 batch (the 2026-10-28 offer, 8 runs), run counts adapted; the FRAM's SPI
+  clock goes to 4 MHz in B3 (the owner's choice over the offered 8 MHz); the UART guard is not in the code (a bench
+  session suggestion after its own probe called `read()` without the lock; the lock-less early return is pre-audit),
+  so it is dropped.
+- (2026-11-02 15:42 UTC, the UART clock) "What is the MHz uart limit for the rp2?" A question; answered from the
+  pinned source, the SDK and the RP2040 datasheet (3 Mbaud with MicroPython's 48 MHz peripheral clock).
+- (2026-11-02 15:44 UTC, the SPI clock) "Sorry I meant the SPI" The question above was about SPI; answered from the
+  pinned SDK, the datasheet and the bench (24 MHz with MicroPython's 48 MHz peripheral clock).
+- (2026-11-02 15:51 UTC, the FRAM's SPI clock) "Then let's take the 8mhz as initially suggested" Recorded as: the FRAM's
+  SPI clock goes to 8 MHz in B3 (24 MHz / 3, exact), replacing the 15:39 choice of 4 MHz.
+- (2026-11-02 15:53 UTC, the bench's open technical questions) "Try to answer the other deep detail questions by proper
+  research" Recorded as: research the open technical questions from the bench reading (source, datasheets, the
+  recorded data, host-side reproduction); no hardware, no product code change, nothing pushed.
+- (2026-11-02 16:25 UTC, the storm and the crc16 results) "Live with the udp storm and defer the CRC until the next
+  hardware run" Recorded as: the LAN UDP storm stays an accepted limitation with the watchdog as backstop, the
+  Python-only disconnect idea not adopted; the crc16 hazard results are deferred to the next hardware run (round 1).
+- (2026-11-02 16:27 UTC, push go-ahead) "Push the plan" Recorded as: go-ahead to push the updated plan with the bench
+  reading and research as snapshot 21.
+- (2026-11-02 16:37 UTC, working practices) "Now, do you still remember our best practices about parallel work,
+  efficiency and possibility?" Recorded as: a question, no go-ahead; answered from the rulings of 2026-10-23 and
+  2026-10-27, LEAD NOTES 260-261, `redo_common.md` "Efficiency" and PLAN.md's batch order.
+- (2026-11-02 16:42 UTC, working practices in the plan) "this also applies to our new plan, wherever it is
+  appropriate, as soon as we go for it" Recorded as: the parallel-work and efficiency practices bind every phase of
+  PLAN.md once it runs (section 4.5); not a go-ahead.
+- (2026-11-02 16:42 UTC, working practices in the plan) "if the new plan has no more lanes, adapt the gist of the
+  ideas to it" Recorded as: the plan still has lanes in R1-R5; for the phases without them (R0, the lead alone; round
+  1, the bench session) section 4.5 carries the gist adapted.
+- (2026-11-02 16:49 UTC, the plan against the owner's aims) "By now, we should have a plan which:
+  * takes the audit ideas back to the roots
+  * simplifies workflow drastically
+  * keeps our high quality
+  * avoids excursions and excessive / hypothetical excursions
+  * will finish the audit well inside a week's budget
+  * tries to minimize the changes in src and codegen
+  * keeps all discussed features
+  * closes all gaps we found which are still relevant
+  can you confirm these ideas?" Recorded as: a question; answered criterion by criterion; not a go-ahead.
+- (2026-11-02 16:57 UTC, the spirit of the first units) "the audit's machinery was, as I already mentioned, good at the
+  first like 10 units, and then gradually, exponentially, increased into something way too large. The first 10 passes
+  took one small "Max" plan. Unit 25 alone took 2 large "Max" plans and did not even finish. That is over 40x budget
+  for ONE unit compared to the first TEN. We need to get back to the spirit of the first rounds, where the big picture
+  of the audit was still clearer" Recorded as: direction for the plan (the shape of U1-U10); not a go-ahead.
+- (2026-11-02 17:01 UTC, quality and effort) "Still, keep our valuable findings in mind, and keep the targeted quality.
+  The ever-raising effort you invested did actually not lead to higher quality, only to bloated code. So keeping
+  quality, closing gaps and saving on effort are not contradictory, but go into the same direction - agreed?"
+  Recorded as: a principle for the plan's rewrite; answered "agreed"; not a go-ahead.
+- (2026-11-02 17:03 UTC, go-ahead: the plan's rewrite) "rewrite the plan, and target that we are done with 50...60% of
+  weekly budget (still a large Max plan)" Recorded as: go-ahead to rewrite PLAN.md in the first units' spirit, the
+  whole remaining audit sized to finish within 50-60 % of one weekly budget of the large Max plan. Not a go-ahead for
+  R0 or any run.
+- (2026-11-02 17:31 UTC, the rewritten plan against the aims) "So by now it fulfills the criteria list I gave you
+  recently?" Recorded as: a question; answered aim by aim; not a go-ahead.
+- (2026-11-02 18:01 UTC, the goal) "The original goals from the audit and all discussed features all hold. No
+  regressions, nothing bad reintroduced. Actually, the goal is how it was initially intended, only before the drift
+  happened." Recorded as: the plan's goal is the audit's original goals (PROJECT_AUDIT_PLAN.md 1.1, OR1, OR12) as
+  first meant; written into PLAN.md section 0 with the no-regression safeguards in section 2.
+- (2026-11-02 18:03 UTC, what stays) "Also, nothing proven good shall be removed, but checked if it can be leaner"
+  Recorded as: anything with proof that it is good stays and is checked for a leaner form; only what lacks that proof
+  goes. Written into PLAN.md sections 0 and 2.
+- (2026-11-02 18:04 UTC, knowledge) "In any case, no knowledge may be lost, and existing knowledge shall be smartly
+  used wherever appropriate" Recorded as: every removed item keeps a knowledge line, nothing of knowledge value is
+  left only in the session's scratch or lost with `audit/`, and established facts are used, never re-derived.
+  Written into PLAN.md sections 0, 2, 3 (D) and 4.2.
+- (2026-11-02 18:16 UTC, go-ahead: the plan's final check) "Now ensure the plan is complete, consistent, according to
+  our discussions, coherent and correct. Target final quality of the plan itself." Recorded as: go-ahead for a check
+  of PLAN.md (read-only on the repository; edits to the plan only), ending with independent falsification (rule 11).
+- (2026-11-02 19:16 UTC, push go-ahead) "Push the plan" Recorded as: go-ahead to push the rewritten and checked plan
+  with its change list, the check's hand-backs and the rulings as snapshot 22 (evidence only, `[skip ci]`).
+- (2026-11-02 19:20 UTC, go-ahead: R0; CI watching) "Go ahead with R0, and resume watching CI" Recorded as: the
+  go-ahead for R0 as PLAN.md section 3 states it (the lead alone, no product code), and CI watching resumed (the
+  pause of 2026-10-28 ends).
+- (2026-11-02 20:13 UTC, status question) "Everything still as expected?" Recorded as: a status question on R0's
+  CI run; no go-ahead.
+- (2026-11-02 20:27 UTC, question on R0's report) "What and where is the exception handler guard?" Recorded as: a
+  question on item 6 of R0's report; no decision, no go-ahead.
+- (2026-11-02 20:30 UTC, item 6 confirmed; go-ahead: the CI fix) "That's okay. And fix CI right now." Recorded as:
+  the exception-handler guard stays, now on the owner's word (it was a decision taken on the owner's behalf); and the
+  go-ahead to fix the red coverage test in R0, now, instead of R2: the byte check on `build-standard` only.
+- (2026-11-02 20:42 UTC, standing go-ahead: run the plan) "You don't need to wait for my go for every step. We have a
+  plan which seems sound, so keep rolling with our agreed scheme on parallelism." Recorded as: a standing go-ahead to
+  run PLAN.md's phases in order without a go-ahead per phase or unit (R0's close, then R1 onward), with PLAN.md 4.3's
+  parallelism. What still waits for the owner, by the plan and CLAUDE.md: a clarification (section 6), a user-visible
+  removal with no record (section 2, step 1), a budget stop (section 5), and real hardware (round 1 and the last round
+  need the owner's hardware go-ahead in this conversation).
+- (2026-11-02 20:49 UTC, question on clarification (d)) "What is the \"RegionBuffer\", actually?" Recorded as: a
+  question; (d) still open.
+- (2026-11-02 20:53 UTC, clarification (d): level 0 silent; the questions' blast radius) "Actually, many of the
+  questions you asked in the past were unclear about the real blast radius. There must be a mode which is really silent
+  on the console, ever. That's level 0. Nevertheless, the outputs of the modules shall be visible with higher levels so
+  it does not become invisible. Is there such thing possible as - adding a Logger without error codes, just console or
+  nothing? - passing through the upstream module's Logger (done in many other places)? - Something else you would
+  suggest?" Recorded as: decided, level 0 prints nothing on the console, ever; at level 1 and above every module's
+  output is visible, the four logger-less layers included. Open: the mechanism (asked). Standing: every question states
+  its real blast radius (files, sites, bytes, tests, behaviour on the device).
+- (2026-11-02 20:58 UTC, clarification (d) decided; a COBS question) "Agreed with this. But why is nothing using COBS?
+  I assumed it being run on the UART crossover test module!" Recorded as: (d) decided as proposed (loggers passed
+  through to the UDP socket, RegionBuffer, the UART bus driver and the COBS codec; `console()` and the below-level
+  MemoryError branch go; level 0 prints nothing, ever). Open: why no device runs COBS (asked).
+- (2026-11-02 21:01 UTC, a COBS mode on the crossover jumper) "Option 1, add the cobs mode in B6" Recorded as: B6's
+  action list gains a `cobs` mode in the flash-tier crossover script (`tests_hardware/device_scripts/
+  uart_crossover_exchange.py` and the host test choosing its modes), test-side only, OR123's pattern; it first runs on
+  silicon in round 1. No firmware, build-chain or wire change.
+- (2026-11-02 21:11 UTC, B2: two /status keys) "(a), remove both" Recorded as: `ResetBits` and `ConfigUnpersisted` go
+  from `/status`, with their emitter lines, website rows, getters and tests; `ResetReason` and the internal
+  unpersisted flag (the shutdown flush) stay.
+- (2026-11-02 21:17 UTC, question on clarification (k)) "If I decide to keep code 4, can it ever be read by anyone?"
+  Recorded as: a question; (k) still open.
+- (2026-11-02 21:22 UTC, clarification (k) decided: reset code 4) "That actually never happened and is overkill code
+  bloating the firmware. Remove code 4." Recorded as: the bootloader command writes no reset record; code 4 and its
+  catalog row go (decision 6: no placeholder before the release); the bench test expects what the silicon reads (2);
+  B2 takes the smallest form (less code, not a new branch where avoidable).
+- (2026-11-02 21:25 UTC, clarification (h) decided: the wet bulb's corner) "(a), remove the corner" Recorded as: the
+  cold-dry corner exclusion in `wet_bulb_temperature()` goes (its 4 constants, the check and its tests); the
+  pre-audit range check (-20..50 degC, 5..99 %RH) stays.
+- (2026-11-03, time not taken, before 05:52 UTC, question on clarification (d2)) "What is the decision you ask about?"
+  Recorded as: a question; (d2) re-asked in full with its blast radius; still open.
+- (2026-11-03, time not taken, between 05:52 and 06:00 UTC, the allocation-free log call) "Is the err nomem really the
+  best way? Sounds like overkill complexity to me. Is there a simple way?" Recorded as: a question; answered with the
+  plain `err()` form and its blast radius.
+- (2026-11-03 06:00 UTC, the allocation-free log call decided) "Yes keep it simple" Recorded as: `err_nomem()` goes;
+  its 14 calls in 9 modules use plain `err()`, as before the audit; a log line that cannot get its argument tuple on a
+  full heap raises, and the restart and watchdog backstops take it. One lead change after B2's merge, before B4 and B5.
+- (2026-11-03, time not taken, between 06:07 and 06:12 UTC, clarification (d2)) "Concerning the debug level log lines:
+  how about option b and letting them store errors in fram? No prints but never lost, isn't it?" Recorded as: a
+  proposal; answered with its form (an E20 entry written at the logger's setup) and its limits.
+- (2026-11-03 06:12 UTC, clarification (d2) decided) "Pre construction error storage is overkill complexity, it opens a
+  tree of recombinations (multiple errors, own error, etc.). Leave that." Recorded as: (d2) is (b): nothing changes;
+  lines logged during construction stay silent on the board, no reader of the stored level before the build, no
+  pre-setup storage. B8 carries no (d2) item.
+- (2026-11-03, time not taken, between 06:13 and 06:17 UTC, budget) "We are at 9% usage now, is that within
+  expectation?" Recorded as: a meter reading, 9 % of the week, with B2's falsification, gate and push still to run;
+  the plan's running total through B2 is 10 % (R0 2, B1 4, B2 4).
+- (2026-11-03 06:18 UTC, budget and pace) "Okay, keep rolling" Recorded as: the standing go-ahead (2026-11-02 20:42)
+  holds after the budget reading; B2's close, the plain-err change and B4/B5 continue.
+- (2026-11-03 06:41 UTC, the error log's slot rule (OR35.b's reading)) "Option a is more complex and could mess up
+  appearance order. Keep as is. Generally target low complexity" Recorded as: the newest-entry rule stays (a repeat
+  is compared with the newest slot only; alternating codes each take a slot); and a standing direction for every unit:
+  target low complexity.
+- (2026-11-03 06:45 UTC, NTP's unsynced retry (legacy every 10 s against the doubling to 600 s)) "Option a, keep it
+  simple, but the resync trial timeout may be longer, something between 1 and 10 minutes. What would you suggest?"
+  Recorded as: the doubling, its cap and their two device settings go (B5); one fixed retry interval between 1 and 10
+  minutes, its value asked back with a suggestion.
+- (2026-11-03 06:54 UTC, NTP's unsynced retry interval decided) "Understood the suggestion. Then let's actually take 1
+  minute, easier to understand and not significantly more noise than 2." Recorded as: while unsynced, the first attempt
+  at the first check with the network up, then one attempt every 60 s after a failed one (one tunable constant, no
+  device setting); the doubling, its 600 s cap, `ntp_retry_s`/`ntp_retry_max_s`, their build check and the generator's
+  pair go; a skipped attempt (no network) does not count; a settings change or forced resync tries at once. B5 item 19.
+- (2026-11-03, time not taken, between 08:25 and 08:29 UTC, budget) "Currently about 13.5% usage. Still within
+  expectation?" Recorded as: a meter reading, 13.5 % of the week, with B2 pushed (CI pending) and B4 and B5 running,
+  neither handed back; the plan's running total through B5 is 16 % (R0 2, B1 4, B2 4, B4 3, B5 3).
+- (2026-11-03, time not taken, between 09:01 and 09:59 UTC, open decisions) "are there decisions which are really mine
+  and which i could take already now?" Recorded as: the owner asks for the open clarifications now rather than at
+  each unit's start; (e) B3, (c) B6, (i) R2 and (j) D are put one by one, (e) first.
+- (2026-11-03, time not taken, between 10:00 and 10:16 UTC, (e) FRAM's E and W for one invalid block) "Option A.
+  Both my statements hold. Either it's a warning or a fault applies to the same level / the same module, which should
+  be clear about what it is. If there is a downstream fault, it's a fault on that level. If that propagates up, is
+  handled and degraded to a warning, that's a valuable traceback. Therefore, both of my criteria are met with it."
+  Recorded as: (e) decided, the pair stays as it is (no change in B3); the reading of "never both" is per level or
+  module: a downstream fault is an error at its level, and the level above that handles it and degrades it logs a
+  warning, which is the traceback the 2026-10-01 note asks for.
+- (2026-11-03, time not taken, between 10:17 and 10:26 UTC, (c) a UART exchange during a flash write) "Option A, keep
+  as is. Would a longer UART timeout, e.g. 3000ms, relieve things further?" Recorded as: (c) decided, no change in B6;
+  the timeout question is answered with facts (the timeout is a fixed protocol parameter, owner 2026-09-11).
+- (2026-11-03, time not taken, between 10:27 and 10:31 UTC, the UART timeout) "Keep the UART as is. Any module using
+  the UART must be aware that errors like this can happen due to various reasons anyway and provide recovery mechanisms
+  themselves. This is nothing new, only something to be aware of." Recorded as: the 1,000 ms timeout stays; a failed
+  exchange is a normal event the link's users recover from themselves; no change and no new mechanism.
+- (2026-11-03, time not taken, between 10:38 and 10:45 UTC, (i) the two decision-records checks) "Option A, this is
+  valuable for future sessions as well" Recorded as: (i) decided, `test_decision_vocabulary.py` and
+  `test_citations.py` stay as permanent repo rules with their shrinking allow-lists; R2 keeps them in full.
+- (2026-11-03, time not taken, between 10:46 and 10:50 UTC, (j) the Stull paper) "Option A. I wonder where this was
+  unclear, we decided that all docs are moved to the private repo." Recorded as: (j) was already decided (OR80.a:
+  `datasheets/` is the private submodule for reference material, history kept); the plan wrongly made the push into a
+  question. The paper moves to `hundertvolt/datasheets` and leaves this repo's tree before PR #107 merges.
+
+- (2026-11-03, time not taken, between 11:47 and 11:49 UTC, budget) "A bit above 17% usage at this moment. Still within
+  expectation?" Answered: yes, inside the 17-18 % given for B4 and B5; the whole job's 55 % estimate stands.
+- (2026-11-03, time not taken, between 11:50 and 12:13 UTC, go-ahead) "Okay, keep rolling. Can you already prepare
+  something while the background shell is running?" Recorded as: the next units' drafting starts beside the gate.
+
+- 2026-11-03 15:17 UTC (time taken at reading), budget: "we are at 21% usage now. still inside expectation?" Answered: yes; the storage and UART pair, a bit past half done, should close near 23-24 %; the 55 % estimate for the whole job stands.
+- 2026-11-03 19:01 UTC (time taken at reading), budget: "24% usage still within expectation?" Answered: a little over;
+  the storage and UART pair closes near 25 % once its gate, snapshot and CI are done, about a point above the 23-24 %
+  given at 15:17; the 55 % estimate for the whole job holds, with less slack.
+- 2026-11-03 20:05 UTC (time taken at reading), B7/B8 owner questions: "Prepare these 5 questions and the one before
+  that we can go through them one by one" Done: the B7 `State` question and B8's five queued questions prepared
+  together, then asked one at a time.
+- 2026-11-03 20:25 UTC (time taken at reading), B7 question 1 (`State`): "The entries in the status field could be
+  anything as you describe them, what are they about?" Answered: what the notification service checks each cycle and
+  what each code means in those terms; question 1 stays open.
+- 2026-11-03 20:28 UTC (time taken at reading), B7 question 1 (`State`): "Now I understand why the whole notification
+  status field was new to me - I never requested it. Did I actually ever request any status of the notification being
+  added to the status field? Honestly I don't remember ever discussing this." Answered from the records (below).
+- 2026-11-03 20:35 UTC (time taken at reading), B7 question 1 (the notification block in `/status`): "As you said that
+  code functionality can be tested without all that, we do as recommended, only keep pause time" Decided: `Triggered`,
+  `State` and `TS` leave `/status` with the Status page's "Notification Status" group, the NotifyState table and the
+  mock data; `PauseTime` stays where it is; tests observe a flash through the LED fake's frames. Relayed to B7.
+- 2026-11-03 20:40 UTC (time taken at reading), B8 question 2 (the boot entry at DebugLevel 0): "drop the traceback
+  print and keep the start line, as you recommended" Decided: the generated main.py's `sys.print_exception(ended)` goes
+  with its pre-bind, comment and F811 exemption (B8 rows 6 and 7 as drafted; reset reason 22 stays the record); the
+  no-autostart start line stays. (Lead's wording corrected 2026-11-04: it had read as if the pre-bind stayed.)
+- 2026-11-03 20:43 UTC (time taken at reading), B8 question 3 (the page's build-date stamp): "Remove it" Decided: the
+  meta stamp, its read and compare in the page code and its build steps go; `BuildDate` stays in GET /system.
+- 2026-11-03 20:45 UTC (time taken at reading), B8 question 4 (the "returned no JSON object" banner): "Yes, restore"
+  Decided: the page's GET check goes back to the pre-audit form (an empty body refused, a typing cast otherwise).
+- 2026-11-03 20:47 UTC (time taken at reading), B8 question 5 (a saturated counter shown as "65535+"): "Yes, that was a
+  good addition, keep it" Decided: kept, now with the owner's agreement on record.
+- 2026-11-03 20:53 UTC (time taken at reading), B8 question 6 (double stripes for Invalid and Failed): "No, don't keep
+  it, it would make the page move strangely on errors, color alone is fine." Decided: solid stripes again, as before
+  the audit (`25caf528:html/style.css:325-346`); the state shows by colour alone.
+- 2026-11-03 21:55 UTC (time taken at reading), budget: "28% usage - still within expectation?" Answered: a little
+  over the plan, inside the owner's range: the plan's running total through B7 is 25 %, B7 closes near 29 % (its gate,
+  falsification, merge and snapshot still to run), so about 3 points over, under the 5-point stop; the two CI-fix
+  snapshots (30, 31) cost about a point. At the same overrun the whole job ends near 57-58 %, not 55 %.
+- 2026-11-04 05:28 UTC (time taken at reading), B7 question 7 (a stopped SCD30 keeps driving the LED): "For the
+  stopped sensor, option c, the clean solution" Decided: once the SCD30 has missed two of its own measurement intervals
+  (FRCState "not measuring"), it publishes CO2, Temp, Hum, WetBulb and DewPoint as unavailable; the notification skips
+  them; the website shows them unavailable while stopped. The 3 h sample-age bound stays removed. Relayed to B7.
+- 2026-11-04 06:03 UTC (time taken at reading), scheduled check-ins: "I already told you several times not to schedule
+  check ins but use hooks" Decided: no scheduled check-ins of any kind (no send_later, no scheduled task, no wakeup
+  loop). Waiting is event-driven only: PR #107's activity subscription and the background agents' completion notices.
+  The pending 06:46 check-in is deleted; no enabled scheduled task remains. Binding for the rest of the job.
+- 2026-11-04 06:07 UTC (time taken at reading), budget: "Usage at 31%.Still within the plan?" Answered: no. The plan's
+  running total through B7 is 25 %; B7 is not closed (round 3 in flight, then merge, coverage run, snapshot, about 1
+  point), so 6 points over now and about 7 at its close, past section 5's 5-point stop. B7 alone took about twice its
+  3-point share and was already past 80 % of it at the 21:55 reading; the lead missed that stop. Forecast: 57 % if the
+  remaining 25 planned points run to plan, 63-64 % at B1-B7's overrun. Put to the owner as a budget stop (close B7 and
+  go on with the unit stop applied strictly, close B7 and pause, or stop the round in flight); recommended the first.
+  The round in flight finishes; nothing else starts until the owner answers.
+- 2026-11-04 06:11 UTC (time taken at reading), budget stop: "Option 1, keep rolling, and take extra care that we are
+  not currently creating a runaway, self-inflicted complexity increase." Decided: close B7, then go on; from B8 on, a
+  unit reaching 80 % of its share stops with a report at once. Standing check from now on: every round's diff is read
+  for self-inflicted complexity (new mechanisms, tests or docs beyond what the item needs; net growth against
+  pre-audit) before it is merged, and B7's round 3 is checked that way first.
+- 2026-11-04 06:29 UTC (time taken at reading), the SGP40 consequence of B7 round 3: "What is the \"SGP40 knock on
+  effect\"?" Answered: the SGP40 compensates with the SCD30's Temp and Hum and skips its cycle when either is None (the
+  pre-audit rule, unchanged); a stopped or stalled SCD30 now publishes None, so VOC readings pause until the SCD30
+  measures again, where before they ran on its last values. No decision asked; the alternative named (the datasheet
+  defaults while the source is empty), not recommended.
+- 2026-11-04 06:32 UTC (time taken at reading), the SGP40 consequence: "Totally correct implementation, following the
+  rules, this is fine." Decided: kept; the SGP40 pauses its VOC readings while its compensation source has no values,
+  a stopped or stalled SCD30 included; no default-compensation fallback.
+- 2026-11-04 07:49 UTC (time taken at reading), budget and the hardware rounds: "33% and I only see scripts working.
+  Fine? By the way, just for my reassurance, you do have an in depth real hardware session in your plans?" Answered:
+  fine; B8 is in its gate (machine time); its unit tier failed one comment-cap check in a build-chain test file at
+  both stages, every MicroPython test passed; B8's 80 % stop is near 35 %. Yes: PLAN's round 1 (the bench session on
+  the final firmware, its own go-ahead, the queue R3 prepares) and the last round (the two-image GC proof, what round
+  1 left, the twin corrections); the 2026-10-29 campaign's answers are not repeated.
+- 2026-11-04 08:34 UTC (time taken at reading), B8 at its 80 % mark: "As we are at 34 right now and the upcoming points
+  are self contained, this is no alarm. Go on." Decided: B8 goes on (the falsification, one fix round with the
+  CRC-pair check's removal, the merge and the snapshot); the meter read 34 %.
+- 2026-11-04 11:23 UTC (time taken at reading), R2 question 1 (Part N's scope, "hardware-tier budgets"): "the
+  tunables' main target is firmware. Buildgen may also be included. But generally, it's option a with it" Decided:
+  option (a), the narrow reading: the register's core is the firmware's and buildgen's tuned values; of the hardware
+  tier only its soak durations, heap floors and named budgets stay (12 rows); each test's own waits, polls, timeouts
+  and counts leave the register and keep their values in code. The other in-scope test-suite rows of the list's (a)
+  stay (CI, runners, heap size, twin durations). About 197 rows remain.
+- 2026-11-04 11:27 UTC (time taken at reading), R2 question 2 (rp2's REPL banner after a loop end, at DebugLevel 0):
+  "option c" Decided: after `record_loop_end()` the generated boot entry resets the chip at once (`machine.reset()`),
+  so the REPL never starts and nothing is printed; how the next boot reads that reset is checked with the change.
+  The lead had recommended (b), a silent wait for the watchdog. The no-autostart entry and Ctrl-C keep the console.
+- 2026-11-04, time not taken at reading (between 11:27 and 11:32 UTC), R2's questions: "what is your third question?"
+  Answered: none is left; of the three items announced, the lead settled the sleep-form test (P-sleep) as no change,
+  since the firmware already meets it and narrowing it would add test code; the owner may still take it. C1 (a) was
+  never asked: option (b) gives the CI cut without touching the local `scripts/test.sh`.
+- 2026-11-04 11:32 UTC (time taken at reading), budget: "current usage reads 36%. where does that leave us?" Recorded
+  as: a meter reading, 36 % of the week, R2's phase A done, phase B just started. Answered: the plan's running total
+  through R2 is 34 %; R1 closed about 6 points over its plan (the overrun accepted at 06:11); B8 and R2 so far inside
+  their shares, so the overrun is no longer growing. R2 began near 35 % (estimated, no reading), its 80 % stop near
+  39 %. Forecast: about 56 % at the end if R2 to D run to plan, inside the 50-60 % target.
+- 2026-11-04 11:35 UTC (time taken at reading), budget at 36 %: "Fine, go on." Decided: R2's phase B goes on; its 80 %
+  stop stays near 39 % on the owner's meter.
+- 2026-11-04 15:38 UTC (time taken at reading), budget: "39% usage so far, does this match expectation so far?"
+  Recorded as: a meter reading, 39 % of the week, R2's fix round (F1-F6) running. Answered: yes for the whole (R2 on
+  course to close at about 40 %, its full 5-point share; the 6-point overrun from R1 not growing; about 56 % at the
+  end), but 39 % is R2's 80 % mark (its start, near 35 %, estimated), so a unit stop: the round in flight finishes,
+  nothing else starts until the owner answers. Recommended: let R2 close (merge, checks, snapshot, about 1 point).
+- 2026-11-04 15:49 UTC (time taken at reading), R2 at its 80 % mark: "let it close, go on" Decided: R2 closes (the
+  merge, the merged-head checks, snapshot 34 and its CI, the report), then R3.
+- 2026-11-04 16:16 UTC (time taken at reading), parallelism and budget: "Our guidelines about parallel work still
+  apply. Work which has to be done anyway and which is independent and does not cause interference can already be
+  started. The weekly budget count I want to keep bounded is overall, not per hour." Decided: work owed anyway that is
+  independent of R3 and of the snapshot 34 CI, and does not interfere with them, starts now in parallel; the budget
+  bound is the week's total, so parallel running is fine when the work is owed anyway; the unit stops stay.
+- 2026-11-04 16:30 UTC (time taken at reading), datasheets: ""There are no RP2040, flash-chip or Wi-Fi-chip
+  datasheets in the repository."   No idea why that information so stubbornly persists again and again. They are all
+  in the private subrepo and you have access." Recorded as: a repeat of the 2026-10 fact (line 68, "You have access
+  to the datasheets repo and may fetch whatever you need"); phase A read the main checkout's stale plain folder, not
+  the `datasheets` submodule (`hundertvolt/datasheets`, pinned 786c947c). Fix: the submodule is fetched for R3, the
+  limit withdrawn, and the location goes into common_r1.md so no brief repeats the error.
+- 2026-11-04 19:50 UTC (time taken at reading), budget: "Good estimate. We are at 43. What would you expect as all
+  final sum?" Recorded as: a meter reading, 43 % of the week, with R3's phase B done and its fix round prepared, not
+  sent. R3 began near 40 % (estimated), so about 3 of its 5 points are spent and its 80 % stop (near 44 %) is not
+  reached: the fix round starts under the standing go-ahead. Answered with the forecast of the final sum.
+- 2026-11-04 19:51 UTC (time taken at reading), R3's 80 % mark: "let R3 close, go on" Decided: R3 runs through its
+  80 % mark to its close (the fix round, the gate, the falsification, the merge, the merged-head checks, a snapshot
+  and its CI, the report) with no stop at the mark, then the plan goes on to round 1 (which still needs the owner's
+  hardware go-ahead in this session).
+- 2026-11-04 20:16 UTC (time taken at reading), open questions: "do you have open questions for me?" Recorded as: a
+  check, no ruling. Answered: nothing blocks R3; D1 and M report no owner item (no U35-37 class (a) hit, no dead
+  line). The next question is round 1's hardware go-ahead, asked once R3 has closed.

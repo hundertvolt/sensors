@@ -45,30 +45,19 @@ _CMD_BANNER = 0x01
 _CMD_ECHO = 0x02
 _BANNER = b"loaded-link-ok"
 _ECHO_BYTES = PAYLOAD_SIZE * 2 + 7  # three data chunks per echo SET
-# @tunable l3.uart_link_under_concurrent_system_load_run_ms = 12000
 _RUN_MS = 12000  # long enough for a second measurement window to mean something
 # A floor far below the unloaded rate (measured 58): the link keeps making progress under load, no throughput target.
-# @tunable l3.uart_link_under_concurrent_system_load_min_transfers = 20
 _MIN_TRANSFERS = 20
 # No transfer may come close to its own deadline: half the timeout leaves the link visibly healthy (measured ~114 ms).
-# @tunable l3.uart_link_under_concurrent_system_load_max_rtt_fraction = 2
 _MAX_RTT_FRACTION = 2
-# @tunable l3.uart_link_under_concurrent_system_load_churn_block = 512
 _CHURN_BLOCK = 512  # bytes per allocation in the churn task - enough to fragment, far from the cap
 _CHURN_HELD_MAX = 24  # blocks held before half are dropped: at most 25 x 512 B live at once
-# @tunable l3.uart_link_under_concurrent_system_load_sensor_load_step_ms = 5
 _SENSOR_LOAD_STEP_MS = 5
-# @tunable l3.uart_link_under_concurrent_system_load_spi_load_step_ms = 10
 _SPI_LOAD_STEP_MS = 10
-# @tunable l3.uart_link_under_concurrent_system_load_churn_step_ms = 2
 _CHURN_STEP_MS = 2
-# @tunable l3.uart_link_under_concurrent_system_load_heap_sample_step_ms = 8
 _HEAP_SAMPLE_STEP_MS = 8
-# @tunable l3.uart_link_under_concurrent_system_load_transfer_step_ms = 5
 _TRANSFER_STEP_MS = 5
-# @tunable l3.uart_link_under_concurrent_system_load_heap_floor_samples = 8
 _HEAP_FLOOR_SAMPLES = 8
-# @tunable l3.uart_link_under_concurrent_system_load_heap_growth_max_bytes = 2048
 _HEAP_GROWTH_MAX_BYTES = 2048
 
 
@@ -252,7 +241,10 @@ async def _main() -> None:
     spi_bus = BENCH["bus"][fram_facts["bus"]]
     fram = FRAMManager(asy_spi_driver.SPI(spi_bus["id"], spi_bus["sck_pin"], spi_bus["mosi_pin"], spi_bus["miso_pin"]), fram_facts["cs_pin"], max_size=BENCH["fram_max_size"])
     sgp = SGP40_I2C(i2c)
-    setups = {"initiator": await initiator.setup(), "responder": await responder.setup(), "fram": await fram.setup(), "sgp40": await sgp.setup()}
+    await sgp.setup()  # answers nothing: a failed setup raises
+    setups = {"initiator": await initiator.setup(), "responder": await responder.setup()}
+    await fram.setup()
+    setups["fram"] = fram.initialized
     fact("setup", setups)
     link = _Link()
     heap = (0, 0)

@@ -69,48 +69,35 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# @tunable l2.twin_wdt_feed_interval_s = 1.0
 _WDT_FEED_INTERVAL_S = 1.0
-# @tunable l2.bus_hazard_concurrency_run_bound_s = 20.0
 _RUN_BOUND_S = 20.0
-# @tunable l2.bus_hazard_concurrency_run_seconds = 9.0
 _RUN_SECONDS = 9.0
-# @tunable l2.bus_hazard_concurrency_established_poll_s = 0.5
 _ESTABLISHED_POLL_S = 0.5
-# @tunable l2.bus_hazard_concurrency_reconnect_poll_s = 1.0
 _RECONNECT_POLL_S = 1.0
-# @tunable l2.bus_hazard_concurrency_flap_window_s = 75.0
 _FLAP_WINDOW_S = 75.0
-# @tunable l2.bus_hazard_concurrency_flap_run_bound_s = 95.0
 _FLAP_RUN_BOUND_S = 95.0
-# @tunable l2.bus_hazard_concurrency_state_run_bound_s = 30.0
 _STATE_RUN_BOUND_S = 30.0
-# @tunable l2.bus_hazard_recovery_offsets = 6
 _RECOVERY_OFFSETS = 6
-# @tunable l2.bus_hazard_recovery_reads = 6
 _RECOVERY_READS = 6
-# @tunable l2.bus_hazard_command_wait_s = 20.0
 _COMMAND_WAIT_S = 20.0
 _SEED = bytes(range(5, 45))  # 40 bytes: over rp2's 32-byte DMA threshold, the only SPI reads that can raise
 _DROPPED_WRENS = 8  # more WRENs than one write's retry sends: the write fails rather than recovering inside the driver
 _RUNG_OFFSETS = 6  # as many offsets as each loop has reads, the recovery case's own count
 _CANCEL_TURNS = 40  # scheduler turns into the SGP40's setup and measurement, which end well before
 _HOLD_SCD30_CYCLES = 3  # whole SCD30 cycles of real bus load the driven 60 s retry is held open for
-# @tunable l2.bus_hazard_concurrency_poll_s = 0.1
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
 _POLL_MS = int(_POLL_S * 1000)  # the same look on a driven clock
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _I2C_DEFAULT_TIMEOUT_US: int = src_int("src/asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
-# @tunable l2.bus_hazard_concurrency_erase_us_per_byte = 8
-_ERASE_US_PER_BYTE = 8  # the erase's real wire time at the 1 MHz bus (asy_fram_manager.py's _ERASE_UNIT comment)
+_ERASE_US_PER_BYTE = 8  # an 8x-slow bus: the product's 8 MHz FRAM clock moves a byte in 1 us
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the twin tier's much
 # smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters (Part C.8); a new driver needs an entry first.
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 # The per-cycle register read a driver makes on its shared bus, each pointer write followed at once by its read.
-_PER_CYCLE_REGISTER = {"bmp3xx": 0x10, "isl29125": 0x01}  # BMP3XX's EVENT, ISL29125's CONFIG snapshot
+_PER_CYCLE_REGISTER = {"bmp3xx": 0x04, "isl29125": 0x09}  # each chip's data burst
 # Every (device, bus, occupants) whose plan puts two or more chips on one bus: the shared-bus cases run on each.
 _SHARED = devices_with_shared_bus()
 # FRAM sits alone on its SPI bus on every device; its same-device hazards run once per distinct FRAM wiring (its SPI
@@ -1046,72 +1033,25 @@ def test_two_failing_readers_on_one_bus_run_each_bus_rung_once() -> None:
     assert kept, "the bus rungs lost the wired chips"
 
 
-def test_two_setups_failing_together_each_rebuild_the_controller_once_one_after_the_other() -> None:
-    # Both chips of the shared bus fail their task's setup once. A sibling session holds the bus lock, so the first
-    # rebuild parks on it while the second setup failure reaches _init_failed(): each failed setup still rebuilds the
-    # controller once (its own episode), inside the lock one at a time, and the supervisor restarts both in budget.
+def test_two_setups_failing_together_are_each_retried_by_the_restart_with_no_bus_rung() -> None:
+    # Both chips of the shared bus fail their task's setup once: each logs its own setup error, runs no bus rung (the
+    # mild step first), and the supervisor's restart retries both within the budget, the wired chips kept.
     device = _ladder_device()
     addresses = {a["driver"]: a["address"] for attachments in wiring_plan(device)["buses"].values() for a in attachments}
 
-    async def until(done: "Callable[[], bool]", what: str) -> None:
-        for _ in range(int(_RUN_BOUND_S / _POLL_S)):
-            if done():
-                return
-            await asyncio.sleep(_POLL_S)
-        raise AssertionError(what)
-
-    async def scenario() -> "tuple[int, int, int, int, bool]":
+    async def scenario() -> "tuple[int, bool]":
         module, watchdog = await _boot(device, port=_ports.next())
         (bus_name,) = [bus for d, bus, _o in _SHARED if d == device]
         bus = getattr(module, bus_name)
         fake = bus._i2c
         assert fake is not None
         chips = dict(fake.devices)
-        real_recover: Callable[[], Coroutine[object, object, int]] = bus.recover
-        real_clear: Callable[[], Coroutine[object, object, int]] = bus._clear_locked
-        rebuilds, inside, arrived = [0], [0, 0, 0], []  # real rebuilds; in the lock now, most at once, beside the sibling; readers at the gate
-        sibling, started = [False], [0]  # the test holds the bus lock; rebuilds released from the gate
-        go = {reader.pr.name: asyncio.Event() for reader in (module.sgp40, module.bmp3xx)}
-
-        async def counted() -> int:
-            rebuilds[0] += 1
-            return await real_recover()
-
-        async def held() -> int:
-            if sibling[0] or not bus.bus_lock.locked():
-                inside[2] += 1  # a rebuild ran beside the sibling's session, or with no lock held
-            inside[0] += 1
-            inside[1] = max(inside[:2])
-            try:
-                return await real_clear()
-            finally:
-                inside[0] -= 1
-
-        for name, wrapper in (("recover", counted), ("_clear_locked", held)):
-            setattr(bus, name, wrapper)  # an instance attribute shadowing the method, as _ladder_run's
-        for reader in (module.sgp40, module.bmp3xx):
-
-            async def gated(real: "Callable[[], Coroutine[object, object, None]]" = reader._init_failed, name: str = reader.pr.name) -> None:
-                arrived.append(name)
-                await go[name].wait()
-                await real()
-
-            setattr(reader, "_init_failed", gated)  # noqa: B010 - the instance attribute the driver's _init_*() calls
+        mark = bus.recoveries
         chips[addresses["sgp40"]].fault.inject_fault("readfrom_into", OSError, errno.EIO, "no ACK", times=1)
         chips[addresses["bmp3xx"]].fault.inject_fault("readfrom_mem", OSError, errno.EIO, "no ACK", times=1)
         feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
         supervisor = await _supervised_graph(module)
         try:
-            await until(lambda: len(arrived) == 2, "both setups did not fail")
-            mark = bus.recoveries
-            await bus.bus_lock.acquire()  # the sibling session
-            sibling[0] = True
-            for name in arrived:
-                go[name].set()
-                started[0] += 1
-                await until(lambda: bus.recoveries - mark == started[0], f"the rebuild of {name}'s failed setup never started")
-            bus.bus_lock.release()
-            sibling[0] = False
             while (await module.sgp40.get_data()).VOC is None or (await module.bmp3xx.get_data()).Pres is None:
                 await asyncio.sleep(_POLL_S)
             assert watchdog.would_have_triggered_count == 0
@@ -1119,19 +1059,18 @@ def test_two_setups_failing_together_each_rebuild_the_controller_once_one_after_
             for reader in (module.sgp40, module.bmp3xx):
                 log = (await reader.pr.get_log())[reader.pr.name]
                 kinds = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
-                assert kinds == [("E", code("E", "INIT")), ("W", code("W", "BUS_RECOVERY"))], f"{reader.pr.name}: not one rebuild beside its own setup error: {log}"
+                restore = [("W", code("W", "SGP_NO_BACKUP"))] if reader is module.sgp40 else []  # the fresh FRAM holds no backup
+                assert kinds == [("E", code("E", "INIT"))] + restore, f"{reader.pr.name}: not its own setup error alone: {log}"
             kept = fake.devices == chips and all(fake.devices[a] is chips[a] for a in chips)
-            return rebuilds[0], inside[1], inside[2], await _w15(module.sgp40, module.bmp3xx), kept
+            return bus.recoveries - mark, kept
         finally:
-            if sibling[0]:
-                bus.bus_lock.release()
             await cancel(supervisor)
             await cancel(feeder)
             await _cancel_started_tasks(module)
 
-    rebuilds, most_inside, unlocked, w15, kept = run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
-    assert (rebuilds, most_inside, unlocked, w15) == (2, 1, 0, 2), f"expected two rebuilds one at a time inside the bus lock, each with one W15; got {rebuilds} rebuild(s), {most_inside} at once, {unlocked} outside the lock, {w15} W15 slot(s)"
-    assert kept, "the rebuilds lost the wired chips"
+    rungs, kept = run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
+    assert rungs == 0, f"a failed setup ran {rungs} bus rung(s)"
+    assert kept, "the restarts lost the wired chips"
 
 
 # ---------------------------------------------------------------------------
@@ -1218,7 +1157,7 @@ def test_the_erase_racing_a_logger_write_never_tears_a_chunk() -> None:
 
 
 def test_the_erase_feeds_the_watchdog_at_bus_speed() -> None:
-    # The largest generated FRAM erased at its real wire time (8 us/byte): the sequence's own feeds keep the watchdog
+    # The largest generated FRAM erased on an 8x-slow bus (8 us/byte): the sequence's own feeds keep the watchdog
     # fed throughout, and every unit lands below the chip's size.
     plan = _fram_plan_by_size()
     device = plan["device"]

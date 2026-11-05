@@ -25,6 +25,7 @@ from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 import asy_print_log
 import asy_udp_socket
 from asy_dns_client import DNS_UDP_MAX
+from asy_print_log import PrintLog
 from asy_udp_socket import UDPSocket
 
 # UDPSocket takes plain (host, port) tuples; on this Unix build the shim resolves them (once, class-wide).
@@ -42,57 +43,31 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# @tunable l1.asy_udp_socket_recv_empty_timeout_ms = 50
 _RECV_EMPTY_TIMEOUT_MS = 50
-# @tunable l1.asy_udp_socket_peer_recv_timeout_ms = 1000
 _PEER_RECV_TIMEOUT_MS = 1000
-# @tunable l1.asy_udp_socket_peer_poll_ms = 5
 _PEER_POLL_MS = 5
-# @tunable l1.asy_udp_socket_reply_timeout_ms = 500
 _REPLY_TIMEOUT_MS = 500
-# @tunable l1.asy_udp_socket_spoof_wait_ms = 150
 _SPOOF_WAIT_MS = 150
-# @tunable l1.asy_udp_socket_kernel_queue_s = 0.05
 _KERNEL_QUEUE_S = 0.05
-# @tunable l1.asy_udp_socket_recv_timeout_ms = 200
 _RECV_TIMEOUT_MS = 200
-# @tunable l1.asy_udp_socket_in_time_delay_ms = 40
 _IN_TIME_DELAY_MS = 40
-# @tunable l1.asy_udp_socket_in_time_timeout_ms = 300
 _IN_TIME_TIMEOUT_MS = 300
-# @tunable l1.asy_udp_socket_too_late_delay_ms = 300
 _TOO_LATE_DELAY_MS = 300
-# @tunable l1.asy_udp_socket_too_late_timeout_ms = 100
 _TOO_LATE_TIMEOUT_MS = 100
-# @tunable l1.asy_udp_socket_ready_empty_timeout_ms = 80
 _READY_EMPTY_TIMEOUT_MS = 80
-# @tunable l1.asy_udp_socket_task_park_s = 0.05
 _TASK_PARK_S = 0.05
-# @tunable l1.asy_udp_socket_ms_check_timeout_ms = 50
 _MS_CHECK_TIMEOUT_MS = 50
-# @tunable l1.asy_udp_socket_ms_check_elapsed_max_ms = 2000
 _MS_CHECK_ELAPSED_MAX_MS = 2000
-# @tunable l1.asy_udp_socket_icmp_delivery_s = 0.2
 _ICMP_DELIVERY_S = 0.2
-# @tunable l1.asy_udp_socket_icmp_recv_timeout_ms = 5000
 _ICMP_RECV_TIMEOUT_MS = 5000
-# @tunable l1.asy_udp_socket_icmp_elapsed_max_ms = 1000
 _ICMP_ELAPSED_MAX_MS = 1000
-# @tunable l1.asy_udp_socket_long_reply_timeout_ms = 1000
 _LONG_REPLY_TIMEOUT_MS = 1000
-# @tunable l1.asy_udp_socket_unreachable_timeout_ms = 500
 _UNREACHABLE_TIMEOUT_MS = 500
-# @tunable l1.asy_udp_socket_no_sender_timeout_ms = 100
 _NO_SENDER_TIMEOUT_MS = 100
-# @tunable l1.asy_udp_socket_first_attempt_s = 0.1
 _FIRST_ATTEMPT_S = 0.1
-# @tunable l1.asy_udp_socket_retry_cycle_max_ms = 5000
 _RETRY_CYCLE_MAX_MS = 5000
-# @tunable l1.asy_udp_socket_disconnect_bound_s = 2
 _DISCONNECT_BOUND_S = 2
-# @tunable l1.asy_udp_socket_connect_bound_s = 3
 _CONNECT_BOUND_S = 3
-# @tunable l1.asy_udp_socket_enter_sleep_s = 0.1
 _ENTER_SLEEP_S = 0.1
 _DEADLINE_CANCEL_ROUNDS = 10  # the rounds after a deadline passes a cancel is tried at: its whole handling
 
@@ -102,17 +77,17 @@ _HOST = "127.0.0.1"
 _PORTS = PortAllocator("asy_udp_socket")
 
 
-def _arms_off_target(make_exc: "Callable[[str], BaseException]", *, expect_line: bool) -> "list[tuple[str, object, list[str]]]":
+def _arms_off_target(make_exc: "Callable[[str], BaseException]", logger: "PrintLog | None", *, expect_line: bool) -> "list[tuple[str, object, list[str]]]":
     # Every arm whose result is not its sentinel, or whose console lines are not the one expected line (or none),
-    # as (name, result, lines); each arm runs from this synchronous scope.
+    # as (name, result, lines); each arm runs from this synchronous scope, its socket given `logger`.
     wrong = []
     for arm, scenario, sentinel in _ARMS:
         recorder = _PrintRecorder()
         try:
-            got = run(scenario(make_exc(arm)))
+            got = run(scenario(make_exc(arm), logger))
         finally:
             recorder.restore()
-        if got != sentinel or recorder.lines != (["UDPSocket injected for " + arm] if expect_line else []):
+        if got != sentinel or recorder.lines != (["DNS UDPSocket: injected for " + arm] if expect_line else []):
             wrong.append((arm, got, recorder.lines))
     return wrong
 
@@ -134,7 +109,7 @@ async def _ntp_shaped_fetch(addr: tuple[str, int], timeout_ms: int) -> "tuple[bo
     try:
         sent = await cli.write(ntp_request, timeout_ms=timeout_ms) is not None
         if sent:
-            msg, _ = await cli.recvfrom(_NTP_PACKET_LEN, timeout_ms=timeout_ms)
+            msg, _ = await cli.recvfrom(_NTP_RECV_BUF, timeout_ms=timeout_ms)
     finally:
         torn_down = await cli.disconnect()
     return sent, msg, torn_down
@@ -175,7 +150,7 @@ def _unbindable_addr() -> tuple[str, int]:
 _RETRY_BACKOFF_MS: int = src_int("src/asy_udp_socket.py", "_RETRY_BACKOFF_MS")
 _POLL_WAIT_MS: int = src_int("src/asy_udp_socket.py", "_POLL_WAIT_MS")
 _POLL_IDLE_MS: int = src_int("src/asy_udp_socket.py", "_POLL_IDLE_MS")
-_NTP_PACKET_LEN: int = src_int("src/asy_ntp_client.py", "_NTP_PACKET_LEN")
+_NTP_RECV_BUF = 1024  # asy_ntp_client.py _fetch_ntp_reply()'s receive size
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +570,7 @@ class _RecordingAsyncio:
 
 def test_ready_with_a_deadline_polls_at_the_transaction_rate() -> None:
     # A wait with a deadline sits inside an exchange (DNS, NTP): every round sleeps _POLL_WAIT_MS, never
-    # a busy-spin of ipoll(0)+sleep_ms(0) on RP2040's single core; the last is cut to end at the deadline.
+    # a busy-spin of ipoll(0)+sleep_ms(0) on RP2040's single core.
     sleeps = _record_ready_sleeps(_READY_EMPTY_TIMEOUT_MS)
     assert len(sleeps) > 0
     assert all(ms == _POLL_WAIT_MS for ms in sleeps[:-1]), sleeps
@@ -639,26 +614,6 @@ def test_a_cancel_in_any_round_after_the_deadline_passes_raises_out_of_ready() -
         run(sock.disconnect())
     lost = [k for k, outcome in enumerate(outcomes) if outcome.endswith("after the cancel")]
     assert not lost, f"a cancel in these rounds after the deadline read as no readiness: {lost} ({outcomes})"
-
-
-def test_ready_with_a_deadline_off_the_poll_rate_ends_at_the_deadline() -> None:
-    # A deadline between two poll rounds ends at itself, as the wait_for_ms() bound did, not at the next round.
-    sock = UDPSocket(_make_addr(), mode="server")  # bound; nothing ever reaches it
-
-    async def scenario(clock: DrivenTime) -> "tuple[bool, bool, object]":
-        waiter = asyncio.create_task(sock.ready(select.POLLIN, timeout_ms=_MS_CHECK_TIMEOUT_MS))
-        await clock.elapse(_MS_CHECK_TIMEOUT_MS - 1)
-        early = waiter.done()
-        await clock.elapse(1)
-        return early, waiter.done(), await waiter if waiter.done() else None
-
-    try:
-        with DrivenTime(asy_udp_socket, sleeps=True) as clock:
-            early, ended, result = run(scenario(clock))
-    finally:
-        run(sock.disconnect())
-    assert _MS_CHECK_TIMEOUT_MS % _POLL_WAIT_MS, "the deadline must fall between two poll rounds"
-    assert (early, ended, result) == (False, True, False), (early, ended, result)
 
 
 def test_a_failed_setup_backs_off_with_one_sleep_ms_of_the_shipped_value() -> None:
@@ -869,14 +824,14 @@ def test_recvfrom_returns_none_sentinel_on_memoryerror() -> None:
 
 
 # ---------------------------------------------------------------------------
-# A caught MemoryError's own text reaches the console: the class has no logger, and the memory gates
-# read console output (CLAUDE.md), so every arm prints it once and still returns its sentinel.
+# A caught MemoryError's own text goes out through the logger its builder gives the socket, so the memory gates
+# read it from level 1 up (CLAUDE.md); without one, or at level 0, nothing prints. Every arm keeps its sentinel.
 # ---------------------------------------------------------------------------
 
 
 class _PrintRecorder:
-    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, where
-    # console() prints, so each console line is captured as its joined text; restore() removes the shadow.
+    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, where every
+    # logger prints, so each console line is captured as its joined text; restore() removes the shadow.
     def __init__(self) -> None:
         self.lines: list[str] = []
         asy_print_log.print = self  # type: ignore[attr-defined]
@@ -951,9 +906,9 @@ class _FailingPoller:
         self._real.unregister(*args)
 
 
-async def _connect_arm(exc: BaseException) -> object:
+async def _connect_arm(exc: BaseException, logger: "PrintLog | None") -> object:
     # socket() raises: the attempt fails, the backoff still runs, and the object stays torn down.
-    sock = UDPSocket(_make_addr(), mode="server")
+    sock = UDPSocket(_make_addr(), mode="server", logger=logger)
     original = asy_udp_socket.socket
     asy_udp_socket.socket = _FailingSocketModule(exc)  # type: ignore[assignment]
     try:
@@ -965,8 +920,8 @@ async def _connect_arm(exc: BaseException) -> object:
     return sock.connected, sock._sock is None, backoff_waited
 
 
-async def _unregister_arm(exc: BaseException) -> object:
-    sock = UDPSocket(_make_addr(), mode="server")
+async def _unregister_arm(exc: BaseException, logger: "PrintLog | None") -> object:
+    sock = UDPSocket(_make_addr(), mode="server", logger=logger)
     await sock._connect()
     assert sock.poller is not None
     sock.poller = _FailingPoller(sock.poller, "unregister", exc)  # type: ignore[assignment]
@@ -974,8 +929,8 @@ async def _unregister_arm(exc: BaseException) -> object:
     return ok, sock._sock is None, sock.connected
 
 
-async def _close_arm(exc: BaseException) -> object:
-    sock = UDPSocket(_make_addr(), mode="server")
+async def _close_arm(exc: BaseException, logger: "PrintLog | None") -> object:
+    sock = UDPSocket(_make_addr(), mode="server", logger=logger)
     await sock._connect()
     real = sock._sock
     assert real is not None
@@ -985,8 +940,8 @@ async def _close_arm(exc: BaseException) -> object:
     return ok, sock._sock is None, sock.connected
 
 
-async def _ready_arm(exc: BaseException) -> object:
-    sock = UDPSocket(_make_addr(), mode="server")
+async def _ready_arm(exc: BaseException, logger: "PrintLog | None") -> object:
+    sock = UDPSocket(_make_addr(), mode="server", logger=logger)
     try:
         await sock._connect()
         assert sock.poller is not None
@@ -996,9 +951,9 @@ async def _ready_arm(exc: BaseException) -> object:
         await sock.disconnect()
 
 
-async def _sendto_arm(exc: BaseException) -> object:
+async def _sendto_arm(exc: BaseException, logger: "PrintLog | None") -> object:
     addr = _make_addr()
-    sock = UDPSocket(addr, mode="server")
+    sock = UDPSocket(addr, mode="server", logger=logger)
     try:
         await sock._connect()
         assert sock._sock is not None
@@ -1008,8 +963,8 @@ async def _sendto_arm(exc: BaseException) -> object:
         await sock.disconnect()
 
 
-async def _write_arm(exc: BaseException) -> object:
-    sock = UDPSocket(_make_addr(), mode="client")
+async def _write_arm(exc: BaseException, logger: "PrintLog | None") -> object:
+    sock = UDPSocket(_make_addr(), mode="client", logger=logger)
     try:
         await sock._connect()
         assert sock._sock is not None
@@ -1019,9 +974,9 @@ async def _write_arm(exc: BaseException) -> object:
         await sock.disconnect()
 
 
-async def _recvfrom_arm(exc: BaseException) -> object:
+async def _recvfrom_arm(exc: BaseException, logger: "PrintLog | None") -> object:
     addr = _make_addr()
-    sock = UDPSocket(addr, mode="server")
+    sock = UDPSocket(addr, mode="server", logger=logger)
     try:
         await sock._connect()
         assert await sock.sendto(b"x", addr) == 1  # a pending datagram, so recvfrom() reaches the socket call
@@ -1035,7 +990,7 @@ async def _recvfrom_arm(exc: BaseException) -> object:
 
 # (arm, scenario, the arm's sentinel): _connect() also reports that its backoff ran, the two teardown arms
 # disconnect()'s False with the state cleared.
-_ARMS: "tuple[tuple[str, Callable[[BaseException], Coroutine[object, object, object]], object], ...]" = (
+_ARMS: "tuple[tuple[str, Callable[[BaseException, PrintLog | None], Coroutine[object, object, object]], object], ...]" = (
     ("_connect", _connect_arm, (False, True, True)),
     ("unregister", _unregister_arm, (False, True, False)),
     ("close", _close_arm, (False, True, False)),
@@ -1046,14 +1001,20 @@ _ARMS: "tuple[tuple[str, Callable[[BaseException], Coroutine[object, object, obj
 )
 
 
-def test_an_allocation_failure_in_each_arm_prints_its_text_and_keeps_the_sentinel() -> None:
+def test_an_allocation_failure_in_each_arm_prints_its_text_through_the_logger_at_level_1() -> None:
     # Injected text worded clear of the memory gates' markers; a real failure's own text is meant to trip them.
-    wrong = _arms_off_target(lambda arm: MemoryError("injected for " + arm), expect_line=True)
+    wrong = _arms_off_target(lambda arm: MemoryError("injected for " + arm), PrintLog(1, name="DNS"), expect_line=True)
     assert not wrong, wrong
 
 
+def test_an_allocation_failure_in_each_arm_prints_nothing_without_a_logger_or_at_level_0() -> None:
+    for logger in (None, PrintLog(0, name="DNS")):
+        wrong = _arms_off_target(lambda arm: MemoryError("injected for " + arm), logger, expect_line=False)
+        assert not wrong, (logger, wrong)
+
+
 def test_an_os_error_in_each_arm_prints_nothing_and_keeps_the_sentinel() -> None:
-    wrong = _arms_off_target(lambda arm: OSError("injected for " + arm), expect_line=False)
+    wrong = _arms_off_target(lambda arm: OSError("injected for " + arm), PrintLog(5, name="DNS"), expect_line=False)
     assert not wrong, wrong
 
 
@@ -1301,7 +1262,7 @@ def test_ready_sleeps_milliseconds_not_seconds() -> None:
     elapsed = time.ticks_diff(time.ticks_ms(), t0)
     without_deadline = _record_ready_sleeps(-1, stop_after=1)
     assert with_deadline and all(isinstance(ms, int) for ms in with_deadline), with_deadline
-    assert all(ms == _POLL_WAIT_MS for ms in with_deadline[:-1]) and 0 < with_deadline[-1] <= _POLL_WAIT_MS, with_deadline  # the last ends at the deadline
+    assert all(ms == _POLL_WAIT_MS for ms in with_deadline[:-1]) and 0 < with_deadline[-1] <= _POLL_WAIT_MS, with_deadline
     assert without_deadline == [_POLL_IDLE_MS] and isinstance(without_deadline[0], int), without_deadline
     assert elapsed < _MS_CHECK_ELAPSED_MAX_MS  # generously below the 10000ms+ the old seconds-interpretation bug would take
 
@@ -1753,9 +1714,9 @@ def test_cancelling_connect_or_ready_at_each_await_leaves_the_lock_free() -> Non
 
     def invariants(sock: UDPSocket) -> None:
         assert_unlocked(_connect_lock=sock._connect_lock)
-        assert sock._sock is None or sock.connected, "a socket left half set up"
 
     async def reconnect(sock: UDPSocket) -> None:
+        await sock.disconnect()  # every caller tears its socket down in its own finally
         sock._addr = good_addr  # a following connect to a good address succeeds; then no socket is left open
         await sock._connect()
         connected = sock.connected

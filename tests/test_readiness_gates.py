@@ -1,6 +1,6 @@
 """Every class with an async setup() answers each public call before setup() and after a setup() forced to
 fail exactly as its contract says - a sentinel, False, "Failed" per key, or its documented raise - never an
-AttributeError; setup() itself answers a bool (SPECIFICATION.md Part C.13)."""
+AttributeError; setup() answers a bool where product code reads it (SPECIFICATION.md Part C.13)."""
 
 import os
 import sys
@@ -107,7 +107,7 @@ def _reader_calls(obj: SensorReader) -> "Calls":
 def test_sensor_reader_answers_before_and_after_a_setup_whose_logger_cannot_reach_its_store() -> None:
     reader = SensorReader(Meas(None, None), "GATE", max_module_error=3, log=LogConfig(_fram(writable=False), 4, None))
     assert _answers(reader, _reader_calls(reader)) == []
-    assert run(reader.setup()) is True  # the reader is ready; its logger runs in RAM
+    run(reader.setup())  # the reader is ready; its logger runs in RAM
     assert reader.pr.initialized is False
     assert _answers(reader, _reader_calls(reader)) == []
 
@@ -117,7 +117,8 @@ def test_sensor_reader_config_answers_before_and_after_a_failed_setup() -> None:
     calls = _reader_calls(reader)
     calls["get_cfg_schema"] = ((), lambda r: r == _VAL_COUNT)
     assert _answers(reader, calls) == []
-    assert run(reader.setup()) is False
+    run(reader.setup())
+    assert reader.cfgmgr.valid is False
     assert _answers(reader, calls) == []
     assert run(reader._set_dict_cfg({"Count": 3}, _VAL_COUNT)) == {"Count": "Failed"}
 
@@ -138,7 +139,8 @@ def test_system_service_answers_before_and_after_a_failed_setup() -> None:
         "pause_permanent_storage": ((10,), lambda r: r is True),  # no storage wired: a no-op that answers True
     }
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is False
+    run(svc.setup())
+    assert svc.cfgmgr.valid is False
     assert svc.pr.initialized is True
     assert _answers(svc, calls) == []
 
@@ -154,7 +156,7 @@ def test_config_manager_is_gated_on_valid_before_and_after_a_failed_setup() -> N
         "flush_pending": ((), lambda r: r is None),
     }
     assert _answers(mgr, calls) == []
-    assert run(mgr.setup()) is False
+    run(mgr.setup())
     assert mgr.valid is False
     assert _answers(mgr, calls) == []
 
@@ -163,16 +165,16 @@ def test_history_stores_answer_before_and_after_a_failed_setup() -> None:
     for history in (PrintLogHistory(4, None, name="GATELOG"), PrintLogHistoryStore(_fram(writable=False), 4, None, name="GATELOG")):
         calls: Calls = {
             "get_log": ((), _is_log_of(history.name)),
-            "set_level": ((9,), lambda r: r is False),  # refused: outside 0-5
+            "set_level": ((-1,), lambda r: r is None),  # clamped into 0-5, answering nothing
         }
         assert _answers(history, calls) == []
         expected = type(history) is PrintLogHistory  # only the RAM history can always set up
-        assert run(history.setup()) is expected
+        run(history.setup())
         assert history.initialized is expected
         assert _answers(history, calls) == []
-        assert history.level == 0  # the refused level left it unchanged
+        assert history.level == 0  # the clamp kept it off
         run(history.err_s("still counted", errno=1))
-        assert history._err_count == (1 if expected else 2)  # a failed store also counts its one LOG_RAM_ONLY entry
+        assert history._err_count == 1  # a failed setup write records nothing itself
 
 
 _WRONG_CHIP_ID = bytes([0x05, 0x7F, 0x03, 0x02])  # a manufacturer ID no supported FRAM reports
@@ -217,7 +219,7 @@ def test_spi_device_refuses_a_session_before_setup_whose_own_setup_cannot_fail()
     device = SPIDevice(_spi(), 1)
     refusal = "RuntimeError: SPIDevice not set up - call setup() first"  # the async with structural raise (C.13)
     assert (device.initialized, _raised(device.session_begin), _raised(lambda: _enter(device))) == (False, refusal, refusal)
-    assert run(device.setup()) is True
+    run(device.setup())
     assert device.initialized is True
     assert _raised(lambda: _enter(device)) == ""
 
@@ -231,7 +233,6 @@ def test_fram_driver_answers_its_sentinels_before_and_after_a_setup_that_finds_n
         "get_values_sync": ((bytearray(4),), lambda r: type(r) is int and r != 0),  # a refusal status, never OK
         "set_values_sync": ((b"ab", 0), lambda r: type(r) is int and r != 0),
         "get_write_protected": ((), _is(False)),
-        "is_ready": ((), _is(False)),
         "verify_present": ((), _is(False)),
     }
     assert _answers(fram, calls) == []
@@ -262,7 +263,8 @@ def test_fram_manager_answers_before_and_after_a_setup_that_finds_no_chip() -> N
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     chip.rdid_response = _WRONG_CHIP_ID
-    assert run(manager.setup()) is False
+    run(manager.setup())
+    assert manager.initialized is False
     assert manager.fram.initialized is False
     assert _last_error(run(manager.get_error_counter()), manager.name) == code("E", "INIT")
     assert _answers(manager, calls) == []
@@ -280,7 +282,7 @@ def test_neopixel_driver_answers_before_and_after_a_setup_whose_logger_cannot_re
         "toggle": ((), _is(None)),
     }
     assert _answers(driver, calls) == []
-    assert run(driver.setup()) is True  # ready: a logger that cannot reach its store has logged it and runs in RAM
+    assert run(driver.setup()) is None  # a logger that cannot reach its store has logged it and runs in RAM
     assert driver.pr.initialized is False
     assert _answers(driver, calls) == []
 
@@ -289,14 +291,13 @@ def test_notification_service_answers_before_and_after_a_failed_setup() -> None:
     svc = NotificationService(_signal, _no_local_time, (), cfg_path=_blocked_dir("NOTIFY"), log=LogConfig(None, 4, None))
     calls = _reader_calls(svc)
     calls.update({
-        "get_data": ((), lambda r: isinstance(r, tuple) and tuple(r) == (False, None, None)),
-        "get_dict_data": ((), lambda r: r == {"NOTIFY": {"Triggered": False, "State": None, "TS": None}}),
         "get_dict_cfg": ((), lambda r: r == {"NOTIFY": {"error": "unavailable"}}),
         "get_override_led": ((), lambda r: r == 0),
         "get_timer_starters": ((), lambda r: r == []),
     })
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is False
+    run(svc.setup())
+    assert svc.cfgmgr.valid is False
     assert _answers(svc, calls) == []
     assert run(svc._set_dict_cfg({"AutoOn": True}, svc.get_cfg_schema())) == {"AutoOn": "Failed"}
     run(svc.set_override_led(5))  # the pause runs on ticks, with no store involved
@@ -316,7 +317,8 @@ def test_wifi_service_answers_before_and_after_a_failed_setup() -> None:
         "get_dns_server_ip": ((), _is(None)),  # no snapshot taken yet: no DHCP-assigned server known
     })
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is False
+    run(svc.setup())
+    assert svc.cfgmgr.valid is False
     assert svc._dns_server.pr.initialized is True  # the captive DNS logger is set up all the same
     assert _answers(svc, calls) == []
     assert run(svc._set_dict_cfg({"SSID": "net"}, svc.get_cfg_schema())) == {"SSID": "Failed"}
@@ -334,12 +336,12 @@ def test_webserver_service_answers_before_and_after_a_setup_whose_logger_cannot_
         "get_timer_starters": ((), lambda r: r == []),
     }
     assert _answers(svc, calls) == []
-    assert run(svc.setup()) is True  # it serves with its logger in RAM
+    assert run(svc.setup()) is None  # it serves with its logger in RAM
     assert svc.pr.initialized is False
     assert _answers(svc, calls) == []
 
 
-def test_uart_link_driver_with_no_bus_answers_false_and_persists_the_refusal() -> None:
+def test_uart_link_driver_with_no_bus_stays_uninitialized_and_persists_the_refusal() -> None:
     driver = UARTLinkDriver(None, ROLE_INITIATOR, name_ext="gate")
     calls: Calls = {
         "get_error_counter": ((), _is_log_of(driver.name)),
@@ -350,7 +352,7 @@ def test_uart_link_driver_with_no_bus_answers_false_and_persists_the_refusal() -
     }
     assert driver.initialized is False
     assert _answers(driver, calls) == []
-    assert run(driver.setup()) is False
+    assert run(driver.setup()) is None
     assert driver.initialized is False
     assert _last_error(run(driver.get_error_counter()), driver.name) == code("E", "UART_NO_BUS")
     assert _answers(driver, calls) == []

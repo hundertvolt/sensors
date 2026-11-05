@@ -1,0 +1,10 @@
+U35: the system service tests release each service's sequence record after its test
+
+tests/test_asy_system_service.py kept every service's shutdown-sequence tracker in a module dict that nothing
+cleared, so each service, its rig and its fake chip lived to the end of the file: the live heap grew from 0.42 MB to
+4.9 MB over its 187 tests. Under the coverage build the 256 KB chip of the erase test then found no room (CI, the
+coverage job). One after-each clear, as test_asy_webserver_service.py does for its parse cache: the live heap stays
+at 0.5 MB and the file passes under the coverage build at a 4 MB heap, where 10 MB failed 24 tests before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

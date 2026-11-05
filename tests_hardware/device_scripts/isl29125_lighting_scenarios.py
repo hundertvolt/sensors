@@ -36,24 +36,15 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 # falling, high holds to 3 (~112 lx), low takes back at 2 (~76 lx) - levels 2..8 sit inside the hysteresis band.
 _BAND_BELOW = 1  # comfortably under the falling edge
 _BAND_ABOVE = 12  # comfortably over the rising edge
-# @tunable l3.isl29125_lighting_scenarios_switch_hold_s = 8.0
 _SWITCH_HOLD_S = 8.0  # the derived 2 cycles + settle + a 1 s sample interval, with margin
-# @tunable l3.isl29125_lighting_scenarios_sample_ms = 300
 _SAMPLE_MS = 300  # reader polling; the reader itself produces a fresh sample about once a second
-# @tunable l3.isl29125_lighting_scenarios_settle_s = 4.0
 _SETTLE_S = 4.0
-# @tunable l3.isl29125_lighting_scenarios_max_sample_gap_s = 8.0
 _MAX_SAMPLE_GAP_S = 8.0  # a longer stall means the read chain died, not that the light moved slowly
 _BASELINE_LEVEL = 20
-# @tunable l3.isl29125_lighting_scenarios_baseline_tol = 0.35
 _BASELINE_TOL = 0.35  # return-to-baseline: the same light must read the same after any scenario
-# @tunable l3.isl29125_lighting_scenarios_park_stable_samples = 3
 _PARK_STABLE_SAMPLES = 3  # consecutive same-range samples that count as "the entry range has settled"
-# @tunable l3.isl29125_lighting_scenarios_park_timeout_s = 20.0
 _PARK_TIMEOUT_S = 20.0
-# @tunable l3.isl29125_lighting_scenarios_min_samples = 3
 _MIN_SAMPLES = 3
-# @tunable l3.isl29125_lighting_scenarios_min_span_ratio = 100.0
 _MIN_SPAN_RATIO = 100.0
 # Five periodic-path range decisions in a row raise ISL_PERIODIC_ONLY: fewer switches than that in a run could not.
 # @tunable isl29125.periodic_only_warn_at = 5

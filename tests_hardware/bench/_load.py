@@ -19,7 +19,7 @@ from plausibility_bounds import BOUNDS
 
 from buildgen.definitions import definitions_for_toml
 from buildgen.schema_ast import extract_field_schemas
-from buildgen.validate import build_model, ntp_backoff
+from buildgen.validate import build_model
 from tests._src_const import py_value, src_const
 
 if TYPE_CHECKING:
@@ -31,15 +31,10 @@ if TYPE_CHECKING:
     from buildgen.jsontypes import JsonDict, JsonValue
     from buildgen.model import DeviceModel
 
-# @tunable l4.bench_load_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.network_resilience_ntp_resync_after_reset_timeout_s = 120.0
 _NTP_RESYNC_AFTER_RESET_TIMEOUT_S = 120.0
-# @tunable l4.network_resilience_ntp_retry_chain_margin_s = 10.0
 _NTP_RETRY_CHAIN_MARGIN_S = 10.0
-# @tunable l4.network_resilience_sync_age_slack_s = 2.0
 _SYNC_AGE_SLACK_S = 2.0
-# @tunable l4.network_resilience_wait_poll_s = 2.0
 _WAIT_POLL_S = 2.0
 _ISL29125_DRIVER = "asy_isl29125_driver.py"
 _MATH_HELPERS = "math_helpers.py"
@@ -171,17 +166,6 @@ def _members_bytes(fields: "list[JsonDict]") -> int:
 @functools.cache
 def _model(device: "str | None" = None) -> "DeviceModel":
     return build_model(harness.device_toml(device), harness.SRC_DIR)
-
-
-@functools.cache
-def _ntp_backoff() -> "tuple[float, float]":
-    # The bench device's unsynced backoff as its NTPClient runs it: buildgen's effective pair (the generated NtpTiming's,
-    # validate.ntp_backoff()), the interval at least one check tick and the cap at least the interval (asy_ntp_client.py).
-    table = _model().doc.get("device")
-    assert isinstance(table, dict), f"{harness.device_toml()} has no [device] table"
-    retry_s, retry_max_s = ntp_backoff(table, harness.SRC_DIR)
-    period = max(retry_s, src_number(_NTP, "_NTP_CHECK_INTERV"))
-    return period, max(retry_max_s, period)
 
 
 def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
@@ -360,14 +344,9 @@ def ntp_fetch_timeout_s() -> float:
     return buildgen_number("codegen.py", "_NTP_FETCH_TIMEOUT_MS") / 1000
 
 
-def ntp_retry_max_s() -> float:
-    # The cap the unsynced client's doubling backoff stops at (_ntp_backoff()).
-    return _ntp_backoff()[1]
-
-
 def ntp_retry_period_s() -> float:
-    # The unsynced client's first retry step, rounded up to the check tick it is counted on (_ntp_backoff()).
-    return _ntp_backoff()[0]
+    # The unsynced client's wait after a failed attempt (src/asy_ntp_client.py _NTP_RETRY_UNSYNCED_S).
+    return src_number(_NTP, "_NTP_RETRY_UNSYNCED_S")
 
 
 def ntp_synced(dut_ip: str) -> bool:

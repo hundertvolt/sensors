@@ -27,7 +27,6 @@ import asy_ntp_client as ntpmod
 from asy_base_classes import ValueRef
 from asy_bmp3xx_driver import BMP3XX_Reader
 from asy_crc_checks import CRC32
-from asy_dns_client import DNS_FAILED
 from asy_i2c_driver import I2C
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_scd30_driver import SCD30_Reader
@@ -62,23 +61,14 @@ _LOG_ALL: int = src_int("src/asy_print_log.py", "_LOG_ALL")
 
 # @tunable ntp.fetch_timeout_ms = 5000
 _FETCH_TIMEOUT_MS = 5000
-# @tunable l1.asy_ntp_client_serve_wait_s = 5
 _SERVE_WAIT_S = 5
-# @tunable l1.asy_ntp_client_state_poll_ms = 20
 _STATE_POLL_MS = 20
-# @tunable l1.asy_ntp_client_synced_poll_tries = 50
 _SYNCED_POLL_TRIES = 50
-# @tunable l1.ntp_fram_system_integration_utc_tolerance_s = 5
 _UTC_TOLERANCE_S = 5
-# @tunable l1.ntp_fram_system_integration_supervisor_scan_wait_s = 2.5
 _SCAN_WAIT_S = 2.5
-# @tunable l1.ntp_fram_system_integration_start_poll_s = 0.01
 _START_POLL_S = 0.01
-# @tunable l1.ntp_fram_system_integration_start_poll_tries = 200
 _START_POLL_TRIES = 200
-# @tunable l1.asy_ntp_client_fake_server_poll_ms = 10
 _FAKE_SERVER_POLL_MS = 10
-# @tunable l1.asy_ntp_client_fake_server_poll_tries = 1000
 _FAKE_SERVER_POLL_TRIES = 1000
 
 
@@ -118,7 +108,7 @@ def _make_ntp(
         conn.get_wifi_mode_lock(),
         conn.network_available_locked,
         conn.get_dns_server_ip,
-        NtpTiming(500, 1, ntp_fetch_timeout_ms, 10, 600),
+        NtpTiming(500, 1, ntp_fetch_timeout_ms),
         cfg_path=cfg_path,
     )
     run(ntp.setup())
@@ -283,9 +273,7 @@ def test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock() 
     assert age is not None and age >= 0  # age.is computed via a second real ntp.ntp_issynced() call
 
 
-# @tunable l1.fram_lock_fetch_timeout_ms = 2000
 _LOCK_HOLD_FETCH_TIMEOUT_MS = 2000
-# @tunable l1.fram_write_prompt_s = 1.0
 _WRITE_PROMPT_S = 1.0
 
 
@@ -420,8 +408,8 @@ def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreac
 
     original_resolver = ntpmod.resolve_ipv4
 
-    async def always_fails(*_args: object, **_kwargs: object) -> "tuple[str | None, int]":
-        return None, DNS_FAILED  # every real resolution attempt fails instantly - no real network wait needed
+    async def always_fails(*_args: object, **_kwargs: object) -> "str | None":
+        return None  # every real resolution attempt fails instantly - no real network wait needed
 
     ntpmod.resolve_ipv4 = always_fails
     try:

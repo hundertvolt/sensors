@@ -42,7 +42,8 @@ async def _main() -> None:
     spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
     # The seed phase's two objects in the same order, so this addresses the same chunk.
     fram = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
-    fact("setup", await fram.setup())
+    await fram.setup()
+    fact("setup", fram.initialized)
     # Not cleared first: what the raced reset left behind is the thing under test; the chunk is cleared last instead.
     store = make_logger(LogConfig(fram, _HISTORY_LENGTH, None), _LOG_NAME)
     try:

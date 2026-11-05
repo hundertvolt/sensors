@@ -1,6 +1,6 @@
 """Flash-tier automated tests: the UART message protocol across the bench board's permanent UART crossover jumper -
 real timing, real peripheral behaviour and real poll latency, the three things no fake reproduces (SPECIFICATION.md
-Parts E.6 and J.7), each crossover script with no CRC and with CRC16 over the same jumper."""
+Parts E.6 and J.7), each crossover script with no CRC and with CRC16 over the jumper, the exchange also with COBS."""
 
 import sys
 from pathlib import Path
@@ -34,12 +34,9 @@ _LEGAL = {"cmd": lambda v: v == _CMD_SET, "size": lambda v: v == 1, "chunks": la
 _FLASH_WINDOW_MAX_US = 400000  # W25Q16JV tSE max: the longest interrupts-off stretch the ring must hold (the script's own)
 _RING_LINK_TRANSACTIONS = 5
 
-# @tunable l3.uart_crossover_script_timeout_s = 120.0
 _SCRIPT_TIMEOUT_S = 120.0
-# @tunable l3.uart_crossover_long_script_timeout_s = 180.0
 _LONG_SCRIPT_TIMEOUT_S = 180.0
 # Sized from the twin run (12 s with the stalled-TX settle): four hazard classes, the boundary set at 300 ms a verdict.
-# @tunable l3.uart_crossover_hazards_timeout_s = 120.0
 _HAZARDS_TIMEOUT_S = 120.0
 
 
@@ -94,7 +91,7 @@ def _run_or_fail(board: Board, script: str, timeout_s: float, *, crc_mode: str =
     return parse_facts(output)
 
 
-@pytest.mark.parametrize("crc_mode", _CRC_MODES)
+@pytest.mark.parametrize("crc_mode", [*_CRC_MODES, "cobs"])
 def test_get_and_set_and_a_multi_chunk_train_cross_the_jumper(board: Board, crc_mode: str) -> None:
     # One Python instance as initiator and one as responder interoperating is a required property of this protocol, and
     # the jumper is where it is physically true; the maximum train each way, and an over-cap train refused unallocated.

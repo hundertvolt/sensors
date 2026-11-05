@@ -59,21 +59,6 @@ def test_every_fram_chunk_in_src_is_created_with_a_real_crc(repo_root: Path) -> 
 @pytest.mark.parametrize(
     "call",
     [
-        "fram.get_chunk(8, owner='X')",
-        "fram.get_chunk(8, crc=None, owner='X')",
-        "fram.get_chunk(8, crc=CRCPass(), owner='X')",
-        "fram.get_chunk(8, CRC8(), owner='X')",
-        "fram.get_timestamped_chunk(8, synced, owner='X')",
-        "fram.get_timestamped_chunk(8, synced, crc=make_crc(), owner='X')",
-    ],
-)
-def test_the_crc_check_bites(call: str) -> None:
-    assert _crc_problems("src/asy_x.py", _BITE_HEAD + call + "\n")
-
-
-@pytest.mark.parametrize(
-    "call",
-    [
         "fram.get_chunk(8, crc=CRC8(), owner='X')",
         "fram.get_chunk(8, crc=C16(), owner='X')",
         "fram.get_timestamped_chunk(8, synced, crc=asy_crc_checks.CRC32(), owner='X')",

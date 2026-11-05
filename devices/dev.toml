@@ -45,33 +45,23 @@ miso_pin = 4
 tx_pin = 0
 rx_pin = 1
 baudrate = 115200
-# @tunable dev.uart_rxbuf = 512
 rxbuf = 512
-# @tunable dev.uart_txbuf = 512
 txbuf = 512
-# @tunable dev.uart_poll_wait_ms = 2
 poll_wait_ms = 2
-# @tunable dev.uart_poll_idle_ms = 50
 poll_idle_ms = 50
 # The receive ring at its driver default, 4 x the 128-byte floor the build derives for this link
 # (Part J.6). A ring for the bench's 400 ms continuous-sender window is sized on the bench, with
 # its heap cost measured.
-# @tunable dev.uart_rx_ring = 512
 rx_ring = 512
 
 [bus.uart1]
 tx_pin = 8
 rx_pin = 9
 baudrate = 115200
-# @tunable dev.uart_rxbuf = 512
 rxbuf = 512
-# @tunable dev.uart_txbuf = 512
 txbuf = 512
-# @tunable dev.uart_poll_wait_ms = 2
 poll_wait_ms = 2
-# @tunable dev.uart_poll_idle_ms = 50
 poll_idle_ms = 50
-# @tunable dev.uart_rx_ring = 512
 rx_ring = 512
 
 # --- sensor drivers -------------------------------------------------------------------------------
@@ -177,7 +167,6 @@ bus = "uart0"
 role = "initiator"
 # The receive cap: the protocol's own default, its largest train at the default payload size
 # (254 x 48 B), so the generated limits equal DEFAULT_LIMITS (agent, 2026-10-08; Part J.8).
-# @tunable dev.uart_max_transfer_bytes = 12192
 max_transfer_bytes = 12192
 
 [instance.wiring]
@@ -188,7 +177,6 @@ driver = "uart_link"
 name_ext = "resp"
 bus = "uart1"
 role = "responder"
-# @tunable dev.uart_max_transfer_bytes = 12192
 max_transfer_bytes = 12192
 
 [instance.wiring]

@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("wifi_modes",)
 
-# @tunable l4.wifi_radio_reinit_script_timeout_s = 120.0
 _SCRIPT_TIMEOUT_S = 120.0
 _WIFI = "asy_wifi_service.py"
 

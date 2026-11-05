@@ -34,24 +34,18 @@ _READ_AFTER_BOOT = (
     "        out.update(await s.get_error_counter())\n"
     "    return out\n"
     "scratch = os.listdir('hwtest-scratch/') if 'hwtest-scratch' in os.listdir() else None\n"
-    "print('AFTER ' + json.dumps({'reason': m[0].sysfunct.get_reset_reason(), 'bits': m[0].sysfunct.get_reset_bits(), 'logs': asyncio.run(logs()), 'scratch': scratch} if m else None))\n"
+    "print('AFTER ' + json.dumps({'reason': m[0].sysfunct.get_reset_reason(), 'logs': asyncio.run(logs()), 'scratch': scratch} if m else None))\n"
 )
 _SEED = (code("E", "TEST_SEED_A"), code("E", "TEST_SEED_B"), code("E", "TEST_SEED_C"))  # the erase script's ring
-_RR_REBOOT, _RR_BOOTLOADER, _RR_CONFIG_RESET, _RR_FRAM_ERASED, _RR_COMMAND_INCOMPLETE = (module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_REBOOT", "_RR_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED", "_RR_COMMAND_INCOMPLETE"))
+_RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED, _RR_COMMAND_INCOMPLETE = (module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_WATCHDOG", "_RR_REBOOT", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED", "_RR_COMMAND_INCOMPLETE"))
 # The erase's own feed cadence: one feed per 256 B unit or chunk, each well under this (agent, 2026-10-14).
-# @tunable l3.system_commands_erase_feed_gap_max_ms = 100
 _ERASE_FEED_GAP_MAX_MS = 100
-# @tunable l3.system_commands_script_timeout_s = 90.0
 _SCRIPT_TIMEOUT_S = 90.0
-# @tunable l3.system_commands_refusal_script_timeout_s = 120.0
 _REFUSAL_SCRIPT_TIMEOUT_S = 120.0
-# @tunable l3.system_commands_boot_timeout_s = 60.0
 _BOOT_TIMEOUT_S = 60.0
-# @tunable l3.system_commands_present_timeout_s = 30.0
 _PRESENT_TIMEOUT_S = 30.0
-# @tunable l3.system_commands_picotool_timeout_s = 30.0
 _PICOTOOL_TIMEOUT_S = 30.0
-_MID_ERASE_RESETS_MS = (200, 1000, 2000)  # inside the 256 KB erase, about 2.2 s at the 1 MHz bus
+_MID_ERASE_RESETS_MS = (50, 150, 250)  # inside the 256 KB erase: its wire time alone is ~266 ms at the 8 MHz bus
 # The shutdown's four step lines, in the order SPECIFICATION.md Part A.8 runs them.
 _STEP_LINES = ("Shutdown: supervisor stopped", "Shutdown: config stores closed and flushed", "Shutdown: storage quiesced", "Shutdown: supervised tasks stopped")
 
@@ -68,7 +62,7 @@ def _after_boot(board: "Board", request: pytest.FixtureRequest, result_note: "Ca
     assert line is not None, f"the board printed no AFTER line:\n{output}"
     after = json.loads(line[len("AFTER ") :])
     assert isinstance(after, dict), f"no running sensortask_* module with a SystemService after the boot:\n{output}"
-    result_note(f"after the boot: ResetReason {after.get('reason')}, ResetBits {after.get('bits')}")
+    result_note(f"after the boot: ResetReason {after.get('reason')}")
     return after
 
 
@@ -272,7 +266,8 @@ def test_bootloader_command_shuts_down_then_enters_bootsel(board: "Board", reque
         steps = [next((n for n, line in enumerate(output.splitlines()) if step in line), -1) for step in _STEP_LINES]
         assert -1 not in steps and steps == sorted(steps), f"the shutdown's step lines are missing or out of order ({steps}):\n{output}"
         reset = facts.get("reset")
-        assert isinstance(reset, dict) and reset.get("code") == _RR_BOOTLOADER, f"the bootloader command armed {reset}: {facts}"
+        # No code of its own: the record keeps its acceptance's 9, which BOOTSEL then loses.
+        assert isinstance(reset, dict) and reset.get("code") == _RR_COMMAND_INCOMPLETE, f"the bootloader command armed {reset}: {facts}"
         result_note(f"bootloader: {reset}")
         if request.config.getoption("--twin"):
             return
@@ -281,7 +276,7 @@ def test_bootloader_command_shuts_down_then_enters_bootsel(board: "Board", reque
         if reboot.returncode != 0:
             raise HardwareTestFailureError(f"picotool reboot found no BOOTSEL device (exit {reboot.returncode}):\n{reboot.stdout}\n{reboot.stderr}")
         after = _after_boot(board, request, result_note)
-        assert after is not None and after.get("reason") == _RR_BOOTLOADER, f"the boot after BOOTSEL read {after}, not {_RR_BOOTLOADER}"
+        assert after is not None and after.get("reason") == _RR_WATCHDOG, f"the boot after BOOTSEL read {after}, not {_RR_WATCHDOG}"
     finally:
         board.exec(_REMOVE_SCRATCH)
         _restart(board)

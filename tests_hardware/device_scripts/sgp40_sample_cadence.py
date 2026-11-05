@@ -25,18 +25,13 @@ if TYPE_CHECKING:
     from _shared.facts import done, fact
     from _shared.watchdog import arm, fed_sleep_ms
 
-# @tunable l3.sgp40_sample_cadence_window_s = 600
 _WINDOW_S = 600
 # Two slots per expected cycle: a run that somehow reads faster than 1 Hz still never grows the array.
-# @tunable l3.sgp40_sample_cadence_slots = 1200
 _SLOTS = 1200
 # A gap this long means at least one 1 s tick was merged into the next one.
-# @tunable l3.sgp40_sample_cadence_gap_ms = 1500
 _GAP_MS = 1500
 # start_timers() waits on its stagger timers with no timeout of its own: a task here, polled in fed steps.
-# @tunable l3.sgp40_sample_cadence_timers_timeout_s = 15
 _TIMERS_TIMEOUT_S = 15
-# @tunable l3.sgp40_sample_cadence_timers_poll_ms = 100
 _TIMERS_POLL_MS = 100
 # A scratch directory: every setup() finds its file absent here and writes its defaults once, never a production file.
 _SCRATCH_CFG_PATH = "hwtest-scratch/"

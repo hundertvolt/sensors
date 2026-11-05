@@ -22,9 +22,7 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.system_service_restarts_a_real_dead_task_watch_step_s = 0.9
 _WATCH_STEP_S = 0.9
-# @tunable l3.system_service_restarts_a_real_dead_task_wait_rounds = 4
 _WAIT_ROUNDS = 4
 # The escalation's own bound: _TASK_FAIL_MAX over _TASK_FAIL_INCREMENT deaths, one per _TASK_CHECK_TIME pass, then the
 # reset delay; twice that keeps feeding well past the reboot the budget arms.

@@ -33,10 +33,13 @@ _RUN_PHASE_ALLOWED: "dict[tuple[str, str, str], str]" = {
         for method in ("_end_calibration", "_measure_gain_ratio", "_note_candidate", "_read_on", "start_calibration")
     },
     ("asy_neopixel_driver.py", "NeopixelDriver._overlay_loop", "_overlay_rgb"): "the pixel tuple, replaced at every overlay wake",
+    **{
+        ("asy_neopixel_driver.py", f"NeopixelDriver.{method}", "_rgbt"): "the signal's four values, replaced by the next request stored"
+        for method in ("led_signal", "request_signal")
+    },
     ("asy_scd30_driver.py", "SCD30_Reader._store_scd", "_datastruct"): "the latest reading, replaced at every read",
     ("asy_spi_driver.py", "SPI.init", "_spi"): "construction: init() runs from __init__ only, and machine.SPI() returns a static object (ports/rp2/machine_spi.c)",
     ("asy_system_service.py", "SystemService._reboot", "_reset_task"): "the one reset task of a reboot",
-    ("asy_system_service.py", "SystemService._request_shutdown", "_shutdown_task"): "the one task of an accepted system command",
     ("asy_system_service.py", "SystemService.run_setups", "_config_faults"): "the boot list's end: once per boot",
     ("asy_system_service.py", "SystemService.start_tasks", "_tasks"): "the task-start list's slots: once per boot",
     ("asy_system_service.py", "SystemService.supervise_tasks", "_supervisor_task"): "the supervisor's own task, started once at boot",

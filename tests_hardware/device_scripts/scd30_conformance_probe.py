@@ -26,16 +26,12 @@ CMD_INTERVAL, CMD_DATA_READY, CMD_READ_MEASUREMENT = 0x4600, 0x0202, 0x0300
 CMD_FIRMWARE_VERSION, CMD_SOFT_RESET = 0xD100, 0xD304
 _RP2_I2C_TIMEOUT_US = 50000  # machine.I2C's own default (ports/rp2/machine_i2c.c:38, v1.29.0)
 # "the read header should be send with a delay of > 3ms following the write sequence" (1.4.4).
-# @tunable l3.scd30_conformance_probe_read_delay_ms = 5
 _READ_DELAY_MS = 5
-# @tunable l3.scd30_conformance_probe_ready_poll_ms = 200
 _READY_POLL_MS = 200
 # Data ready may take one full interval after the probe's first read; slack for the read itself.
-# @tunable l3.scd30_conformance_probe_ready_slack_ms = 2000
 _READY_SLACK_MS = 2000
 _BOOT_MAX_MS = 2000  # "The boot-up time is < 2 s" (1.1)
 _INTERVAL_MAX_S = 1800  # source: "Available range: [2 ... 1800]" (1.4.3); a garbled word never stretches the wait
-# @tunable l3.scd30_conformance_probe_recovery_poll_ms = 20
 _RECOVERY_POLL_MS = 20
 
 

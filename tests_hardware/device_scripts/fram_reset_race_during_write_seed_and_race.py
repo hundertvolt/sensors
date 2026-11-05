@@ -35,7 +35,6 @@ _GUARD_BEFORE_PATTERN = bytes(range(0x10, 0x20))
 _ORIGINAL_TARGET_PATTERN = bytes(range(0x70, 0x80))
 _NEW_TARGET_PATTERN = bytes((0xCC,) * 16)  # what the reset-raced write attempts
 _GUARD_AFTER_PATTERN = bytes(range(0x30, 0x40))
-# @tunable l3.fram_reset_race_during_write_seed_and_race_victim_bound_s = 30.0
 _VICTIM_BOUND_S = 30.0
 # The line the host waits for: printed right before the raced write, so a run without it never reached the race.
 _BANNER = "RESET_RACE_ARMED"
@@ -69,10 +68,10 @@ async def _main() -> None:
     spidev = fram._spidev
     original_write_sync = spidev.write_sync
 
-    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> bool:
+    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> None:
         if len(buf) == len(_NEW_TARGET_PATTERN):  # the command buffers around the payload are 1 or 5 bytes
             machine.reset()  # never returns: a real RP2040 reset with CS still asserted
-        return original_write_sync(buf)
+        original_write_sync(buf)
 
     async def victim_writer() -> None:
         async with fram:

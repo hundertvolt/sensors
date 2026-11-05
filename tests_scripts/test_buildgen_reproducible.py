@@ -13,7 +13,6 @@ from _devices import DEVICE_NAMES
 _REPO = Path(__file__).resolve().parent.parent
 _TOMLS = [*(f"devices/{d}.toml" for d in DEVICE_NAMES), "tests_scripts/buildgen_fixtures/multi_instance.toml", "tests_scripts/buildgen_fixtures/novel_combo.toml"]
 _SEEDS = ("0", "4242")
-# @tunable l0.buildgen_reproducible_timeout_s = 120
 _TIMEOUT_S = 120
 
 # Runs in each child: every output as the writer emits it (insertion order kept), stdout only, nothing written.

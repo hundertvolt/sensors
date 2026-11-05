@@ -10,7 +10,7 @@ from micropython import const
 
 from asy_base_classes import COUNTER_CAP
 from asy_config_manager import instance_name
-from asy_print_log import DEFAULT_LOG, report_if_fatal
+from asy_print_log import DEFAULT_LOG
 from asy_uart_comm import CMD_SET, DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm
 
 try:
@@ -48,11 +48,8 @@ _HAZARD_CMD_ID = const(0x07)  # the command id the raw first chunks carry
 _HEADER_BYTES = const(5)  # uid, cmd, size, chunks, cur_chunk (J.3)
 # In reply budgets: an answered frame's wait, past the peer's train timeout and resync window (2.5, J.6), as the bench
 # script's; and the ACK window and pre-recovery wait, past its longest listen backoff too (5 more, J.5).
-# @tunable uart.hazard_quiet_timeouts = 3
 _QUIET_TIMEOUTS = const(3)
-# @tunable uart.hazard_window_timeouts = 8
 _WINDOW_TIMEOUTS = const(8)
-# @tunable uart.hazard_recovery_attempts = 2
 _HAZARD_RECOVERY_ATTEMPTS = const(2)  # after a hazard, a clean exchange within this many tries
 # Each field of a legal first-chunk SET and the boundary values it is swept over: the bench hazard script's set.
 _HAZARD_FIELDS = (
@@ -146,7 +143,6 @@ class UARTLinkDriver:
         try:
             return await self._comm.uart_set(_CMD_ECHO, payload)
         except Exception as e:  # an unsupervised task's top: never raises, so the run goes on to its next hazard
-            report_if_fatal(e)
             await self.pr.err_s("Hazard initiation failed:", e, errno=_ERR_UNEXPECTED)
             return None
 
@@ -178,10 +174,8 @@ class UARTLinkDriver:
     async def _run_hazards(self) -> None:
         # One run in the bench script's order. Its facts replace the last run's and are judged by the reader, as the bench
         # host judges the script's (J.7); the link counters stay the echo's own.
-        bus = self._uart
+        bus: UART = self._uart  # type: ignore[assignment]  # set: only the exercise loop runs this, after setup() refused a missing bus
         try:
-            if bus is None:  # Unreachable: only the exercise loop runs this, after setup() succeeded, and setup refuses a missing bus - kept to narrow the Optional for the type checker
-                return
             frame = bytearray(self._frame + bus.crc.length())  # room for the CRC: _write_raw() sends it in place
             ack = bytearray(self._frame + bus.crc.length())
             two = await self._two_initiations()
@@ -231,7 +225,7 @@ class UARTLinkDriver:
         if bus is None:
             return False
         async with bus as device:
-            return await device.writefrom(frame, self._frame, timeout_ms=self._timeout)
+            return await device.writefrom(frame, self._frame)
 
     # -- starters ----------------------------------------------------------
 
@@ -287,7 +281,6 @@ class UARTLinkDriver:
     async def reset_error_counter(self) -> bool:
         return await self._comm.reset_error_counter()  # the link's history is the comm's; the counts are since boot
 
-    async def setup(self) -> bool:
+    async def setup(self) -> None:
         if await self._comm.setup():
             self.initialized = True
-        return self.initialized

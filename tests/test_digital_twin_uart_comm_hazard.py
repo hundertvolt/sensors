@@ -30,15 +30,10 @@ if TYPE_CHECKING:
 
 _PAYLOAD = 48
 _BAUD = 115200  # J.6's line rate
-# @tunable l2.uart_comm_hazard_timeout_ms = 100
 _TIMEOUT_MS = 100
-# @tunable l2.uart_comm_hazard_run_limit_s = 30
 _RUN_LIMIT_S = 30
-# @tunable l2.uart_comm_hazard_recovery_attempts = 2
 _RECOVERY_ATTEMPTS = 2
-# @tunable l2.uart_comm_hazard_settle_ms = 5
 _SETTLE_MS = 5  # the responder's last read after the initiator's call returned (tests/test_uart_comm_hazard.py's)
-# @tunable l2.uart_comm_hazard_wire_poll_ms = 1
 _WIRE_POLL_MS = 1  # a real look at the initiator's wire log
 
 

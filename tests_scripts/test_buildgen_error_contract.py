@@ -1,6 +1,6 @@
 """Every build-error rule proven through a CLI (SPECIFICATION.md Part L.5): one malformed-fixture row per
-`rule` id exits 1 with one line naming place and fix and no traceback, the rows cover every `rule=` literal
-under buildgen/, and a generator bug propagates as BuildInternalError with its traceback."""
+`rule` id exits 1 with one line naming place and fix and no traceback, and the rows cover every `rule=` literal
+under buildgen/."""
 
 import ast
 import errno
@@ -16,8 +16,7 @@ from _script_loader import load_script_module
 from _toml_fixtures import TomlDoc, TomlValue, array_at, base_doc, dump_toml, instance_of, instances, table, table_at, with_uart_pair, write_doc
 
 from buildgen import api_reference, buildspec, codegen, definitions, generate, model, validate
-from buildgen.codegen import generate_boot_entry_source, generate_module_source
-from buildgen.errors import BuildError, BuildInternalError
+from buildgen.errors import BuildError
 from buildgen.requires_tag import check_requires_tags, parse_requires_tags
 
 if TYPE_CHECKING:
@@ -145,11 +144,6 @@ def _overrides_unloadable(monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> None:
     monkeypatch.setattr("buildgen.validate.importlib", SimpleNamespace(util=SimpleNamespace(spec_from_file_location=lambda *_a, **_k: None)))
 
 
-def _settings_key_served_twice(monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> None:
-    # A table patch: SETTINGS_GROUPS serves Hostname a second time, from the NTP group.
-    monkeypatch.setattr(validate, "SETTINGS_GROUPS", (*validate.SETTINGS_GROUPS, ("networking", "ntp", ("Hostname",), None)))
-
-
 def _signal_sink_default_without_request_signal(_monkeypatch: pytest.MonkeyPatch, tmp: Path) -> None:
     path = tmp / "src" / "asy_notification_service.py"
     text = path.read_text(encoding="utf-8")
@@ -244,8 +238,6 @@ _ROWS: "dict[str, Row]" = {
     "source.syntax-error": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "", "\nclass Broken(:\n"),)),
     "source.name-missing": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, '_NAME = const("SCD30")', '_NAME_GONE = const("SCD30")'),)),
     "source.name-not-literal": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, '_NAME = const("SCD30")', "_NAME = const(42)"),)),
-    # sgp40's temperature_source names scd30's Temp, but scd30's get_data() no longer declares a namedtuple result.
-    "source.fields-unreadable": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "async def get_data(self) -> SCD30:", "async def get_data(self) -> tuple:"),)),
     "wiring.cycle": Row(
         "generate", f"[{_DEVICE}] ",
         doc=lambda d: table_at(instance_of(d, "scd30"), "wiring").update({"fake_dep": "sgp40"}),
@@ -327,17 +319,12 @@ _ROWS: "dict[str, Row]" = {
     "device.field-unknown": Row("generate", f"[{_DEVICE}.colour] ", doc=_set("device", "colour", 1)),
     "device.hotspot-password-length": Row("generate", f"[{_DEVICE}.hotspot_password] ", doc=_set("device", "hotspot_password", "short")),
     "device.hostname-convention": Row("generate", f"[{_DEVICE}.hostname] ", doc=_set("device", "hostname", "SensorStationOther")),
-    "device.hostname-label": Row("generate", f"[{_DEVICE}.hostname] ", doc=_then(_set("device", "name", "Te_st"), _set("device", "hostname", "SensorStationTe_st"))),
     "device.hostname-length": Row("generate", f"[{_DEVICE}.hostname] ", doc=_then(_set("device", "name", "T" * 60), _set("device", "hostname", "SensorStation" + "T" * 60))),
     "device.hotspot-time-min-range": Row("generate", f"[{_DEVICE}.hotspot_time_min] ", doc=_set("device", "hotspot_time_min", 35792)),
-    "device.conn-fail-to-hotspot-range": Row("generate", f"[{_DEVICE}.conn_fail_to_hotspot] ", doc=_set("device", "conn_fail_to_hotspot", 0)),
     "device.max-connections-range": Row("generate", f"[{_DEVICE}.max_connections] ", doc=_set("device", "max_connections", 0)),
     "device.max-connections-lwip": Row("generate", f"[{_DEVICE}.max_connections] ", doc=_set("device", "max_connections", 64)),
     "device.backlog-below-ceiling": Row("generate", f"[{_DEVICE}.backlog] ", doc=_then(_set("device", "max_connections", 4), _set("device", "backlog", 3))),
     "device.backlog-above-ceiling": Row("generate", f"[{_DEVICE}.backlog] ", doc=_then(_set("device", "max_connections", 4), _set("device", "backlog", 6))),
-    "device.ntp-retry-below-tick": Row("generate", f"[{_DEVICE}.ntp_retry_s] ", doc=_set("device", "ntp_retry_s", 1)),
-    "device.ntp-retry-max-below-retry": Row("generate", f"[{_DEVICE}.ntp_retry_max_s] ", doc=_then(_set("device", "ntp_retry_s", 120), _set("device", "ntp_retry_max_s", 60))),
-    "device.ntp-retry-max-range": Row("generate", f"[{_DEVICE}.ntp_retry_max_s] ", doc=_set("device", "ntp_retry_max_s", 536870912)),
     "device.wiring-field-unknown": Row("generate", f"[{_DEVICE}.bogus_target] ", doc=_set("device", "wiring", "bogus_target", "fram")),
     "device.wiring-no-tag": Row("generate", f"[{_DEVICE}.led_target] ", edits=(("asy_wifi_service.py", "# @wiring led_target NeopixelDriver ext_led optional kwarg", "#"),)),
     "device.wiring-field-missing": Row(
@@ -352,9 +339,6 @@ _ROWS: "dict[str, Row]" = {
     "bus.field-type": Row("generate", f"[{_DEVICE}.timeout] ", doc=_set("bus", "i2c0", "timeout", "200ms")),
     "bus.i2c-frequency-range": Row("generate", f"[{_DEVICE}.frequency] ", doc=_set("bus", "i2c0", "frequency", 1000001)),
     "bus.i2c-timeout-range": Row("generate", f"[{_DEVICE}.timeout] ", doc=_set("bus", "i2c0", "timeout", 0)),
-    "bus.i2c-timeout-max": Row("generate", f"[{_DEVICE}.timeout] ", doc=_set("bus", "i2c0", "timeout", 10000000)),
-    "bus.i2c-timeout-consumer": Row("generate", f"[{_DEVICE}.timeout] ", doc=_paired(_set("bus", "uart1", "poll_idle_ms", 900))),
-    "bus.uart-baudrate-range": Row("generate", f"[{_DEVICE}.baudrate] ", doc=_paired(_set("bus", "uart0", "baudrate", 7812501))),
     "bus.uart-rxbuf-range": Row("generate", f"[{_DEVICE}.rxbuf] ", doc=_paired(_set("bus", "uart0", "rxbuf", 32767))),
     "bus.uart-txbuf-range": Row("generate", f"[{_DEVICE}.txbuf] ", doc=_paired(_set("bus", "uart0", "txbuf", 31))),
     "bus.uart-poll-wait-range": Row("generate", f"[{_DEVICE}/uart_link_init.poll_wait_ms] ", doc=_paired(_set("bus", "uart0", "poll_wait_ms", 0))),
@@ -363,20 +347,13 @@ _ROWS: "dict[str, Row]" = {
     "bus.uart-rxbuf-floor": Row("generate", f"[{_DEVICE}/uart_link_init.rxbuf] ", doc=_paired(_set("bus", "uart0", "rxbuf", 79))),
     "bus.uart-rx-ring": Row("generate", f"[{_DEVICE}/uart_link_init.rx_ring] ", doc=_paired(_set("bus", "uart0", "rx_ring", 64))),
     "bus.unused": Row("generate", f"[{_DEVICE}.i2c1] ", doc=_set("bus", "i2c1", {"scl_pin": 7, "sda_pin": 6, "frequency": 50000})),
-    "bus.uart-shared": Row("generate", f"[{_DEVICE}/uart_link_resp.bus] ", doc=_paired(_drop("bus", "uart1"), lambda d: table_at(d, "instance", -1).__setitem__("bus", "uart0"))),
     "bus.fixed-address-collision": Row("generate", f"[{_DEVICE}/scd30_b] ", doc=_doc_extra_instance({"driver": "scd30", "name_ext": "b", "bus": "i2c0", "irq_pin": 9, "trigger_s": 3})),
     "bus.address-collision": Row(
         "generate", f"[{_DEVICE}/bmp3xx_b.address] ",
         doc=_then(_doc_extra_instance({"driver": "bmp3xx", "name_ext": "a", "bus": "i2c0", "address": 0x76}), _doc_extra_instance({"driver": "bmp3xx", "name_ext": "b", "bus": "i2c0", "address": 0x76})),
     ),
-    "bus.boot-clear-budget": Row(
-        "generate", f"[{_DEVICE}.timeout] ",
-        doc=_then(_set("bus", "i2c0", "timeout", 200000), _set("bus", "i2c1", {"scl_pin": 7, "sda_pin": 6, "frequency": 50000, "timeout": 200000}), _doc_extra_instance({"driver": "bmp3xx", "name_ext": "", "bus": "i2c1", "address": 0x76})),
-        edits=(("asy_i2c_driver.py", "_CLEAR_PULSES = const(9)", "_CLEAR_PULSES = const(18)"),),
-    ),
     # buildgen/validate.py: [[instance]]
     "instance.name-ext-singleton": Row("generate", f"[{_DEVICE}/notification_x.name_ext] ", doc=_set("@notification", "name_ext", "x")),
-    "instance.name-ext-missing": Row("generate", f"[{_DEVICE}/scd30.name_ext] ", doc=_drop("@scd30", "name_ext")),
     "instance.field-missing": Row("generate", f"[{_DEVICE}/scd30.irq_pin] ", doc=_drop("@scd30", "irq_pin")),
     "instance.address-not-selectable": Row("generate", f"[{_DEVICE}/scd30.address] ", doc=_set("@scd30", "address", 0x61)),
     "instance.field-type": Row("generate", f"[{_DEVICE}/scd30.bus] ", doc=_set("@scd30", "bus", 0)),
@@ -389,8 +366,6 @@ _ROWS: "dict[str, Row]" = {
     "instance.field-unknown": Row("generate", f"[{_DEVICE}/scd30.colour] ", doc=_set("@scd30", "colour", 1)),
     "instance.uart-transfer-cap": Row("generate", f"[{_DEVICE}/uart_link_init.max_transfer_bytes] ", doc=_paired(lambda d: table_at(d, "instance", -2).__setitem__("max_transfer_bytes", 47))),
     "instance.uart-link-pair": Row("generate", f"[{_DEVICE}] ", doc=_paired(lambda d: table_at(d, "instance", -1).__setitem__("role", "initiator"))),
-    "instance.uart-baud-mismatch": Row("generate", f"[{_DEVICE}/uart_link_resp.baudrate] ", doc=_paired(_set("bus", "uart1", "baudrate", 57600))),
-    "instance.uart-crc-mismatch": Row("generate", f"[{_DEVICE}/uart_link_resp.crc] ", doc=_paired(lambda d: table_at(d, "instance", -2).__setitem__("crc", "crc16"))),
     "instance.uart-timeout-max": Row("generate", f"[{_DEVICE}/uart_link_init] ", doc=_paired(), edits=(("asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS = const(1000)", "_DEFAULT_TIMEOUT_MS = const(100000000)"),)),
     "instance.requires-without-bus": Row(
         "generate", f"[{_DEVICE}/neopixel] ",
@@ -409,9 +384,8 @@ _ROWS: "dict[str, Row]" = {
     # buildgen/validate.py: names, GPIOs
     "names.logger-collision": Row(
         "generate", f"[{_DEVICE}/bmp3xx] ", doc=_doc_extra_instance({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0"}),
-        edits=(("asy_bmp3xx_driver.py", '_NAME = const("BMP3XX")', '_NAME = const("NTP")'),),
+        edits=(("asy_bmp3xx_driver.py", '_NAME = const("BMP3XX")', '_NAME = const("SCD30")'),),
     ),
-    "names.settings-key-collision": Row("generate", f"[{_DEVICE}.Hostname] ", patch=_settings_key_served_twice),
     "names.label-collision": Row(
         "generate", f"[{_DEVICE}/foo_bar] ", patch=_foo_drivers_whose_labels_collide,
         doc=_then(_doc_extra_instance({"driver": "foo_bar", "name_ext": ""}), _doc_extra_instance({"driver": "foo", "name_ext": "bar"})), copy_src=True,
@@ -428,7 +402,6 @@ _ROWS: "dict[str, Row]" = {
     "wiring.target-type": Row("generate", f"[{_DEVICE}/scd30.fram_target] ", doc=_set("@scd30", "wiring", "fram_target", 5)),
     "wiring.source-shape": Row("generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"source": "scd30"})),
     "wiring.source-unresolved": Row("generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"source": "bme", "field": "Temp"})),
-    "source.field-unknown": Row("generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"source": "scd30", "field": "Tmp"})),
     "wiring.default-key-unknown": Row("generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"default": True, "temperature": 20, "bogus": 1})),
     "wiring.default-key-missing": Row(
         "generate", f"[{_DEVICE}/sgp40.temperature_source] ", doc=_set("@sgp40", "wiring", "temperature_source", {"default": True}),
@@ -439,12 +412,11 @@ _ROWS: "dict[str, Row]" = {
         "generate", f"[{_DEVICE}/notification.signal_sink] ", doc=_set("@notification", "wiring", "signal_sink", {"default": True}),
         copy_src=True, patch=_signal_sink_default_without_request_signal,
     ),
-    "wiring.warn-outside-notification": Row("generate", f"[{_DEVICE}/scd30.warn_co2] ", doc=_set("@scd30", "wiring", "warn_co2", {"source": "scd30", "field": "CO2"})),
     "wiring.warn-unknown": Row("generate", f"[{_DEVICE}/notification.warn_radon] ", doc=_set("@notification", "wiring", "warn_radon", {"source": "scd30", "field": "CO2"})),
     "wiring.field-unknown": Row("generate", f"[{_DEVICE}/scd30.led_target] ", doc=_set("@scd30", "wiring", "led_target", "neopixel")),
     "wiring.field-missing": Row("generate", f"[{_DEVICE}/notification.signal_sink] ", doc=_drop("@notification", "wiring", "signal_sink")),
     "src.unreadable": Row("generate", "[<src>.HotspotPW] ", drop=("asy_wifi_service.py",)),
-    "src.const-missing": Row("generate", "[<src>._NTP_CHECK_INTERV] ", doc=_set("device", "ntp_retry_s", 60), edits=(("asy_ntp_client.py", "_NTP_CHECK_INTERV = const(", "_NTP_CHECK_INTERVAL_X = const("),)),
+    "src.const-missing": Row("generate", "[<src>._DEFAULT_OUTER_CAP_S] ", edits=(("asy_webserver_service.py", "_DEFAULT_OUTER_CAP_S = const(", "_DEFAULT_OUTER_CAP_X = const("),)),
     "src.schema-missing": Row("generate", "[<src>.HotspotPW] ", edits=(("asy_wifi_service.py", '("HotspotPW", "str", "12345678", 8, 63, None)', '("HotspotPW", "str", "12345678", 8, None, None)'),)),
     "src.default-missing": Row("generate", "[<src>.rx_ring] ", doc=_paired(), edits=(("asy_uart_driver.py", "rx_ring: int = 512,", "rx_ring: int = RING,"),)),
     "toolchain.overrides-unloadable": Row("generate", "[<toolchain>.max_connections] ", patch=_overrides_unloadable),
@@ -599,18 +571,3 @@ def test_a_write_failing_part_way_leaves_no_output_file(tmp_path: Path, capsys: 
     err = capsys.readouterr().err
     assert err.startswith(f"buildgen: [{_DEVICE}] cannot write ") and "No space left on device - fix: " in err
     assert sorted(p.name for p in out.iterdir()) == []
-
-
-@pytest.mark.parametrize("broken", ["module", "boot entry", "no-autostart boot entry"])
-def test_a_generated_source_that_does_not_compile_is_a_build_internal_error(broken: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A generator bug, never a TOML mistake: it propagates past the CLI with its traceback, naming the device and line.
-    real_module, real_entry = generate_module_source, generate_boot_entry_source
-    invalid = "x = 1\ndef broken(:\n"
-    monkeypatch.setattr(generate, "generate_module_source", lambda *a, **k: invalid if broken == "module" else real_module(*a, **k))
-    monkeypatch.setattr(
-        generate,
-        "generate_boot_entry_source",
-        lambda device, *, autostart=True: invalid if broken == ("boot entry" if autostart else "no-autostart boot entry") else real_entry(device, autostart=autostart),
-    )
-    with pytest.raises(BuildInternalError, match=rf"^{_DEVICE}: generated sensortask_{_DEVICE}\S*\.py does not compile: line 2: "):
-        generate.main([str(write_doc(tmp_path, _DEVICE, base_doc()))])

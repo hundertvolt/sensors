@@ -51,7 +51,8 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   so a test can read the gaps between feeds. `peripheral()` (a booted bus by name),
   `reset_peripherals()` and `reset_test_state()` are test-only.
 - `rp2.py` — the DMA channel surface a UART receive ring uses: a paced channel takes the bytes
-  `machine.py`'s `UART` receives as their wire time elapses, never per event-loop turn.
+  `machine.py`'s `UART` receives as their wire time elapses, never per event-loop turn; aborting a
+  busy channel that still chains raises, where silicon hangs (SPECIFICATION.md F.5.8).
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` / `_isl29125_chip.py` — one chip fake per
   sensor, each verified against its own datasheet in `datasheets/` for the raw transaction shape and
   sensible value ranges, each class spelled as its driver's `_NAME` (`SGP40Chip`, `SCD30Chip`,
@@ -157,8 +158,7 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   hotspot's `status("stations")` answer 32 unfilled entries, as rp2 does when its radio cannot be
   brought up. `raise_on` fails a method a given number of times, `status` optionally only for one
   query, and `script_connect_outcomes()` queues connect outcomes. `NeoPixel` stores its pixels as
-  micropython-lib's driver does, a GRB `bytearray`, and keeps a bounded log of written frames;
-  `power_dip()` blanks what `displayed()` shows until the next `write()`.
+  micropython-lib's driver does, a GRB `bytearray`, and keeps a bounded log of written frames.
 - `_http_client.py` — minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`: real
   HTTP over real sockets (owner, 2026-08-13; no HTTP client
   library is frozen into the pinned Unix-port build). Every response it sees is `Connection: close`
@@ -228,15 +228,20 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Chips | the SGP40 takes time per command; compensation shifts the raw signal | neither | — | L3 | accepted (agent, 2026-10-14): the driver waits its datasheet delays regardless |
 | Chips | the SGP40's heater-off returns it to idle | the same | SGP40 datasheet | L2 | fixed: `D sgp40::heater_off_clears_the_pending_measure_reply_and_the_next_measure_answers` |
 | Chips | the SGP40's reaction to an unknown command | ignored, the pending reply kept | the datasheet states none | — | assumption: BACKLOG "The SGP40's reaction to an unknown command" |
+| Chips | the SGP40's serial number is hard-coded at production, the same three words on every read (datasheet 3.4) | fresh random words on every read (`_sgp40_chip.py`'s serial reply) | `sgp40_conformance_probe.py` A02_serial_stable: yes on the bench's part (2026-10-28), no in the twin | L3 | accepted (agent, 2026-11-04) until the twin is corrected to one serial per chip; no driver path compares two reads |
 | Chips | the SCD30 measures nothing before continuous measurement starts; soft reset is a power-up; the FRC readback is volatile | the same; the twin starts provisioned (measuring), not datasheet-derived | Interface Description 1.4.1-1.4.6 | L2 | fixed: `D scd30::an_unprovisioned_chip_measures_nothing_until_started`, `D scd30::a_soft_reset_drops_the_unread_measurement_and_the_frc_reference`, `D scd30::the_forced_recalibration_reference_reads_back_the_last_one_until_a_power_up` |
 | Chips | the SCD30's reaction to a wrong argument CRC, an interval outside 2-1800 s or an FRC outside 400-2000 ppm | ignored and counted | the datasheet states none | — | assumption: BACKLOG "The SCD30's reaction to a wrong argument CRC or an out-of-range interval" |
 | Chips | whether the SCD30's 0x0010 ambient-pressure value itself persists in NVM | persisted | Interface Description 1.4.1 names only the measuring status | — | assumption: BACKLOG "Whether the SCD30 keeps the ambient pressure across a power cycle" |
 | Chips | the SCD30's 0x0010 overrides altitude compensation | not modelled | Interface Description 1.4.1 | — | accepted (agent, 2026-10-14) until a driver depends on it |
 | Chips | the SCD30's temperature offset shifts the reported RH | RH reported as walked | no datasheet gives the formula | — | accepted (agent, 2026-10-14): no invented RH model |
 | Chips | the SCD30's NVM writes | counted per NVM command the fake carries out | — | L2 | a test surface, not chip behaviour: `D scd30::nvm_writes_counts_each_accepted_nvm_command_and_nothing_else` |
+| Chips | an SCD30 read with no command pending returns 0xDD bytes | zero bytes | `scd30_conformance_probe.py` C03_read_before_a_command: dd dd dd on the bench's part (2026-10-28), 00 00 00 in the twin | L3 | accepted (agent, 2026-11-04): no driver path reads without a command |
 | Chips | the BMP3XX chip id: 0x60 (BMP390), 0x50 (BMP384, BMP388) | 0x60 only | DS001-DS003 §4.3.1 | L3 | accepted (agent, 2026-10-14): the driver accepts both |
 | Chips | the BMP3XX calibration block is factory-trimmed | synthetic, round-tripping through the real compensation formula | `D bmp3xx::calibration_block_is_not_degenerate` | — | accepted (agent, 2026-10-14) until the real block is read: BACKLOG "The BMP3XX's real calibration block" |
-| Chips | a BMP3XX conversion takes time; 0xB6 resets OSR and CONFIG | no conversion time; the reset as on silicon | DS001 | L2, L3 | fixed for the reset: `D bmp3xx::power_cycle_restores_the_power_up_registers_and_keeps_the_walk`, `D bmp3xx::soft_reset_command_restores_command_ready_status`; conversion time accepted (agent, 2026-10-14), L3 |
+| Chips | a BMP3XX conversion takes time; 0xB6 resets OSR and CONFIG | no conversion time; the reset to the register map's values (the bench part's OSR: below) | DS001 | L2, L3 | fixed for the reset: `D bmp3xx::power_cycle_restores_the_power_up_registers_and_keeps_the_walk`, `D bmp3xx::soft_reset_command_restores_command_ready_status`; conversion time accepted (agent, 2026-10-14), L3 |
+| Chips | a read of a BMP3XX DATA register clears STATUS's drdy_press and drdy_temp (DS001 4.3.3, Table 27) | the drdy bits stay set after the data read (STATUS 0x70) | `bmp3xx_conformance_probe.py` B07_status_after_data_read: 0x10 on the bench's part (2026-10-28), 0x70 in the twin | L3 | accepted (agent, 2026-11-04) until the twin is corrected: in the twin the driver's STATUS poll always reads ready |
+| Chips | BMP3XX PWR_CTRL keeps press_en and temp_en through a forced conversion and returns to sleep mode alone: 0x13 during it, 0x03 after | 0x00 during and after | `bmp3xx_conformance_probe.py` B03_pwr_ctrl_during_forced and B05_pwr_ctrl_after_conversion: 0x13 and 0x03 on the bench's part (2026-10-28), 0x00 and 0x00 in the twin | L3 | accepted (agent, 2026-11-04) until the twin is corrected; "during" is the no-conversion-time row above |
+| Chips | after a 0xB6 soft reset the bench's BMP3XX (chip id 0x50) reads OSR 0x00, not the register map's 0x02 (DS001 and DS003) | 0x02, the register map's value | `bmp3xx_conformance_probe.py` C02_osr_config_after_softreset: 00 00 on the bench's part (2026-10-28), 02 00 in the twin | L3 | accepted (agent, 2026-11-04) until the bench reads it again: the part and both datasheets disagree, so neither side changes yet |
 | Chips | ISL29125 lux response | linear, with a deliberately non-nominal high-range ratio a calibration converges on | SPECIFICATION.md M.1.5 | L2 | accepted (agent, 2026-10-14): a test needs a ratio to converge on |
 | Chips | the ISL29125 PRST counter stops at its target | the same | FN8424 | L2 | fixed: `D isl29125::prst_count_stops_at_the_target` |
 | Chips | whether a CONFIG1 write restarts an in-flight ISL29125 conversion | restarted, never tuned to | FN8424 Table 7 says only "ADC start at I2C write 0x01" | — | assumption: BACKLOG "Whether a CONFIG1 write restarts an in-flight ISL29125 conversion" |
@@ -252,7 +257,7 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Runtime | a Pin IRQ runs from the interrupt | synchronously in the caller | — | L3 | accepted (agent, 2026-10-14) |
 | Runtime | `machine.reset()`/`bootloader()` end the program | `SimulatedRebootError`, a `BaseException`, ends the loop; the runner exits 3 or 4 | — | L2 | fixed: `D machine::a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow`, `D machine::a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling` |
 | Runtime | `mem_backup()` regions survive a reset and clear at power-on; `reset_cause()`; a console soft reset keeps both regions and the last hard reset's cause | the same, carried to the next launch through a state file; a soft reset is a launch that keeps both | `machine_mem_backup.c:36-40` | L2 | fixed: `D machine::the_twin_meets_the_shared_mem_backup_contract` (`tests/_mem_backup_contract.py`), `D machine::a_flushed_mem_backup_reaches_the_next_launch_once`, `D loop_end::a_console_soft_reset_after_ctrl_c_reads_21` |
-| Runtime | whether `reset_usb_boot()` keeps the scratch registers, and the cause read after BOOTSEL | kept; a watchdog reset | the bootrom is not in the pinned source | — | assumption: BACKLOG "`mem_backup()` and `reset_cause()` after a BOOTSEL round trip" |
+| Runtime | `reset_usb_boot()` loses both scratch regions, and the cause read after BOOTSEL is a watchdog reset | both regions cleared; a watchdog reset | the bench (2026-10-29) | L2 | fixed: `D machine::the_twin_meets_the_shared_mem_backup_contract` (`tests/_mem_backup_contract.py`) |
 | Runtime | the WDT resets the chip | records a would-have-reset and never resets; the runner prints `WATCHDOG_WOULD_TRIGGER` | — | L2 | accepted (owner, 2026-08-12); a reset code reached only through a real watchdog reset is L1's and the bench's |
 | Runtime | the RTC takes no constructor argument, an 8-tuple, recomputes the weekday, its setter returns `None`; a set moves `time.time()` | the same with the runner's wall clock installed; uninstalled it holds a fixed tuple | `machine_rtc.c:52, 64-97`, `ports/rp2/modtime.c:31-43` | L2 | fixed: `D machine::an_installed_clock_makes_an_rtc_set_move_the_wall_clock`, `D machine::an_uninstalled_rtc_keeps_its_tuple_by_rp2s_rules` |
 | Runtime | a flash write holds the loop with interrupts off | a config flush stalls the loop for its pages' erase and program time | `rp2_flash.c:167-173` | L2, L3 | fixed: `D machine_uart::a_config_flush_through_the_installed_open_stalls_once_for_its_pages` |
@@ -455,7 +460,7 @@ off the booted module by name, joins their underlying `machine.UART` fakes with
 | `--device LABEL` | the module name | the device name the log lines carry |
 | `--host HOST`, `--port N` | `localhost`, `8080` (owner, 2026-08-13) | where the webserver listens |
 | `--config-dir PATH/` | `digital_twin/config/` | the product's config directory; refused without its trailing `/`, since each config file's name is that path plus `config_<name>.cfg` (`config_filename()` in `src/asy_config_manager.py`) |
-| `--debug-level N` | off, as on the device | every logger built at level N, until the stored `DebugLevel` applies; a level `PrintLog.set_level()` refuses is refused |
+| `--debug-level N` | off, as on the device | every logger built at level N, until the stored `DebugLevel` applies; a level `PrintLog.set_level()` would clamp is refused |
 | `--fram-state-path`, `--scd30-state-path`, `--mem-backup-state-path PATH` | `digital_twin/fram_state.json`, `scd30_state.json`, `mem_backup_state.json` | where that state persists; `""` keeps it in memory |
 | `--online-ntp` | off | off: the local NTP responder runs and the config pointing at it is written; on: neither, the stored config is used |
 | `--seed N` | none | seeds every chip's random walk |
@@ -638,7 +643,7 @@ The chip-fake and fake-module tests are deterministic — no wall-clock waiting,
 short-period/generous-timeout smoke test in `tests/test_digital_twin_machine.py`
 (`test_timer_fires_for_real_on_a_short_period`) that proves the real-time scheduling mechanism itself
 works at all, not a precise-cadence assertion. The tiers that boot a device's real graph run on real
-time and wait for each state by a bounded poll (`tests/_twin_readiness.py`), every bound a Part N row.
+time and wait for each state by a bounded poll (`tests/_twin_readiness.py`).
 
 ## Running device scripts in the twin
 
@@ -651,9 +656,8 @@ the UDP shim; a plan naming a UART pair (`dev`) gets the bench's crossover jumpe
 FRAM, SCD30 and `mem_backup()` state and its filesystem (each run's working directory) in one
 directory kept across its runs, so nothing a script writes lands in the checkout.
 `scripts/record_twin_instrument_runs.py` writes the twin record (twin_record.json in
-`tests_hardware/`); `tests_scripts/test_twin_record.py` fails when a script, the runner or the `src/`
-API a script imports changed since its entry. A script that cannot run here is an `exception` entry
-with its reason in the record, never listed in this file.
+`tests_hardware/`), each instrument's twin run at both GC stages. A script that cannot run here is an
+`exception` entry with its reason in the record, never listed in this file.
 
 ## Automated CI suite
 
@@ -667,7 +671,7 @@ it checks and why; this section is the practical how-to.
 
 ```bash
 scripts/run_digital_twin_ci.sh <device>                     # a device of devices/*.toml: build -> suite -> harness, both GC stages
-scripts/run_digital_twin_ci.sh <device> --gc-threshold -1 --part suite   # one stage, one part: what one CI job runs
+scripts/run_digital_twin_ci.sh <device> --gc-threshold -1   # one stage: what one CI job runs
 uv run scripts/_digital_twin_ci_suite.py --micropython-bin <path> --device <device> --only 5,5b --repeat 3   # diagnosis
 ```
 
@@ -704,7 +708,7 @@ SPECIFICATION.md Part I.4(e)'s standing rule applied to the *entire* suite, not 
 check (run 11, below) — every run's log is checked for zero `MemoryError`/`memory allocation
 failed` (caught-and-logged included; a missing, unreadable or empty log fails the gate) and for
 `public_destinations_refused=0` on its shutdown line, and every suite and harness shutdown line for a
-feed gap above 75 % of the armed watchdog timeout (`l2.feed_gap_share_max`), except the runs that
+feed gap above 75 % of the armed watchdog timeout, except the runs that
 starve the watchdog on purpose (run 10, the hung-step scenario). The routes a run walks come from the
 device's API reference, `build/generated_src/api/sensortask_<device>.json`, whose absence fails the
 pass naming it. A device wiring a `uart_link` pair runs Run 3 again on a TOML derived with
@@ -715,12 +719,15 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
 
 1. **Baseline boot, then the reformat relaunch** — walk every `GET` route of the device's API
    reference and `/`, then read, keep (`runs/run1_errcount.json`) and check the logs — no error or
-   warning entry from any module — then clear them (`ResetErrors`); with no station link the clock
-   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
-   the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
-   does; `SIGINT` is the fallback, never `SIGTERM`) and confirm the state files landed on disk. Then
+   warning entry from any module but each config store's one `CFG_FILE_UNREADABLE`, its file not
+   found, and each SGP40's `SGP_NO_BACKUP`, waited for, its first restore finding the backup chunk
+   blank — then clear them (`ResetErrors`); with no station link the clock
+   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly by
+   `SIGINT` (its handler flushes the FRAM/SCD30 state; never `SIGTERM`) and confirm the state files
+   landed on disk. Then
    relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem
-   leaves a unit: `SYSTEM` logs exactly one W `CONFIG_LOST` (kept in `runs/`), and a setting is
+   leaves a unit: each config store logs its file not found and each SGP40 its blank backup chunk,
+   as Run 1 (kept in `runs/`), and a setting is
    `PUT` on each of `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
    (`SCD30.MeasInterval=4`), `/networking` (`Hostname`) and `/status` (`ResetErrors`) — every
    route that accepts `PUT`.
@@ -732,10 +739,12 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    `SCD30`/`WEBSERVER`) from the very start of boot, polled for rather than slept on.
 3. **The combined-fault escalation** — every instance this device wires boots with its sustained
    fault (`<instance>:writeto:500` for each sensor, `fram:silent`, `uart_link:silent`): each faulted
-   module records a real `"E"` entry while the process lives, then the supervisor's restart budget
+   module records a real `"E"` entry while the process lives (a link's responder excepted: a silent
+   link leaves it listening, never failed), then the supervisor's restart budget
    runs out and the device resets itself — exit code 3 with one reset line, never a crash, and the
    (simulated) watchdog never starves. `fram:silent` makes the chip answer zeros and keep its bytes,
-   so nothing is torn.
+   so nothing is torn; its write attempts stay within the persisted-log rate plus one setup write per
+   FRAM-backed logger.
 4. **Relaunch fault-free on run 3's state** — `ResetReason` is the supervisor's escalation code,
    the boot cleared the reset record (`mem_backup` region 0 reads zero at shutdown), every measuring
    driver produces real readings again, and SCD30/BMP3XX/ISL29125, whichever this device wires, read
@@ -803,9 +812,10 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually,
    that NTP logs `NTP_NO_REPLY` where the host has a route for the request and `NTP_NOT_SENT`
    where it has none (a network namespace holding only `lo`), never both, and that no task ended and
-   was restarted meanwhile. The watch ends on the third NTP failure event, then one supervisor pass
-   (`l2.ntp_unreachable_failures`, inside the 90 s `l2.ntp_unreachable_watch_s` bound): the 10 s
-   doubling backoff puts the failures at about 4, 22 and 62 s of serving (`dev`, 2026-10-15).
+   was restarted meanwhile. The watch ends on the second NTP failure event, then one supervisor pass
+   (inside a 90 s bound): the unsynced
+   retry, one attempt every 60 s after a failed one, puts the failures at about 4 and 64 s of serving
+   (the first measured on `dev`, 2026-10-15) and the third at about 124 s, past the bound.
 10. **The dedicated watchdog-backstop case** — one bounded real, *blocking* (`time.sleep()`, not
     `asyncio.sleep()`) hang per bus-attached instance the device wires (`--hang <instance>:<op>:12`,
     `writeto` for a sensor, `readinto` for the FRAM), each in its own process with `--duration 15`,
@@ -818,7 +828,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
     (`would_have_triggered_count >= 1`), matching CLAUDE.md's recovery-ladder rule: a transfer that
     never returns is the watchdog's. Each run ends on its `WATCHDOG_WOULD_TRIGGER` line, inside the
-    45 s `l2.hang_run_exit_wait_s` bound.
+    45 s bound.
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only; the *host* (this script's own
     `_run_11_soak()`, plain CPython) drives warm-up cycles until no cycle has set a new `MEM_SAMPLE`
@@ -852,8 +862,8 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     would otherwise start. Driven from a separate process because an in-process client measures its
     own buffers (SPECIFICATION.md Part E.9).
 12. **The reset reasons reachable at L2** — a fresh boot reads the power-on code; `bootloader` exits
-    with code 4 and the relaunch reads its code (the fidelity table's bootloader assumption) with the
-    record cleared at boot; a SIGINT relaunch reads power-on, the twin's non-reset launch. Last, on
+    with code 4 and the relaunch reads 2, BOOTSEL having lost both regions (the fidelity table), with
+    no record left; a SIGINT relaunch reads power-on, the twin's non-reset launch. Last, on
     the same state, a C-stack overflow in one read of the plan's first bus device (I2C buses in plan
     order before SPI): `--fault <instance>:<read op>:stack` (`readfrom_into` for SCD30 and SGP40,
     `readfrom_mem` for BMP3XX and ISL29125, `readinto` for the FRAM) queues one, the handler that
@@ -872,14 +882,15 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     The command states, the hazards and a hang at each shutdown step are the scenario harness's.
 
 **The host-side scenario harness** (`scripts/_digital_twin_scenarios.py`, SPECIFICATION.md E.9)
-runs after the suite at each GC stage, holding port 53 (`--exclusive-port-53`), so its DNS scenarios
-run too; without that lock they are deselected and listed. Each scenario boots the device's
+runs, in `scripts/run_digital_twin_ci.sh`, after the suite at each GC stage, holding port 53
+(`--exclusive-port-53`): only its DNS scenarios, which `scripts/test.sh`'s scenario jobs, on a shared
+port 53, deselect and list. Each scenario boots the device's
 generated graph in a twin and drives it over HTTP, reading only the runner's stdout and its
-`--test-*` lines. Every boot logs at error level, so a caught allocation failure's line reaches the
+`--test-*` lines. Every boot logs at warning level, so a caught allocation failure's line reaches the
 memory gate (the owner's option 1 for the unit tests, owner, 2026-10-20, asked, paraphrase, whether
 to turn logging on at error level or above in the unit tests that can actually run out of memory, in
 every unit test, or in none: "Option 1 is good"; applied to the harness too, agent, 2026-10-20):
-the runner's `--debug-level 1` over a stored `DebugLevel` of 1 planted before the spawn unless one
+the runner's `--debug-level 2` over a stored `DebugLevel` of 2 planted before the spawn unless one
 is stored, but for the scenario reading the settings routes' defaults, which boots unplanted at the
 default level. Every boot also carries
 `--test-kbd-traceback`, so a twin that ignores its shutdown SIGINT is described before the kill:
@@ -890,10 +901,10 @@ website, bus hazards, system commands, webserver requests, UART load), the drive
 device without them skips it) and whether it may share a boot. The sharing ones run first on one twin
 per group, with an idle check between two of them — the twin alive, every slot drained, the kernel's
 accept queue empty, the error counts after the drain, the memory gate — and a failure names its
-scenario and sends the next to a fresh boot. A shared twin is retired before
-`l2.scenario_shared_boot_deadline_s`, the earliest its own SGP40 untimestamped-backup warning can
-land with no NTP sync in the hotspot, and a count an idle check reads moved past it fails by name
-(agent, 2026-10-19). The hung-step scenario ends on the runner's
+scenario and sends the next to a fresh boot. A shared twin's first count snapshot waits for each
+SGP40's `SGP_NO_BACKUP` (a fresh FRAM's blank backup chunk), a boot without it failing there, and
+an idle check reads a move whose only new slot is SGP40's untimestamped backup (W35, with no NTP sync
+in the hotspot) as the boot's own background. The hung-step scenario ends on the runner's
 `WATCHDOG_WOULD_TRIGGER` line (S1 on its `HUNG S1` line); the UART-load scenario
 (`uart_ring_under_concurrent_load`) drives both links of a device that wires a pair through a
 webserver hammer at the ceiling, FRAM log writes and config flushes, each flush stalling the loop as
@@ -932,7 +943,7 @@ Almost every request-driving and response-observing job moved host-side (SPECIFI
   counts the rest, so a unit test with direct object access can assert what crossed the wire, and
   every such test clears it itself. This process has no such access — it boots the twin as a
   subprocess and never reads the log — so `_wire_log_clearer()` clears each log in place on a timer
-  (`l2.twin_wire_log_clear_interval_ms`); unbounded and uncleared, it grew for as long as the link
+  (every 5 s); unbounded and uncleared, it grew for as long as the link
   carried traffic, which made Run 11's memory trend fail for the one device with a wired pair.
   Clearing it changes nothing over-the-wire: nothing in the request path or `asy_uart_comm.py` ever
   reads it back.

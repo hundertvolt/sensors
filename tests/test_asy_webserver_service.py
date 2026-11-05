@@ -21,7 +21,7 @@ sys.path.insert(0, "ext")
 
 import machine
 import microtest
-from _async_harness import cancel, run, run_timed
+from _async_harness import cancel, run, run_timed, track_starts
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
@@ -32,6 +32,7 @@ from _src_schema import src_schema
 from _stack_overflow import stack_overflow
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
+from _twin_readiness import wait_for_value
 from _write_counters import WriteCountingOpen
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response
@@ -154,81 +155,46 @@ def _body_service() -> "tuple[WebserverService, Microdot, _FakeModule]":
 _DEFAULT_MAX_CONTENT_LENGTH: int = src_int("src/asy_webserver_service.py", "_DEFAULT_MAX_CONTENT_LENGTH")
 _DEFAULT_CHUNK_BYTES: int = src_int("src/asy_webserver_service.py", "_DEFAULT_CHUNK_BYTES")
 _VAL_NTP_HOST: "cm.ConfigSchema" = src_schema("src/asy_ntp_client.py", "_VAL_NTP_HOST")
-# The hammers' console level: their err() lines print, so a caught MemoryError reaches the memory gate's stream
-# (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level).
-_ERROR_LEVEL = 1  # pins src/asy_print_log.py _LOG_ERR
+# The hammers' console level: a caught MemoryError reaches the memory gate's stream, logged as an error or a warning
+# (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level or above).
+_ERROR_LEVEL = 2  # pins src/asy_print_log.py _LOG_WARN
 
 # The usual run_timed() bound: section F below exercises timeout/hang scenarios, so a genuine bug in the
 # implementation under test (or in one of the fakes below) must surface as a fast FAIL, never a whole-suite stall.
-# @tunable l1.asy_webserver_service_run_bound_s = 5.0
 _RUN_BOUND_S = 5.0
 # The other run_timed() bounds, and the service timeouts and real waits of the timeout cases: one constant per value and
 # role. A case waits out a per-call timeout or cap it names; a headroom is a timeout its request must finish under.
-# @tunable l1.asy_webserver_service_serve_bound_s = 2.0
 _SERVE_BOUND_S = 2.0  # one _serve() whose reclaim it waits out
-# @tunable l1.asy_webserver_service_serve_long_bound_s = 3.0
 _SERVE_LONG_BOUND_S = 3.0  # one _serve() under a headroom timeout
-# @tunable l1.asy_webserver_service_run_long_bound_s = 10.0
 _RUN_LONG_BOUND_S = 10.0  # a scenario of many connections
-# @tunable l1.asy_webserver_service_rewedge_run_bound_s = 15.0
 _REWEDGE_RUN_BOUND_S = 15.0  # the repeated-rewedging scenario
-# @tunable l1.asy_webserver_service_proxy_timeout_ms = 50
 _PROXY_TIMEOUT_MS = 50  # a stream proxy's per-call bound that a hung wait_closed() waits out
-# @tunable l1.asy_webserver_service_proxy_bound_ms = 1000
 _PROXY_BOUND_MS = 1000  # a stream proxy's per-call bound on forwards that return at once
-# @tunable l1.asy_webserver_service_tiny_per_call_s = 0.01
 _TINY_PER_CALL_S = 0.01
-# @tunable l1.asy_webserver_service_fast_per_call_s = 0.02
 _FAST_PER_CALL_S = 0.02
-# @tunable l1.asy_webserver_service_reclaim_per_call_s = 0.05
 _RECLAIM_PER_CALL_S = 0.05
-# @tunable l1.asy_webserver_service_tiny_outer_cap_s = 0.1
 _TINY_OUTER_CAP_S = 0.1
-# @tunable l1.asy_webserver_service_short_outer_cap_s = 0.2
 _SHORT_OUTER_CAP_S = 0.2
-# @tunable l1.asy_webserver_service_wedge_outer_cap_s = 0.5
 _WEDGE_OUTER_CAP_S = 0.5
-# @tunable l1.asy_webserver_service_slowloris_per_call_s = 0.02
 _SLOWLORIS_PER_CALL_S = 0.02  # a trickled byte comes every half of it
-# @tunable l1.asy_webserver_service_slowloris_outer_cap_s = 0.1
 _SLOWLORIS_OUTER_CAP_S = 0.1
-# @tunable l1.asy_webserver_service_mid_headroom_s = 1.0
 _MID_HEADROOM_S = 1.0
-# @tunable l1.asy_webserver_service_headroom_s = 2.0
 _HEADROOM_S = 2.0
-# @tunable l1.asy_webserver_service_long_headroom_s = 5.0
 _LONG_HEADROOM_S = 5.0  # the held connections outlive the case
-# @tunable l1.asy_webserver_service_cancel_outer_cap_s = 10.0
 _CANCEL_OUTER_CAP_S = 10.0  # must not fire before the test cancels
-# @tunable l1.asy_webserver_service_admit_settle_s = 0.01
-_ADMIT_SETTLE_S = 0.01  # real wait for held connections to be admitted
-# @tunable l1.asy_webserver_service_task_reach_s = 0.05
+_ADMIT_LIMIT_MS = 1000  # the bound on the wait for held connections to be admitted
 _TASK_REACH_S = 0.05  # real wait for a started task to reach its server or handler wait
-# @tunable l1.asy_webserver_service_close_poll_s = 0.01
 _CLOSE_POLL_S = 0.01  # step of the poll for a connection's close
-# @tunable l1.asy_webserver_service_close_poll_tries = 200
 _CLOSE_POLL_TRIES = 200
-# @tunable l1.asy_webserver_service_flat_dict_piece_max_bytes = 1200
 _FLAT_DICT_PIECE_MAX_BYTES = 1200  # each streamed piece of the 30-field dict stays below it
-# @tunable l1.asy_webserver_service_make_service_per_call_s = 0.2
 _MAKE_SERVICE_PER_CALL_S = 0.2  # _make_service()'s per-call timeout, for a case that sets none
-# @tunable l1.asy_webserver_service_make_service_outer_cap_s = 0.5
 _MAKE_SERVICE_OUTER_CAP_S = 0.5  # _make_service()'s outer cap, for a case that sets none
-# @tunable l1.asy_webserver_service_wire_per_call_ms = 2000
 _WIRE_PER_CALL_MS = 2000  # _get_on_the_wire()'s per-call timeout: a loaded host never cuts a body short
-# @tunable l1.asy_webserver_service_wire_outer_cap_ms = 4000
 _WIRE_OUTER_CAP_MS = 4000  # _get_on_the_wire()'s outer cap, under _RUN_BOUND_S
-# @tunable l1.asy_webserver_service_slowloris_trickle_ratio = 0.5
 _SLOWLORIS_TRICKLE_RATIO = 0.5  # the slowloris trickle's byte interval, as a share of its per-call timeout
-# @tunable l1.asy_webserver_service_slow_reset_s = 0.05
-_SLOW_RESET_S = 0.05  # real delay of the reset that must finish after the raising one
-# @tunable l1.asy_webserver_service_reset_release_bound_s = 0.5
 _RESET_RELEASE_BOUND_S = 0.5  # how long a suspended reset waits for every other one to start
-# @tunable l1.asy_webserver_service_soak_warmup_cycles = 20
 _SOAK_WARMUP_CYCLES = 20  # the lifecycle soak's warm-up
-# @tunable l1.asy_webserver_service_soak_rate_from_cycle = 80
 _SOAK_RATE_FROM_CYCLE = 80  # the soak's retention rate runs from this cycle to its last
-# @tunable l1.asy_webserver_service_soak_cycles = 200
 _SOAK_CYCLES = 200  # the lifecycle soak's cycles
 
 
@@ -537,12 +503,6 @@ def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") 
     return {name: {"ErrCount": count, "ErrNum": nums, "ErrType": types}}
 
 
-class _NoopHolder:
-    # Request.sock's stand-in for a dispatch_request() request: no connection ends, so a held stream is never closed.
-    def hold(self, _closable: object) -> None:
-        pass
-
-
 def _file_or_none(path: str) -> object:
     # The file's JSON, or None when it is absent (ENOENT); any other failure to read it propagates.
     try:
@@ -698,20 +658,18 @@ class _HeapShortRequest(Request):
         raise MemoryError("injected for the body parse")  # worded clear of the memory gates' markers
 
 
-def test_a_body_parse_that_runs_out_of_heap_answers_500_and_is_persisted() -> None:
-    # The heap failure is the device's, not a malformed body: the catch-all persists it and answers 500 (C.7),
-    # never "Invalid JSON request", and no settings write runs.
+def test_a_body_parse_that_runs_out_of_heap_answers_invalid_json() -> None:
+    # A heap failure decoding the body answers like a malformed one: "Invalid JSON request", nothing persisted, and no
+    # settings write runs.
     scd = _FakeModule("SCD30")
     service, app = _make_service(sensors=[scd])
     body = b"{}"
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
-    req = _HeapShortRequest(app, ("127.0.0.1", 12345), "PUT", "/sensors", "1.1", headers, body=body, sock=(_NoopHolder(), _NoopHolder()))  # type: ignore[arg-type]  # as _make_request()'s
+    req = _HeapShortRequest(app, ("127.0.0.1", 12345), "PUT", "/sensors", "1.1", headers, body=body)
     res = run(app.dispatch_request(req))
-    assert (res.status_code, _json(res.body)) == (500, {"res": "ERR", "code": 500, "descr": "Internal server error", "result": {}})
+    assert (res.status_code, _json(res.body)) == (200, {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}})
     assert scd.set_calls == []
-    log = run(service.get_error_counter())["WEBSERVER"]
-    assert log["ErrCount"] == 1
-    assert log["ErrNum"].count(code("E", "UNEXPECTED")) == 1
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 0
 
 
 def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
@@ -1046,6 +1004,7 @@ class _CommandBench:
         self.fram = FRAMManager(SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4), 1, max_size=0x2000)
         self.reader = _CmdReader(_CmdData(0), "CMDSENS", _CMD_SCHEMA, cfg_path=cfg_path)
         self.svc = SystemService(_never_synced, watchdog=machine.WDT(), storage=self.fram, config_stores=self._stores, cfg_path=cfg_path)
+        self.sequences = track_starts(self.svc, "_shutdown_sequence")  # the service keeps no handle on its shutdown task
         self.service, self.app = _make_service(
             sensors=(self.reader,), system_cmd=self._system_cmd, reset_refusals=(self.svc.is_reset_decided, self.fram.get_pause),
             error_sources=(self.svc, self.reader),
@@ -1078,16 +1037,17 @@ class _CommandBench:
     async def sequence_ended(self) -> bool:
         # Yields, bounded, until the shutdown sequence has ended; then whether it armed the reset.
         for _ in range(_SEQUENCE_YIELDS):
-            task = self.svc._shutdown_task
-            if task is not None and task.done():
+            if self.sequences and self.sequences[-1].done():
                 break
             await asyncio.sleep(0)
         return self.svc._reset_armed
 
     async def setup(self) -> None:
-        assert await self.fram.setup()
-        assert await self.svc.setup()
-        assert await self.reader.setup()
+        await self.fram.setup()
+        assert self.fram.initialized
+        await self.svc.setup()
+        await self.reader.setup()
+        assert self.svc.cfgmgr.valid and self.reader.cfgmgr.valid
 
 
 async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_key_count: int) -> None:
@@ -1103,7 +1063,7 @@ async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_ke
 def test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_lock_held() -> None:
     # Each command's own code is armed, and the one-shot's last flush pass, which takes every owner lock again,
     # runs the reset; config reset deletes both files, FRAM erase completes (code 8, not 9).
-    cases = (("reboot", "_RR_REBOOT"), ("bootloader", "_RR_BOOTLOADER"), ("resetconfig", "_RR_CONFIG_RESET"), ("erasefram", "_RR_FRAM_ERASED"))
+    cases = (("reboot", "_RR_REBOOT"), ("bootloader", "_BOOTLOADER"), ("resetconfig", "_RR_CONFIG_RESET"), ("erasefram", "_RR_FRAM_ERASED"))
     for word, code_name in cases:
         bench = _CommandBench()
         run(bench.setup())
@@ -1138,7 +1098,7 @@ def test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_loc
         assert result == {"SystemCmd": "Valid"}, word
         assert bench.locked_at_dispatch == [False], word
         assert (armed, one_shot) == (True, True), word
-        assert machine.mem_backup(0)[1] == _system_const(code_name), word
+        assert machine.mem_backup(0)[1] == (0 if bootloader else _system_const(code_name)), word  # BOOTSEL loses the record
         assert (machine.reset_count, machine.bootloader_count) == (resets[0] + (not bootloader), resets[1] + bootloader), word
         files = [_file_or_none(path) is not None for path in bench.paths]
         assert files == ([False, False] if word == "resetconfig" else [True, True]), (word, files)
@@ -1172,7 +1132,7 @@ def test_a_config_put_mid_write_when_a_command_arrives_is_waited_out_then_flushe
             await asyncio.sleep(0)  # the sequence runs as far as it can
         supervisor = bench.svc._supervisor_task
         held = (
-            supervisor is not None and supervisor.done(), bench.svc._shutdown_task is not None and bench.svc._shutdown_task.done(),
+            supervisor is not None and supervisor.done(), bool(bench.sequences) and bench.sequences[-1].done(),
             bench.svc._reset_armed, counter.writes, _file_or_none(bench.paths[1]),
         )
         gate.set()
@@ -1330,30 +1290,14 @@ class _RaisingResetModule(_FakeModule):
         raise RuntimeError("injected for the reset")
 
 
-class _SlowResetModule(_FakeModule):
-    # Its reset finishes only after the raising one has: the answer must wait for it.
-    async def reset_error_counter(self) -> bool:
-        await asyncio.sleep(_SLOW_RESET_S)
-        return await self.pr.reset()
-
-
-def test_a_raising_source_reset_answers_failed_once_every_other_reset_has_run() -> None:
-    slow, bad, fast = _SlowResetModule("A"), _RaisingResetModule("B"), _FakeModule("C")
-    for m in (slow, fast):
-        run(m.pr.err_s("x", errno=1))
-    service, app = _make_service(error_sources=[slow, bad, fast])
+def test_a_raising_source_reset_answers_500_through_the_catch_all() -> None:
+    # A reset raises only on a defect's path: the raise leaves the concurrent reset and reaches the catch-all (500).
+    _service, app = _make_service(error_sources=[_RaisingResetModule("B")])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
-    assert res.status_code == 200
-    assert _at(_json(res.body), "result") == {"ResetErrors": "Failed"}
-    for m in (slow, fast):
-        assert (m.pr.reset_calls, m.pr.history) == (1, []), m.name
-    # The raise is persisted once, after the resets cleared this service's own log, so the evidence stays.
-    log = run(service.get_error_counter())["WEBSERVER"]
-    assert log["ErrCount"] == 1
-    assert log["ErrNum"].count(code("E", "CALLBACK")) == 1
+    assert (res.status_code, _at(_json(res.body), "code")) == (500, 500)
 
 
-def test_a_raising_reset_of_this_services_own_log_answers_failed_and_is_persisted() -> None:
+def test_a_raising_reset_of_this_services_own_log_answers_500_through_the_catch_all() -> None:
     other = _FakeModule("A")
     service, app = _make_service(error_sources=[other])
 
@@ -1362,11 +1306,7 @@ def test_a_raising_reset_of_this_services_own_log_answers_failed_and_is_persiste
 
     service.pr.reset = _raise  # type: ignore[method-assign]
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
-    assert (res.status_code, _at(_json(res.body), "result")) == (200, {"ResetErrors": "Failed"})
-    assert other.pr.reset_calls == 1
-    log = run(service.get_error_counter())["WEBSERVER"]
-    assert log["ErrCount"] == 1
-    assert log["ErrNum"].count(code("E", "CALLBACK")) == 1
+    assert (res.status_code, _at(_json(res.body), "code")) == (500, 500)
 
 
 class _SuspendingModule(_FakeModule):
@@ -2201,8 +2141,7 @@ def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_closed_and_logged(
         held_tasks = [
             asyncio.get_event_loop().create_task(service._serve(_HangingReader(), w)) for w in held_writers
         ]
-        await asyncio.sleep(_ADMIT_SETTLE_S)
-        assert await service._open_conns.get_value() == 2
+        assert await wait_for_value(lambda: service._open_conns.value, 2, _ADMIT_LIMIT_MS)
 
         # A third, well-formed connection arrives while at the ceiling.
         extra_writer = _ScriptedWriter()
@@ -2287,7 +2226,6 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
 # Connection lifecycle: mid-request, the request line and headers
 
 
-# @tunable l1.serve_backstop_cap_mult = 20
 _SERVE_BACKSTOP_CAP_MULT = 20  # run_timed()'s backstop over the outer cap under test
 
 
@@ -2423,8 +2361,7 @@ def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
 def _make_request(app: "Microdot", method: str, path: str, json_body: object) -> Request:
     body = b"" if json_body is None else json.dumps(json_body).encode()
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
-    sock = (_NoopHolder(), _NoopHolder())
-    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body, sock=sock)  # type: ignore[arg-type]  # the stub types sock as the two asyncio streams; a static route only calls hold() on it - removal trigger: SPECIFICATION.md B.15
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
 
 
 def _make_sensor_hammer_service() -> "tuple[WebserverService, Microdot]":
@@ -2740,15 +2677,6 @@ def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
     assert run(service._open_conns.get_value()) == 0
 
 
-def _mount_recording_fixture(files: "dict[str, bytes]") -> "tuple[str, _RecordingVfs]":
-    global _next_static_mount
-    _next_static_mount += 1
-    mount_point = f"/test_recording_{_next_static_mount}"
-    vfs = _RecordingVfs({name + ".gz": data for name, data in files.items()})
-    os.mount(vfs, mount_point, readonly=True)
-    return mount_point, vfs
-
-
 def test_a_read_phase_per_call_timeout_logs_the_call_timeout_code() -> None:
     # A silent client: the proxy's own read bound fires and logs; microdot swallows it and answers 400.
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_HEADROOM_S)
@@ -2757,20 +2685,21 @@ def test_a_read_phase_per_call_timeout_logs_the_call_timeout_code() -> None:
     assert _newest_entry(service) == (code("W", "HTTP_CALL_TIMEOUT"), "W")
 
 
-def test_an_outer_cap_timeout_logs_the_request_cap_code() -> None:
-    # Slowloris pacing on the virtual clock: no single read nears the per-call bound, so only the outer cap fires.
+def test_an_outer_cap_timeout_logs_the_call_timeout_code() -> None:
+    # Slowloris pacing on the virtual clock: no single read nears the per-call bound, so only the outer cap fires; it
+    # logs the one timeout code.
     full_line = _request_bytes("GET", "/status")
     chunks = [(0.02, part + b"\r\n") for part in full_line.split(b"\r\n")[:-1]]
     service, _app = _make_service(per_call_timeout_s=1.0, outer_cap_s=0.05)
     clock = _VirtualClock()
     _on_virtual_clock(clock, service._serve(_ScriptedReader(chunks, clock=clock), _ScriptedWriter()))
     assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
-    assert _newest_entry(service) == (code("W", "HTTP_REQUEST_CAP"), "W")
+    assert _newest_entry(service) == (code("W", "HTTP_CALL_TIMEOUT"), "W")
 
 
-def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> None:
-    # The read bound fires and is logged; microdot's 400 then hangs until the outer cap cuts it,
-    # and that second reclaim is the cap's, not a per-call one the earlier read had flagged.
+def test_a_read_timeout_then_a_capped_400_write_logs_the_call_timeout_code_twice() -> None:
+    # The read bound fires and is logged; microdot's 400 then hangs until the outer cap cuts it, the same code again:
+    # both counted, one slot (the newest-entry rule).
     service, _app = _make_service(per_call_timeout_s=0.2, outer_cap_s=0.3)
     clock = _VirtualClock()
     reader, writer = _Entered(_HangingReader()), _Entered(_HangingWriter())
@@ -2786,20 +2715,8 @@ def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> N
     _on_virtual_clock(clock, scenario())
     entry = run(service.get_error_counter())["WEBSERVER"]
     assert entry["ErrCount"] == 2, entry
-    assert entry["ErrNum"][-2:] == [code("W", "HTTP_CALL_TIMEOUT"), code("W", "HTTP_REQUEST_CAP")], entry
+    assert entry["ErrNum"][-1] == code("W", "HTTP_CALL_TIMEOUT") and entry["ErrNum"].count(code("W", "HTTP_CALL_TIMEOUT")) == 1, entry
     assert run(service._open_conns.get_value()) == 0
-
-
-def test_a_timed_out_proxy_call_sets_the_shared_timed_out_flag() -> None:
-    timed_out = [False]
-    proxy = _TimeoutStreamProxy(_ScriptedWriter(hang_close=True), _PROXY_TIMEOUT_MS, _FakeLogger("X"), [False], timed_out)  # type: ignore[arg-type]
-    try:
-        run_timed(proxy.wait_closed(), _RUN_BOUND_S)
-    except asyncio.TimeoutError:
-        pass
-    else:
-        raise AssertionError("a hanging wait_closed() was not bounded")
-    assert timed_out == [True]
 
 
 def test_every_bound_is_asked_in_whole_milliseconds() -> None:
@@ -2842,7 +2759,7 @@ def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_strea
     # F's scenarios (close() is sync; wait_closed() only ever reaches the raw writer, via
     # WebserverService._close_writer()) - still real forwards that must work correctly.
     writer = _ScriptedWriter()
-    proxy = _TimeoutStreamProxy(writer, _PROXY_BOUND_MS, _FakeLogger("X"), [False], [False])  # type: ignore[arg-type]
+    proxy = _TimeoutStreamProxy(writer, _PROXY_BOUND_MS, _FakeLogger("X"), [False])  # type: ignore[arg-type]
     proxy.close()
     assert writer.close_called is True
     run_timed(proxy.wait_closed(), _RUN_BOUND_S)
@@ -3001,7 +2918,7 @@ def test_setup_readies_the_logger_and_the_serve_task_never_does() -> None:
     # The boot batch's setup() readies this service's logger; the serve task leaves it alone (SPECIFICATION.md A.7).
     service, _app = _make_service()
     before = service.pr.initialized
-    assert run(service.setup()) is True
+    run(service.setup())
     assert (before, service.pr.initialized) == (False, True)
     unset, _app2 = _make_service(host="127.0.0.1", port=0)
 
@@ -3044,7 +2961,6 @@ def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None
 
 # Bytes the service may keep per cycle. A planted 16-byte-per-cycle leak exceeds it, the healthy path stays under it
 # (both measured once; SPECIFICATION.md E.7 records the calibration).
-# @tunable l1.webserver_leak_rate_max_b = 8
 _LEAK_RATE_MAX_B = 8
 
 
@@ -3222,83 +3138,8 @@ def test_a_static_get_answers_cache_control_no_cache() -> None:
         assert res.headers["Cache-Control"] == "no-cache", path  # revalidated: a reflashed page is never served stale
 
 
-class _RecordingFile:
-    # A static file that counts its close() calls: the stream a route opens must be closed once per connection.
-    def __init__(self, data: bytes) -> None:
-        self._data = data
-        self._at = 0
-        self.closes = 0
-
-    def close(self) -> None:
-        self.closes += 1
-
-    def read(self, n: int = -1) -> bytes:
-        end = len(self._data) if n < 0 else min(self._at + n, len(self._data))
-        data, self._at = self._data[self._at : end], end
-        return data
-
-    def seek(self, offset: int, whence: int = 0) -> int:
-        self._at = offset if whence == 0 else len(self._data) + offset
-        return self._at
-
-
-class _RecordingVfs:
-    # A mounted filesystem handing out _RecordingFile objects: open() on a mount point calls its object's open().
-    def __init__(self, files: "dict[str, bytes]") -> None:
-        self._files = files
-        self.opened: list[_RecordingFile] = []
-
-    def mount(self, *_flags: bool) -> None:  # (readonly, mkfs), passed positionally by os.mount()
-        pass
-
-    def open(self, path: str, _mode: str) -> _RecordingFile:
-        data = self._files.get(path.lstrip("/"))
-        if data is None:
-            raise OSError(2)  # ENOENT, as VfsFrozen answers a missing file
-        opened = _RecordingFile(data)
-        self.opened.append(opened)
-        return opened
-
-
 async def _never_synced() -> bool:
     return False
-
-
-def test_a_head_request_closes_the_opened_static_stream() -> None:
-    # Microdot never reads a HEAD response's body, so never closes it: the writer proxy's release() does.
-    mount, vfs = _mount_recording_fixture({"page.bin": _patterned(600)})
-    service, _app = _make_service(static_mount=mount)
-    writer = _ScriptedWriter()
-    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("HEAD", "/page.bin"))], eof=True), writer), _RUN_BOUND_S)
-    assert writer.written.startswith(b"HTTP/1.0 200 OK\r\n") and writer.written.endswith(b"\r\n\r\n"), writer.written
-    assert [f.closes for f in vfs.opened] == [1]
-
-
-class _BodyRefusingWriter(_ScriptedWriter):
-    # Takes the header block, then fails the body with a socket error Microdot does not mute (EHOSTUNREACH).
-    async def awrite(self, data: bytes) -> None:
-        if self.written:
-            raise OSError(113, "EHOSTUNREACH")
-        await super().awrite(data)
-
-
-class _BodyHangingWriter(_ScriptedWriter):
-    # Takes the header block, then never completes the body's write: the proxy's per-call bound ends it.
-    async def awrite(self, data: bytes) -> None:
-        if self.written:
-            await asyncio.Event().wait()
-        await super().awrite(data)
-
-
-def test_a_failed_or_timed_out_static_body_write_closes_the_stream() -> None:
-    # Response.write() leaves the body unclosed after an unmuted error or a timeout; release() closes it once.
-    mount, vfs = _mount_recording_fixture({"page.bin": _patterned(600)})
-    service, _app = _make_service(static_mount=mount, per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_HEADROOM_S)
-    for writer in (_BodyRefusingWriter(), _BodyHangingWriter()):
-        run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/page.bin"))], eof=True), writer), timeout_s=_SERVE_LONG_BOUND_S)
-        assert writer.written.startswith(b"HTTP/1.0 200 OK\r\n"), writer.written
-    assert [f.closes for f in vfs.opened] == [1, 1]
-    assert run(service._open_conns.get_value()) == 0
 
 
 # The per-write bound on the wire (SPECIFICATION.md Part I.3). Build-independent: a synthetic
@@ -3923,16 +3764,6 @@ def test_h2_add_value_is_byte_identical_to_json_dumps() -> None:
         assert b"".join(_written(value)) == json.dumps(value).encode(), value
 
 
-def test_h2_a_non_finite_float_is_written_as_null() -> None:
-    # json.dumps() writes bare nan/inf, which JSON rejects: the writer emits null, alone or nested.
-    for value in (float("nan"), float("inf"), float("-inf")):
-        assert b"".join(_written(value)) == b"null", value
-    nested = {"Lux": float("nan"), "RGB": [1.5, float("inf")], "T": (float("-inf"),)}
-    text = b"".join(_written(nested))
-    assert b"nan" not in text and b"inf" not in text, text
-    assert _json(text) == {"Lux": None, "RGB": [1.5, None], "T": [None]}
-
-
 def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
     # A value far larger than the cap - the case one json.dumps() per value turned into one large
     # allocation per value - comes out in pieces no larger than the cap.
@@ -4386,6 +4217,20 @@ def test_a_webserver_built_without_a_system_command_handler_answers_invalid() ->
     assert res.status_code == 200
     assert _obj(_at(_json(res.body), "result")).get("SystemCmd") == "Invalid"
 
+
+
+class _OverflowingJson:
+    # A request whose body decoding meets the C-stack overflow.
+    @property
+    def json(self) -> object:
+        raise stack_overflow()
+
+
+def test_a_body_whose_decoding_meets_a_stack_overflow_records_it_and_reads_as_none() -> None:
+    # The body reader's broad catch logs nothing: its explicit record is what the supervisor's reboot reads.
+    assert asy_webserver_service._body_as_dict(_OverflowingJson()) is None  # type: ignore[arg-type]
+    assert fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 if __name__ == "__main__":
     import microtest

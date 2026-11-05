@@ -70,9 +70,7 @@ _RESET_WRITES = {
     "sgp40": (False, b"\x06"),  # the general call reset to address 0x00, SGP40 datasheet Table 17
 }
 _READS = ("readfrom_into", "readfrom_mem")  # the twin's read forms; readfrom_mem_into delegates
-# @tunable l2.setup_resets_wait_s = 60.0
 _WAIT_S = 60.0
-# @tunable l2.setup_resets_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}

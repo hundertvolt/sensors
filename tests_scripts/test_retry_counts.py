@@ -27,21 +27,8 @@ _TABLE: "dict[str, Kind]" = {
     "runner.per_file_attempts": Kind(_TIMEOUT, reason="a test file, the scenario harness or the pytest tier that ran into its timeout"),
     "l0.vitest_timeout_retries": Kind(_TIMEOUT, reason="a JS test, its beforeEach/afterEach included, that ran into vitest's timeout"),
     "tool.uv_sync_attempts": Kind(_EVENT, "3", "a network step's transient failure: a third party's outage must never read as a red test; not a timeout retry"),
-    "l3.toolchain_flash_boot_picotool_load_attempts": Kind(_EVENT, "5", "picotool load exits while no BOOTSEL device is enumerated yet; not a timeout retry"),
-    "l3.heap_probe_retries": Kind(_EVENT, "3", "the probe still holds its own buffer through a stale root; not a timeout retry"),
-    "l4.bus_concurrency_under_api_load_ceiling_retry_attempts": Kind(_EVENT, "3", "a ceiling refusal under concurrent API load, the stack's reject-when-full; not a timeout retry"),
-    "l4.harness_max_device_rebinds": Kind(_EVENT, "2", "a reset re-enumerates the CDC device under another node; not a timeout retry"),
-    "l4.hotspot_role_reversal_join_attempts": Kind(_EVENT, "5", "nmcli's own rescan can miss a hotspot is_ssid_visible() just saw (recorded 2026-09-08); not a timeout retry"),
-    "l4.network_resilience_capture_attempts": Kind(_EVENT, "3", "a reset landing in the hotspot fallback sends no NTP request to capture; not a timeout retry"),
-    "l4.network_resilience_join_attempts": Kind(_EVENT, "3", "the hotspot join's window, before and after one reported reset; not a timeout retry"),
-    "l4.wifi_networking_association_attempts": Kind(_EVENT, "2", "one association can fail outside the DUT (measured 2026-09-19: 1 miss in 3 suite runs); not a timeout retry"),
     "ntp.sync_retries": Kind(_EVENT, "3", "the firmware's own NTP sync retries, mirrored by its test: product behaviour; not a timeout retry"),
-    "l1.uart_comm_hazard_recovery_attempts": Kind(_BOUND, reason="the transactions the protocol gets to recover in: the assertion itself"),
-    "l2.uart_comm_hazard_recovery_attempts": Kind(_BOUND, reason="the transactions the protocol gets to recover in: the assertion itself"),
-    "l4.network_resilience_over_ceiling_attempts": Kind(_BOUND, reason="the connections above the ceiling that must all be refused: the assertion's sample"),
     "runner.port_lock_attempts": Kind(_EVENT, "10", "a take lost to another taker of a dead holder's lock, the three libraries alike; not a timeout retry"),
-    "l1.lwip_host_fill_attempts": Kind(_BOUND, reason="the settles the arena gets to stop taking writes: the assertion's limit"),
-    "l3.uart_comm_hazards_recovery_attempts": Kind(_BOUND, reason="the transactions both ends get to recover in on silicon: the assertion itself"),
 }
 
 _TIER_START = 'tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"\n'
@@ -111,12 +98,12 @@ def test_both_tiers_retry_through_their_tagged_count(repo_root: Path) -> None:
 
 
 def test_an_unclassified_or_off_rule_count_is_named(tmp_path: Path) -> None:
-    held = [Tag("tests/b.py", 5, "l4.hotspot_role_reversal_join_attempts", "5"), Tag("tests/c.py", 7, "l1.uart_comm_hazard_recovery_attempts", "9"), Tag("tests/d.py", 9, "runner.per_file_attempts", "3")]
-    off = [Tag("tests/a.py", 3, "l1.new_knob_retries", "2"), Tag("tests/b.py", 5, "l4.hotspot_role_reversal_join_attempts", "3"), Tag("tests/e.py", 2, "l0.vitest_timeout_retries", "3")]
+    held = [Tag("tests/b.py", 5, "tool.uv_sync_attempts", "3"), Tag("tests/c.py", 7, "ntp.sync_retries", "3"), Tag("tests/d.py", 9, "runner.per_file_attempts", "3")]
+    off = [Tag("tests/a.py", 3, "l1.new_knob_retries", "2"), Tag("tests/b.py", 5, "tool.uv_sync_attempts", "2"), Tag("tests/e.py", 2, "l0.vitest_timeout_retries", "3")]
     assert check_counts(held) == []
     assert check_counts(off) == [
         "tests/a.py:3: l1.new_knob_retries is a retry count no class holds - classify it in _TABLE",
-        "tests/b.py:5: l4.hotspot_role_reversal_join_attempts = 3, the table holds 5 (event retry, outside the rule)",
+        "tests/b.py:5: tool.uv_sync_attempts = 2, the table holds 3 (event retry, outside the rule)",
         "tests/e.py:2: l0.vitest_timeout_retries = 3, the table holds 2 (timeout retry)",
     ]
     (tmp_path / "tests").mkdir()

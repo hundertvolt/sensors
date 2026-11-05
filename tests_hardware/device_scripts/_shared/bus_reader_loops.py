@@ -56,10 +56,9 @@ class Record:
 
 
 class Seen:
-    # What device reads noticed beside their own result: each BMP3XX's power-on flag right after its setup(), and the
-    # ISL29125 configuration snapshots that diverged from the driver's shadow.
+    # What device reads noticed beside their own result: the ISL29125 configuration snapshots that diverged from the
+    # driver's shadow.
     def __init__(self) -> None:
-        self.por_after_setup: dict[str, bool] = {}
         self.isl_divergences = 0
 
 
@@ -86,10 +85,8 @@ async def device_reader(bench: "BenchFacts", label: str, i2c: "asy_i2c_driver.I2
     if driver == "bmp3xx":
         bmp = drivers.bmp3xx(i2c, bench["addresses"][label])
         await bmp.setup()
-        seen.por_after_setup[label] = await bmp.take_por_detected()
 
         async def read_bmp3xx() -> "str | None":
-            await bmp.take_por_detected()
             pressure, temperature = await bmp.get_pressure_and_temperature()
             return outside(bench["bounds"], "pressure_hpa", pressure) or outside(bench["bounds"], "bmp3xx_temp_c", temperature)
 
@@ -177,3 +174,10 @@ async def scd30_reading_problem(scd: "SCD30_I2C", bounds: "dict[str, tuple[float
     # One read_measurement() and the three cached values against their bounds; a round with no new data checks the last.
     await scd.read_measurement()
     return outside(bounds, "co2_ppm", await scd.get_CO2()) or outside(bounds, "humidity_rh", await scd.get_relative_humidity()) or outside(bounds, "scd30_temp_c", await scd.get_temperature())
+
+
+async def take_por(bmp: "BMP3XX_I2C") -> bool:
+    # EVENT (0x10) bit 0 por_detected, read away (clear-on-read; DS001 4.3.7): the script's own read, the driver has none.
+    async with bmp._i2c_bmp3xx as session, session.i2c_device as i2c:
+        event = await i2c.get_register_bytes(0x10, 1)
+    return event is not None and bool(event[0] & 0x01)

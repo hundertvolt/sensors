@@ -24,20 +24,14 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.scd30_same_device_rw_concurrency_read_iterations = 40
 _READ_ITERATIONS = 40
 # The measurement interval survives setup()'s soft reset, so data-ready rises while the registers still hold the
 # first unsettled conversion (a stuck CO2 on every early read); a few intervals of consumed reads clear it.
-# @tunable l3.scd30_same_device_rw_concurrency_settle_s = 12.0
 _SETTLE_S = 12.0
-# @tunable l3.scd30_same_device_rw_concurrency_settle_step_s = 0.5
 _SETTLE_STEP_S = 0.5
-# @tunable l3.scd30_same_device_rw_concurrency_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 # The write waits until the reader completed its first read, at most this long (a deadline, never a head start).
-# @tunable l3.scd30_same_device_rw_concurrency_writer_delay_s = 0.2
 _WRITER_DELAY_S = 0.2
-# @tunable l3.scd30_same_device_rw_concurrency_writer_poll_ms = 10
 _WRITER_POLL_MS = 10
 
 

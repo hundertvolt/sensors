@@ -5,11 +5,8 @@ import { installMockFetch } from "../js/mock-server.js";
 import { hideBanner, renderSection, showBanner } from "../js/render.js";
 import { mustQuery } from "./_dom_helpers.js";
 
-// @tunable l0.render_wait_timeout_ms = 2000
 const WAIT_TIMEOUT_MS = 2000;
-// @tunable l0.render_poll_ms = 10
 const WAIT_POLL_MS = 10;
-// @tunable l0.render_banner_wait_ms = 5000
 const BANNER_WAIT_MS = 5000;
 
 // Polls `check` instead of a fixed sleep: some flows chain two requests, so a fixed wait would be flaky or slow.
@@ -1546,16 +1543,15 @@ describe("renderSection", () => {
             expect(log.slice(log.indexOf("begin"))).toEqual(["begin", "PUT /sensors", "GET /sensors", "end"]);
         });
 
-        it("shows the banner when a GET answers JSON that is not an object, never a silent dash everywhere", async () => {
+        it("paints a GET answering JSON that is not an object with no banner: every GET route answers an object", async () => {
             uninstall = installMockFetch(DEFS, DATA);
             const inner = window.fetch;
             window.fetch = (input, init) => (String(input) === "/measurements" ? Promise.resolve(new Response("[1, 2]", { status: 200 })) : inner(input, init));
             const main = mount();
             stop = renderSection(DEFS, getSection("measurements"), main);
 
-            await waitFor(() => mustQuery(main, ".error-banner").dataset.shown === "true");
-            expect(mustQuery(main, ".error-banner").textContent).toMatch(/GET \/measurements returned no JSON object/);
-            expect(main.querySelector("[data-group-key]")).toBeNull();
+            await waitFor(() => main.querySelector("[data-group-key]") !== null);
+            expect(mustQuery(main, ".error-banner").dataset.shown).toBe("false");
         });
 
         it("words a failed GET whose body is not JSON by its status, not as an empty body", async () => {

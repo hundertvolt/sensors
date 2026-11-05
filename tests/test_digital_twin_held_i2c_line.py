@@ -72,9 +72,7 @@ if TYPE_CHECKING:
 _REC_SDA_LOW = src_int("src/asy_i2c_driver.py", "_REC_SDA_LOW")
 _REC_SCL_HELD = src_int("src/asy_i2c_driver.py", "_REC_SCL_HELD")
 _RELEASE_AFTER = 3  # SCL pulses before the slave lets SDA go: a byte cut short mid-transfer
-# @tunable l2.held_i2c_line_wait_s = 60.0
 _WAIT_S = 60.0
-# @tunable l2.held_i2c_line_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}

@@ -32,49 +32,28 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortas
 pytestmark = pytest.mark.role_reversal
 
 
-# @tunable l4.hotspot_role_reversal_join_attempts = 5
 _JOIN_ATTEMPTS = 5
-# @tunable l4.hotspot_role_reversal_join_hotspot_timeout_s = 45.0
 _JOIN_HOTSPOT_TIMEOUT_S = 45.0
-# @tunable l4.hotspot_role_reversal_hotspot_scan_timeout_s = 30.0
 _HOTSPOT_SCAN_TIMEOUT_S = 30.0
-# @tunable l4.hotspot_role_reversal_hotspot_scan_poll_s = 2.0
 _HOTSPOT_SCAN_POLL_S = 2.0
-# @tunable l4.hotspot_role_reversal_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.hotspot_role_reversal_dhcp_timeout_s = 45.0
 _DHCP_TIMEOUT_S = 45.0
-# @tunable l4.hotspot_role_reversal_dhcp_poll_s = 2.0
 _DHCP_POLL_S = 2.0
-# @tunable l4.hotspot_role_reversal_restore_put_timeout_s = 15.0
 _RESTORE_PUT_TIMEOUT_S = 15.0
-# @tunable l4.hotspot_role_reversal_flip_back_timeout_s = 90.0
 _FLIP_BACK_TIMEOUT_S = 90.0
-# @tunable l4.hotspot_role_reversal_flip_back_poll_s = 3.0
 _FLIP_BACK_POLL_S = 3.0
-# @tunable l4.hotspot_role_reversal_recovery_timeout_s = 30.0
 _RECOVERY_TIMEOUT_S = 30.0
-# @tunable l4.hotspot_role_reversal_reassoc_visible_timeout_s = 15.0
 _REASSOC_VISIBLE_TIMEOUT_S = 15.0
-# @tunable l4.hotspot_role_reversal_reassoc_visible_poll_s = 1.0
 _REASSOC_VISIBLE_POLL_S = 1.0
-# @tunable l4.hotspot_role_reversal_reassociate_cycles = 3
 _REASSOCIATE_CYCLES = 3
-# @tunable l4.hotspot_role_reversal_dns_flood_s = 3.0
 _DNS_FLOOD_S = 3.0
-# @tunable l4.hotspot_role_reversal_dns_flood_step_s = 0.05
 _DNS_FLOOD_STEP_S = 0.05
-# @tunable l4.hotspot_role_reversal_dns_recovery_timeout_s = 8.0
 _DNS_RECOVERY_TIMEOUT_S = 8.0
-# @tunable l4.hotspot_role_reversal_raw_socket_timeout_s = 10.0
 _RAW_SOCKET_TIMEOUT_S = 10.0
-# @tunable l4.hotspot_role_reversal_spoof_capture_s = 5.0
 _SPOOF_CAPTURE_S = 5.0
-# @tunable l4.hotspot_role_reversal_link_advance_timeout_s = 30.0
 _LINK_ADVANCE_TIMEOUT_S = 30.0
 # Added to each wait derived from the Wi-Fi service's own timeline: the bench's scan cadence, a link loss noticed late.
-# @tunable l4.hotspot_role_reversal_derived_wait_margin_s = 30.0
-_DERIVED_WAIT_MARGIN_S = 30.0
+_DERIVED_WAIT_MARGIN_S = 30.0  # source: this test's own margin, not the SGP40's WaitTimeNTP
 _WIFI = "asy_wifi_service.py"
 # The AP's DHCP server is MicroPython's shared/netutils/dhcpserver.c (v1.29.0): it leases the server's own first three
 # octets and a last octet 16 + n, n < 8 (dhcpserver.h:31-32, dhcpserver.c:238).

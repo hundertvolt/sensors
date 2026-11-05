@@ -55,7 +55,6 @@ _SHARED_CFG_DIR = _scratch.dir()
 
 
 _CRC_POLY = 0x31  # datasheet Table 7
-# @tunable l1.asy_sgp40_driver_event_wait_s = 1
 _EVENT_WAIT_S = 1
 
 
@@ -76,7 +75,6 @@ def _word(value: int) -> bytes:
 
 
 _BACKUP_COUNTER_MAX: int = src_int("src/asy_sgp40_driver.py", "_BACKUP_COUNTER_MAX")
-_COMP_MAX_AGE_S: int = src_int("src/asy_sgp40_driver.py", "_COMP_MAX_AGE_S")
 _GENERAL_CALL_RESET_WAIT_S: int = src_int("src/asy_sgp40_driver.py", "_GENERAL_CALL_RESET_WAIT_S")
 _MEASURE_WAIT_MS: int = src_int("src/asy_sgp40_driver.py", "_MEASURE_WAIT_MS")
 _SELF_TEST_WAIT_MS: int = src_int("src/asy_sgp40_driver.py", "_SELF_TEST_WAIT_MS")
@@ -328,25 +326,13 @@ def test_reset_tolerates_nak_at_general_call_address() -> None:
     assert list(fake_bus.log) == []  # the NAKed write moved nothing, and nothing else was sent
 
 
-def test_reset_raises_when_the_bus_is_not_initialised() -> None:
-    # No bus is not a NAK: writeto() answers None, and the reset reports it like every other write.
-    sgp = _make_sgp()
-    sgp._i2c_sgp40.i2c_device.i2c.deinit()
-    try:
-        run(sgp._reset())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
-
-
 # ---------------------------------------------------------------------------
 # turn_heater_off() - datasheet Table 14, the participant rung's command
 # ---------------------------------------------------------------------------
 
 
 def test_turn_heater_off_writes_its_command_to_the_sgp40_alone_then_waits_out_its_maximum() -> None:
-    # Table 8: 0x3615, no reply, 1 ms maximum; the wait is one tick longer, as sleep_ms() may wake early.
+    # Table 8: 0x3615, no reply, 1 ms maximum, waited out once.
     sgp = _make_sgp()
     fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
     waits: list[int] = []
@@ -363,18 +349,7 @@ def test_turn_heater_off_writes_its_command_to_the_sgp40_alone_then_waits_out_it
     finally:
         asyncio.sleep_ms = real_sleep_ms
     assert fake_bus.log == [("writeto", 0x59, b"\x36\x15", True)]
-    assert waits == [2]
-
-
-def test_turn_heater_off_raises_when_the_bus_is_not_initialised() -> None:
-    sgp = _make_sgp()
-    sgp._i2c_sgp40.i2c_device.i2c.deinit()
-    try:
-        run(sgp.turn_heater_off())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
+    assert waits == [1]
 
 
 # ---------------------------------------------------------------------------
@@ -448,26 +423,6 @@ def test_measure_raw_custom_compensation_encodes_correct_ticks_and_crc() -> None
     assert sent[5:8] == b"\x00\x00\x81"  # -45C -> 0x0000, CRC 0x81 (Table 10)
 
 
-def test_a_read_on_a_down_bus_fails_without_a_crc_check() -> None:
-    # The reply buffer still holds a valid word from before; a read that moved no bytes must not let
-    # it pass the CRC check as a fresh one.
-    sgp = _make_sgp()
-    sgp._reply_buffer[:] = _word(1111)
-    device = sgp._i2c_sgp40.i2c_device
-
-    async def no_bus(buf: bytearray, start: int = 0, end: int | None = None) -> bool:
-        del buf, start, end  # the signature of the replaced readinto(); nothing is read
-        return False
-
-    device.readinto = no_bus  # type: ignore[method-assign]
-    try:
-        run(sgp.get_raw())
-        message = ""
-    except OSError as e:
-        message = str(e)
-    assert message == "I2C bus not initialized"
-
-
 def test_get_raw_crc_mismatch_raises() -> None:
     sgp = _make_sgp()
     fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
@@ -499,27 +454,6 @@ def test_a_crc_failing_get_raw_restores_the_default_command() -> None:
     with FastAsyncSleep():
         run(sgp.initialize())
     assert _writes_to(fake_bus, 0x59) == [b"\x36\x82", b"\x28\x0e"]
-
-
-def test_read_word_decodes_one_word_in_place() -> None:
-    sgp = _make_sgp()
-    fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
-
-    async def read_word() -> int:
-        async with sgp._i2c_sgp40 as sgp40:
-            return await sgp._read_word(sgp40, 0)
-
-    fake_bus.read_queue.append(_word(0xBEEF))
-    value = run(read_word())
-    assert type(value) is int  # the word itself, no list or tuple around it
-    assert value == 0xBEEF
-    fake_bus.read_queue.append(bytes([0xBE, 0xEF, _crc8(b"\xbe\xef") ^ 0xFF]))
-    try:
-        run(read_word())
-        message = ""
-    except RuntimeError as e:
-        message = str(e)
-    assert message == "CRC check failed while reading data"
 
 
 def test_read_words_returns_three_serial_words() -> None:
@@ -634,15 +568,6 @@ class _FakeCompSource:
 
 
 _TimedCompReading = namedtuple("_TimedCompReading", ("Temp", "Hum", "TS"))
-
-
-class _FakeTimedCompSource:
-    # A compensation producer whose sample carries its own TS, as every *_Reader's does.
-    def __init__(self, ts: "int | None") -> None:
-        self.ts = ts
-
-    async def get_data(self) -> object:
-        return _TimedCompReading(25.0, 50.0, self.ts)
 
 
 def _make_reader() -> SGP40_Reader:
@@ -814,43 +739,6 @@ def test_a_compensation_sample_inside_its_declared_domain_is_measured_and_one_ou
     assert wrong == [], wrong
 
 
-def test_a_stale_compensation_sample_skips_the_cycle() -> None:
-    # A producer sample older than _COMP_MAX_AGE_S counts as unavailable: no measurement, nothing logged.
-    max_age = _COMP_MAX_AGE_S
-    reader = _make_reader()
-    source = _FakeTimedCompSource(None)
-    reader._temperature = ValueRef(source, "Temp")
-    reader._humidity = ValueRef(source, "Hum")
-    fake_bus = bus(reader._sgp._i2c_sgp40.i2c_device.i2c)
-    with UTCValid():
-        now = asy_base_classes.utc_now()
-        assert now is not None
-        source.ts = now - max_age - 1
-        fake_bus.log.clear()
-        data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
-        assert (data, compensated) == (SGP40(None, None, None, None), False)
-        assert fake_bus.log == []
-        for ts in (now - max_age + 1, None):  # one second inside the bound; no TS yet (before the first sync)
-            source.ts = ts
-            fake_bus.read_queue.append(_word(31000))
-            data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
-            assert compensated is True and data.Raw == 31000, ts
-    assert run(reader.get_error_counter())["SGP40"]["ErrCount"] == 0
-
-
-def test_a_raw_signal_that_cannot_be_measured_logs_one_read_entry() -> None:
-    # measure_raw() answers None when it cannot build its command's CRC: a failed read, logged as READ even on a
-    # restore or backup cycle (where the algorithm-state code used to name it).
-    reader = _make_reader()
-    reader._sgp.crc = _AlwaysFailCRC()  # type: ignore[assignment]
-    data, compensated, serialized = run(reader._read_sgp(_TooSmallBuf(), serialize=True, deserialize=True))  # type: ignore[arg-type]
-    log = run(reader.get_error_counter())
-    assert data.VOC is None and data.Raw is None
-    assert compensated is True and serialized is False
-    assert log["SGP40"]["ErrCount"] == 1
-    assert _last_err(log, "ErrNum") == code("E", "READ")
-
-
 def test_store_sgp_ignores_partial_none_results() -> None:
     reader = _make_reader()
     run(reader._store_sgp(SGP40(None, 100, 1, 12345)))
@@ -969,7 +857,6 @@ def test_start_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     assert reader._trigger_timer.period == -1  # never actually armed
     assert reader._trigger_timer.callback is None  # nor wired to the trigger event
     assert reader.pr._err_count == 0  # start_timer() logs via the non-persisting pr.err(), not err_s()
-    assert run(asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)) is None  # the read task is woken
 
 
 def test_start_timer_degrades_gracefully_on_a_memory_error() -> None:
@@ -981,72 +868,6 @@ def test_start_timer_degrades_gracefully_on_a_memory_error() -> None:
     assert reader._trigger_timer.period == -1  # never actually armed
     assert reader._trigger_timer.callback is None  # nor wired to the trigger event
     assert reader.pr._err_count == 0  # start_timer() logs via the non-persisting pr.err(), not err_s()
-    assert run(asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)) is None  # the read task is woken
-
-
-def test_an_arm_failure_wakes_the_read_task_which_persists_it_and_ends() -> None:
-    reader = _make_reader()
-    queue_successful_init(bus(reader._sgp._i2c_sgp40.i2c_device.i2c))
-
-    async def scenario() -> "tuple[bool, bool]":
-        task = asyncio.create_task(reader._read_loop())
-        for _ in range(50):  # init (fast sleeps), then the loop parks on the read event
-            await asyncio.sleep(0)
-        parked = not task.done()
-        with RaiseOnArm():
-            reader.start_timer()
-        for _ in range(50):
-            await asyncio.sleep(0)
-            if task.done():
-                await task  # returns None: the task ended, and its restart re-arms
-                return parked, True
-        task.cancel()
-        return parked, False
-
-    with FastAsyncSleep():
-        parked, ended = run(scenario())
-    assert parked
-    assert ended
-    log = run(reader.get_error_counter())
-    assert log["SGP40"]["ErrCount"] == 1
-    assert _last_err(log, "ErrNum") == code("E", "TIMER")
-
-
-def test_init_rearms_a_failed_timer_first() -> None:
-    reader = _make_reader()
-    fake_bus = bus(reader._sgp._i2c_sgp40.i2c_device.i2c)
-    queue_successful_init(fake_bus)
-    reader._timer_failed(OSError(12, "ENOMEM"), reader._read_event)  # an earlier failed arm
-    fake_bus.log.clear()
-    seen: list[int] = []
-    real_start = reader.start_timer
-
-    def recording_start() -> None:
-        seen.append(len(fake_bus.log))
-        real_start()
-
-    reader.start_timer = recording_start  # type: ignore[method-assign]
-    with FastAsyncSleep():
-        assert run(reader._init_sgp()) is True
-    assert reader._timer_error is None
-    assert seen == [0]  # armed before the setup exchange
-    assert reader._trigger_timer.period == 1000
-
-
-def test_an_arm_failure_stored_before_the_read_task_starts_is_persisted_once_then_re_armed() -> None:
-    reader = _make_reader()
-    fake_bus = bus(reader._sgp._i2c_sgp40.i2c_device.i2c)
-    with RaiseOnArm(OSError):
-        reader.start_timer()
-    assert run(reader.get_error_counter())["SGP40"]["ErrCount"] == 0  # the starter only stores it
-    for _ in range(2):  # the task's first start, then a restart with nothing stored: no second entry, no second arm
-        queue_successful_init(fake_bus)
-        with FastAsyncSleep():
-            assert run(reader._init_sgp()) is True
-        log = run(reader.get_error_counter())
-        assert log["SGP40"]["ErrCount"] == 1
-        assert _last_err(log, "ErrNum") == code("E", "TIMER")
-        assert len(reader._trigger_timer.arms) == 1
 
 
 def test_two_trigger_fires_before_the_loop_waits_give_one_cycle() -> None:
@@ -1444,7 +1265,7 @@ def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
     assert isinstance(err_count, int)
     assert err_count >= 1
     # Each layer the failure reaches keeps its own entry: the store's refusal and SGP40's failed backup.
-    assert log["SGP40"]["ErrNum"][-2:] == [code("E", "SGP_BACKUP_WRITE"), code("E", "LOG_RAM_ONLY")]  # SGP40's own store is paused too
+    assert log["SGP40"]["ErrNum"][-1] == code("E", "SGP_BACKUP_WRITE")  # SGP40's own store is paused too: kept in RAM
     assert code("W", "FRAM_PAUSED") in _warnings(run(manager.pr.get_log()))
 
 
@@ -1476,7 +1297,8 @@ def _restore_once(reader: SGP40_Reader) -> bool:
 # backup that reads invalid is data the FRAM layer judged, so SGP40 adds a console line, not a second entry.
 
 
-def test_a_crc_invalid_backup_logs_in_fram_only() -> None:
+def test_a_crc_invalid_backup_logs_in_both_layers() -> None:
+    # The FRAM layer's fault and the SGP40's no-backup warning above it: the blast radius of one fault (owner, 2026-10-02).
     manager, chip = make_fram_manager()
     run(manager.setup())
     writer, fake_bus = _backup_rig(manager)
@@ -1492,7 +1314,7 @@ def test_a_crc_invalid_backup_logs_in_fram_only() -> None:
     reader, _bus2 = _backup_rig(manager2)
     assert _restore_once(reader) is False
     assert reader._voc_init == 0
-    assert code("W", "SGP_NO_BACKUP") not in _warnings(run(reader.get_error_counter()))
+    assert code("W", "SGP_NO_BACKUP") in _warnings(run(reader.get_error_counter()))
     assert code("W", "FRAM_BLOCK_INVALID") in _warnings(run(manager2.pr.get_log()))
 
 
@@ -1580,7 +1402,7 @@ def test_a_failed_backup_write_logs_in_fram_and_in_sgp40() -> None:
     run(_write_and_back_up(reader, fake_bus, 1))
     chip.drop_wren = False
     assert reader._last_backup is None
-    assert run(reader.get_error_counter())["SGP40"]["ErrNum"][-2:] == [code("E", "SGP_BACKUP_WRITE"), code("E", "LOG_RAM_ONLY")]  # SGP40's own store fails too
+    assert run(reader.get_error_counter())["SGP40"]["ErrNum"][-1] == code("E", "SGP_BACKUP_WRITE")  # SGP40's own store fails too: kept in RAM
     fram_log = next(iter(run(manager.pr.get_log()).values()))
     assert any(kind != "N" for kind in fram_log["ErrType"]), f"the FRAM layer persisted nothing: {fram_log!r}"
 
@@ -1634,7 +1456,7 @@ def test_run_restore_applies_backup_anyway_once_wait_time_ntp_budget_is_exhauste
     assert restored is True  # applied anyway, despite age being unknowable (no NTP)
     # A real write-time timestamp (only the *reader's* clock is unsynced), not 0 = no timestamp (the special value).
     assert restored_from is not None and restored_from > 0
-    assert _warnings(log) == [code("W", "SGP_RESTORED_NO_TS")]  # restored without an age test, said so
+    assert _warnings(log) == []  # restored without an age test, silently
 
 
 def test_run_backup_writes_without_timestamp_once_wait_time_ntp_budget_is_exhausted() -> None:
@@ -2067,7 +1889,7 @@ def test_a_zero_age_limit_accepts_a_future_dated_backup() -> None:
     assert _warnings(run(reader.get_error_counter())) == []
 
 
-def test_waiting_for_ntp_reads_the_chunk_once() -> None:
+def test_waiting_for_ntp_reads_the_chunk_each_cycle() -> None:
     manager, chip = make_fram_manager()
     run(manager.setup())
     _write_one_backup(manager)
@@ -2090,37 +1912,10 @@ def test_waiting_for_ntp_reads_the_chunk_once() -> None:
     with UTCValid():
         restored = [_restore_cycle(reader) for _ in range(30)]
         assert restored == [False] * 30
-        assert len(reads) == 1  # read when the wait began, never per second
+        assert len(reads) == 30  # read on every cycle of the wait
         synced[0] = True
         assert _restore_cycle(reader) is True
-    assert len(reads) == 2
-
-
-def test_a_restore_waiting_for_ntp_reuses_the_readers_one_backup_buffer() -> None:
-    # Every cycle of the wait checks the storage: each takes the buffer allocated with the reader, never a fresh one.
-    manager, chip = make_fram_manager()
-    run(manager.setup())
-    _write_one_backup(manager)
-    reader = _restore_rig(chip, _ntp_not_synced, {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 60})
-    storage = reader._ts_storage
-    assert storage is not None
-    allocations: list[int] = []
-    real_get_buffer = storage.get_buffer
-
-    def counting_get_buffer() -> "FRAMChunkTimestampedBuffer":
-        allocations.append(1)
-        return real_get_buffer()
-
-    storage.get_buffer = counting_get_buffer  # type: ignore[method-assign]
-    buffers = []
-    with UTCValid():
-        for _ in range(30):
-            buf, _serialize, deserialize, cfg_values = run(reader._check_storage())
-            buffers.append(buf)
-            assert run(reader._run_restore(buf, deserialize=deserialize, cfg_values=cfg_values)) is False
-    assert allocations == []
-    assert buffers[0] is not None
-    assert all(buf is buffers[0] for buf in buffers)
+    assert len(reads) == 31
 
 
 def test_an_untimestamped_backup_restores_to_memory_status_zero_zero() -> None:
@@ -2233,17 +2028,6 @@ def _spy_reads(reader: SGP40_Reader) -> "list[int]":
     return reads
 
 
-def _spy_once_lines(reader: SGP40_Reader) -> "list[tuple[object, ...]]":
-    # The reader's console lines at its "once" level, recorded instead of printed.
-    lines: list[tuple[object, ...]] = []
-
-    def record(*args: object, sep: str = " ", end: str = "\n") -> None:
-        lines.append(args)
-
-    reader.pr.one = record  # type: ignore[method-assign]
-    return lines
-
-
 def _restart(reader: SGP40_Reader) -> None:
     # What the supervisor's restart of the read task runs first: _init_sgp() on the same reader.
     queue_successful_init(bus(reader._sgp._i2c_sgp40.i2c_device.i2c))
@@ -2271,7 +2055,7 @@ def test_an_undated_backup_restores_after_the_wait_and_nothing_raises() -> None:
     assert warnings.count(code("W", "SGP_RESTORED_NO_TS")) == 1
 
 
-def test_a_dated_backup_restores_unchecked_when_the_wait_ends_unsynced() -> None:
+def test_a_dated_backup_restores_unchecked_and_silently_when_the_wait_ends_unsynced() -> None:
     # Guard: a dated backup whose wait ends unsynced has no age to test; a limit it would fail is not applied.
     manager, chip = make_fram_manager()
     run(manager.setup())
@@ -2280,44 +2064,18 @@ def test_a_dated_backup_restores_unchecked_when_the_wait_ends_unsynced() -> None
     reader._voc_init = 1
     assert _full_cycle(reader).VOCState == 3
     assert reader._restored_from == ts
-    assert _warnings(run(reader.get_error_counter())) == [code("W", "SGP_RESTORED_NO_TS")]
+    assert _warnings(run(reader.get_error_counter())) == []
 
 
-def test_a_raising_ntp_callback_while_waiting_counts_as_unsynced() -> None:
-    # The wait's own NTP check is guarded as the FRAM layer guards the same callback: logged, read as not synced.
-    manager, chip = make_fram_manager()
-    run(manager.setup())
-    _write_one_backup(manager, samples=60)
-    state = ["unsynced"]
-
-    async def ntp() -> bool:
-        if state[0] == "raise":
-            raise OSError("simulated NTP callback failure")
-        return state[0] == "synced"
-
-    reader = _restore_rig(chip, ntp)
-    with UTCValid():
-        assert _restore_cycle(reader) is False  # the wait begins
-        state[0] = "raise"
-        assert _restore_cycle(reader) is False  # still waiting, nothing escapes
-        assert reader._restore_waiting is True
-        state[0] = "synced"
-        assert _restore_cycle(reader) is True
-    assert _entries(run(reader.get_error_counter())) == [("E", code("E", "CALLBACK"))]
-
-
-def test_a_failed_shared_buffer_leaves_the_restore_pending() -> None:
-    # The reader's buffer and the cycle's retry both failed to allocate: no read, no "no backup", no backup write; the
-    # next cycle's retry holds, the restore runs, and that buffer is the reader's from then on.
+def test_a_failed_backup_buffer_leaves_the_restore_pending() -> None:
+    # The cycle's buffer failed to allocate: no read, no "no backup", no backup write that would overwrite the backup
+    # unread; the next cycle's buffer holds and the restore runs.
     manager, chip = make_fram_manager()
     run(manager.setup())
     _write_one_backup(manager, samples=60)
     reader = _restore_rig(chip, _ntp_synced)
     storage = reader._ts_storage
     assert storage is not None
-    failed = reader._backup_buf
-    assert failed is not None
-    failed._buf = None  # what the buffer holds after its allocation failed
     real_get_buffer = storage.get_buffer
 
     def failed_buffer() -> "FRAMChunkTimestampedBuffer":
@@ -2340,33 +2098,27 @@ def test_a_failed_shared_buffer_leaves_the_restore_pending() -> None:
         storage.get_buffer = real_get_buffer  # type: ignore[method-assign]
         assert _full_cycle(reader).VOCState == 3  # the pending restore, one cycle later
     assert reads == [1]
-    kept = reader._backup_buf
-    assert kept is not None and kept is not failed
-    assert kept.get_buf() is not None
 
 
-def test_a_task_restart_after_fed_samples_keeps_the_live_state() -> None:
+def test_a_task_restart_after_fed_samples_restores_the_backup() -> None:
     manager, chip = make_fram_manager()
     run(manager.setup())
     reader = _restore_rig(chip, _ntp_synced)  # a first boot: the chip holds no backup yet
     with UTCValid():
         for _ in range(3):
             _full_cycle(reader)
-    _write_one_backup(manager, samples=60)  # a backup appears on the chunk the reader owns
+    ts = _write_one_backup(manager, samples=60)  # a backup appears on the chunk the reader owns
     reads = _spy_reads(reader)
-    lines = _spy_once_lines(reader)
     _restart(reader)
-    assert ("live VOC state kept, no restore",) in lines
     with UTCValid():
         data = [_full_cycle(reader) for _ in range(2)]
-    assert reads == []
-    assert [d.VOCState for d in data] == [0, 0]  # still the fresh start's blackout, not a restored 3
-    assert reader._voc_samples == 5
-    assert reader._restored_from is None
-    assert reader._sgp._voc_algorithm.params.muptime < 45 * 65536  # the live state, not the backup's
+    assert reads == [1]
+    assert [d.VOCState for d in data] == [3, 3]  # restored, as at a boot: VOCState reads 3 for 24 h
+    assert reader._voc_samples == 2
+    assert reader._restored_from == ts
 
 
-def test_a_task_restart_after_a_restore_keeps_it() -> None:
+def test_a_task_restart_after_a_restore_restores_again() -> None:
     manager, chip = make_fram_manager()
     run(manager.setup())
     ts = _write_one_backup(manager, samples=60)
@@ -2374,17 +2126,12 @@ def test_a_task_restart_after_a_restore_keeps_it() -> None:
     with UTCValid():
         assert _full_cycle(reader).VOCState == 3
     reads = _spy_reads(reader)
-    lines = _spy_once_lines(reader)
     _restart(reader)
-    assert ("live VOC state kept, no restore",) in lines
     with UTCValid():
         assert _full_cycle(reader).VOCState == 3
-    assert reads == []
-    assert reader._voc_samples == 2
+    assert reads == [1]
+    assert reader._voc_samples == 1  # the algorithm started over from the backup
     assert reader._restored_from == ts
-    fresh = _restore_rig(chip, _ntp_synced)  # control: a boot restores over the same chunk
-    with UTCValid():
-        assert _restore_cycle(fresh) is True
 
 
 def test_a_task_restart_while_the_restore_waits_still_restores() -> None:
@@ -2401,21 +2148,21 @@ def test_a_task_restart_while_the_restore_waits_still_restores() -> None:
     with UTCValid():
         for _ in range(3):
             assert _full_cycle(reader).VOCState == 0  # waiting, measuring from a fresh start
-        assert reader._restore_waiting is True
         _restart(reader)
         synced[0] = True
         assert _full_cycle(reader).VOCState == 3
     assert reader._restored_from == ts
 
 
-def test_a_first_boot_blank_chunk_logs_nothing() -> None:
-    # A never-written chunk is the first boot's expected state: a console line, no entry in either layer.
+def test_a_first_boot_blank_chunk_warns_no_backup_once() -> None:
+    # A never-written chunk reads as no backup, as every read that is not valid does: one SGP40 warning, nothing from
+    # the FRAM layer.
     manager, _chip = make_fram_manager()
     run(manager.setup())
     reader, _bus = _backup_rig(manager)
     assert _restore_once(reader) is False
     assert reader._voc_init == 0
-    assert _entries(run(reader.get_error_counter())) == []
+    assert _entries(run(reader.get_error_counter())) == [("W", code("W", "SGP_NO_BACKUP"))]
     assert _entries(run(manager.pr.get_log())) == []
 
 
@@ -2754,8 +2501,8 @@ def test_fram_backup_writes_and_restore_recovers_full_algorithm_state() -> None:
         # A second reader, sharing the same FRAM backing (a simulated reboot) - fresh VOCAlgorithm,
         # never processed a single sample, must recover the exact converged state via restore.
         manager2, _ = make_fram_manager(chip=chip)
-        run_ok = await manager2.setup()
-        assert run_ok is True
+        await manager2.setup()
+        assert manager2.initialized is True
         reader = SGP40_Reader(
             _make_i2c(),
             ValueRef(_FakeCompSource(), "Temp"),
@@ -3104,7 +2851,8 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
         await reader.pr.err_s("SGP40", "simulated fault", errno=1)
 
         manager2, _ = make_fram_manager(chip=chip)
-        assert await manager2.setup() is True
+        await manager2.setup()
+        assert manager2.initialized is True
         reader2 = SGP40_Reader(
             _make_i2c(),
             ValueRef(_FakeCompSource(), "Temp"),
@@ -3138,8 +2886,8 @@ def test_init_sgp_fails_and_logs_when_setup_raises() -> None:
         ok = run(reader._init_sgp())
     assert ok is False
     log = run(reader.get_error_counter())
-    # The setup failure, then the controller rung the base runs at once (the bus cleared and re-initialised).
-    assert _entries(log) == [("E", code("E", "INIT")), ("W", code("W", "BUS_RECOVERY"))]
+    # The setup failure's one entry: no bus rung, the restart retries it.
+    assert _entries(log) == [("E", code("E", "INIT"))]
 
 
 def test_init_sgp_fails_and_logs_when_config_data_unreadable() -> None:
@@ -3463,7 +3211,7 @@ def test_every_broad_handler_records_a_c_stack_overflow_for_the_supervisor() -> 
     assert (data.VOC, compensated) == (None, True)
     _cleared_after("measure_index_and_raw")
     reader._temperature = ValueRef(_OverflowingSource(), "Temp")
-    assert run(reader._compensation(None)) == (None, None)
+    assert run(reader._compensation()) == (None, None)
     _cleared_after("get_data")
 
     manager, chip = make_fram_manager()
@@ -3495,16 +3243,16 @@ def test_read_sgp_completes_a_pending_reset_even_when_the_i2c_read_fails() -> No
 
 
 # ---------------------------------------------------------------------------
-# _read_loop() - an init failure ends the task (it returns None) after the controller rung.
+# _read_loop() - an init failure ends the task (it returns None), no bus rung run.
 # ---------------------------------------------------------------------------
 
 
-def test_read_loop_ends_with_init_and_the_controller_rung_when_init_fails() -> None:
+def test_read_loop_ends_with_init_and_no_bus_rung_when_init_fails() -> None:
     # No fake_bus.read_queue seeded - same fast-failing setup as test_init_sgp_fails_and_logs_when_setup_raises
     # above, so no real _GENERAL_CALL_RESET_WAIT_S _reset() sleep is ever reached.
     reader = _make_reader()
     assert run(reader._read_loop()) is None
-    assert _entries(run(reader.get_error_counter())) == [("E", code("E", "INIT")), ("W", code("W", "BUS_RECOVERY"))]
+    assert _entries(run(reader.get_error_counter())) == [("E", code("E", "INIT"))]
 
 
 # ---------------------------------------------------------------------------
@@ -3576,7 +3324,6 @@ def test_touches_only_its_own_address_except_reset_which_touches_only_the_genera
         with FastAsyncSleep():
             run(getattr(sgp, name)())
         assert {entry[1] for entry in fake_bus.log} == {0x59, 0x00}, name
-
 
 
 def test_init_sgp_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:

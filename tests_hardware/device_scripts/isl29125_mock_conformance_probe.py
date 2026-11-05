@@ -28,40 +28,25 @@ STATUS_CONVENF = 0x02  # "set to logic high when the conversion have been comple
 _RP2_I2C_TIMEOUT_US = 50000  # machine.I2C's own default (ports/rp2/machine_i2c.c:38, v1.29.0)
 # Measured delays, not polls: the probe characterises the chip's own write-settle and conversion timing for the twin
 # comparison, so a register read inside these windows would become part of what is measured.
-# @tunable l3.isl29125_mock_conformance_probe_write_settle_ms = 50
 _WRITE_SETTLE_MS = 50
 # Two 16-bit RGB cycles (3 x tINT, tINT 101 ms, p.3) with margin.
-# @tunable l3.isl29125_mock_conformance_probe_conversion_settle_ms = 700
 _CONVERSION_SETTLE_MS = 700
 # Three 16-bit RGB cycles: a range or mode change has taken effect with one cycle to spare.
-# @tunable l3.isl29125_mock_conformance_probe_reconfigure_settle_ms = 1000
 _RECONFIGURE_SETTLE_MS = 1000
 # Many 12-bit cycles (tINT / 16 each) after a resolution change.
-# @tunable l3.isl29125_mock_conformance_probe_short_settle_ms = 500
 _SHORT_SETTLE_MS = 500
 # One 16-bit RGB cycle plus margin: the conversion a CONFIG1 write restarted has completed.
-# @tunable l3.isl29125_mock_conformance_probe_one_cycle_ms = 400
 _ONE_CYCLE_MS = 400
-# @tunable l3.isl29125_mock_conformance_probe_int_release_ms = 20
 _INT_RELEASE_MS = 20
-# @tunable l3.isl29125_mock_conformance_probe_hold_window_ms = 700
 _HOLD_WINDOW_MS = 700
-# @tunable l3.isl29125_mock_conformance_probe_int_poll_tries = 40
 _INT_POLL_TRIES = 40
-# @tunable l3.isl29125_mock_conformance_probe_int_poll_ms = 50
 _INT_POLL_MS = 50
-# @tunable l3.isl29125_mock_conformance_probe_int_fast_ms = 400
 _INT_FAST_MS = 400
-# @tunable l3.isl29125_mock_conformance_probe_prst_poll_tries = 60
 _PRST_POLL_TRIES = 60
-# @tunable l3.isl29125_mock_conformance_probe_prst_poll_ms = 25
 _PRST_POLL_MS = 25
 # The 12-bit conversion cycle: CONVENF rises timed by a status-poll series (each read clears the flag, p.12).
-# @tunable l3.isl29125_mock_conformance_probe_cycle_samples = 9
 _CYCLE_SAMPLES = 9
-# @tunable l3.isl29125_mock_conformance_probe_cycle_window_ms = 1500
 _CYCLE_WINDOW_MS = 1500
-# @tunable l3.isl29125_mock_conformance_probe_cycle_poll_ms = 1
 _CYCLE_POLL_MS = 1
 
 

@@ -1,6 +1,6 @@
 """Runs every hardware instrument in the twin at each GC stage and writes the twin record (twin_record.json in
 tests_hardware): the flash tier under `pytest --twin`, each device script no flash test runs through TwinBoard, the
-bench tier as needing the bridge. test_twin_record.py keeps it current."""
+bench tier as needing the bridge."""
 
 # Usage: .venv/bin/python scripts/record_twin_instrument_runs.py [--reasons FILE]
 # FILE is JSON {"tests_hardware/<path>": "<why it cannot run in the twin>"}. Never builds the Unix port: exit 1 without it.
@@ -34,7 +34,6 @@ RECORD = TESTS_HARDWARE / "twin_record.json"
 RUNNER_FILES = (REPO_ROOT / "digital_twin" / "run_device_script.py", TESTS_HARDWARE / "twin_board.py")
 BENCH_REASON = "needs the bench bridge (network, WLAN role-reversal)"
 _INCLUDE = "# @include _shared/"
-# @tunable l3.record_twin_flash_run_timeout_s = 3600.0
 _FLASH_RUN_TIMEOUT_S = 3600.0  # the whole flash tier under --twin, one pytest process
 # MicroPython's own reactive default, the stage the whole design must hold at, then the firmware boot entry's value.
 GC_THRESHOLDS = (-1, 32768)

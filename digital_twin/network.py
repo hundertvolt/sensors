@@ -25,7 +25,6 @@ STAT_WRONG_PASSWORD = -3
 _STAT_JOINED_NO_IP = 2
 
 # One real STAT_CONNECTING phase, under _poll_sta_connect_status()'s 5 s budget (pinned by a test).
-# @tunable l2.twin_wifi_connect_delay_s = 0.7
 _CONNECT_DELAY_S = 0.7
 
 _COUNTRY_SEED = "XX"  # extmod/modnetwork.c:71 (v1.29.0) power-on value

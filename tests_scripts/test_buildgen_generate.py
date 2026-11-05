@@ -23,7 +23,6 @@ from _devices import DEVICE_NAMES, device_toml, devices_with
 from _script_loader import load_script_module
 from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, write_doc
 
-import buildgen.generate as generate_module
 from buildgen.codegen import _Ctx, _identifier, _lit, _sgp40_status_vars, generate_boot_entry_source, generate_module_source, trigger_spread
 from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
@@ -113,7 +112,7 @@ def test_real_device_module_constructs_no_watchdog_and_its_boot_entry_exactly_on
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_arms_the_watchdog_as_its_first_statement(device: str) -> None:
     stmts = _body(_real(device).boot_entry_source)
-    assert ast.unparse(stmts[0]) == "from machine import WDT"
+    assert ast.unparse(stmts[0]) == "from machine import WDT, reset"
     assert ast.unparse(stmts[1]) == f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})"
 
 
@@ -144,20 +143,18 @@ def test_real_device_boot_entry_reserves_the_emergency_exception_buffer_before_t
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_records_every_exception_ending_the_loop_before_the_watchdog_resets(device: str) -> None:
     # asyncio's loop catches only CancelledError and Exception (extmod/asyncio/core.py:154, 194, v1.29.0): Ctrl-C is
-    # recorded and re-raised; any other exception recorded, printed and not re-raised (rp2 soft-resets on SystemExit).
+    # recorded and re-raised; any other exception recorded and not re-raised (rp2 soft-resets on SystemExit).
     stmts = _body(_real(device).boot_entry_source)
     record_import = "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"
     assert _index(stmts, record_import) > _index(stmts, f"from sensortask_{device} import main")
-    assert _index(stmts, "from asy_print_log import console, report_if_fatal") > _index(stmts, f"from sensortask_{device} import main")
     tail = stmts[-1]
     assert isinstance(tail, ast.Try)
-    assert ast.unparse(stmts[-2]) == "ended: BaseException | None = None"  # bound first, so the handler's binding never grows the globals dict
     assert [ast.unparse(s) for s in tail.body] == ["asyncio.run(main(watchdog=watchdog))"]
     interrupt, other = tail.handlers
     assert interrupt.type is not None and ast.unparse(interrupt.type) == "KeyboardInterrupt" and interrupt.name is None
     assert [ast.unparse(s) for s in interrupt.body] == ["write_reset_record(RR_INTERRUPTED)", "raise"]
-    assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name == "ended"
-    assert [ast.unparse(s) for s in other.body] == ["report_if_fatal(ended)", "record_loop_end()", "console('SYSTEM', 'event loop ended with an exception:')", "sys.print_exception(ended)"]
+    assert other.type is not None and ast.unparse(other.type) == "BaseException" and other.name is None
+    assert [ast.unparse(s) for s in other.body] == ["record_loop_end()", "reset()"]  # nothing printed, at every DebugLevel
     assert not tail.orelse
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
     # Every name the tail calls is one the entry binds before it.
@@ -348,15 +345,13 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
     result = _real(device)
     entries = _status_entries(result.module_source, "_system_status")
     has_fram = any(k[0] == "fram" for k in result.model.instances)
-    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale"]
+    expected = ["SysUptime", "BootSignature", "ResetReason", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale"]
     assert list(entries) == expected
     assert entries["LastTaskEnd"] == "sysfunct.get_last_task_end()"  # None until a supervised task ends this boot
     assert entries["UnixTime"] == "utc_now()"  # None until the first NTP sync, as UTCTime
     assert entries["ResetReason"] == "sysfunct.get_reset_reason()"
-    assert entries["ResetBits"] == "sysfunct.get_reset_bits()"
     assert entries["MemFree"] == "gc.mem_free()"
     assert entries["ConfigFaults"] == "list(sysfunct.get_config_faults())"
-    assert entries["ConfigUnpersisted"] == "list(sysfunct.get_config_unpersisted())"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -408,7 +403,7 @@ def test_real_device_types_the_collectors_by_what_the_service_takes(device: str)
         "_collect_timer_starters": "'list[TimerStarter]'",
         "_collect_trigger_starters": "'list[TimerStarter]'",
         "_collect_error_sources": "'list[ErrorSource]'",
-        "_collect_level_setters": "'list[Callable[[int], bool]]'",
+        "_collect_level_setters": "'list[Callable[[int], None]]'",
         "_collect_config_stores": "list[cm.ConfigManager]",
     }
 
@@ -469,8 +464,13 @@ def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> Non
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) -> None:
-    # Guard: the build checks key collisions on the same SETTINGS_GROUPS rows codegen renders.
+    # Each page's settings groups are the one SETTINGS_GROUPS table's rows, in order, and no other page has any but
+    # notification's, which comes from its schema at boot.
     source = _real(device).module_source
+    routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    settings = next(k.value for k in routes.keywords if k.arg == "settings")
+    assert isinstance(settings, ast.Dict)
+    assert {k.value for k in settings.keys if isinstance(k, ast.Constant)} - {"notification"} == {row[0] for row in SETTINGS_GROUPS}
     for page in ("networking", "system"):
         expected = [(module, fields, dict([hook.split("=", 1)]) if hook else {}) for section, module, fields, hook in SETTINGS_GROUPS if section == page]
         assert _settings_groups(source, page) == expected
@@ -628,7 +628,7 @@ def _setup_names(source: str) -> "list[str]":
 
 def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
     # Up to gc.threshold(), without the watchdog lines and the reset records' import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_print_log import console, report_if_fatal", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
+    own = {"from machine import WDT, reset", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record"}
     texts = [ast.unparse(stmt) for stmt in stmts]
     return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 
@@ -1168,20 +1168,13 @@ def test_neither_ntp_nor_notification_is_handed_a_give_up_streak(tmp_path: Path,
     assert all("max_module_error" not in line for line in calls), calls
 
 
-def test_ntp_timing_carries_the_effective_backoff_pair(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    def ntp_line(doc: TomlDoc, name: str) -> str:
-        source = generate_device(write_doc(tmp_path, name, doc), src_dir, ext_dir).module_source
-        ast.parse(source)
-        return next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
-
-    doc = base_doc()
-    unstated = ntp_line(doc, "ntp_backoff_unstated")
-    # Unstated, the src/ defaults (_DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S) are passed as literals.
-    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 10, 600)" in unstated
-    assert "max_module_error" not in unstated  # NTP keeps no give-up streak (Part C.7.2)
-    table_at(doc, "device")["ntp_retry_s"] = 30
-    table_at(doc, "device")["ntp_retry_max_s"] = 900
-    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 30, 900)" in ntp_line(doc, "ntp_backoff_stated")
+def test_ntp_timing_carries_the_dns_bounds_and_the_fetch_timeout(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # The unsynced retry wait is the client's own constant: no device setting reaches NtpTiming (owner, 2026-11-03).
+    source = generate_device(write_doc(tmp_path, "ntp_timing", base_doc()), src_dir, ext_dir).module_source
+    ast.parse(source)
+    line = next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
+    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS)" in line
+    assert "max_module_error" not in line  # NTP keeps no give-up streak (Part C.7.2)
 
 
 def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -1525,13 +1518,6 @@ def test_an_sgp40_without_its_resolved_name_is_an_internal_error(tmp_path: Path,
     model.instances[("sgp40", "")].resolved_name = None
     with pytest.raises(BuildInternalError, match="resolved_name unresolved"):
         _sgp40_status_vars(model.construction_order, _Ctx(model))
-
-
-def test_a_generator_bug_emitting_invalid_python_is_an_internal_error(tmp_path: Path, src_dir: Path, ext_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # generate_device() compiles what it emits before returning it, so a template bug never reaches a file.
-    monkeypatch.setattr(generate_module, "generate_module_source", lambda *_args, **_kwargs: "def broken(:\n")
-    with pytest.raises(BuildInternalError, match="broken_template"):
-        generate_device(write_doc(tmp_path, "broken_template", base_doc()), src_dir, ext_dir)
 
 
 def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_root: Path) -> None:

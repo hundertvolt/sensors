@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, class_has_read_triggers, data_fields, parse_name_constant, resolve_driver
+from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, class_has_read_triggers, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 
 if TYPE_CHECKING:
@@ -153,65 +153,9 @@ def test_needs_setup_returns_false_when_the_class_is_absent_from_the_file(tmp_pa
     assert _class_needs_setup(tree, "X_Reader") is False
 
 
-_UNREADABLE_FIX = "declare get_data()'s result as a module-level namedtuple with a literal field tuple"
-
-
-@pytest.mark.parametrize(
-    ("driver", "wired_fields"),
-    [("scd30", {"CO2", "Temp", "Hum"}), ("bmp3xx", {"Temp"}), ("sgp40", {"VOC"})],
-)
-def test_data_fields_reads_every_wired_producers_namedtuple(src_dir: Path, driver: str, wired_fields: "set[str]") -> None:
-    # The fields the device TOMLs reference through {source, field}; "TS" is every producer's.
-    info = resolve_driver(driver, src_dir, "fixture")
-    fields = data_fields(info.source_path, info.class_name, "fixture", driver)
-    assert wired_fields | {"TS"} <= fields
-    assert "value" not in fields  # asy_sgp40_driver.py's _ConstValue providers are other classes
-
-
-def test_data_fields_accepts_the_string_form_of_the_annotation(tmp_path: Path) -> None:
-    path = tmp_path / "asy_chip_driver.py"
-    path.write_text('CHIP = namedtuple("CHIP", ("A", "B"))\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> "CHIP":\n        pass\n', encoding="utf-8")
-    assert data_fields(path, "Chip_Reader", "fixture", "chip") == frozenset({"A", "B"})
-
-
-def test_data_fields_follows_a_rewritten_file(tmp_path: Path) -> None:
-    # The cache keys on the source text, so an edit at the same path is never answered stale.
-    path = tmp_path / "asy_chip_driver.py"
-    reader = "\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> CHIP:\n        pass\n"
-    path.write_text('CHIP = namedtuple("CHIP", ("A",))' + reader, encoding="utf-8")
-    assert data_fields(path, "Chip_Reader", "fixture", "chip") == frozenset({"A"})
-    path.write_text('CHIP = namedtuple("CHIP", ("A", "C"))' + reader, encoding="utf-8")
-    assert data_fields(path, "Chip_Reader", "fixture", "chip") == frozenset({"A", "C"})
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param("class Chip_Reader(SensorReader):\n    async def get_data(self) -> dict:\n        pass\n", id="not-a-namedtuple"),
-        pytest.param('FIELDS = ("A",)\nCHIP = namedtuple("CHIP", FIELDS)\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> CHIP:\n        pass\n', id="field-tuple-not-literal"),
-        pytest.param('CHIP = namedtuple("CHIP", ("A", 1))\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> CHIP:\n        pass\n', id="field-not-a-string"),
-        pytest.param('if True:\n    CHIP = namedtuple("CHIP", ("A",))\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> CHIP:\n        pass\n', id="not-module-level"),
-        pytest.param("class Chip_Reader(SensorReader):\n    async def get_data(self):\n        pass\n", id="no-annotation"),
-        pytest.param("class Chip_Reader(SensorReader):\n    pass\n", id="no-get-data"),
-        pytest.param("class Other_Reader(SensorReader):\n    async def get_data(self) -> dict:\n        pass\n", id="no-such-class"),
-    ],
-)
-def test_data_fields_refuses_anything_but_a_literal_namedtuple(tmp_path: Path, source: str) -> None:
-    path = tmp_path / "asy_chip_driver.py"
-    path.write_text(source, encoding="utf-8")
-    with pytest.raises(BuildError) as excinfo:
-        data_fields(path, "Chip_Reader", "fixture", "chip_a")
-    assert excinfo.value.rule == "source.fields-unreadable"
-    assert excinfo.value.fix == _UNREADABLE_FIX
-    assert (excinfo.value.instance, excinfo.value.field) == ("chip_a", None)
-    assert str(excinfo.value).startswith(f"[fixture/chip_a] {path}: ")
-    assert str(excinfo.value).endswith(" - fix: " + _UNREADABLE_FIX)
-
-
 @pytest.mark.parametrize(
     "call",
     [
-        pytest.param(lambda path: data_fields(path, "Chip_Reader", "fixture", "chip"), id="data_fields"),
         pytest.param(lambda path: parse_name_constant(path, "fixture", "chip"), id="parse_name_constant"),
         pytest.param(lambda path: class_has_read_triggers(DriverInfo("chip", "asy_chip_driver", "Chip_Reader", "sensor", path, needs_setup=True)), id="class_has_read_triggers"),
     ],
@@ -227,14 +171,14 @@ def test_the_driver_files_read_the_same_under_any_locale(repo_root: Path) -> Non
     # Driver files hold non-ASCII text; read under an ASCII locale with UTF-8 mode off, they must still parse.
     probe = (
         "import sys; sys.path.insert(0, sys.argv[1]); from pathlib import Path; "
-        "from buildgen.driver_registry import class_has_read_triggers, data_fields, parse_name_constant, resolve_driver; "
+        "from buildgen.driver_registry import class_has_read_triggers, parse_name_constant, resolve_driver; "
         "info = resolve_driver('scd30', Path(sys.argv[1]) / 'src', 'fixture'); "
-        "print(info.class_name, class_has_read_triggers(info), parse_name_constant(info.source_path, 'fixture', 'scd30'), sorted(data_fields(info.source_path, info.class_name, 'fixture', 'scd30'))[0])"
+        "print(info.class_name, class_has_read_triggers(info), parse_name_constant(info.source_path, 'fixture', 'scd30'))"
     )
     env = {"PATH": os.environ.get("PATH", ""), "LC_ALL": "C", "LANG": "C"}
     done = subprocess.run([sys.executable, "-I", "-X", "utf8=0", "-c", probe, str(repo_root)], env=env, capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stderr
-    assert done.stdout.split() == ["SCD30_Reader", "False", "SCD30", "CO2"]
+    assert done.stdout.split() == ["SCD30_Reader", "False", "SCD30"]
 
 
 def test_the_driver_facts_follow_a_file_rewritten_at_the_same_path(tmp_path: Path) -> None:

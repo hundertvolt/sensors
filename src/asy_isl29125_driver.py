@@ -47,7 +47,6 @@ _ERR_ISL_BUS_FAULT = const(56)
 _WRN_ISL_BROWNOUT = const(30)
 _WRN_ISL_DIVERGED = const(31)
 _WRN_ISL_PERIODIC_ONLY = const(32)
-_WRN_ISL_CAL_TIMEOUT = const(75)
 
 _ISL29125_ADDR = const(0x44)  # hard-wired "1000100" (FN8424 p15): a second part needs another bus
 _DEVICE_ID = const(0x7D)  # datasheet p9, Table 2
@@ -136,7 +135,6 @@ _MIN_TRIGGER_S = const(1)
 _MAX_TRIGGER_S = const(3600)
 _MIN_DWELL_S = const(0.0)
 _MAX_DWELL_S = const(300.0)
-_MAX_DWELL_MS = const(300000)  # _MAX_DWELL_S in ms, the stored-tick bound of _evaluate_range()
 _MIN_FILT_COEFF = const(-1.0)
 _MAX_FILT_COEFF = const(1.0)
 _MIN_AR_THRESH = const(50.0)
@@ -269,8 +267,6 @@ class ISL29125_Reader(SensorReaderConfig):
         self._periodic_only_switches = 0
         # INTSEL parked because the peak rule overrules the green window it watches (see _read_isl()).
         self._int_held = False
-        # One INT re-arm per dead-line episode; cleared by the next interrupt-led decision.
-        self._int_rearmed = False
         # Serialises every threshold/range writer: derive the counts, write, commit.
         self._threshold_lock = asyncio.Lock()
         # The Overrange output field for the most recent stored sample, set once per read cycle in
@@ -279,7 +275,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self._last_overrange = False
         self._last_cal_light = 0  # the CalLight code for the most recent stored sample, set once per read cycle like Overrange
         # The protocol layer's failed-write sequence as of the last reconciliation - see
-        # _verify_config(). Starts level with it, so a clean boot reconciles nothing.
+        # _verify_after_failed_write(). Starts level with it, so a clean boot reconciles nothing.
         self._reconciled_write_failures = 0
         # Set by the pin handler, consumed once per read cycle. RGBTHF cannot stand in for it: the
         # CHIP raises that flag, so it is set just the same when the line itself is dead - the
@@ -322,7 +318,6 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(threshold_interrupt=armed)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error setting the interrupt select:", e, errno=_ERR_CHIP_SET)
             return
         self._int_held = not armed
@@ -344,7 +339,6 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(force=True)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error re-applying the diverged configuration:", e, errno=_ERR_CHIP_SET)
             return
         if self._range_auto:
@@ -380,7 +374,6 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.verify_device_id()
         except Exception as e:
-            report_if_fatal(e)
             self.pr.err("Device-ID re-read failed:", e)
             return False
         return True
@@ -391,12 +384,10 @@ class ISL29125_Reader(SensorReaderConfig):
         # 26.67, not GainRatio - the factor 2 absorbs that field's whole [20, 34] band.
         return (self._ar_thresh if ar_thresh is None else ar_thresh) / _AR_DOWN_DIVISOR
 
-    async def _end_calibration(self, why: str, *, converged: bool) -> None:
+    async def _end_calibration(self, why: str) -> None:
         self._calibrating = False
         self._cal_recent = []
         self.pr.one("Gain-ratio calibration finished:", why)
-        if not converged:
-            await self.pr.wrn_s("Gain-ratio calibration timed out: no stable reading in the window.", wrnno=_WRN_ISL_CAL_TIMEOUT)
 
     def _evaluate_range(self, counts: tuple[int, int, int], *, saturated: bool) -> int | None:
         # Decides on the PEAK of all three channels in both directions (owner, 2026-09-12): hardware
@@ -411,27 +402,14 @@ class ISL29125_Reader(SensorReaderConfig):
             if saturated or peak >= self._isl.fraction_to_counts(self._ar_thresh):
                 return _RANGE_HIGH_LUX
             return None
-        now = time.ticks_ms()
-        elapsed = time.ticks_diff(now, self._last_switch_ms)
-        if elapsed > _MAX_DWELL_MS:
-            # Keeps the stored tick within the largest dwell, far inside ticks_diff()'s 2**29 ms horizon.
-            self._last_switch_ms = time.ticks_add(now, -_MAX_DWELL_MS)
         if peak > self._isl.fraction_to_counts(self._down_thresh()):
             return None
         # React fast to bright, slowly to dark: PRST is one field applied to both crossings and so
         # cannot be asymmetric, which is what AutoRangeDwell is for. ticks_diff, never subtraction.
-        if elapsed < int(self._ar_dwell_s * 1000):
+        if time.ticks_diff(time.ticks_ms(), self._last_switch_ms) < int(self._ar_dwell_s * 1000):
             self.pr.all("switch down suppressed by AutoRangeDwell")
             return None
         return _RANGE_LOW_LUX
-
-    async def _expire_calibration(self) -> bool:
-        # Run every cycle, a failed one too: an expired candidate goes and a run past its 2-minute window ends, so
-        # neither stored tick is compared after an outage longer than ticks_diff()'s 2**29 ms horizon. True: still running.
-        self._measured_ratio()
-        if self._calibrating and time.ticks_diff(time.ticks_ms(), self._cal_until_ms) >= 0:
-            await self._end_calibration("no stable reading converged before the window closed", converged=False)
-        return self._calibrating
 
     def _gain_correction(self, range_fs: int) -> float:
         # The LOW range is the reference, so the ratio corrects the high one alone - correcting both
@@ -458,17 +436,11 @@ class ISL29125_Reader(SensorReaderConfig):
 
     async def _init_isl(self) -> bool:
         self._err_cnt_internal = 0
-        self._filtered[0] = self._filtered[1] = self._filtered[2] = None
-        self._irq_fired = False
-        self._periodic_only_switches = 0
         self._int_held = False
-        self._int_rearmed = False
         try:
             await self._isl.setup()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
-            await self._init_failed()
             return False  # error
 
         self.pr.one("Setting sensor config at startup.")
@@ -510,9 +482,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 threshold_interrupt=self._range_auto,
             )
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error setting config data:", e, errno=_ERR_CHIP_SET)
-            await self._init_failed()
             return False  # error
 
         if self._range_auto:
@@ -527,7 +497,10 @@ class ISL29125_Reader(SensorReaderConfig):
         # Only runs inside a user-started window. A SANDWICH - this range, the other, then this one
         # again - because the dominant error is the scene moving between the two readings, which a
         # pair alone cannot tell from a real ratio. Publishes a candidate, never adopts it (M.1.5).
-        if not await self._expire_calibration():
+        if not self._calibrating:
+            return
+        if time.ticks_diff(time.ticks_ms(), self._cal_until_ms) >= 0:
+            await self._end_calibration("no stable reading converged before the window closed")
             return
         if not self._range_auto or self._isl.time_to_settle_ms() > 0:
             return
@@ -562,11 +535,8 @@ class ISL29125_Reader(SensorReaderConfig):
         await self._note_candidate(sample_ratio)
 
     def _measured_ratio(self) -> float | None:
-        # None once the hold expires, and the candidate goes, so nothing compares the stored tick after it.
-        if self._cal_meas is None:
-            return None
-        if time.ticks_diff(time.ticks_ms(), self._cal_meas_until_ms) >= 0:
-            self._cal_meas = None
+        # None once the hold expires, so a stale candidate is not mistaken for a fresh one.
+        if self._cal_meas is None or time.ticks_diff(time.ticks_ms(), self._cal_meas_until_ms) >= 0:
             return None
         return self._cal_meas
 
@@ -579,7 +549,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self._publish_candidate(sample_ratio)
         self.pr.evt("calibration: candidate", sample_ratio, "run", len(self._cal_recent))
         if len(self._cal_recent) >= _CAL_CONVERGE_N:
-            await self._end_calibration(f"{len(self._cal_recent)} consecutive readings agreed, last {sample_ratio:.3f}", converged=True)
+            await self._end_calibration(f"{len(self._cal_recent)} consecutive readings agreed, last {sample_ratio:.3f}")
 
     async def _note_decision_source(self, *, threshold_fired: bool) -> None:
         # Requirement 17's silent-failure detector: the periodic evaluation is the safety net, and
@@ -588,7 +558,6 @@ class ISL29125_Reader(SensorReaderConfig):
             return  # Parked on purpose (agent, 2026-09-29): a periodic-led decision is by design now, not a dead line.
         if threshold_fired:
             self._periodic_only_switches = 0
-            self._int_rearmed = False
             return
         self._periodic_only_switches += 1
         if self._periodic_only_switches < _PERIODIC_ONLY_WARN_AT:
@@ -598,9 +567,6 @@ class ISL29125_Reader(SensorReaderConfig):
         # satisfied by a fault. persist_for_interval() always leaves the chip time to raise RGBTHF
         # first, so five periodic-only decisions running means the line is not delivering them.
         await self.pr.wrn_s("Range decided by the periodic path only - the interrupt may be dead.", wrnno=_WRN_ISL_PERIODIC_ONLY)
-        if not self._int_rearmed:
-            self._int_rearmed = True
-            await self._rearm_interrupt()
 
     def _on_irq(self, _pin: object) -> None:
         # Soft IRQ (rp2's Pin.irq() defaults to hard=False), so it must allocate nothing, and does
@@ -657,7 +623,6 @@ class ISL29125_Reader(SensorReaderConfig):
     async def _read_isl(self) -> "ISLResults":
         self._unsettled_cycle = False
         timestamp = utc_now()  # None until the NTP client has set the clock this boot
-        await self._expire_calibration()  # whatever this cycle's read does
         green: int | None = None
         red: int | None = None
         blue: int | None = None
@@ -669,7 +634,6 @@ class ISL29125_Reader(SensorReaderConfig):
             try:
                 status = await self._isl.read_status()
             except Exception as e:  # distinguishable from a data-read failure, and not re-raised
-                report_if_fatal(e)
                 await self.pr.err_s("Status read failed:", e, errno=_ERR_ISL_STATUS_READ)
                 return None, None, None, None, None, timestamp
             # Consumed here, once, so a decision is credited to the interrupt only when the LINE
@@ -683,7 +647,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 return None, None, None, None, None, timestamp
             # Before the settle wait, so a re-apply it triggers restarts the conversion in time for
             # that same wait to absorb it - no extra return path, and no sample taken mid-re-apply.
-            await self._verify_config()
+            await self._verify_after_failed_write()
             if self._isl.time_to_settle_ms() > 0:
                 await self._settle_wait()
                 if self._isl.time_to_settle_ms() > 0:
@@ -732,7 +696,6 @@ class ISL29125_Reader(SensorReaderConfig):
             self.pr.all("read")
             green, red, blue = counts
         except Exception as e:
-            report_if_fatal(e)
             green = red = blue = sample_range = sample_span = None
             await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
         return green, red, blue, sample_range, sample_span, timestamp
@@ -759,7 +722,6 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._settle_wait()
             raw = await self._isl.read_counts()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Paired gain-ratio reading failed:", e, errno=_ERR_READ)
             return None
         counts, saturated = self._isl.normalise(raw, range_fs=self._active_range)
@@ -778,10 +740,9 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             raw = await self._isl.get_config_snapshot()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CHIP_GET)
             return None
-        decoded = self._isl.decode_config(raw)  # before the check's awaits: the next snapshot refills raw
+        decoded = self._isl.decode_config(raw)
         await self._check_divergence(raw)
         if decoded is None:
             return None
@@ -804,7 +765,6 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._isl.configure(force=True)
             await self._isl.clear_brownout()
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error re-applying configuration:", e, errno=_ERR_CHIP_SET)
             return False
         if self._range_auto:
@@ -817,19 +777,9 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(persist=self._isl.persist_for_interval(trigger_s))
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error applying the derived transient rejection:", e, errno=_ERR_CHIP_SET)
             return False
         return True
-
-    async def _rearm_interrupt(self) -> None:
-        try:
-            await self._isl.configure(force=True)
-        except Exception as e:
-            report_if_fatal(e)
-            await self.pr.err_s("Error re-arming the interrupt:", e, errno=_ERR_CHIP_SET)
-            return
-        await self._write_thresholds()  # logs its own
 
     async def _recover_brownout(self) -> bool:
         # Every brownout warns: a supply that keeps sagging is counted per event, and the
@@ -856,7 +806,6 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             decoded = self._isl.decode_config(await self._isl.get_config_snapshot())
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error reading", what, ":", e, errno=_ERR_CHIP_GET)
             return None
         if decoded is None:
@@ -917,7 +866,6 @@ class ISL29125_Reader(SensorReaderConfig):
             try:
                 await self._isl.configure(range_fs=target_range)
             except Exception as e:
-                report_if_fatal(e)
                 # _active_range is deliberately NOT updated, so the next cycle re-evaluates and
                 # retries the whole switch - idempotent, since both writes are absolute values.
                 await self.pr.err_s("Error writing the range bit:", e, errno=_ERR_CHIP_SET)
@@ -926,16 +874,18 @@ class ISL29125_Reader(SensorReaderConfig):
             self._active_range = target_range
         return True
 
-    async def _verify_config(self) -> None:
-        # The chip is the authority: one snapshot per cycle catches a burst that NAKed partway and a
-        # CONFIG byte corrupted on the bus, on a headless device too.
+    async def _verify_after_failed_write(self) -> None:
+        # configure()'s roll-back describes the chip only when NOTHING landed; a burst NAKing
+        # partway leaves it a mixture. The chip is the authority, so one snapshot settles it - here,
+        # not only in _read_sensor_dict(), which a headless device never reaches.
         seen = self._isl.write_failures()
+        if seen == self._reconciled_write_failures:
+            return
         try:
             raw = await self._isl.get_config_snapshot()
         except Exception as e:
             report_if_fatal(e)
-            self.pr.err("Config read-back for reconciliation failed, retried next cycle:", e)
-            return
+            return  # the bus is down; the counts still differ, so the next cycle tries again
         self._reconciled_write_failures = seen
         await self._check_divergence(raw)
 
@@ -959,7 +909,6 @@ class ISL29125_Reader(SensorReaderConfig):
             else:
                 await self._isl.set_thresholds(self._isl.fraction_to_counts(self._down_thresh(ar_thresh)))
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error writing auto-range thresholds:", e, errno=_ERR_CHIP_SET)
             return False
         return True
@@ -990,9 +939,9 @@ class ISL29125_Reader(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda _b: self._base_trigger_event.set(),
             )
-        except (MemoryError, OSError) as e:
-            # Alarm pool exhausted (ENOMEM) or no memory: wake the waiting task, which logs it and ends; its restart re-arms.
-            self._timer_failed(e, self._base_trigger_event)
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
+            # instead of crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err("Could not start timer:", e)
         # FALLING, not rising: the INT is active-low open-drain (p6). A line held low by a fault
         # produces exactly one edge and then silence - which is what the periodic path and
         # the ISL_PERIODIC_ONLY warning exist for, not a flood. The bound method is built once, here, not per edge.
@@ -1092,7 +1041,6 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(ir_adjust=value)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error setting IR compensation adjust:", e, errno=_ERR_CHIP_SET)
             return False
         return True
@@ -1101,7 +1049,6 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(ir_offset=value)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error setting IR compensation offset:", e, errno=_ERR_CHIP_SET)
             return False
         return True
@@ -1114,7 +1061,6 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self._isl.configure(range_fs=value)
                 self._active_range = value
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error setting range:", e, errno=_ERR_CHIP_SET)
             return False
         self._fixed_range = value
@@ -1134,7 +1080,6 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self._isl.configure(range_fs=self._fixed_range, threshold_interrupt=False)
                 self._active_range = self._fixed_range
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error applying the auto-range mode:", e, errno=_ERR_CHIP_SET)
             return False
         self._range_auto = flag
@@ -1146,12 +1091,11 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(resolution=value)
         except Exception as e:
-            report_if_fatal(e)
             await self.pr.err_s("Error setting resolution:", e, errno=_ERR_CHIP_SET)
             return False
         # A resolution change changes the cycle length, so the derived persistence changes with it.
-        period = await self._trigger_period.get_value()  # set at construction, never None
-        if period is None or not await self._reapply_persist(int(period)):
+        period = await self._trigger_period.get_value()
+        if not await self._reapply_persist(int(period)):  # type: ignore[arg-type]  # set at construction, never None
             return False
         # The registers compare the RAW ADC value, so a resolution change rescales them, armed or not.
         await self._write_thresholds()
@@ -1184,9 +1128,6 @@ class ISL29125_I2C:
 
     def __init__(self, i2c: "I2C") -> None:
         self._i2c_isl29125 = DeviceSession(I2CDevice(i2c, _ISL29125_ADDR))
-        # This instance's own burst buffers, filled in place every read cycle under the device-session hold.
-        self._rgb_burst = bytearray(_DATA_BURST_LEN)
-        self._config_burst = bytearray(_CONFIG_BURST_LEN)
         # The post-reset state of every field (p9-p11, Tables 3/8/10: all three registers 0x00).
         self._mode = 0
         self._range_fs = _RANGE_LOW_LUX
@@ -1218,11 +1159,12 @@ class ISL29125_I2C:
         return int(green), int(red), int(blue)
 
     async def _read_byte(self, register: int) -> int:
-        # One register byte; None from the bus layer means no bus, raised so every caller's error path logs it.
+        # get_register_bytes() returns None for a malformed request but lets a real bus OSError straight through,
+        # so a read here checks for None and sits inside a caller that expects a raise.
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
             raw = await i2c.get_register_bytes(register, 1)
         if raw is None:
-            raise OSError("I2C bus not initialized")
+            raise OSError(f"failed to read register {register:#x}")
         return raw[0]
 
     @staticmethod
@@ -1247,17 +1189,17 @@ class ISL29125_I2C:
         # set_register_struct() takes one value but accepts bytes, so an "Ns" format is how a
         # burst write goes through the promoted bus layer. The payload is already bytes of the
         # exact length because struct.pack() truncates silently on MicroPython.
-        if not await i2c.set_register_struct(first_register, f"{len(payload)}s", payload):
-            raise OSError("I2C bus not initialized")
+        await i2c.set_register_struct(first_register, f"{len(payload)}s", payload)
 
-    async def get_config_snapshot(self) -> bytearray:
-        # One 3-byte burst under one lock hold, UNDECODED (decoding drops mode, SYNC, CONVEN and INTSEL, what a brownout
-        # or stray write corrupts), into this instance's buffer: the next snapshot refills it, so a caller is done with
-        # it before its next await.
+    async def get_config_snapshot(self) -> bytes:
+        # One 3-byte burst under one device-session lock, returned UNDECODED: decoding here would
+        # throw away mode, SYNC, CONVEN and INTSEL, which are the four things a brownout or a
+        # stray write actually corrupts - defeating the divergence check this exists for.
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
-            if not await i2c.get_register_into(_REGISTER_CONFIG1, self._config_burst):
-                raise OSError("I2C bus not initialized")
-        return self._config_burst
+            raw = await i2c.get_register_bytes(_REGISTER_CONFIG1, _CONFIG_BURST_LEN)
+        if raw is None:
+            raise OSError("unexpected config snapshot read result")
+        return raw
 
     async def get_device_id(self) -> int:
         return await self._read_byte(_REGISTER_DEVICE_ID)
@@ -1286,8 +1228,7 @@ class ISL29125_I2C:
             low = max(0, min(ceiling, low_counts >> shift))
             high = ceiling if high_counts is None else max(0, min(ceiling, high_counts >> shift))
             packed = struct.pack("<HH", low, high)  # 0x04-0x07, low pair then high pair (p12, Table 14)
-            if not await i2c.set_register_struct(_REGISTER_THRESHOLDS, "4s", packed):
-                raise OSError("I2C bus not initialized")
+            await i2c.set_register_struct(_REGISTER_THRESHOLDS, "4s", packed)
 
     def check_range(self, value: int) -> None:
         # The same guard configure() applies, reachable without writing: the reader stores a fixed
@@ -1299,8 +1240,7 @@ class ISL29125_I2C:
         # Table 15 marks 0x08 "RO", but p12's own BOUTF text requires an I2C write to clear it -
         # the marking is a datasheet defect, not a prohibition.
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
-            if not await i2c.set_register_struct(_REGISTER_STATUS, "B", 0x00):
-                raise OSError("I2C bus not initialized")
+            await i2c.set_register_struct(_REGISTER_STATUS, "B", 0x00)
 
     async def configure(
         self,
@@ -1486,10 +1426,9 @@ class ISL29125_I2C:
 
     async def read_counts(self) -> tuple[int, int, int]:
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
-            if not await i2c.get_register_into(_REGISTER_DATA, self._rgb_burst):
-                raise OSError("I2C bus not initialized")
-            counts = self._decode_rgb_burst(self._rgb_burst)  # filled and decoded under one hold: the buffer is this instance's own
-        if counts is None:  # narrows the Optional; a fixed 6-byte buffer always decodes
+            raw = await i2c.get_register_bytes(_REGISTER_DATA, _DATA_BURST_LEN)
+        counts = self._decode_rgb_burst(raw)
+        if counts is None:
             raise OSError("unexpected RGB data burst read result")
         return counts
 
@@ -1504,11 +1443,10 @@ class ISL29125_I2C:
         # only, NOT status the way SparkFun's reset() does: reading 0x08 would consume a destructive
         # read outside the one-per-cycle invariant read_status() depends on (M.1.2).
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
-            if not await i2c.set_register_struct(_REGISTER_DEVICE_ID, "B", _CMD_RESET):
-                raise OSError("I2C bus not initialized")
+            await i2c.set_register_struct(_REGISTER_DEVICE_ID, "B", _CMD_RESET)
             config = await i2c.get_register_bytes(_REGISTER_CONFIG1, _CONFIG_BURST_LEN)
         if config is None:
-            raise OSError("I2C bus not initialized")
+            raise OSError("failed to read the config registers back after reset")
         if any(config):
             raise RuntimeError(f"reset did not clear the config registers (read {config!r})")
         self._mode = 0
@@ -1526,7 +1464,7 @@ class ISL29125_I2C:
         # part made it under rather than with whatever is live by the time it scales it.
         return self._resolution
 
-    async def setup(self) -> bool:
+    async def setup(self) -> None:
         async with self._i2c_isl29125 as isl, isl.i2c_device as i2c:
             await i2c.setup()
         await self.verify_device_id()
@@ -1539,7 +1477,6 @@ class ISL29125_I2C:
         # can flip silently later: SYNC = 1 turns INT into an INPUT and inverts the whole interrupt
         # path, and CONVEN would mux conversion-done onto the pin the thresholds need.
         await self.configure(mode=_MODE_RGB, threshold_interrupt=True, sync=0, conven=0, force=True)
-        return True
 
     def time_to_settle_ms(self) -> int:
         remaining = time.ticks_diff(self._settle_until_ms, time.ticks_ms())

@@ -26,26 +26,16 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency",)
 
-# @tunable l4.lwip_stall_settle_s = 2.0
 _STALL_SETTLE_S = 2.0
-# @tunable l4.lwip_slow_client_bytes_per_s = 256
 _SLOW_CLIENT_BPS = 256
 # A request served while the stack is full: well under the 5 s per-call timeout and the stall's up-to-10 s freeze.
-# @tunable l4.lwip_spin_concurrent_request_max_s = 3.0
 _REQUEST_MAX_S = 3.0
-# @tunable l4.lwip_stall_hold_s = 10.0
 _HOLD_S = 10.0
-# @tunable l4.lwip_stall_status_poll_s = 0.5
 _STATUS_POLL_S = 0.5
-# @tunable l4.lwip_stall_stopped_answering_s = 5.0
 _STOPPED_ANSWERING_S = 5.0
-# @tunable l4.lwip_stall_raw_socket_timeout_s = 10.0
 _RAW_SOCKET_TIMEOUT_S = 10.0
-# @tunable l4.lwip_stall_drain_timeout_s = 30.0
 _DRAIN_TIMEOUT_S = 30.0
-# @tunable l4.lwip_stall_serving_timeout_s = 120.0
 _SERVING_TIMEOUT_S = 120.0
-# @tunable l4.lwip_stall_join_timeout_s = 30.0
 _JOIN_TIMEOUT_S = 30.0
 _MIN_ZERO_WINDOW = 2  # connections the stall needs at zero window, its precondition
 _LARGEST_ASSET = "/js/app.js"  # the largest static file a page load fetches
@@ -85,7 +75,6 @@ class _Verdicts:
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
 )
 def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_note: "_load.Note") -> None:
     # A failed bound goes to the owner as an override change (a short POLLOUT back-off), never a larger bound.
@@ -102,7 +91,6 @@ def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_not
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
 )
 def test_send_stall_on_the_unpatched_image(board: "Board", bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # The control image the round built (--lwip-control-image) must stall where the normal image does not; both flash

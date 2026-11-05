@@ -17,7 +17,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from _shared.bus_reader_loops import Record, Stop, outside, read_loop, report_errors
+    from _shared.bus_reader_loops import Record, Stop, outside, read_loop, report_errors, take_por
     from _shared.facts import done, fact
     from _shared.watchdog import arm, fed_sleep_ms
     from bench_facts import BenchFacts
@@ -26,11 +26,8 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _GENERAL_CALL = (0x00, b"\x06")  # I2C-bus specification 3.1.13: the general call and its reset second byte
 _DISTINCT = (8, 2, 3)  # pressure OSR, temperature OSR, IIR coefficient: none of them a post-reset default
-# @tunable l3.bmp3xx_alone_survives_a_general_call_broadcasts = 10
 _BROADCASTS = 10
-# @tunable l3.bmp3xx_alone_survives_a_general_call_broadcast_step_ms = 200
 _BROADCAST_STEP_MS = 200
-# @tunable l3.bmp3xx_alone_survives_a_general_call_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 
 
@@ -50,7 +47,7 @@ async def _main() -> None:
         await bmp.set_pressure_oversampling(_DISTINCT[0])
         await bmp.set_temperature_oversampling(_DISTINCT[1])
         await bmp.set_filter_coefficient(_DISTINCT[2])
-        await bmp.take_por_detected()  # cleared: a later True is a reset this script did not make
+        await take_por(bmp)  # cleared: a later True is a reset this script did not make
         fact("before", await _state(bmp))
 
         async def read() -> "str | None":
@@ -79,7 +76,7 @@ async def _main() -> None:
         fact("reads", reader_rec.reads)
         fact("after", await _state(bmp))
         fact("distinct", list(_DISTINCT))
-        fact("por_after", await bmp.take_por_detected())
+        fact("por_after", await take_por(bmp))
         report_errors([reader_rec])
     finally:
         # The soft reset leaves the post-reset defaults (OSR x1, x1, IIR 0), which are the driver schema's defaults.

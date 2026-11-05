@@ -17,10 +17,6 @@ _WB_T_MIN = const(-20.0)
 _WB_T_MAX = const(50.0)
 _WB_RH_MIN = const(5.0)
 _WB_RH_MAX = const(99.0)
-_WB_CORNER_T0 = const(-20.0)
-_WB_CORNER_RH0 = const(75.0)
-_WB_CORNER_T1 = const(10.0)
-_WB_CORNER_RH1 = const(5.0)
 _DP_T_MIN = const(-40.0)
 _DP_T_MAX = const(50.0)
 _DP_RH_MIN = const(0.1)
@@ -35,8 +31,6 @@ _MAGNUS_T_MIN = const(-30.0)
 _MAGNUS_T_MAX = const(40.0)
 _MAGNUS_RH_MAX = const(100.0)
 _MAGNUS_AH_MAX = const(100.0)
-# A saturated reading's inverse lands a rounding step above 100 % (rp2 floats carry ~1e-7 relative error per step).
-_MAGNUS_RH_ROUNDING = const(0.001)
 # Colour-chain domains. The RGB triples these take are already normalised 0-1 by the driver's own
 # scaling chain (SPECIFICATION.md Part M.1.3), so anything outside means that chain is
 # broken, not that the light was unusual - hence a reject rather than a clamp.
@@ -152,7 +146,7 @@ def pressure_at_height(p0: float | None, dh: float | None, tmean: float | None) 
 
 
 def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | None:
-    # Inverse of abs_humidity's Magnus form; a result outside 0-100 % is out of domain: None, never clamped.
+    # Inverse of abs_humidity's Magnus-type formula; result is clamped to the valid 0-100% range.
     # abs_hum is upper-bounded generously above abs_humidity's own max output (~51 g/m3 at the
     # top of its domain, 40 degC/100% RH) purely to reject negative/nonsensical input.
     if temperature is None or abs_hum is None:
@@ -169,9 +163,7 @@ def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | No
         rh = abs_hum * (temperature + 273.15) / (13.23454 * math.pow(10.0, (a * temperature) / (b + temperature)))
     except (ArithmeticError, ValueError):
         return None
-    if not (0.0 <= rh <= _MAGNUS_RH_MAX + _MAGNUS_RH_ROUNDING):
-        return None
-    return rh
+    return max(0.0, min(100.0, rh))
 
 
 def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> tuple[float, float, float] | None:
@@ -211,13 +203,11 @@ def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> tu
 
 
 def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> float | None:
-    # Stull (2011) empirical wet bulb, valid at 101.325 kPa only: -20..50 degC
-    # and 5..99 %RH, minus the cold-dry corner below the line (-20 degC, 75 %) to (10 degC, 5 %) (Fig. 3).
+    # Stull (2011) empirical wet-bulb approximation. Valid domain per the paper: -20-50 degC,
+    # 5-99% RH (errors grow sharply outside it, especially at low RH + low temperature together).
     if temperature is None or humidity is None:
         return None
     if not (_WB_T_MIN <= temperature <= _WB_T_MAX and _WB_RH_MIN <= humidity <= _WB_RH_MAX):
-        return None
-    if humidity < _WB_CORNER_RH0 + (_WB_CORNER_RH1 - _WB_CORNER_RH0) * (temperature - _WB_CORNER_T0) / (_WB_CORNER_T1 - _WB_CORNER_T0):
         return None
     try:
         return (

@@ -14,7 +14,6 @@ from _devices import DEVICE_NAMES, device_toml
 from buildgen.generate import generate_device
 
 _DEVICE = "fixture_device"
-# @tunable l0.fram_less_boot_timeout_s = 60
 _BOOT_TIMEOUT_S = 60  # one construction and setup list on the Unix port, a few seconds; the bound ends a hang
 _STUB_FROZEN_HTML = '"""Test-only stub: the boot serves no static page."""\n'
 _FACTS = "FACTS "

@@ -19,7 +19,6 @@ from _script_loader import load_script_module
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "ci_apt_cache.py"
 # The probe's cap in these tests: each slow mirror is waited out to it.
-# @tunable l0.apt_mirror_probe_test_cap_s = 0.5
 _CAP_S = 0.5
 _MIN_RATE = 400_000.0  # the floor the tests ask for: 5x the throttled mirror's 80 kB/s
 _LONG_BOUND_S = 3600.0  # a fetching step's bound no test set comes near, so the floor sets the required rate
@@ -265,7 +264,6 @@ def test_a_full_cache_hit_skips_the_check_unless_forced(apt_cache: ModuleType, m
 
 # The stall test's cap: one byte at half the cap, then nothing. A read that waits only the time left ends at the cap,
 # one that waits a whole cap ends at 1.5 caps; the bound sits midway.
-# @tunable l0.apt_mirror_probe_stall_test_cap_s = 2.0
 _STALL_CAP_S = 2.0
 
 

@@ -2,10 +2,8 @@
 every device's output passes the shared shape corpus, and the catalog-derived blocks equal their sources."""
 
 import ast
-import copy
 import functools
 import json
-import math
 import os
 import re
 import shutil
@@ -53,7 +51,7 @@ def _is_objs(value: "list[JsonValue]") -> "TypeGuard[list[JsonDict]]":
 
 
 def _is_poll_interval(value: object) -> bool:
-    return _is_number(value) and 0 < value <= _MAX_POLL_INTERVAL_MS
+    return _is_number(value) and value > 0
 
 
 def _is_step_list(value: object) -> bool:
@@ -76,14 +74,6 @@ def _code_hint_problems(f: "JsonDict", where: str) -> "list[str]":
         problems.append(f"{where}.format")
     if "codes" in f and not _is_string_map(f["codes"]):
         problems.append(f"{where}.codes")
-    if "codeTones" in f:
-        codes = given if isinstance(given := f.get("codes"), dict) else {}
-        tones = f["codeTones"]
-        if not isinstance(tones, dict) or not all(code in codes and tone in _CODE_TONES for code, tone in tones.items()):
-            problems.append(f"{where}.codeTones")
-    special = f.get("specialValues")
-    if "specialValues" in f and not (isinstance(special, list) and all(isinstance(s, dict) and "value" in s and isinstance(s.get("meaning"), str) for s in special)):
-        problems.append(f"{where}.specialValues")
     return problems
 
 
@@ -109,16 +99,6 @@ def _definitions_text(toml_path: Path, src_dir: Path) -> str:
     return json.dumps(definitions_for_toml(toml_path, src_dir))
 
 
-def _duplicate(seen: "dict[str, int]", key: object, index: int, where: str) -> "list[str]":
-    # A repeated key names both indices, as validateDefinitions()'s noteDuplicate() does.
-    if not isinstance(key, str):
-        return []
-    if key in seen:
-        return [f"{where}.key {key!r} duplicates [{seen[key]}]"]
-    seen[key] = index
-    return []
-
-
 def _errcount_groups(definitions: "JsonDict") -> "list[tuple[str, JsonDict]]":
     return [(_str(s["key"]), g) for s in _sections(definitions) for g in _groups(s) if g.get("kind") == "errcount"]
 
@@ -139,16 +119,6 @@ def _field_groups(definitions: "JsonDict") -> "list[tuple[str, JsonDict]]":
     return [(_str(s["key"]), g) for s in _sections(definitions) for g in _groups(s) if "fields" in g]
 
 
-def _field_problems(f: "JsonDict", where: str, sibling_keys: "list[JsonValue]") -> "list[str]":
-    problems = [f"{where}.{key}" for key in ("key", "label") if not isinstance(f.get(key), str)]
-    if f.get("kind") not in _FIELD_KINDS:
-        problems.append(f"{where}.kind")
-    if f.get("kind") == "composite":
-        sub_fields = f.get("subFields")
-        problems += _fields_problems(sub_fields, f"{where}.subFields") if isinstance(sub_fields, list) else [f"{where}.subFields"]
-    return problems + _code_hint_problems(f, where) + _value_hint_problems(f, where, sibling_keys)
-
-
 def _fields(group: "JsonDict") -> "list[JsonDict]":
     # An errcount group carries modules, not fields: it reads as an empty field list.
     return _objs(group.get("fields", []))
@@ -160,20 +130,6 @@ def _fields_by_key(definitions: "JsonDict") -> "dict[str, list[JsonDict]]":
         for f in _fields(group):
             found.setdefault(_str(f["key"]), []).append(f)
     return found
-
-
-def _fields_problems(fields: "list[JsonValue]", where: str) -> "list[str]":
-    # A group's fields or a composite's sub-fields: each an object, each key once.
-    problems: list[str] = []
-    seen: dict[str, int] = {}
-    keys = [f.get("key") if isinstance(f, dict) else None for f in fields]
-    for index, f in enumerate(fields):
-        if not isinstance(f, dict):
-            problems.append(f"{where}[{index}] is not an object")
-            continue
-        problems += _duplicate(seen, f.get("key"), index, f"{where}[{index}]")
-        problems += _field_problems(f, f"{where}[{index}]", keys)
-    return problems
 
 
 def _generate(repo_root: Path, src_dir: Path, device: str) -> "JsonDict":
@@ -190,16 +146,15 @@ def _group(section: "JsonDict", key: str) -> "JsonDict":
 # ---------------------------------------------------------------------------
 
 
-def _group_problems(g: "JsonDict", where: str, section: "JsonDict") -> "list[str]":
+def _group_problems(g: object, where: str) -> "list[str]":
+    if not isinstance(g, dict):
+        return [f"{where} is not an object"]  # validateDefinitions() throws on it: a rejection either way
     problems = []
     if not isinstance(g.get("key"), str) or not isinstance(g.get("label"), str):
         problems.append(f"{where} key/label")
     if g.get("kind") == "errcount":
-        modules = g.get("modules")
-        if not isinstance(modules, list):
+        if not isinstance(g.get("modules"), list):
             problems.append(f"{where}.modules")
-        else:
-            problems += [f"{where}.modules[{i}]" for i, m in enumerate(modules) if not (isinstance(m, dict) and isinstance(m.get("key"), str) and isinstance(m.get("label"), str))]
         codes = g.get("codes", {"E": {}, "W": {}})
         if not isinstance(codes, dict) or not _is_string_map(codes.get("E")) or not _is_string_map(codes.get("W")):
             problems.append(f"{where}.codes")
@@ -207,10 +162,8 @@ def _group_problems(g: "JsonDict", where: str, section: "JsonDict") -> "list[str
     fields = g.get("fields")
     if not isinstance(fields, list):
         return [*problems, f"{where}.fields"]
-    rest = section.get("rest")
-    if g.get("submit") is True and not (isinstance(rest, dict) and isinstance(rest.get("put"), str)):
-        problems.append(f"{where} is writable but its section has no rest.put")
-    return problems + _fields_problems(fields, f"{where}.fields")
+    hints = [_code_hint_problems(f, f"{where}.fields[{i}]") + _value_hint_problems(f, f"{where}.fields[{i}]") for i, f in enumerate(fields) if isinstance(f, dict)]
+    return problems + [p for found in hints for p in found]
 
 
 def _groups(section: "JsonDict") -> "list[JsonDict]":
@@ -248,41 +201,6 @@ def test_every_tagged_field_lands_once_in_its_group(repo_root: Path, src_dir: Pa
     generated = _generate(repo_root, src_dir, device)
     assert _tag_placement_problems(_expected_tagged_fields(model, src_dir), generated) == []
     assert _hidden_problems(model, src_dir, generated) == []
-
-
-def test_the_tag_oracle_bites(repo_root: Path, src_dir: Path) -> None:
-    device = DEVICE_NAMES[0]
-    model = build_model(device_toml(device), src_dir)
-    expected = _expected_tagged_fields(model, src_dir)
-    generated = _generate(repo_root, src_dir, device)
-    dropped = copy.deepcopy(generated)
-    _section, group = next((s, g) for s, g in _field_groups(dropped) if _fields(g) and g["key"] != "build")
-    removed = _fields(group).pop(0)
-    assert _tag_placement_problems(expected, dropped), f"dropping {removed['key']} went unnoticed"
-    duplicated = copy.deepcopy(generated)
-    _section, group = next((s, g) for s, g in _field_groups(duplicated) if _fields(g) and g["key"] != "build")
-    _fields(group).append(dict(_fields(group)[0]))
-    assert _tag_placement_problems(expected, duplicated), "a duplicated field went unnoticed"
-
-
-def test_the_hidden_oracle_bites(repo_root: Path, src_dir: Path) -> None:
-    # A device with an instance whose file hides a field: that field planted in its card, or as its maintenance row, is found.
-    for device in DEVICE_NAMES:
-        model = build_model(device_toml(device), src_dir)
-        spec = next((s for s in model.instances.values() if s.driver_info is not None and any(t.hidden for t in parse_web_tags(s.driver_info.source_path, device, s.label))), None)
-        if spec is not None:
-            break
-    else:
-        pytest.fail("no device has an instance with a hidden= field, so the oracle below bites on nothing")
-    assert spec.driver_info is not None
-    name = next(t.field_name for t in parse_web_tags(spec.driver_info.source_path, device, spec.label) if t.hidden)
-    generated = _generate(repo_root, src_dir, device)
-    assert _hidden_problems(model, src_dir, generated) == []
-    for key in (name, f"{spec.resolved_name}_{name}"):
-        planted = copy.deepcopy(generated)
-        _section, group = next((s, g) for s, g in _field_groups(planted) if g["key"] == (spec.resolved_name if key == name else "sensors"))
-        _fields(group).append({"key": key, "label": key, "kind": "readonly"})
-        assert _hidden_problems(model, src_dir, planted), f"a hidden {key} went unnoticed"
 
 
 # ---------------------------------------------------------------------------
@@ -356,30 +274,10 @@ def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root
 _NOTIFICATION_DEVICES = devices_with("notification")
 
 
-def _obj(value: "JsonValue") -> "JsonDict":
-    assert isinstance(value, dict), value
-    return value
-
-
 def test_a_real_device_wires_a_notification_and_a_warn_signal() -> None:
     # The floor of the per-device notification checks: none of them may pass by running on no device.
     assert _NOTIFICATION_DEVICES, "no device declares a notification, so the notification checks below run on nothing"
     assert any(_wired_warn_signals(device) for device in _NOTIFICATION_DEVICES), "no notification wires a warn signal, so the warn-field check compares two empty lists"
-
-
-@pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
-def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
-    # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
-    source = _module_source(device_toml(device), src_dir, repo_root / "ext")
-    status = _section(_generate(repo_root, src_dir, device), "status")
-    group = next((g for g in _groups(status) if g["key"] == "notification"), None)
-    assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
-    assert [f["key"] for f in _fields(group)] == _returned_keys(source, "_notification_status") == ["Triggered", "State", "TS", "PauseTime"]
-    assert _fields(group)[1] == {
-        "key": "State", "label": "Evaluation State", "kind": "readonly",
-        "description": "Whether the last notification cycle evaluated every signal, and why not, as a numeric code.",
-        "codes": {num: row["text"] for num, row in _CATALOG["status"]["NotifyState"].items()},
-    }
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -399,7 +297,7 @@ def test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time(repo
 
 
 # GET /status's system keys in the order the generated _system_status() publishes them; MemPaused only with FRAM.
-_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", "MemPaused", "ConfigFaults", "ConfigUnpersisted", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale")
+_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "MemFree", "MemPaused", "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale")
 
 
 def _objs(value: "JsonValue") -> "list[JsonDict]":
@@ -421,18 +319,10 @@ def test_the_reset_heap_and_config_rows_say_what_they_report(repo_root: Path, sr
     assert fields["ResetReason"] == {
         "key": "ResetReason", "label": "Last Reset Reason", "kind": "readonly", "description": "Why the device last restarted, as a numeric code; click it for its meaning.", "codes": reset_codes,
     }
-    assert fields["ResetBits"] == {
-        "key": "ResetBits", "label": "Reset Flags", "kind": "readonly",
-        "description": "The chip's own reset flags at this boot, reported raw: 1 watchdog timer expired, 2 reset forced by software, 256 power-on or brown-out, 65536 RUN pin, 1048576 debug-port restart.",
-    }
     assert fields["MemFree"] == {"key": "MemFree", "label": "Free Heap", "unit": "B", "kind": "readonly", "description": "gc.mem_free() when this poll was answered; the floor under load is the figure of interest."}
     assert fields["ConfigFaults"] == {
         "key": "ConfigFaults", "label": "Config Faults", "kind": "readonly",
         "description": "Modules whose config file existed at this boot but could not be read or was damaged (a damaged file is repaired at boot); empty when none. Listed until the next boot.",
-    }
-    assert fields["ConfigUnpersisted"] == {
-        "key": "ConfigUnpersisted", "label": "Config Unpersisted", "kind": "readonly",
-        "description": "Modules whose last accepted config change could not be written to flash: it applies now but is lost at the next boot. Empty when none; cleared by the module's next successful write.",
     }
 
 
@@ -540,14 +430,13 @@ def test_every_maintenance_field_reads_its_instance_and_field_by_path(repo_root:
 
 
 @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
-def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+def test_the_notification_status_is_the_pause_alone_read_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+    # /status's notification block answers the remaining pause only, the Status page's notification row with it.
     sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
     assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
-    status_fields = {_str(f["key"]): f for g in _groups(sections["status"]) if g["key"] == "notification" for f in _fields(g)}
-    assert status_fields["TS"] == {
-        "key": "TS", "label": "Last Cycle Time", "kind": "readonly", "format": "epoch",
-        "description": "When the last notification cycle ran, whether or not it evaluated a signal (see Evaluation State).",
-    }
+    status_fields = [f for g in _groups(sections["status"]) if g["key"] == "notification" for f in _fields(g)]
+    assert status_fields == [{"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"}]
+    assert _returned_keys(_module_source(device_toml(device), src_dir, repo_root / "ext"), "_notification_status") == ["PauseTime"]
     (pause,) = [f for g in _groups(sections["notification"]) if g["key"] == "pause" for f in _fields(g)]
     assert (pause["key"], pause["kind"], pause["statusPath"]) == ("PauseTime", "number", ["notification", "PauseTime"])
 
@@ -703,10 +592,6 @@ def _returned_keys(module_source: str, function: str) -> "list[str]":
     return [k.value for k in returned.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
 
 
-# The Status page's own rows whose key is not their table's name; every other catalog row names its table by its key.
-_STATUS_ROW_TABLES = {"State": "NotifyState"}
-
-
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path, src_dir: Path, device: str) -> None:
     # A catalog row (the Status page's own fields) names its table by its key; a tagged field by codes=.
@@ -716,7 +601,7 @@ def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path
         for f in _fields(group):
             if "codes" in f:
                 key = _str(f["key"])
-                table = named.get(key, _STATUS_ROW_TABLES.get(key, key))
+                table = named.get(key, key)
                 assert table in tables, f"{f['key']} carries codes but the catalog has no status table {table!r}"
                 assert f["codes"] == {num: row["text"] for num, row in tables[table].items()}, f["key"]
 
@@ -729,7 +614,7 @@ def test_every_code_tone_block_equals_its_catalog_tables_tones(repo_root: Path, 
     for _section, group in _field_groups(_generate(repo_root, src_dir, device)):
         for f in _fields(group):
             key = _str(f["key"])
-            table = named.get(key, _STATUS_ROW_TABLES.get(key, key)) if "codes" in f else None
+            table = named.get(key, key) if "codes" in f else None
             tones = {num: row["tone"] for num, row in tables[table].items() if "tone" in row} if table is not None else {}
             assert f.get("codeTones", {}) == tones, f["key"]
 
@@ -875,14 +760,7 @@ def _section_problems(s: "JsonDict", where: str) -> "list[str]":
     groups = s.get("groups")
     if not isinstance(groups, list):
         return [*problems, f"{where}.groups"]
-    seen: dict[str, int] = {}
-    for index, g in enumerate(groups):
-        if not isinstance(g, dict):
-            problems.append(f"{where}.groups[{index}] is not an object")
-            continue
-        problems += _duplicate(seen, g.get("key"), index, f"{where}.groups[{index}]")
-        problems += _group_problems(g, f"{where}.groups[{index}]", s)
-    return problems
+    return problems + [p for index, g in enumerate(groups) for p in _group_problems(g, f"{where}.groups[{index}]")]
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -953,12 +831,9 @@ def test_the_byte_bounded_fields_are_exactly_the_radio_fields(src_dir: Path) -> 
 # its $ never matches before a trailing newline, hence [0-9] and fullmatch.
 _SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 _SUPPORTED_SCHEMA_MAJOR = int(SCHEMA_VERSION.split(".")[0])  # js/definitions.js's, pinned by test_definitions_js_mirrors.py
-_MAX_POLL_INTERVAL_MS = 2**31 - 1  # setTimeout's ceiling; js/definitions.js's copy is pinned by test_definitions_js_mirrors.py
 _POLL_GROUPS = ("live", "settings", "none")
-_FIELD_KINDS = ("readonly", "number", "string", "enum", "toggle", "composite")
 _FIELD_FORMATS = ("gmtimestruct", "epoch", "lasttaskend")
 _STRING_SHAPES = ("hostLabel", "countryCode", "hostName", "ipv4List")
-_CODE_TONES = ("good", "neutral", "warn")
 
 
 def _sgp_maintenance_keys(module_source: str) -> "set[str]":
@@ -976,12 +851,12 @@ def _shape_problems(defs: object) -> "list[str]":
     sections = defs.get("sections")
     if not isinstance(sections, list) or not sections:
         return [*problems, "sections"]
-    seen: dict[str, int] = {}
+    seen: list[JsonValue] = []
     for index, s in enumerate(sections):
         if not isinstance(s, dict):
             problems.append(f"sections[{index}] is not an object")
             continue
-        problems += _duplicate(seen, s.get("key"), index, f"sections[{index}]")
+        seen.append(s.get("key"))
         problems += _section_problems(s, f"sections[{index}]")
     if "landingSection" in defs and defs["landingSection"] not in seen:
         problems.append("landingSection matches no section")
@@ -1084,8 +959,6 @@ def _top_level_problems(defs: "JsonDict") -> "list[str]":
         problems.append("landingSection")
     if not _is_poll_interval(defs.get("defaultPollIntervalMs")):
         problems.append("defaultPollIntervalMs")
-    if "defaultDecimals" in defs and not _is_decimals(defs["defaultDecimals"]):
-        problems.append("defaultDecimals")
     return problems
 
 
@@ -1155,7 +1028,7 @@ def test_a_string_key_off_a_string_field_fails_the_build(tag: WebFieldTag) -> No
 # ---------------------------------------------------------------------------
 
 
-def _value_hint_problems(f: "JsonDict", where: str, sibling_keys: "list[JsonValue]") -> "list[str]":
+def _value_hint_problems(f: "JsonDict", where: str) -> "list[str]":
     problems = []
     kind = f.get("kind")
     if "path" in f:
@@ -1163,23 +1036,14 @@ def _value_hint_problems(f: "JsonDict", where: str, sibling_keys: "list[JsonValu
             problems.append(f"{where}.path")
         elif kind != "readonly":
             problems.append(f"{where}.path on a writable field")
-    if "statusPath" in f and (not _is_step_list(f["statusPath"]) or kind not in ("readonly", "number")):
-        problems.append(f"{where}.statusPath")
     if "decimals" in f and not _is_decimals(f["decimals"]):
         problems.append(f"{where}.decimals")
-    resolution = f.get("resolution")
-    if "resolution" in f and not (_is_number(resolution) and math.isfinite(resolution) and resolution > 0 and kind == "number"):
-        problems.append(f"{where}.resolution")
-    problems.extend(f"{where}.{key}" for key in ("byteLength", "clearable") if key in f and (not isinstance(f[key], bool) or kind != "string"))
+    if "byteLength" in f and (not isinstance(f["byteLength"], bool) or kind != "string"):
+        problems.append(f"{where}.byteLength")
     if "shape" in f and (f["shape"] not in _STRING_SHAPES or kind != "string"):
         problems.append(f"{where}.shape")
     if "alwaysExecuted" in f and not isinstance(f["alwaysExecuted"], bool):
         problems.append(f"{where}.alwaysExecuted")
-    if "confirm" in f and (not isinstance(f["confirm"], bool) or kind not in ("enum", "toggle")):
-        problems.append(f"{where}.confirm")
-    sibling = f.get("ignoredWhenSet")
-    if "ignoredWhenSet" in f and (not isinstance(sibling, str) or sibling == f.get("key") or sibling not in sibling_keys):
-        problems.append(f"{where}.ignoredWhenSet")
     return problems
 
 

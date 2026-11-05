@@ -35,7 +35,6 @@ _SCRATCH_REGIONS = ((BENCH["fram_max_size"] - 0x200, 0x100),)
 # load. Otherwise a scratch directory, where every setup() writes its defaults once, serving on 127.0.0.1:8080.
 _PRODUCTION = BENCH.get("mode") == "production"
 _SCRATCH_CFG_PATH = "hwtest-scratch/"
-# @tunable l3.loop_lag_window_s = 30
 _WINDOW_S = 30
 _PROBE_MS = 10
 _BUCKETS = 64  # 1 ms lag buckets for the p99, the last one open-ended

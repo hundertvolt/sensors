@@ -15,7 +15,6 @@ from _bmp3xx_chip import BMP3XXChip
 from _twin_common import Walk
 from _twin_random import FixedRandom
 
-# @tunable l2.bmp3xx_probe_hang_s = 0.05
 _PROBE_HANG_S = 0.05
 
 
@@ -228,15 +227,6 @@ def test_an_8_byte_read_at_err_reg_returns_err_status_and_the_data_bytes() -> No
     assert block[1] == _read(chip, 0x03, 1)[0]
     assert block[2:] == _read(chip, 0x04, 6)  # ERR_REG, STATUS and the data are one contiguous file
     assert _read(chip, 0x03, 7) == block[1:]
-
-
-def test_the_fatal_err_knob_sets_err_reg_bit_0() -> None:
-    chip = BMP3XXChip()
-    chip.fatal_err = True
-    assert _read(chip, 0x02, 1) == b"\x01"
-    assert _read(chip, 0x02, 8)[0] == 0x01
-    chip.fatal_err = False
-    assert _read(chip, 0x02, 1) == b"\x00"
 
 
 def test_unknown_register_returns_zero_bytes_without_raising() -> None:

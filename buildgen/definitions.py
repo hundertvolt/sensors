@@ -632,10 +632,6 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
             "key": "ResetReason", "label": "Last Reset Reason", "kind": "readonly", "description": "Why the device last restarted, as a numeric code; click it for its meaning.",
             **_status_codes("ResetReason", model.device, "ResetReason"),
         },
-        {
-            "key": "ResetBits", "label": "Reset Flags", "kind": "readonly",
-            "description": "The chip's own reset flags at this boot, reported raw: 1 watchdog timer expired, 2 reset forced by software, 256 power-on or brown-out, 65536 RUN pin, 1048576 debug-port restart.",
-        },
         {"key": "MemFree", "label": "Free Heap", "unit": "B", "kind": "readonly", "description": "gc.mem_free() when this poll was answered; the floor under load is the figure of interest."},
     ]
     if "fram" in have:
@@ -644,10 +640,6 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         {
             "key": "ConfigFaults", "label": "Config Faults", "kind": "readonly",
             "description": "Modules whose config file existed at this boot but could not be read or was damaged (a damaged file is repaired at boot); empty when none. Listed until the next boot.",
-        },
-        {
-            "key": "ConfigUnpersisted", "label": "Config Unpersisted", "kind": "readonly",
-            "description": "Modules whose last accepted config change could not be written to flash: it applies now but is lost at the next boot. Empty when none; cleared by the module's next successful write.",
         },
         {
             "key": "LastTaskEnd", "label": "Task Last Ended", "kind": "readonly", "format": "lasttaskend",
@@ -695,16 +687,6 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         groups.append({"key": "sensors", "label": "Sensor Maintenance", "fields": maintenance_fields})
     if "notification" in have:
         groups.append({"key": "notification", "label": "Notification Status", "fields": [
-            {"key": "Triggered", "label": "Currently Triggered", "kind": "readonly"},
-            {
-                "key": "State", "label": "Evaluation State", "kind": "readonly",
-                "description": "Whether the last notification cycle evaluated every signal, and why not, as a numeric code.",
-                **_status_codes("NotifyState", model.device, "State"),
-            },
-            {
-                "key": "TS", "label": "Last Cycle Time", "kind": "readonly", "format": "epoch",
-                "description": "When the last notification cycle ran, whether or not it evaluated a signal (see Evaluation State).",
-            },
             {"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"},
         ]})
     # Every field group, then the error counts and their reset command; the webserver's row is errcount's last.

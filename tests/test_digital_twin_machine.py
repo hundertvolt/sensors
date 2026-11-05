@@ -58,47 +58,27 @@ from machine import (
     reset,
 )
 
-# @tunable l2.machine_wdt_short_timeout_ms = 100
 _WDT_SHORT_TIMEOUT_MS = 100
-# @tunable l2.machine_wdt_poll_ms = 5
 _WDT_POLL_MS = 5
-# @tunable l2.machine_wdt_poll_tries = 200
 _WDT_POLL_TRIES = 200
-# @tunable l2.machine_wdt_second_notice_poll_tries = 600
 _WDT_SECOND_NOTICE_POLL_TRIES = 600
-# @tunable l2.machine_run_bound_s = 5
 _RUN_BOUND_S = 5
-# @tunable l2.machine_wdt_fed_timeout_ms = 100
 _WDT_FED_TIMEOUT_MS = 100
-# @tunable l2.machine_feed_step_ms = 20
 _FEED_STEP_MS = 20
-# @tunable l2.machine_feed_rounds = 6
 _FEED_ROUNDS = 6
-# @tunable l2.machine_double_trigger_bound_s = 8
 _DOUBLE_TRIGGER_BOUND_S = 8
-# @tunable l2.machine_timer_period_ms = 20
 _TIMER_PERIOD_MS = 20
-# @tunable l2.machine_before_deinit_ms = 60
 _BEFORE_DEINIT_MS = 60
-# @tunable l2.machine_after_deinit_ms = 80
 _AFTER_DEINIT_MS = 80
-# @tunable l2.machine_chain_period_ms = 10
 _CHAIN_PERIOD_MS = 10
-# @tunable l2.machine_chain_poll_ms = 10
 _CHAIN_POLL_MS = 10
-# @tunable l2.machine_chain_poll_tries = 100
 _CHAIN_POLL_TRIES = 100
-# @tunable l2.machine_fire_poll_ms = 20
 _FIRE_POLL_MS = 20
-# @tunable l2.machine_fire_poll_tries = 100
 _FIRE_POLL_TRIES = 100
 
 
-# @tunable l2.machine_timer_short_period_ms = 5
 _SHORT_PERIOD_MS = 5
-# @tunable l2.machine_timer_rearm_window_ms = 18
 _REARM_WINDOW_MS = 18
-# @tunable l2.machine_spi_wire_time_us_per_byte = 200
 _WIRE_US_PER_BYTE = 200
 _RSR_OE = 0x08  # UARTRSR's overrun bit (RP2040 datasheet Table 427)
 
@@ -975,7 +955,8 @@ def test_wdt_feeds_build_no_task_and_allocate_nothing() -> None:
         grown, allocated = run(scenario(counting), _RUN_BOUND_S)
     finally:
         machine.asyncio = asyncio  # type: ignore[attr-defined]
-    assert (grown, allocated) == (0, 0), f"{grown} tasks built and {allocated} B allocated by {LOG_MAXLEN} feeds"
+    settrace_build = hasattr(sys, "settrace")  # allocates per call and resume, traced or not (SPECIFICATION.md E.5.2)
+    assert grown == 0 and (settrace_build or allocated == 0), f"{grown} tasks built and {allocated} B allocated by {LOG_MAXLEN} feeds"
 
 
 def test_reset_increments_the_module_counter_then_raises_simulated_reset() -> None:
@@ -1075,13 +1056,13 @@ def test_mem32_answers_the_reset_registers_on_each_reset_path() -> None:
     reason, chip = 0x40058008, 0x40064008  # WATCHDOG REASON, VREG_AND_CHIP_RESET CHIP_RESET
     machine.power_on()
     assert (machine.mem32[reason], machine.mem32[chip]) == (0, 0x100)  # HAD_POR
-    for action in (reset, bootloader):
+    for action, bits in ((reset, 2), (bootloader, 1)):  # FORCE; a BOOTSEL round trip leaves TIMER (bench)
         machine.power_on()
         try:
             action()
         except SimulatedRebootError:
             pass
-        assert (machine.mem32[reason], machine.mem32[chip]) == (2, 0x100)  # FORCE; HAD_POR survives
+        assert (machine.mem32[reason], machine.mem32[chip]) == (bits, 0x100), action  # HAD_POR survives
     machine.power_on()
 
     async def starve() -> None:

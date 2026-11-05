@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable
 
 # The real-time hang bound around each driven run: the clock itself fails a stalled one in virtual time first.
-# @tunable l1.driven_time_run_bound_s = 5
 _RUN_BOUND_S = 5
 
 

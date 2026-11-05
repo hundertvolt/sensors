@@ -131,3 +131,129 @@ What changed the plan's substance:
 
 Under section 6 no decision's basis changed: D1's fact gains the owner's later word, D3's stale options went, D5's
 budgets follow its own rule, D6's reason is attributed to the scan. Decision 4's "keeps every row's bar" now holds.
+
+## The bench campaign folded in (2026-11-02, owner 15:21: "Fold into the plan now.")
+
+Source: `bench/READING_20261029.md` (branch `claude/u35-bench-campaign` at `ec97953d`); backup `PLAN_before_bench.md`.
+- Header, section 0 and section 1: the campaign, its one firmware defect, the answered round-1 items, the owner's
+  decisions of 2026-10-29 (power save, storms) and 2026-11-02 (the storm stays unless a clean, lean Python-only fix
+  exists; the hotspot's 2 UDP sockets are fine while the global config stays); seven clarifications, not six.
+- R0: the findings list starts with two improvement items (FRAM SPI at 8 MHz; the lock-less `read()` spin).
+- B1-B8: the silicon facts each batch's ledger uses. B6 admits the receive-ring teardown hang (4.2 (a)) with the bench
+  branch's fix carried in test first (B93), corrects the UARTRSR comment, and reproduces the two crc16 results first.
+- R3's round-1 preparation: the two hardware-test corrections, the twin fidelity inputs, the chip facts at the desk.
+- Round 1: shortened to what needs the final firmware. Kept after checking `audit/review/decisions.json`:
+  `scd30-calibration-readiness`'s provisional values (not measured by the bench) and `sgp40-chip-identity`'s serial read
+  through the firmware. Removed: items 3, 5, 7, 9, 10, the W29 read, the DMA ring proof (unless B6 changes the ring),
+  the HAD_POR check.
+- R4: the bench's F.3 stall rows, Part F facts and the CLAUDE.md read-loop wording, placed by decision 7.
+- Decision 3 item 4: answered (W29 cannot be in the FRAM: its log is RAM-only by design).
+- Section 7: (c) gains the measured flash-write windows; (k) added, reset code 4 after a BOOTSEL round trip.
+- Section 5: no hour changes. Appendix A item 21, Appendix C sources.
+- Not adopted from FINDINGS: its prims11 caveat that the bare image lacked `modlwip_eagain` (`build_firmware()` always
+  applies it). This fold-in has had the five checks by the lead but no falsification run (P's fifth run is unspent).
+
+## The owner's answers on the open items (2026-11-02 15:39)
+
+- Rule 11 extended: a falsification agent at the end of each R1 batch; section 5 and decision 5: R1 20 runs, 26-35 h,
+  budget 35 h; totals before round 1 39 runs, about 44-62 h.
+- B3: the FRAM's SPI clock to 4 MHz (the owner's choice), test first, one value at `asy_fram_driver.py:134`; round 1
+  gains one overnight `long_fram.py` run at 4 MHz.
+- The findings list starts empty again: both bench items settled. The R4 line on CLAUDE.md's UART read-loop wording
+  is dropped (the lock-less early return is pre-audit design; no firmware caller reads without the lock).
+- (15:51) B3's FRAM clock is 8 MHz, not 4 (owner: "Then let's take the 8mhz as initially suggested"), with its basis
+  (24 MHz ceiling from the 48 MHz `clk_peri`; 20,741 1 KB reads at 8 MHz under load); round 1's overnight run at 8 MHz.
+
+## The bench's open questions researched (2026-11-02, owner 15:53; `bench/RESEARCH_20261102.md`)
+
+- Decision 3 item 4: the dump's entries named by their owner-seeded CRCs (WIFI W81 x2, CFGMGR_WIFI E21, SGP40 W34).
+- B2: the BOOTSEL loss explained by the bootrom's `reset_usb_boot()` (scratch 0, 1 and the watchdog-boot vector 4-7).
+- B4: the SGP40 NACKs are the bench script's timing; the bus-1 general call is the SGP40's soft reset; the SCD30's
+  documented clock stretching (30 ms per ACK, 150 ms daily) keeps dev's 200 ms bus-1 timeout.
+- B5: corrected: `network.country()`'s readback is MicroPython's own variable, and the country ioctl's result is
+  discarded; the bench's "the chip accepts any string" was never measured.
+- B6: the crc16 results did not reproduce in the twin, with or without silicon's CRC cost; knowledge until round 1.
+- R3 and round 1: `loop_lag_under_combined_load` belongs to the flash tier; item 8 read by scanning channels; the
+  crc16 diagnostic added.
+- The storm: a Python-only disconnect from a soft callback is possible in principle by the source, unproven; not put
+  into the plan (the owner decides).
+- (16:25) Owner: "Live with the udp storm and defer the CRC until the next hardware run". Section 1 records the storm
+  decision with the Python-only idea not adopted; B6 and round 1 carry the crc16 results as deferred by the owner.
+
+## The working practices (2026-11-02, owner 16:42)
+
+- Section 4.5 states them for every phase (owner: "this also applies to our new plan, wherever it is appropriate, as
+  soon as we go for it"): fresh agents, slots kept full where the work allows, the lane efficiency rules, quality
+  never cut. Applied: writing lanes stay at two (disjoint `src/` files, the shared files merged by the lead); the free
+  slots take read-only work and machine runs.
+- (16:42) Owner: "if the new plan has no more lanes, adapt the gist of the ideas to it". R1-R5 keep lanes; for R0
+  (the lead alone) and round 1 (the bench session) section 4.5 states the gist adapted.
+
+## The rewrite in the first units' spirit (2026-11-02, owner 17:03)
+
+Owner: "rewrite the plan, and target that we are done with 50...60% of weekly budget (still a large Max plan)". The
+2026-10-28 plan is kept as `plan/PLAN_before_rewrite.md`. PLAN.md went from 822 lines (13,125 words) to 343 (4,551).
+- Kept: the target state, every owner decision and row, the 17 gaps, the UART ring fix, the bench's facts (cited, not
+  repeated), the order (decision 1), test first, the gates, the falsification check per unit, the clarifications.
+- Changed: phases and batches run as units like U1-U10 (one-page action list, one commit, one gate, a few report
+  lines); the per-hunk six-column ledger gives way to the action list plus a throwaway script proving removals and
+  restorations, the lead reading only the rest; the full gate runs once per unit; no follow-up lanes planned; no
+  per-phase state ledgers; R3's rows are met mostly by R1 and R2's outputs (test reviews in the unit that changes a
+  test); the budget is the owner's 50-60 % of a week, planned at 50 % with 23-24 agent runs instead of 55.
+- Added: B8's unrecorded website items are named to the owner before they go (the aim "keeps all discussed
+  features"); CI watching resumes with R0 (agent).
+- (17:31, on the owner's "So by now it fulfills the criteria list I gave you recently?") Section 2, step 1: the
+  safeguard of B8's website items widened to every user-visible removal without a recorded owner agreement (a REST
+  or `/status` key, a website element), so the aim "keeps all discussed features" holds in every unit.
+- (18:01) Owner: "The original goals from the audit and all discussed features all hold. No regressions, nothing bad
+  reintroduced. Actually, the goal is how it was initially intended, only before the drift happened." Section 0 states
+  the goal as `PROJECT_AUDIT_PLAN.md` 1.1's eight goals as first meant, with where each is met; section 2 adds that a
+  test is read before it goes and a real defect's fix stays, that an original feature's test changes only
+  mechanically (OR12), and that the falsification check also looks for a lost feature or a reintroduced defect.
+- (18:03) Owner: "Also, nothing proven good shall be removed, but checked if it can be leaner". Section 0 defines
+  proven good (fixes or prevents an observed or reproduced failure, measurably improves the device or the build, or
+  owner-approved): it stays in its leanest form; the closure lists candidates, not verdicts. Section 2, step 1: each
+  root marked to go is checked for proof first and, proven good, becomes a shrink item.
+- (18:04) Owner: "In any case, no knowledge may be lost, and existing knowledge shall be smartly used wherever
+  appropriate". Section 0: every removed item keeps a knowledge line in the evidence (decision 7 adds the doc lines);
+  established facts are used, never re-derived. Section 2: action lists start from what is already known. D: findings
+  with forward value placed, the last commit holding `audit/` tagged and named before it goes. 4.2: the knowledge list
+  is a record, and scratch-only knowledge is summarised into the evidence by each phase end.
+
+## The final check of the rewritten plan (2026-11-02, owner 18:16)
+
+Owner: "Now ensure the plan is complete, consistent, according to our discussions, coherent and correct. Target final
+quality of the plan itself." The version checked is `plancheck/final/PLAN_as_checked.md`; two independent agents
+read it: C1 for completeness and accordance with the old plan, the rulings and the register (`final/C1.md`, 30
+findings: 7 lost, 17 weakened, 3 contradicting, 3 unclear), C2 for falsification of every factual claim
+(`final/C2.md`, 21 entries; no number wrong, the rest imprecise, misattributed or inconsistent). The lead verified
+each at the source (the old plan, the rulings, the register, SCAN2, DECREV, git: 172 distinct closure roots,
+`asy_uart_driver.py:80` unchanged at `916fb878`, three paused patches, REPORT 1's pinned compile figures) and applied
+all of them, with a coherence pass of its own. The main changes:
+- restored: the old 2.1's per-unit cleanups with `UARTDriver.deinit()`'s kept bool; the closure's five-item proviso
+  (the Q6 handler kept in B1); the owner's bench decisions (power save, the storm, GPIO storms) as not admitted; the
+  done-criteria of R2-R5; R0's register repointing and the open findings as input; (g) in R4; R2's classification
+  detail and Part N's accuracy check; R3's B3 additions, OR49.a (1)'s load tests, U35's 09, the gap-gets-a-test and
+  matrix-cell bars; round 1's channel-13 access point, the ring proof's repeat condition, C.md's four owner rows; the
+  D.15 exclusion of test functions, OR11's link migration, U37's 14; rule 7's ".a" sentence; the owner's review of
+  decisions taken on their behalf (OR2.c); "a failure on a kept behaviour is fixed in the code"; the removed tests
+  listed; the action list shown at a unit's start; the bench sessions' interruptibility; the clarifications' both
+  sides;
+- corrected: the target formula with "proven good"; the unreachable-check rule in the owner's two-condition words and
+  the library rule; the budget overrun now a stop and a report, never a cut; CI watching resumes only on the owner's
+  word; the goal map (release, concept, parity with OR48.a's legacy check); B6's comment fix is written, not carried
+  in, and its 66 B named an admitted fix; 172 roots; the bytecode figures' source; the unit-history figures (U8C, U15);
+  rule 10 and 11's attribution (R2-R5's falsification is the agent's extension); decisions 2 and 3's wording;
+  per-unit budgets summed per phase; one path scheme; DECREV 4's ninth place in R5.
+PLAN.md: 434 lines (343 after the rewrite; the growth is restored content). No product file was touched.
+
+## The owner's decisions at R1's start (2026-11-02, 20:30-21:01 UTC)
+
+- B1: the exception-handler guard stays (20:30, "That's okay."); clarification (d) decided (20:53, 20:58): level 0
+  prints nothing, ever; the four logger-less layers log through their owner's logger; `console()` and the below-level
+  MemoryError branch go.
+- B6: a `cobs` mode in the crossover script, test-side only (21:01, "Option 1, add the cobs mode in B6").
+- Standing (20:42): the plan runs on without a go-ahead per phase or unit (rulings file); (20:53) every question
+  states its real blast radius.
+- B2 (21:11-21:25): `ResetBits` and `ConfigUnpersisted` go ("(a), remove both"); (k) reset code 4 goes ("Remove code
+  4."); (h) the wet bulb's corner goes ("(a), remove the corner"). PLAN.md's B2 row carries them.

@@ -33,32 +33,21 @@ _PERSISTED_FIELDS = (
     "m_adaptive_lowpass_a2", "m_adaptive_lowpass_initialized", "m_adaptive_lowpass_x1", "m_adaptive_lowpass_x2",
     "m_adaptive_lowpass_x3",
 )
-_UPTIME_GAMMA = _PERSISTED_FIELDS.index("m_mean_variance_estimator_uptime_gamma")
-_UPTIME_GATING = _PERSISTED_FIELDS.index("m_mean_variance_estimator_uptime_gating")
 
 
 def _f16(n: int) -> int:
     return n * 65536
 
 
-# vocalgorithm_init(), then every sraw_sequence() sample: three tests only read this run, so the first to ask builds it
-# once - each index as two little-endian bytes, every 500th sample's index, pack_into() result and packed state, and
-# how many _f16() conversions the samples made.
-_REFERENCE_TRAJECTORY: "list[tuple[bytearray, list[tuple[int, int, bool, bytes]], int]]" = []
+# vocalgorithm_init(), then every sraw_sequence() sample: two tests only read this run, so the first to ask builds it
+# once - each index as two little-endian bytes, and every 500th sample's index, pack_into() result and packed state.
+_REFERENCE_TRAJECTORY: "list[tuple[bytearray, list[tuple[int, int, bool, bytes]]]]" = []
 
 
-def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes]], int]":
+def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes]]]":
     if not _REFERENCE_TRAJECTORY:
         algo = VOCAlgorithm()
         algo.vocalgorithm_init()
-        conversions = [0]
-        real_f16 = algo._f16
-
-        def counting_f16(x: float) -> int:
-            conversions[0] += 1
-            return real_f16(x)
-
-        algo._f16 = counting_f16  # type: ignore[method-assign]  # counts, and converts as before
         indices = bytearray(2 * SRAW_COUNT)
         checkpoints: list[tuple[int, int, bool, bytes]] = []
         buf = bytearray(VOCAlgorithm.get_params_memsize())
@@ -68,8 +57,9 @@ def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes
             indices[2 * i + 1] = voc_index >> 8
             if i % 500 == 0:
                 checkpoints.append((i, voc_index, algo.params.pack_into(buf), bytes(buf)))
-        _REFERENCE_TRAJECTORY.append((indices, checkpoints, conversions[0]))
+        _REFERENCE_TRAJECTORY.append((indices, checkpoints))
     return _REFERENCE_TRAJECTORY[0]
+
 
 # ---------------------------------------------------------------------------
 # get_params_memsize / initial state
@@ -377,36 +367,6 @@ def test_deserialize_with_malformed_buffer_leaves_algorithm_usable() -> None:
     assert isinstance(voc_index, int)  # processing still ran despite the failed deserialize
 
 
-def test_unpack_from_refuses_a_field_outside_int32() -> None:
-    source = VOCAlgorithm()
-    source.vocalgorithm_init()
-    for i in range(60):
-        source.vocalgorithm_process(30000 + i * 41)
-    target = VOCAlgorithm()
-    target.vocalgorithm_init()
-    before = dict(target.params.__dict__)
-    for field, value in ((0, 2**31), (len(_PERSISTED_FIELDS) - 1, -(2**31) - 1)):
-        buf = bytearray(VOCAlgorithm.get_params_memsize())
-        assert source.params.pack_into(buf) is True
-        struct.pack_into("<q", buf, 8 * field, value)
-        assert target.params.unpack_from(buf) is False
-        assert dict(target.params.__dict__) == before
-
-
-def test_a_restored_uptime_above_the_small_int_limit_is_clamped() -> None:
-    # A backup from a build whose uptimes ran to F16(32766) restores at the limit, F16(16382).
-    algo = VOCAlgorithm()
-    algo.vocalgorithm_init()
-    algo.params.m_mean_variance_estimator_uptime_gamma = _f16(32766)
-    algo.params.m_mean_variance_estimator_uptime_gating = _f16(32766)
-    buf = bytearray(VOCAlgorithm.get_params_memsize())
-    assert algo.params.pack_into(buf) is True
-    restored = VOCAlgorithm()
-    assert restored.params.unpack_from(buf) is True
-    assert restored.params.m_mean_variance_estimator_uptime_gamma == _f16(16382)
-    assert restored.params.m_mean_variance_estimator_uptime_gating == _f16(16382)
-
-
 def test_pack_into_writes_little_endian() -> None:
     algo = VOCAlgorithm()
     expected = bytearray()
@@ -420,37 +380,12 @@ def test_pack_into_writes_little_endian() -> None:
 
 
 def test_the_ports_own_state_always_restores() -> None:
-    _indices, checkpoints, _conversions = reference_trajectory()
+    _indices, checkpoints = reference_trajectory()
     for i, _voc_index, packed, state in checkpoints:
         assert packed is True, i
         for value in struct.unpack_from("<32q", state):
             assert -0x80000000 <= value <= 0x7FFFFFFF, (i, value)
         assert VOCAlgorithm().params.unpack_from(state) is True, i
-
-
-def test_the_lowered_uptime_limit_leaves_the_output_unchanged() -> None:
-    # Both uptimes at the C reference's saturation (F16(32766)) or at the port's (F16(16382)): only
-    # sigmoids that are constant past 10223 s read them, so 2000 post-blackout samples agree.
-    samples = sraw_sequence(46 + 2000)
-    base = VOCAlgorithm()
-    base.vocalgorithm_init()
-    for _ in range(46):
-        base.vocalgorithm_process(next(samples))
-    buf = bytearray(VOCAlgorithm.get_params_memsize())
-    assert base.params.pack_into(buf) is True
-    old_limit, new_limit = VOCAlgorithm(), VOCAlgorithm()
-    for algo, uptime in ((old_limit, _f16(32766)), (new_limit, _f16(16382))):
-        assert algo.params.unpack_from(buf) is True
-        algo.params.m_mean_variance_estimator_uptime_gamma = uptime
-        algo.params.m_mean_variance_estimator_uptime_gating = uptime
-    old_buf, new_buf = bytearray(len(buf)), bytearray(len(buf))
-    for sraw in samples:
-        assert old_limit.vocalgorithm_process(sraw) == new_limit.vocalgorithm_process(sraw)
-    assert old_limit.params.pack_into(old_buf) is True
-    assert new_limit.params.pack_into(new_buf) is True
-    start, end = 8 * _UPTIME_GAMMA, 8 * (_UPTIME_GATING + 1)
-    assert old_buf[:start] == new_buf[:start]
-    assert old_buf[end:] == new_buf[end:]
 
 
 # ---------------------------------------------------------------------------
@@ -566,33 +501,11 @@ def test_fix16_helpers_match_the_c_reference_vectors() -> None:
 
 
 def test_the_index_sequence_matches_the_c_reference() -> None:
-    indices, checkpoints, _conversions = reference_trajectory()
+    indices, checkpoints = reference_trajectory()
     assert tuple(voc_index for _i, voc_index, _packed, _state in checkpoints) == INDEX_EVERY_500
     framed = run(CRC32().add(indices))
     assert framed is not None
     assert int.from_bytes(framed[-4:], "big") == INDEX_CRC32
-
-
-def test_no_sample_converts_a_constant() -> None:
-    # The reference samples make no _f16() call: every constant a sample uses was converted once, at construction.
-    _indices, _checkpoints, conversions = reference_trajectory()
-    assert conversions == 0
-
-
-class _ShiftedF16(VOCAlgorithm):
-    # Every conversion one tick high, so each value that went through _f16() at construction shows it.
-    def _f16(self, x: float) -> int:
-        return super()._f16(x) + 1
-
-
-def test_the_sample_constants_are_converted_by_f16_at_construction() -> None:
-    # Through _f16() itself, so each rounds in the port's own float (single precision on rp2) exactly as the
-    # per-sample calls did; a literal would carry the double-precision value instead.
-    plain, shifted = VOCAlgorithm(), _ShiftedF16()
-    names = [name for name in plain.__dict__ if name.startswith("_f16_")]
-    assert len(names) == 35
-    for name in names:
-        assert getattr(shifted, name) == getattr(plain, name) + 1, name
 
 
 # ---------------------------------------------------------------------------
@@ -776,7 +689,7 @@ def test_set_tuning_parameters_smoke_test_normal_values() -> None:
 def test_both_estimator_uptimes_stop_at_the_uptime_limit() -> None:
     # Checked before the step: one sampling interval below the limit steps onto it, at the limit both stay.
     algo = VOCAlgorithm()
-    limit, step, params = algo._f16_uptime_limit, algo._f16_sampling_interval, algo.params
+    limit, step, params = algo._f16(32767 - 1), algo._f16(1), algo.params  # FIX16_MAX less one sampling interval (1 s)
     params.m_mean_variance_estimator_uptime_gamma = params.m_mean_variance_estimator_uptime_gating = limit - step
     for _ in range(2):
         algo._vocalgorithm__mean_variance_estimator___calculate_gamma(0)

@@ -25,13 +25,9 @@ from _async_harness import run_timed
 from _port_bands import PortAllocator
 
 _PORTS = PortAllocator("test_digital_twin_http_client")  # one canned server's port per test, from this file's band
-# @tunable l2.http_client_run_bound_s = 5.0
 _RUN_BOUND_S = 5.0
-# @tunable l2.http_client_mid_body_pause_ms = 20
 _MID_BODY_PAUSE_MS = 20
-# @tunable l2.http_client_fetch_timeout_s = 0.001
 _FETCH_TIMEOUT_S = 0.001
-# @tunable l2.http_client_silent_server_s = 2
 _SILENT_SERVER_S = 2
 
 

@@ -384,13 +384,12 @@ device: the staged modules and the rendered manifest in `build/firmware/<device>
 website stage with its gzip tree in `build/website/<device>/` (`build/frozen_html/<name>/` for
 `scripts/build_frozen_html.sh` run on its own).
 It never flashes or touches real hardware — see "Flashing a real board" below for that step. Under
-the hood it also stages and freezes the real website for that one device, stamped with the
-firmware's build date, runnable on its own for just that step, for one device or for every device:
+the hood it also stages and freezes the real website for that one device, runnable on its own for
+just that step, for one device or for every device:
 
 ```sh
 scripts/build_website.sh wozi                                 # -> frozen_modules/frozen_html.py
 scripts/build_website.sh wozi build/frozen_website_wozi.py    # explicit output path
-scripts/build_website.sh --build-date 2026-10-15T12:00:00Z wozi   # stamps that UTC build date into the page; none by default
 scripts/build_website.sh --stage-only wozi <dir>              # stages index.html and js/app.js into <dir>, freezes nothing
 scripts/build_device_websites.sh                              # every device -> build/generated_html/<device>/frozen_html.py
 scripts/build_device_websites.sh --stage-only                 # every device, staged only -> build/staged_html/<device>/,
@@ -715,9 +714,10 @@ drives `digital_twin/run_generic_integration.py` through its runs and asserts ev
 boot, every GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection, settings/error
 persistence across a real reboot, the reset reasons and system commands, soak at both
 `gc.threshold()` configurations and the full-ceiling burst (`digital_twin/README.md`'s "Automated CI
-suite" lists each run), then the host-side scenario harness (`scripts/_digital_twin_scenarios.py`).
-It runs against the device named by its required argument, at both GC stages and both parts unless
-`--gc-threshold` or `--part` names one — CI runs one job per device, stage and part. Builds the Unix
+suite" lists each run), then the scenario harness's (`scripts/_digital_twin_scenarios.py`) DNS scenarios,
+which need port 53 alone (`scripts/test.sh` runs the rest). It runs against the device named by its
+required argument, at both GC stages and both parts unless `--gc-threshold` or `--part` names one — CI
+runs one job per device and stage. Builds the Unix
 port and the real website for that device first if either is missing (same
 `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 

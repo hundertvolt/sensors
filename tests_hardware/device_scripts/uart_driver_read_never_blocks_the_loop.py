@@ -32,26 +32,18 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 FRAME = 53  # one whole framed frame at the protocol's default payload_size of 48 (J.6)
-# @tunable l3.uart_driver_read_never_blocks_the_loop_trials = 5
 _TRIALS = 5
-# @tunable l3.uart_read_never_blocks_the_loop_span_fraction = 3
 _SPAN_FRACTION = 3  # one synchronous call may take a third of the frame's wire time
-# @tunable l3.uart_driver_read_never_blocks_the_loop_start_timeout_ms = 500
 _START_TIMEOUT_MS = 500
-# @tunable l3.uart_driver_read_never_blocks_the_loop_read_timeout_ms = 200
 _READ_TIMEOUT_MS = 200
-# @tunable l3.uart_driver_read_never_blocks_the_loop_raw_deadline_ms = 500
 _RAW_DEADLINE_MS = 500
-# @tunable l3.uart_driver_read_never_blocks_the_loop_idle_window_ms = 20
 _IDLE_WINDOW_MS = 20
 # The ticker is running before the first byte leaves: a deadline on its first recorded turn, not a fixed sleep.
-# @tunable l3.uart_driver_read_never_blocks_the_loop_ticker_start_ms = 50
 _TICKER_START_MS = 50
 _CHAR_TIMEOUT_MS = 1  # machine.UART's timeout_char as the driver constructs it: a raw read waits per missing byte
 _LINE_CHUNK_BYTES = 16  # the readline leg's piece size: several pieces per line
 _LF = 0x0A
 # A quiet line for this long ends a drain: whatever an earlier arm left on the wire has arrived and gone.
-# @tunable l3.uart_driver_read_never_blocks_the_loop_drain_quiet_ms = 20
 _DRAIN_QUIET_MS = 20
 
 

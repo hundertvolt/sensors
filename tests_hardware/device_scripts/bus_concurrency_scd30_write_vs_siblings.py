@@ -27,14 +27,10 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.bus_concurrency_scd30_write_vs_siblings_sibling_step_ms = 15
 _SIBLING_STEP_MS = 15
-# @tunable l3.bus_concurrency_scd30_write_vs_siblings_after_write_s = 1.0
 _AFTER_WRITE_S = 1.0
-# @tunable l3.bus_concurrency_scd30_write_vs_siblings_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 # The write waits until both siblings completed a read, then for an SGP40 round's head, both by this deadline.
-# @tunable l3.bus_concurrency_scd30_write_vs_siblings_writer_delay_ms = 1000
 _WRITER_DELAY_MS = 1000
 # The offset the write sends, inside the schema's TempOffset range; the restore sends back what the chip held.
 _WRITE_OFFSET_C = 4.0

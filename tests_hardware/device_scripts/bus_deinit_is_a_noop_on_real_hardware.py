@@ -44,7 +44,8 @@ async def _spi_claims(wdt: machine.WDT) -> None:
     bus = BENCH["bus"][chip["bus"]]
     spi_wrapper = asy_spi_driver.SPI(bus["id"], bus["sck_pin"], bus["mosi_pin"], bus["miso_pin"])
     fram = FRAMManager(spi_wrapper, chip["cs_pin"], max_size=BENCH["fram_max_size"])
-    fact("fram_setup", await fram.setup())
+    await fram.setup()
+    fact("fram_setup", fram.initialized)
     chunk = fram.get_chunk(_CHUNK_SIZE, crc=CRC8(), owner="bus_deinit_is_a_noop_on_real_hardware")
     if chunk is None:
         fact("chunk", None)

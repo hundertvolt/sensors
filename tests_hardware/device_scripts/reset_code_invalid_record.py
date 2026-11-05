@@ -25,7 +25,6 @@ _NOT_MAGIC = 0x12345678  # neither asy_system_service.py's record magic nor 0 (t
 # asy_system_service.py's _RR_REBOOT: a const() whose name starts with "_" is no module global on MicroPython, so it
 # cannot be imported and is restated here.
 _RR_REBOOT = 3
-# @tunable l4.reset_code_invalid_record_run_wait_s = 60
 _RUN_WAIT_S = 60
 
 
@@ -46,6 +45,8 @@ def _main() -> None:
         fact("begin_boot", begin_boot())
         fact("record", list(machine.mem_backup(0)))
         fact("phase", list(machine.mem_backup(1)))
+        # CHIP_RESET's HAD_POR and the watchdog's REASON bits: a console soft reset changes neither register.
+        fact("reset_bits", [machine.mem32[0x40064008] & 0x100, machine.mem32[0x40058008] & 3])
         wdt.feed()  # the host's console soft reset must come within one watchdog period of this feed
         done()
         return

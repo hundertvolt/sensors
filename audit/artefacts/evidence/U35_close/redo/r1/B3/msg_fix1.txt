@@ -1,0 +1,12 @@
+U35: storage: the 8 MHz clock reaches the erase-timing texts; Run 3 counts setup writes from /status
+
+- The flash tier's mid-erase resets land at 50, 150 and 250 ms: the 256 KB erase's wire time alone is ~266 ms at
+  8 MHz, so the old 1,000 and 2,000 ms points would land after it and fail the test's own inside-the-erase guard.
+- The twin's wire-time knob and the bus-hazard erase test say what 8 us/byte now is: an 8x-slow bus, the product
+  moving a byte in 1 us.
+- Run 3's write-attempt allowance is one setup write per FRAM-backed logger, counted from /status's errcount, not
+  from console lines: the CRC16-derived run boots with its console off, where the old count read 0 and the check
+  held on its window alone.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

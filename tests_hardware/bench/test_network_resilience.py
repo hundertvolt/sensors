@@ -67,83 +67,44 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_i
 # ---------------------------------------------------------------------------
 
 
-# @tunable l4.network_resilience_outage_s = 15.0
 _OUTAGE_S = 15.0
-# @tunable l4.network_resilience_outage_reconnect_timeout_s = 150.0
 _OUTAGE_RECONNECT_TIMEOUT_S = 150.0
-# @tunable l4.network_resilience_reconnect_timeout_s = 60.0
 _RECONNECT_TIMEOUT_S = 60.0
-# @tunable l4.network_resilience_reconnect_poll_s = 3.0
 _RECONNECT_POLL_S = 3.0
-# @tunable l4.network_resilience_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.network_resilience_flap_step_s = 3.0
 _FLAP_STEP_S = 3.0
-# @tunable l4.network_resilience_flap_cycles = 3
 _FLAP_CYCLES = 3
-# @tunable l4.network_resilience_degraded_reconnect_timeout_s = 90.0
 _DEGRADED_RECONNECT_TIMEOUT_S = 90.0
-# @tunable l4.network_resilience_wait_timeout_s = 30.0
-_WAIT_TIMEOUT_S = 30.0
-# @tunable l4.network_resilience_wait_poll_s = 2.0
+_WAIT_TIMEOUT_S = 30.0  # source: this test's own bound, not the SGP40's WaitTimeNTP
 _WAIT_POLL_S = 2.0
-# @tunable l4.network_resilience_probe_spacing_s = 1.0
 _PROBE_SPACING_S = 1.0
-# @tunable l4.network_resilience_ntp_resync_timeout_s = 20.0
 _NTP_RESYNC_TIMEOUT_S = 20.0
-# @tunable l4.network_resilience_quick_poll_s = 1.0
 _QUICK_POLL_S = 1.0
-# @tunable l4.wifi_networking_ntp_fault_tail_s = 90.0
 _ROGUE_TAIL_S = 90.0
-# @tunable l4.bench_control_udp_capture_timeout_s = 55.0
 _UDP_CAPTURE_TIMEOUT_S = 55.0
-# @tunable l4.network_resilience_rtc_write_wait_s = 3.0
 _RTC_WRITE_WAIT_S = 3.0
-# @tunable l4.network_resilience_ntp_resync_after_reset_timeout_s = 120.0
 _NTP_RESYNC_AFTER_RESET_TIMEOUT_S = 120.0
-# @tunable l4.network_resilience_no_ap_tail_s = 15.0
 _NO_AP_TAIL_S = 15.0
-# @tunable l4.hotspot_role_reversal_join_hotspot_timeout_s = 45.0
 _JOIN_HOTSPOT_TIMEOUT_S = 45.0
-# @tunable l4.hotspot_role_reversal_dhcp_timeout_s = 45.0
 _DHCP_TIMEOUT_S = 45.0
-# @tunable l4.hotspot_role_reversal_dhcp_poll_s = 2.0
 _DHCP_POLL_S = 2.0
-# @tunable l4.network_resilience_slot_release_wait_s = 1.0
 _SLOT_RELEASE_WAIT_S = 1.0
-# @tunable l4.network_resilience_raw_socket_timeout_s = 10.0
 _RAW_SOCKET_TIMEOUT_S = 10.0
-# @tunable l4.network_resilience_held_admit_wait_s = 2.0
 _HELD_ADMIT_WAIT_S = 2.0
-# @tunable l4.network_resilience_admitted_silence_s = 1.0
 _ADMITTED_SILENCE_S = 1.0
-# @tunable l4.network_resilience_quick_recovery_timeout_s = 15.0
 _QUICK_RECOVERY_TIMEOUT_S = 15.0
-# @tunable l4.network_resilience_loaded_fetch_timeout_s = 30.0
 _LOADED_FETCH_TIMEOUT_S = 30.0
-# @tunable l4.network_resilience_storm_join_s = 60.0
 _STORM_JOIN_S = 60.0
-# @tunable l4.network_resilience_slowloris_socket_timeout_s = 30.0
 _SLOWLORIS_SOCKET_TIMEOUT_S = 30.0
-# @tunable l4.network_resilience_trickle_step_s = 3.0
 _TRICKLE_STEP_S = 3.0
-# @tunable l4.network_resilience_burst_join_s = 40.0
 _BURST_JOIN_S = 40.0
-# @tunable l4.network_resilience_served_elapsed_max_s = 30.0
 _SERVED_ELAPSED_MAX_S = 30.0
-# @tunable l4.network_resilience_degraded_get_count = 5
 _DEGRADED_GET_COUNT = 5
-# @tunable l4.network_resilience_join_attempts = 3
 _JOIN_ATTEMPTS = 3
-# @tunable l4.network_resilience_over_ceiling_attempts = 3
 _OVER_CEILING_ATTEMPTS = 3
-# @tunable l4.network_resilience_capture_attempts = 3
 _CAPTURE_ATTEMPTS = 3
-# @tunable l4.network_resilience_storm_repeat_min = 3
 _STORM_REPEAT_MIN = 3
-# @tunable l4.network_resilience_ntp_block_margin_s = 10.0
 _NTP_BLOCK_MARGIN_S = 10.0
-# @tunable l4.network_resilience_no_reconnect_tail_s = 5.0
 _NO_RECONNECT_TAIL_S = 5.0
 _NTP = "asy_ntp_client.py"
 _WIFI = "asy_wifi_service.py"
@@ -157,7 +118,6 @@ _CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
     " already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
-    ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
@@ -182,7 +142,6 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
     " attempt already past its network check when the AP drops, or its whole retry chain where the link still reads as up",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
-    ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
@@ -289,8 +248,8 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
 # and its limits: tests_hardware/README.md 'What the network-fault injections reach'.
 # ---------------------------------------------------------------------------
 
-# 48 bytes, the NTP packet the client receives into (src/asy_ntp_client.py _NTP_PACKET_LEN), and still no valid NTP
-# header: its first byte 0xff is leap indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
+# 48 bytes, the NTP packet's length (RFC 5905 7.3), and still no valid NTP header: its first byte 0xff is leap
+# indicator 3, which _parse_ntp_reply() rejects as unsynchronised before any time.
 _GARBAGE_PAYLOAD = b"\xff" + b"not an NTP or DNS wire-format packet, on purpose"[:47]
 
 
@@ -374,7 +333,7 @@ _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
 @pytest.mark.persistence_write
-@pytest.mark.provokes_log("the .invalid host's lookup answers NXDOMAIN, which the test waits for", ("NTP", "E", "NTP_DNS_NXDOMAIN"))
+@pytest.mark.provokes_log("the .invalid host's lookup never resolves, which the test waits for", ("NTP", "E", "NTP_DNS"))
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     original_host = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("NTPHost")
     if original_host == _GARBAGE_NTP_HOST:
@@ -390,8 +349,8 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         # _VAL_NTP_HOST bounds the length and the RFC 1035 label shape, so this host is "Valid"; the failure is the DNS
         # resolution its post function triggers.
         assert _load.as_object(res.json().get("result"), "result").get("NTPHost") == "Valid", f"garbage NTPHost was rejected at the schema level, not what this test exercises: {res.body!r}"
-        # A resolver answers NXDOMAIN for .invalid (RFC 6761 section 6.4), which NTP persists as its own code.
-        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS_NXDOMAIN")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS_NXDOMAIN for the garbage NTPHost")
+        # A resolver answers NXDOMAIN for .invalid (RFC 6761 section 6.4): the name does not resolve, which NTP persists as NTP_DNS.
+        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS for the garbage NTPHost")
         # Degrading cleanly means the rest stays healthy, not merely that the error got logged.
         assert _load.serving(dut_ip), "webserver unresponsive while NTPHost was garbage"
         assert_no_task_ended(dut_ip, "a garbage NTPHost")
@@ -595,9 +554,7 @@ def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip
     assert _load.as_object(res.json().get("result"), "result").get("NTPHost") == "Invalid", f"an over-bound NTPHost was not marked Invalid, so it may have PERSISTED: {res.body!r}"
 
 
-# @tunable l4.cap_binding_answer_s = 2.0
 _CAP_BINDING_ANSWER_S = 2.0
-# @tunable l4.cap_binding_close_margin_s = 5.0
 _CLOSE_MARGIN_S = 5.0
 _MIN_SOCKET_WAIT_S = 0.001  # a zero timeout would make the socket non-blocking, never a last short wait
 
@@ -734,15 +691,15 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_REQUEST_CAP"))
+@pytest.mark.provokes_log("the trickled request is reclaimed by the outer cap, which the test asserts", ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"))
 def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(_SLOWLORIS_SOCKET_TIMEOUT_S)  # over the server's outer_cap_s
         sock.connect((dut_ip, 80))
         sock.sendall(b"GET /status HTTP/1.1\r\nHost: x\r\n")
-        # One header line every 3 s keeps each readline() under its per-call timeout (HTTP_CALL_TIMEOUT never fires)
-        # while the 18 s total passes outer_cap_s, the timeout under test.
+        # One header line every 3 s keeps each readline() under its per-call timeout while the 18 s total passes
+        # outer_cap_s, the timeout under test; both log HTTP_CALL_TIMEOUT.
         try:
             for i in range(6):
                 sock.sendall(f"X-Pad-{i}: 1\r\n".encode())
@@ -756,7 +713,7 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
     assert response == b"", f"a genuinely Slowloris-paced request (no single stall over 5s, 18s cumulative) was not reclaimed by the outer timeout: {response!r}"
     assert _load.serving(dut_ip), "webserver unresponsive after a slowloris-style trickle-fed request"
     try:
-        assert_module_error_log_contains(dut_ip, "WEBSERVER", code("W", "HTTP_REQUEST_CAP"), "W")
+        assert_module_error_log_contains(dut_ip, "WEBSERVER", code("W", "HTTP_CALL_TIMEOUT"), "W")
         assert_no_task_ended(dut_ip, "a slowloris-paced request")
     finally:
         reset_all_error_logs(dut_ip, request.node.name)
@@ -870,9 +827,7 @@ def test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one(dut_ip: 
 # served for two minutes - a named instance of the contract that any client mix filling the ceiling is served.
 # ---------------------------------------------------------------------------
 
-# @tunable l4.openhab_poll_interval_s = 5.0
 _OPENHAB_POLL_INTERVAL_S = 5.0
-# @tunable l4.openhab_window_s = 120.0
 _OPENHAB_WINDOW_S = 120.0
 _ASSET = re.compile(r'(?:src|href)="([^"#:?]+)"')
 
@@ -917,11 +872,8 @@ def test_openhab_case_two_pollers_and_an_open_website_are_all_served(dut_ip: str
 # flag): the adversarial-client load of the L1 console test replayed over HTTP must never starve the watchdog.
 # ---------------------------------------------------------------------------
 
-# @tunable l4.console_starvation_load_s = 60.0
 _CONSOLE_LOAD_S = 60.0
-# @tunable l4.console_starvation_slowloris_clients = 6
 _CONSOLE_SLOWLORIS = 6
-# @tunable l4.console_starvation_drain_timeout_s = 30.0
 _CONSOLE_DRAIN_TIMEOUT_S = 30.0
 _LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the close sends an RST (socket(7))
 
@@ -929,7 +881,6 @@ _LINGER_RESET = struct.pack("ii", 1, 0)  # SO_LINGER on with a zero timeout: the
 @pytest.mark.persistence_write
 @pytest.mark.provokes_log(
     "its misbehaving clients (slowloris, a refused head, a truncated body, a reset) log their HTTP warnings",
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
     ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
@@ -995,9 +946,7 @@ def test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog(b
 # under a fast /status poll, and what the closed firmware drops meanwhile is recorded.
 # ---------------------------------------------------------------------------
 
-# @tunable l4.flash_stall_poll_s = 0.05
 _FLASH_STALL_POLL_S = 0.05
-# @tunable l4.flash_stall_window_s = 5.0
 _FLASH_STALL_WINDOW_S = 5.0
 
 

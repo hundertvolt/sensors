@@ -26,11 +26,8 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.sgp40_general_call_reset_hazard_reset_cycles = 8
 _SGP40_RESET_CYCLES = 8
-# @tunable l3.sgp40_general_call_reset_hazard_sibling_step_ms = 15
 _SIBLING_STEP_MS = 15
-# @tunable l3.sgp40_general_call_reset_hazard_run_bound_s = 90.0
 _RUN_BOUND_S = 90.0
 
 

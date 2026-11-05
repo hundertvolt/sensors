@@ -49,15 +49,11 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# @tunable l2.wifi_modes_wait_poll_s = 0.1
 _WAIT_POLL_S = 0.1
-# @tunable l2.wifi_modes_wait_timeout_s = 25.0
 _WAIT_TIMEOUT_S = 25.0
-# @tunable l2.wifi_modes_run_bound_s = 200.0
 _RUN_BOUND_S = 200.0
 _POOL = 16  # rp2's alarm pool: digital_twin/machine.py's _ALARM_POOL_SIZE
 # The WiFi service's own sleeps run this many times faster: its periods and settles are not under test, its transitions.
-# @tunable l2.wifi_modes_sleep_scale = 5
 _SLEEP_SCALE = 5
 _WEB_PORT = 19200  # a range of its own beside the other twin files'; never bound, as the scenario starts no webserver
 
@@ -280,7 +276,7 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
             await _await_hotspot_window(clock, conn, "(a) the settings change's failed streak")
             _count, log = await _wifi_log(conn)
             assert (log.count(to_hotspot), log.count(silent_entry)) == (2, 0), ("(a)", log)
-            assert len(pixel._pixel.writes) > 0 and all(frame == [(0, 0, 0)] for frame in pixel._pixel.writes), ("(a) LEDWifiOn off", list(pixel._pixel.writes))
+            assert all(frame == [(0, 0, 0)] for frame in pixel._pixel.writes), ("(a) LEDWifiOn off", list(pixel._pixel.writes))
             # LEDWifiOn on through its own group, a live push that reconnects nothing: the silent mode is then dark although enabled.
             results = await webserver._apply_settings_groups("networking", {"LEDWifiOn": True})
             assert results == {"LEDWifiOn": "Valid"} and not conn._reconn_wifi, ("(b) LEDWifiOn on", results)

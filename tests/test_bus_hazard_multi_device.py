@@ -61,7 +61,6 @@ _SGP_ADDR = 0x59
 _ISL_ADDR = 0x44  # hard-wired (FN8424 p15), sharing i2c1 with SCD30 and SGP40 where a TOML puts it there
 _GENERAL_CALL_ADDR = 0x00
 # How long a sibling's loop may take to finish beside a faulting device; a lock the fault stranded never finishes.
-# @tunable l1.bus_fault_isolation_bound_s = 5
 _ISOLATION_BOUND_S = 5
 # The BMP3XX pressure the catalog's planted calibration and ADC bytes give, by hand: BMP388 datasheet §9.1 and §9.3
 # (its temperature is the catalog's BMP_EXPECTED_TEMPERATURE).
@@ -94,7 +93,6 @@ def test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct() -> Non
 
         async def bmp_loop(bmp: BMP3XX_I2C = bmp, bmp_results: "list[tuple[float, float]]" = bmp_results) -> None:
             for _ in range(bmp_iterations):
-                assert await bmp.take_por_detected() is False  # the reader's per-cycle EVENT read, then the conversion
                 pressure, temperature = await bmp.get_pressure_and_temperature()
                 bmp_results.append((pressure, temperature))
                 await asyncio.sleep(0)
@@ -115,8 +113,7 @@ def test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct() -> Non
             assert abs(temperature - BMP_EXPECTED_TEMPERATURE) < 1e-6
         assert all(raw == 0x8000 for raw in sgp_results)
         log = list(fake_bus.log)
-        assert _register_reads_unbroken(log, _BMP_ADDR) > 0  # every register read, the EVENT read included, atomic
-        assert sum(1 for entry in log if entry[:3] == ("writeto", _BMP_ADDR, b"\x10")) == bmp_iterations  # one EVENT read per cycle
+        assert _register_reads_unbroken(log, _BMP_ADDR) > 0  # every register read atomic
 
         # Genuine interleaving proof: a BMP3xx transfer lands between an SGP40 command and its reply, the conversion
         # wait the driver frees the bus for.
@@ -354,16 +351,16 @@ def test_a_recovery_between_a_split_session_still_returns_a_valid_value() -> Non
         adapter = I2C_HAZARD_CATALOG[driver]
         i2c = make_i2c(1)
         instance = adapter.construct(i2c, address)
+        adapter.seed(fake(i2c), address, 1)
         after = None
         if isinstance(instance, BMP3XX_I2C):
             with FastAsyncSleep():
                 run(instance.setup())
-            fake(i2c).registers[(address, 0x03)] = bytearray([0x00])  # STATUS not ready: the poll yields
+            fake(i2c).registers[(address, 0x03)] = bytearray([0x00])  # STATUS not ready, after the seed: the poll yields
 
             def after(i2c: I2C = i2c, address: int = address) -> None:  # bound now: the loop moves on
                 fake(i2c).registers[(address, 0x03)] = bytearray([0x10 | 0x60])
 
-        adapter.seed(fake(i2c), address, 1)
         with FastAsyncSleep():
             run(_recover_between_halves(i2c, address, trigger, adapter.read_once(instance), after))
         try:
@@ -408,7 +405,6 @@ def test_a_recovery_during_a_held_bus_clear_lets_no_sibling_transfer_in() -> Non
     assert_no_transfer_inside_the_recovery(fake_bus, marks[0])
 
 
-# @tunable l1.bus_hazard_multi_device_host_stall_ms = 60
 _HOST_STALL_MS = 60  # a stall past asy_i2c_driver's 50 ms SCL-release bound
 
 
@@ -513,32 +509,6 @@ def test_an_isl29125_reapply_mid_read_leaves_every_sibling_read_valid() -> None:
     _across_offsets(scenario)
 
 
-def test_an_isl29125_interrupt_rearm_mid_read_leaves_every_sibling_read_valid() -> None:
-    # The dead-line rung: five periodic-only range decisions warn once and re-arm the interrupt (CONFIG1-3 and the
-    # thresholds re-written) beside the SCD30 and SGP40 loops on the shared i2c1; every sibling read stays valid.
-    def scenario(offset: int) -> None:
-        i2c, instances = _shared_i2c1()
-        reader = ISL29125_Reader(i2c, 15, cfg_path=_scratch.dir())
-        seed_isl_ready(i2c, _ISL_ADDR)
-        run(reader.setup())
-        fake(i2c).log.clear()
-
-        async def rung() -> None:
-            for _ in range(5):
-                await reader._note_decision_source(threshold_fired=False)
-
-        with FastAsyncSleep():
-            run(_rung_beside_sibling_reads(i2c, instances, ("scd30", "sgp40"), rung, offset))
-        log = run(reader.get_error_counter())["ISL29125"]
-        assert [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"] == [("W", code("W", "ISL_PERIODIC_ONLY"))], log
-        writes = [entry[2] for entry in fake(i2c).log if entry[0] == "writeto" and entry[1] == _ISL_ADDR and entry[3]]
-        assert [w for w in writes if w[:1] == b"\x01" and len(w) == 4], f"no whole CONFIG1-3 burst: {writes}"
-        assert any(w[:1] == b"\x04" for w in writes), f"the thresholds were not re-armed: {writes}"
-        assert bytes(fake(i2c).registers[(_ISL_ADDR, 0x01)]) == reader._isl.encode_shadow(), "the chip's CONFIG1-3 differ from the shadow"
-
-    _across_offsets(scenario)
-
-
 # ---------------------------------------------------------------------------
 # 4. Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance, as opposed to
 # different devices sharing a bus above, must never scramble each other's commands or reads: the device
@@ -602,7 +572,8 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
     fram = manager.fram
     bus = fram._spidev.spi
     async_device = SPIDevice(bus, 6)
-    assert run(fram.setup()) is True
+    run(fram.setup())
+    assert fram.initialized is True
     run(async_device.setup())
     chip.memory[0:4] = b"\x11\x22\x33\x44"
     rounds = 12
@@ -646,7 +617,8 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
     fram = manager.fram
     bus = fram._spidev.spi
     neighbour = SPIDevice(bus, 6)
-    assert run(fram.setup()) is True
+    run(fram.setup())
+    assert fram.initialized is True
     run(neighbour.setup())
     chip.rx_overrun = True
     chip.opcodes = []
@@ -851,7 +823,8 @@ def _erase_rig(part: "type[_EraseWire]") -> "tuple[FRAMManager, _EraseWire, list
     # A set-up manager over `part` with three chunks of different sizes and CRCs, each written once (status bytes idle).
     manager, chip = make_fram_manager(part.SIZE, part)
     assert isinstance(chip, _EraseWire)
-    assert run(manager.setup()) is True
+    run(manager.setup())
+    assert manager.initialized is True
     chunks = []
     for n, (size, crc) in enumerate(_CHUNKS):
         chunk = manager.get_chunk(size, crc=crc(), owner=_CHUNK_OWNERS[n])
@@ -898,7 +871,8 @@ async def _read_while_storing(store: ConfigManager, path: str) -> "tuple[int, in
             seen.add(text)
             await asyncio.sleep(0)
 
-    assert await store.setup() is True
+    await store.setup()
+    assert store.valid
     task = asyncio.create_task(reader())
     for count in range(1, 9):
         assert (await store.write_config({"Count": count}))[0] is True

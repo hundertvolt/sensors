@@ -21,9 +21,7 @@ class _SessionNote(Protocol):
 
 _SESSION = scd30_prerequisite.new_session()
 
-# @tunable l3.flash_leave_serving_present_timeout_s = 15.0
 _PRESENT_TIMEOUT_S = 15.0
-# @tunable l3.flash_leave_serving_boot_timeout_s = 30.0
 _BOOT_TIMEOUT_S = 30.0
 
 

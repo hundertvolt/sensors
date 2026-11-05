@@ -78,8 +78,6 @@ def stagings(build_firmware: ModuleType, tmp_path_factory: pytest.TempPathFactor
             stages[device] = tmp_path_factory.mktemp(f"stage_{device}")
             build_firmware.build_stage_dir(stages[device], device_toml(device), build_date=_BUILD_DATE)
     assert len(website_builds) == len(DEVICE_NAMES), website_builds
-    # One stamp: the website build is handed the very date the staged module carries (its page names that build).
-    assert all(argv[1:3] == ["--build-date", _BUILD_DATE] for argv, _cwd in website_builds), website_builds
     # Each build's intermediates beside its stage, never in the live tree's build/website/.
     jobs = [(argv, cwd, {**os.environ, "WEBSITE_WORK_DIR": str(Path(argv[-1]).parent.parent / f"{Path(argv[-1]).parent.name}_work")}) for argv, cwd in website_builds]
     with ThreadPoolExecutor(max_workers=_WEBSITE_BUILDS_AT_ONCE) as pool:

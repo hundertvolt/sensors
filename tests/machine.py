@@ -392,11 +392,10 @@ class I2C:
     # the controller and keeps the devices, faults and log. reset_id() is a test's power-cycled controller.
     TEST_API = (
         "id", "scl", "sda", "freq", "timeout", "deinit_called", "deinit_count", "log", "registers", "read_queue",
-        "read_queue_by_address", "nak_addresses", "attached", "busy", "raise_on_construct", "inject_fault", "pending",
+        "read_queue_by_address", "nak_addresses", "attached", "busy", "inject_fault", "pending",
         "register_device", "reset_id", "reset_registry", "short_ack",
     )  # fmt: skip
     _static: "ClassVar[dict[int, I2C]]" = {}
-    raise_on_construct: "ClassVar[BaseException | None]" = None  # test-only: the next construction raises it, once
     _fresh: bool
 
     def __init__(self, id: int, *, scl: Pin, sda: Pin, freq: int = 400000, timeout: int = 50000) -> None:
@@ -424,10 +423,6 @@ class I2C:
         self.log.append(("init", freq, timeout))
 
     def __new__(cls, id: int, *_args: object, **_kwargs: object) -> "I2C":
-        pending = cls.raise_on_construct
-        if pending is not None:
-            cls.raise_on_construct = None
-            raise pending
         if id not in (0, 1):
             raise ValueError(f"I2C({id}) doesn't exist")  # machine_i2c.c:82-84
         bus = cls._static.get(id)
@@ -1437,6 +1432,7 @@ mem32 = _Mem32()
 _WATCHDOG_REASON = 0x40058008  # WATCHDOG_BASE + 0x08: bit 0 TIMER, bit 1 FORCE (RP2040 datasheet 4.7.6, Table 548)
 _CHIP_RESET = 0x40064008  # VREG_AND_CHIP_RESET_BASE + 0x8: bit 8 HAD_POR, 16 HAD_RUN, 20 HAD_PSM_RESTART (RP2040 datasheet 2.10.6)
 _REASON_FORCE = 0x2  # watchdog_reboot(..., 0) sets the trigger bit (pico-sdk watchdog.c:65-66)
+_REASON_TIMER = 0x1  # a watchdog timeout, and what a BOOTSEL round trip leaves (bench)
 _HAD_POR = 0x100
 # Test-only: what the two registers read, the power-on pair until power_on()/reset()/bootloader() move them.
 watchdog_reason_value = 0
@@ -1481,10 +1477,14 @@ TEST_API = (
 
 
 def bootloader() -> None:
+    # A BOOTSEL round trip loses both backup regions on silicon, then reads cause 3 and REASON TIMER (bench).
     global bootloader_count, reset_cause_value, watchdog_reason_value
     bootloader_count += 1
+    for region in _REGIONS:
+        for i in range(len(region)):
+            region[i] = 0
     reset_cause_value = WDT_RESET
-    watchdog_reason_value = _REASON_FORCE
+    watchdog_reason_value = _REASON_TIMER
     raise SimulatedBootloaderEntryError("machine.bootloader() never returns")
 
 
@@ -1539,7 +1539,6 @@ def reset_test_state() -> None:
         channel.close()  # each claimed rp2.DMA channel's finaliser, as a soft reset runs it (rp2_dma.c:637-673)
     Pin.reset_registry()
     I2C.reset_registry()
-    I2C.raise_on_construct = None
     mem32.log.clear()
     reset_count = 0
     bootloader_count = 0

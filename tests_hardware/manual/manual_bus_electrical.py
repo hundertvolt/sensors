@@ -18,13 +18,9 @@ if TYPE_CHECKING:
 
     from http_client import JSONObject
 
-# @tunable l4.manual_bus_electrical_recovery_watch_s = 30.0
 _RECOVERY_WATCH_S = 30.0
-# @tunable l4.manual_bus_electrical_reboot_watch_s = 30.0
 _REBOOT_WATCH_S = 30.0
-# @tunable l4.manual_bus_electrical_lead_window_s = 20
 _LEAD_WINDOW_S = 20
-# @tunable l4.manual_bus_electrical_fram_detect_watch_s = 120.0
 _FRAM_DETECT_WATCH_S = 120.0
 _POLL_S = 1.0  # a recorded latency's resolution: one /status read a second
 _RR_WATCHDOG, _RR_TASK_BUDGET = (module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_WATCHDOG", "_RR_TASK_BUDGET"))
@@ -111,7 +107,7 @@ def test_hot_unplug_replug_i2c_recovery() -> None:
 
 @register(
     "fram_unplug_replug_recovery",
-    "Pull the FRAM's SPI lines and CS, then replug them: the seconds from the pull to the first FRAM log entry are recorded, the FRAM-backed loggers keep their write failures in RAM meanwhile, and after the replug the FRAM manager's recovery re-initialises the chip and /status shows FRAM-backed entries written again; no reboot.",
+    "Pull the FRAM's SPI lines and CS, then replug them: the seconds from the pull to the first FRAM log entry are recorded, the FRAM-backed loggers keep their write failures in RAM meanwhile, and after the replug the next FRAM-backed write lands and /status shows FRAM-backed entries written again; no reboot.",
     "[USB+WiFi][MANUAL]",
 )
 def test_fram_unplug_replug_recovery() -> None:
@@ -127,7 +123,7 @@ def test_fram_unplug_replug_recovery() -> None:
     _keep_off(detected_s, _FRAM_DETECT_WATCH_S, "Keep the FRAM leads off")
     print_instruction(f"Reconnect all four leads exactly as they were. You have {_LEAD_WINDOW_S:g} seconds.")
     countdown(_LEAD_WINDOW_S, "Reconnect the FRAM leads now")
-    countdown(int(_RECOVERY_WATCH_S), "Waiting for the FRAM manager's recovery")
+    countdown(int(_RECOVERY_WATCH_S), "Waiting for the FRAM-backed writes to land again")
     after = _block(rest_get("/status"), "system")
     record_assertion()
     assert int(str(after.get("SysUptime"))) > int(str(before.get("SysUptime"))), f"the board rebooted: {before} -> {after}"

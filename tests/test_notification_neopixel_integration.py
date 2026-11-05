@@ -10,7 +10,6 @@ import asyncio
 import time
 
 from _async_harness import cancel_all, run
-from _error_codes import code
 from _fake_time import DrivenTime, FakeTime, Rp2Gmtime
 from _tmp_scratch import TmpScratch
 
@@ -62,7 +61,7 @@ def _co2_signal(value: int = 2000) -> NotificationSignal:
 
 async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
     # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
-    # end nothing is stored yet; then the loop parks on its next cycle, FlashInterval after its start.
+    # end the loop has not parked on its next cycle yet; then it parks there, FlashInterval after its start.
     cfg = (await notify.get_dict_cfg())["NOTIFY"]
     flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
     assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
@@ -70,9 +69,8 @@ async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -
     end = start + flashes * round(flash_dur * 2000)
     if end > start:
         await clock.elapse(end - 1 - start)
-        assert notify._datastruct[1] is None, f"the cycle was stored by virtual t={clock.now} ms"  # State: None until stored
+        assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
     await clock.elapse(end - clock.now)
-    assert notify._datastruct[1] is not None, f"no cycle stored at virtual t={clock.now} ms"
     assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
 
 
@@ -205,7 +203,7 @@ class _LateTicks:
         return 0 if self._reads == 1 else 1 << 28
 
 
-def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
+def test_a_notification_behind_a_busy_led_queues_at_its_deadline_with_no_entry() -> None:
     # The LED stays busy: a REST command is queued and no signal task ever plays it.
     pixel, notify = _make_pair((_co2_signal(),))
     assert pixel.led_signal(0, 0, 50, 1.0) is True
@@ -215,7 +213,7 @@ def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         task = notify.start_asy_monitor()
-        await _cycle(clock, notify, 1)  # a dropped request still settles its 2 x FlashDur
+        await _cycle(clock, notify, 1)  # the request queued at its deadline settles its 2 x FlashDur
         await cancel_all([task])
 
     try:
@@ -223,15 +221,14 @@ def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
             run(scenario(clock))
     finally:
         asy_neopixel_driver.time = original
-    log = run(notify.get_error_counter())["NOTIFY"]
-    assert log["ErrCount"] == 1
-    assert log["ErrNum"][-1] == code("W", "NOTIFY_SIGNAL_DROPPED")
-    assert pixel._pixel.writes == []  # nothing played: the queued command waits for a signal task
+    assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0
+    assert pixel._rgbt == [200, 0, 0, 0.5]  # the flash replaced the queued command (last wins): FlashBri x red, FlashDur
+    assert pixel._pixel.writes == []  # nothing played: no signal task runs
 
 
 def test_the_window_check_reads_a_real_ntp_clock() -> None:
     # The production local-time callback: a real NTP client's cettime(), marked synced by the test.
-    ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(500, 1, 5000, 10, 600), cfg_path=_tmp_cfg_dir())
+    ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(500, 1, 5000), cfg_path=_tmp_cfg_dir())
     run(ntp.cfgmgr.setup())
     run(ntp._set_synced(value=True))
 
@@ -251,7 +248,7 @@ def test_the_window_check_reads_a_real_ntp_clock() -> None:
 
     original = asy_ntp_client.time
     asy_ntp_client.time = Rp2Gmtime()  # type: ignore[assignment]  # rp2's 8-field gmtime(), which cettime() checks for
-    asy_base_classes.set_utc_valid()  # the clock the sync set: a stored cycle carries its TS
+    asy_base_classes.set_utc_valid()  # the clock the sync set: cettime() answers only once it is set
     try:
         now = run(ntp.cettime())
         assert now is not None
@@ -260,7 +257,7 @@ def test_the_window_check_reads_a_real_ntp_clock() -> None:
         assert window_cycle((cur + 60) % 1440, (cur + 120) % 1440, 0) == []  # an hour away from it: dark
     finally:
         asy_ntp_client.time = original
-        asy_base_classes.set_utc_valid(valid=False)
+        asy_base_classes._utc_valid = False
 
 
 def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
@@ -274,14 +271,9 @@ def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
         await _cycle(clock, notify, 1)  # the default sink's request still settles its 2 x FlashDur
         await cancel_all([task])
 
-    asy_base_classes.set_utc_valid()  # the clock the first sync sets: a stored cycle carries its TS
-    try:
-        with _driven() as clock:
-            run(scenario(clock))
-    finally:
-        asy_base_classes.set_utc_valid(valid=False)
-    assert run(notify.get_data()).Triggered is True
-    assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0  # the default sink's False is no LED, not a drop
+    with _driven() as clock:
+        run(scenario(clock))
+    assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0  # the default sink's False logs nothing
 
 
 if __name__ == "__main__":

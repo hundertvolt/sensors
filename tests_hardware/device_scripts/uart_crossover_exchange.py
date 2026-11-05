@@ -1,6 +1,6 @@
 """Isolated-driver device script: a real GET, a real SET, a three-chunk train, a train of the TOML's max_transfer_bytes
 each way and an over-cap train refused, across the bench board's UART crossover jumper - J.7's self-compatibility
-on silicon, in the CRC mode the host passes. Facts out; the host test judges."""
+on silicon, in the CRC or COBS mode the host passes. Facts out; the host test judges."""
 # Constructs the two instances directly, never through the generated device module's task graph: no flash write
 # (C.8), and both loggers stay RAM-only.
 
@@ -10,6 +10,7 @@ import time
 
 import asy_uart_driver
 from asy_crc_checks import CRC16
+from asy_framing_codecs import FramingCOBS
 from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
 
 # @include _shared/facts.py
@@ -55,10 +56,12 @@ _BANNER = b"crossover-ok"
 _TRAIN_BYTES = PAYLOAD_SIZE * 2 + 7
 
 
-def _driver(bus: "BusFacts", crc: "CRC16 | None") -> "asy_uart_driver.UART":
+def _driver(bus: "BusFacts", mode: str) -> "asy_uart_driver.UART":
+    # "cobs" frames each driver's whole header and payload with its own codec, no CRC; "crc16" adds the CRC.
     return asy_uart_driver.UART(
         bus["id"], bus["tx_pin"], bus["rx_pin"], baudrate=bus["baudrate"], rxbuf=bus["rxbuf"], txbuf=bus["txbuf"], rx_ring=bus["rx_ring"],
-        poll_wait_ms=bus["poll_wait_ms"], poll_idle_ms=bus["poll_idle_ms"], crc=crc,
+        poll_wait_ms=bus["poll_wait_ms"], poll_idle_ms=bus["poll_idle_ms"], crc=CRC16() if mode == "crc16" else None,
+        framing=FramingCOBS(5 + PAYLOAD_SIZE) if mode == "cobs" else None,
     )
 
 
@@ -140,8 +143,8 @@ async def _main() -> None:
     max_bytes = bus1["max_transfer_bytes"]
     limits = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, max_bytes)
     callbacks = _Responder(max_bytes, time.ticks_diff(time.ticks_ms(), 0) & 0xFF)
-    uart0 = _driver(bus0, CRC16() if mode == "crc16" else None)
-    uart1 = _driver(bus1, CRC16() if mode == "crc16" else None)
+    uart0 = _driver(bus0, mode)
+    uart1 = _driver(bus1, mode)
     initiator = UARTComm(uart0, ROLE_INITIATOR, limits=limits, name="UART_INIT")
     responder = UARTComm(uart1, ROLE_RESPONDER, limits=limits, callbacks=ResponderCallbacks(callbacks.get, callbacks.set, callbacks.message), name="UART_RESP")
     setups = {"initiator": await initiator.setup(), "responder": await responder.setup()}

@@ -17,7 +17,6 @@ from _devices import DEVICE_NAMES, device_toml
 from buildgen.validate import device_max_connections
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-# @tunable l0.ci_suite_ceiling_get_timeout_s = 5.0
 _GET_TIMEOUT_S = 5.0
 _ROUTES = ("/measurements", "/status", "/system")  # a fixture device's GET routes, as its API reference lists them
 

@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 JSONValue: TypeAlias = bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"] | None
 JSONObject: TypeAlias = dict[str, JSONValue]
 
-# @tunable l4.http_client_fetch_timeout_s = 10.0
 _FETCH_TIMEOUT_S = 10.0
 _DRAIN_CHUNK_BYTES = 4096  # read_body=False reads the body off the connection in pieces this size, keeping none
 

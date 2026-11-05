@@ -64,11 +64,8 @@ if TYPE_CHECKING:
 
 PAYLOAD_SIZE = 8
 _HARNESS_RATES: "PollRates" = {"poll_wait_ms": POLL_WAIT_MS, "poll_idle_ms": POLL_WAIT_MS}
-# @tunable l1.asy_uart_link_driver_round_poll_s = 0.005
 _ROUND_POLL_S = 0.005
-# @tunable l1.asy_uart_link_driver_ticker_step_ms = 1
 _TICKER_STEP_MS = 1
-# @tunable l1.asy_uart_link_driver_task_end_rounds = 200
 _TASK_END_ROUNDS = 200
 # One host deschedule longer than the reply budget, planted at the second UART sleep: on the wall clock it expires a
 # wait before the peer runs and a correct exchange fails; on the poll-round clock it cannot (SPECIFICATION.md Part J.7).
@@ -106,7 +103,9 @@ class Pair:
             await self.responder._comm.uart_listen()
 
     async def setup(self) -> bool:
-        return await self.initiator.setup() and await self.responder.setup()
+        await self.initiator.setup()
+        await self.responder.setup()
+        return self.initiator.initialized and self.responder.initialized
 
     async def with_listener(self, work: "Coroutine[object, object, T]", rounds: int = 1, *, listener_may_stall: bool = False) -> "T":
         # The harness's rule: a stalled responder fails the exchange unless the test declares it.
@@ -141,6 +140,7 @@ def test_name_resolution_matches_instance_name_convention() -> None:
     extended = UARTLinkDriver(driver, ROLE_INITIATOR, name_ext="init")
     assert extended.name == "UART_init"
     assert extended.pr.name == "UART_init"
+    assert driver.logger is extended.pr  # the bus's console lines go out through its user's logger
 
 
 def test_initiator_task_starters_include_exercise_loop() -> None:
@@ -180,10 +180,10 @@ def test_the_readiness_flag_follows_the_inner_setup() -> None:
     # False until setup() succeeds; a failed setup (no bus, refused at construction) leaves it False.
     pair = Pair()
     before = pair.initiator.initialized
-    assert run(pair.initiator.setup(), RUN_LIMIT_S) is True
+    run(pair.initiator.setup(), RUN_LIMIT_S)
     assert (before, pair.initiator.initialized) == (False, True)
     refused = UARTLinkDriver(None, ROLE_INITIATOR, limits=transfer_limits(payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS), name_ext="none")
-    assert run(refused.setup(), RUN_LIMIT_S) is False
+    run(refused.setup(), RUN_LIMIT_S)
     assert refused.initialized is False
 
 
@@ -553,7 +553,7 @@ def test_a_refused_construction_ends_every_task_for_both_roles() -> None:
     # escalation reaches a reboot for a link that cannot come up (SPECIFICATION.md Part C.7.2).
     for role in (ROLE_INITIATOR, ROLE_RESPONDER):
         driver = _refused_link(role)
-        assert run(driver.setup(), RUN_LIMIT_S) is False
+        run(driver.setup(), RUN_LIMIT_S)
         assert driver.initialized is False
         done = run(_rounds_until_done(driver), RUN_LIMIT_S)
         assert done == [True], f"{role}: tasks done {done}"
@@ -662,7 +662,6 @@ def _shipped_rates() -> "tuple[PollRates, PollRates]":
 _SHIPPED_RATES = _shipped_rates()
 # From the request to the run's end on the driven clock, exact on any host: the measured figure in both CRC modes at
 # _SHIPPED_RATES, with no margin (agent, 2026-10-27).
-# @tunable l1.asy_uart_link_driver_hazard_run_virtual_ms = 22440
 _HAZARD_RUN_VIRTUAL_MS = 22440
 
 

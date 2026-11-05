@@ -183,7 +183,7 @@ def _make_service(bmp_cls: "type[BMP3XX_Reader]" = BMP3XX_Reader) -> _Product:
     bus0 = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
     bus1 = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
     wifi = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=cfg_path)
-    ntp = NTPClient(asyncio.Lock(), _network_available, _no_dns_server, NtpTiming(500, 1, 5000, 10, 600), cfg_path=cfg_path)
+    ntp = NTPClient(asyncio.Lock(), _network_available, _no_dns_server, NtpTiming(500, 1, 5000), cfg_path=cfg_path)
     system = SystemService(ntp.ntp_issynced, cfg_path=cfg_path)
     comp = _FakeCompSource()
     readers = (
@@ -191,8 +191,10 @@ def _make_service(bmp_cls: "type[BMP3XX_Reader]" = BMP3XX_Reader) -> _Product:
         SGP40_Reader(bus1, ValueRef(comp, "Temp"), ValueRef(comp, "Hum"), max_module_error=5, cfg_path=cfg_path),
         SCD30_Reader(bus0, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=cfg_path),
     )
-    assert [run(wifi.setup()), run(ntp.setup()), run(system.setup())] == [True] * 3
-    assert [run(reader.setup()) for reader in readers] == [True] * len(readers)
+    modules = (wifi, ntp, system) + readers
+    for module in modules:
+        run(module.setup())
+    assert [module.cfgmgr.valid for module in modules] == [True] * len(modules)
     return _Product(wifi, ntp, system, readers, (bus0, bus1))
 
 

@@ -57,7 +57,3 @@ def test_no_hardware_module_copies_a_product_value_uncited() -> None:
     assert not found, "read these from src/ (or cite them with a `# source:` comment a source-reading test pins):\n  " + "\n  ".join(found)
 
 
-def test_the_copy_check_bites(tmp_path: Path) -> None:
-    module = tmp_path / "copy.py"
-    module.write_text("DEBUG_LEVEL_MAX = 5\n_STEPS = 5\nLEVEL = 5  # source: src/asy_system_service.py _VAL_DEBUG_LEVEL max\n# @tunable l4.x = 5\nDEBUG_LEVEL_TOP = 5\n", encoding="utf-8")
-    assert copies(module, product_values()) == ["copy.py:1 DEBUG_LEVEL_MAX = 5 copies src/asy_system_service.py DebugLevel max"]

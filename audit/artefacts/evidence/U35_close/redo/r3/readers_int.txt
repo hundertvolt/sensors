@@ -1,0 +1,6 @@
+tests_scripts/test_record_twin_instrument_runs.py
+tests_scripts/test_comment_block_cap.py
+tests_scripts/test_suppression_form.py
+tests_scripts/test_port_bands.py
+tests_scripts/test_citations.py
+tests_scripts/test_hardware_verdict.py

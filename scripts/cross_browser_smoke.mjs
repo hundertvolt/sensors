@@ -30,11 +30,9 @@ const PORT = 19420;
 const PROXY_PORT = 19421;
 const SITE_URL = `http://${HOST}:${PROXY_PORT}/`;
 // The wait for Xvfb to report the display it took: the bound it shared with the twin's start before it had its own.
-// @tunable l0.smoke_display_ready_timeout_ms = 20000
 const DISPLAY_READY_TIMEOUT_MS = 20000;
 // How much of Xvfb's stderr a failed start quotes: its last lines, which say why.
 const XVFB_STDERR_TAIL_CHARS = 4096;
-// @tunable l0.smoke_h1_wait_ms = 10000
 const H1_WAIT_MS = 10000;
 // The connections one page load opens for itself (the document and its assets, SPECIFICATION.md H.7), counted
 // per engine at the proxy apart from the data requests that follow: a higher count, or none, fails the check.
@@ -42,10 +40,8 @@ const H1_WAIT_MS = 10000;
 const CONNECTIONS_PER_PAGE_LOAD = 2;
 // A Chromium-family engine sometimes opens spare sockets that carry no request (Edge two, Chromium one), counted once the
 // page's first data request went out, so the socket opened for it is not one; they are printed and bounded.
-// @tunable l0.smoke_speculative_connections_max = 2
 const SPECULATIVE_CONNECTIONS_MAX = 2;
 // The count waits for that first data request; this bounds only a page that never sends one.
-// @tunable l0.smoke_first_data_request_wait_ms = 10000
 const FIRST_DATA_REQUEST_WAIT_MS = 10000;
 
 const CROSS_BROWSER_DIR = process.env.CROSS_BROWSER_TOOLCHAIN_DIR || path.join(homedir(), "cross-browser-toolchain");

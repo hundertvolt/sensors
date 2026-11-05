@@ -7,10 +7,11 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+import _load
 import evidence
 import http_client
 import pytest
-from error_log_helpers import get_errcount, save_errcount
+from error_log_helpers import code, get_errcount, save_errcount
 from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, SRC_DIR, HardwareTestFailureError, crash_lines, dut_hostname_candidates, fram_backed_logger_names, hotspot_password, observe_during, parse_facts, restore_board_to_serving, save_fram_raw, wait_until
 
 from buildgen.validate import module_int_const
@@ -26,19 +27,14 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 
 _SRC = "asy_system_service.py"
-_RR_REBOOT, _RR_BOOTLOADER, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(SRC_DIR, _SRC, name) for name in ("_RR_REBOOT", "_RR_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED"))
+_RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(SRC_DIR, _SRC, name) for name in ("_RR_WATCHDOG", "_RR_REBOOT", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED"))
 _SAVED_SET = "config-files-before-reset.txt"  # the dump's verbatim output, under each run's evidence directory
 # Whole-string equality is the dispatch's one check: each of these is one edit away from a command word.
 _NEAR_MISSES = ("Reboot", "reboot ", "REBOOT", "erase", "erasefram!", "eraseFRAM", "resetConfig", "boot", "", "mempause1", 1, None)
-# @tunable l4.system_commands_put_timeout_s = 10.0
 _PUT_TIMEOUT_S = 10.0
-# @tunable l4.system_commands_serving_timeout_s = 120.0
 _SERVING_TIMEOUT_S = 120.0
-# @tunable l4.system_commands_serving_poll_s = 2.0
 _SERVING_POLL_S = 2.0
-# @tunable l4.system_commands_hotspot_up_s = 60.0
 _HOTSPOT_UP_S = 60.0
-# @tunable l4.system_commands_picotool_timeout_s = 30.0
 _PICOTOOL_TIMEOUT_S = 30.0
 
 
@@ -108,7 +104,7 @@ def _serving_status(dut_ip: str, started: float, result_note: "Callable[[str], N
     wait_until(lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PUT_TIMEOUT_S).status_code == 200, timeout_s=_SERVING_TIMEOUT_S, poll_interval_s=_SERVING_POLL_S, description=f"DUT serving after {context}")
     system = _get(dut_ip, "/status").get("system")
     assert isinstance(system, dict), f"{context}: /status carries no system block"
-    result_note(f"{context}: serving {time.monotonic() - started:.1f} s after the reply; ResetReason {system.get('ResetReason')}, ResetBits {system.get('ResetBits')}")
+    result_note(f"{context}: serving {time.monotonic() - started:.1f} s after the reply; ResetReason {system.get('ResetReason')}")
     return system
 
 
@@ -169,9 +165,9 @@ def test_fram_erase_over_rest_blanks_every_error_log(board: "Board", bench: "Ben
         system = _serving_status(dut_ip, replied, result_note, "the FRAM erase")
         # A 2 here is the watchdog having reset the board mid-sequence, never the erase's own reboot.
         assert system.get("ResetReason") == _RR_FRAM_ERASED, f"the erase's reboot read {system.get('ResetReason')}, not {_RR_FRAM_ERASED}"
-        counts = get_errcount(dut_ip)
-        kept = {name: counts[name] for name in fram_backed_logger_names() if counts[name]["counter"] or counts[name]["history"]}
-        assert not kept, f"FRAM-backed logs not blank after the erase: {kept}"
+        counts, owed = get_errcount(dut_ip), {name: (1, [("W", code("W", "SGP_NO_BACKUP"))]) for name in _load.instance_loggers("sgp40")}
+        kept = {name: counts[name] for name in fram_backed_logger_names() if (counts[name]["counter"], [(h.get("type"), h.get("num")) for h in counts[name]["history"] if h.get("type") != "N"]) not in ((0, []), owed.get(name))}
+        assert not kept, f"FRAM-backed logs not blank after the erase, each SGP40's W SGP_NO_BACKUP for its blank backup chunk aside: {kept}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
 
@@ -221,7 +217,7 @@ def test_reboot_and_bootloader_at_once(board: "Board", bench: "BenchBridge", dut
             wait_until(lambda: not board.is_device_present(), timeout_s=_PUT_TIMEOUT_S, description="the board leaving USB for BOOTSEL")
             reboot = _picotool_reboot()
             assert reboot == 0, f"picotool reboot found no BOOTSEL device (exit {reboot})"
-        expected = _RR_BOOTLOADER if answers["bootloader"] == "Valid" else _RR_REBOOT
+        expected = _RR_WATCHDOG if answers["bootloader"] == "Valid" else _RR_REBOOT  # BOOTSEL loses the record: 2
         system = _serving_status(dut_ip, replied, result_note, "the raced reboot and bootloader")
         assert system.get("ResetReason") == expected, f"the winner's code {expected} not read: {system.get('ResetReason')} ({answers})"
     finally:

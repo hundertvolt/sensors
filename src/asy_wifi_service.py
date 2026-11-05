@@ -16,7 +16,7 @@ from asy_base_classes import SensorReaderConfig, TickSeconds, arm_tick_timer, ut
 from asy_captive_dns import CaptiveDNS
 from asy_config_manager import INVALID, make_dict, name_cfg, schema_dict, schema_names
 from asy_dns_client import host_label_ok
-from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
+from asy_print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -284,7 +284,6 @@ class WifiService(SensorReaderConfig):
                 stations: list[tuple[bytes]] = self._wlan.status("stations")  # type: ignore[assignment]
                 self.pr.all("Connected stations:", stations)
             except Exception as e:  # A failed check confirms no client: the caller counts it as none and persists it (owner, 2026-10-08).
-                report_if_fatal(e)
                 self.pr.err("Could not fetch connected clients:", e)
                 return None
             else:
@@ -307,7 +306,6 @@ class WifiService(SensorReaderConfig):
         try:
             self._configure_hotspot_ap(country, hostname, password)
         except Exception as e:
-            report_if_fatal(e)
             self._hw_op_failed = True
             await self.pr.err_s("Error activating hotspot AP:", e, errno=_ERR_WLAN_AP_START)
 
@@ -410,8 +408,7 @@ class WifiService(SensorReaderConfig):
             else:
                 self._hw_op_failed = False
                 if self._tick_armed is False:  # the uptime tick never armed: this iteration retries it
-                    # Quiet: the episode's first refusal printed the helper's line; this pass's persisted entry is its record.
-                    self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime", quiet=True)
+                    self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")
                     if not self._tick_armed:
                         await self.pr.err_s("WiFi uptime timer not armed", errno=_ERR_TIMER)
                         self._hw_op_failed = True
@@ -448,7 +445,6 @@ class WifiService(SensorReaderConfig):
                 self._hw_op_failed = True
                 await self.pr.err_s("Timed out waiting for STA disconnect", errno=_ERR_TIMEOUT)
         except Exception as e:
-            report_if_fatal(e)
             self._hw_op_failed = True
             await self.pr.err_s("Error waiting for STA disconnect:", e, errno=_ERR_WLAN_STA_DISCONNECT)
 
@@ -461,7 +457,6 @@ class WifiService(SensorReaderConfig):
                 self._led_off()
                 await asyncio.sleep_ms(off_ms)
         except Exception as e:  # unsupervised task's top: its end is persisted, the LED left as it is
-            report_if_fatal(e)
             await self.pr.err_s("LED flash task failed:", e, errno=_ERR_UNEXPECTED)
 
     async def _handle_reconnect_trigger(self) -> None:
@@ -533,7 +528,6 @@ class WifiService(SensorReaderConfig):
             try:  # see _led_on()'s comment
                 self._led.off()
             except Exception as e:
-                report_if_fatal(e)
                 self.pr.err("LED off() failed:", e)
 
     def _led_on(self) -> None:
@@ -544,7 +538,6 @@ class WifiService(SensorReaderConfig):
                 # _hw_op_failed/_error_check().
                 self._led.on()
             except Exception as e:
-                report_if_fatal(e)
                 self.pr.err("LED on() failed:", e)
 
     def _led_toggle(self) -> None:
@@ -552,7 +545,6 @@ class WifiService(SensorReaderConfig):
             try:  # see _led_on()'s comment
                 self._led.toggle()
             except Exception as e:
-                report_if_fatal(e)
                 self.pr.err("LED toggle() failed:", e)
 
     async def _locked_wlan_status(self) -> int | None:
@@ -605,7 +597,6 @@ class WifiService(SensorReaderConfig):
             try:
                 status = self._wlan.status()
             except Exception as e:
-                report_if_fatal(e)
                 self._hw_op_failed = True
                 await self.pr.err_s("Error polling STA connect status:", e, errno=_ERR_WLAN_STA_POLL)
                 return
@@ -643,7 +634,6 @@ class WifiService(SensorReaderConfig):
             self.pr.all("Default gateway:", net_config[2])
             self.pr.all("DNS server:", net_config[3])
         except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
-            report_if_fatal(e)
             self.pr.err("WLAN diagnostic read failed:", e)
 
     async def _push_wifi_led(self, value: "CfgValue") -> bool:
@@ -718,7 +708,6 @@ class WifiService(SensorReaderConfig):
         try:
             self._reconn_wifi = (self._conn_phase == _PHASE_HOTSPOT) or self._wlan.isconnected() or bool(self._wlan.active())
         except Exception as e:  # rare (once per task (re)start) - safe default forces a clean reconnect
-            report_if_fatal(e)
             self.pr.err("Error checking WLAN state at start:", e)
             self._reconn_wifi = True
         # clear possible previous connections
@@ -800,7 +789,6 @@ class WifiService(SensorReaderConfig):
             self.pr.all("Wifi mode set")
             await asyncio.sleep(_WLAN_MODE_SETTLE_S)
         except Exception as e:
-            report_if_fatal(e)
             self._hw_op_failed = True
             await self.pr.err_s("Error switching WLAN mode:", e, errno=_ERR_WLAN_MODE_SWITCH)
             return False
@@ -814,7 +802,6 @@ class WifiService(SensorReaderConfig):
             self._wlan.config(pm=_PM_NO_POWERSAVE)
             self._wlan.connect(ssid, pw)
         except Exception as e:
-            report_if_fatal(e)
             self._hw_op_failed = True
             await self.pr.err_s("Error attempting STA connect:", e, errno=_ERR_WLAN_STA_START)
             return False
@@ -836,7 +823,6 @@ class WifiService(SensorReaderConfig):
             if len(ifcfg) == _IFCONFIG_FIELDS:
                 ip, subnet, gateway, dns = ifcfg
         except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
-            report_if_fatal(e)
             self.pr.err("wlan.ifconfig() failed:", e)
         rssi = None
         # Read only with a link on STA: an AP raises ValueError, and an inactive STA returns the driver's
@@ -845,7 +831,6 @@ class WifiService(SensorReaderConfig):
             try:
                 rssi = int(self._wlan.status("rssi"))
             except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
-                report_if_fatal(e)
                 self.pr.err("wlan.status('rssi') failed:", e)
         self._dhcp_dns = dns if connected else None
         await self._set_meas_data(WIFI(mode, connected, ip, subnet, gateway, dns, rssi, utc_now()))
@@ -888,7 +873,6 @@ class WifiService(SensorReaderConfig):
         try:
             return self._wlan.isconnected()
         except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
-            report_if_fatal(e)
             self.pr.err("wlan.isconnected() failed:", e)
             return False
 
@@ -898,7 +882,6 @@ class WifiService(SensorReaderConfig):
         try:
             return self._wlan.status()
         except Exception as e:
-            report_if_fatal(e)
             self.pr.err("wlan.status() failed:", e)
             return None
 
@@ -991,7 +974,6 @@ class WifiService(SensorReaderConfig):
         self._on_hotspot_window_end()
         self._reconnect_fresh = True
 
-    async def setup(self) -> bool:
-        ok = await super().setup()
+    async def setup(self) -> None:
+        await super().setup()
         await self._dns_server.pr.setup()  # the DNS server's own logger is set up separately
-        return ok

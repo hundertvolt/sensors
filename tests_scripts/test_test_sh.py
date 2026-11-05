@@ -33,9 +33,7 @@ _GENERATE_LINE = "uv run scripts/_generate_sensortask_modules.py"
 # itself rather than the bare paren, which appears all over a shell script.
 _PYTEST_LINE = "uv run pytest tests_scripts -q"
 # Bounds on the subprocesses below: a nested scripts/test.sh run or probe, and a bash snippet.
-# @tunable l0.test_sh_nested_run_timeout_s = 60
 _NESTED_RUN_TIMEOUT_S = 60
-# @tunable l0.test_sh_snippet_timeout_s = 30
 _SNIPPET_TIMEOUT_S = 30
 # The environment variable a planted run's processes carry, so its leftovers are found wherever they were reparented.
 _MARKER_VAR = "SENSORS_TEST_SH_PLANTED_RUN"

@@ -30,7 +30,7 @@ from machine import Timer
 
 import asy_print_log
 import asy_spi_driver
-from asy_print_log import PrintLogHistory, console
+from asy_print_log import PrintLog, PrintLogHistory
 
 try:
     from typing import TYPE_CHECKING
@@ -52,24 +52,15 @@ if TYPE_CHECKING:
 _SRC_DIR = "src"
 _scratch = TmpScratch("shared_helpers")
 _NTP_PORT = 28001  # this file's own UDP port, clear of every other file's band (21000-27000, 19100-19700)
-# @tunable l1.shared_helpers_ntp_server_poll_ms = 5
 _NTP_SERVER_POLL_MS = 5
-# @tunable l1.shared_helpers_ntp_server_poll_tries = 200
 _NTP_SERVER_POLL_TRIES = 200
-# @tunable l1.shared_helpers_ntp_reply_poll_ms = 5
 _NTP_REPLY_POLL_MS = 5  # the client's look for a reply, `_NTP_REPLY_POLLS` times: a dropped request waits them all out
-# @tunable l1.shared_helpers_ntp_reply_polls = 20
 _NTP_REPLY_POLLS = 20
-# @tunable l1.shared_helpers_ntp_exchange_bound_s = 10
 _NTP_EXCHANGE_BOUND_S = 10
-# @tunable l1.shared_helpers_ntp_budget_poll_ms = 1
 _NTP_BUDGET_POLL_MS = 1  # with `_NTP_BUDGET_POLL_TRIES`, the budget case's server, waited out
-# @tunable l1.shared_helpers_ntp_budget_poll_tries = 3
 _NTP_BUDGET_POLL_TRIES = 3
-# @tunable l1.shared_helpers_ntp_budget_bound_s = 5
 _NTP_BUDGET_BOUND_S = 5
 # The real-time hang bound around each fast-sleep and driven-clock self-test run.
-# @tunable l1.shared_helpers_clock_run_bound_s = 5
 _CLOCK_RUN_BOUND_S = 5
 
 
@@ -605,7 +596,7 @@ def test_record_prints_captures_every_logger_line_and_restores_print() -> None:
     pr = PrintLogHistory(level=1, name="T")
     with record_prints() as recorded:
         pr.err("refused", 5)
-        console("LAYER", "lost", 7)
+        PrintLog(1, name="LAYER").err("lost", 7)
     assert recorded.lines == [("T", "refused", 5), ("LAYER", "lost", 7)]
     assert recorded.text() == "T refused 5\nLAYER lost 7"
     assert not hasattr(asy_print_log, "print")

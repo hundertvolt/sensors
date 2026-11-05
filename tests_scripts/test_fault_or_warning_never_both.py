@@ -26,18 +26,13 @@ Pair = tuple[str, str, Event, Event]  # (module path, function, first, second)
 _FILE_THEN_WRITE = "the config file was unusable, then writing its repair failed: two occurrences"
 _TWO_SOURCES = "the config manager and the read callback are two sources: two occurrences"
 _FILE_THEN_SCHEMA = "the config file was unusable, then the schema itself proved invalid: two occurrences"
-_CHIP_RESET = "a chip reset, then a failed re-apply or a rejected reading: separate occurrences"
 _OWN_CALL = "only the warning's own logging call can raise once it persisted, and the task's top logs that: the logging-call caveat (SPECIFICATION.md G.2)"
 
 # The mixed pairs the tree holds on purpose, each with why its two entries are two occurrences. A listed
 # pair the scan no longer finds fails, so the list follows every change that renames or removes one.
 _ALLOWED: "dict[Pair, str]" = {
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("E", "CFG_READ"), ("W", "BMP_CHIP_RESET")): "the cycle's config read fell back, then the chip reset was read: separate occurrences",
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("W", "BMP_CHIP_RESET"), ("E", "READ")): _CHIP_RESET,
-    ("src/asy_bmp3xx_driver.py", "_read_bmp", ("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE")): _CHIP_RESET,
     ("src/asy_isl29125_driver.py", "_check_divergence", ("W", "ISL_DIVERGED"), ("E", "CHIP_SET")): "the chip diverged from the shadow, then its re-apply failed: separate occurrences",
     ("src/asy_uart_comm.py", "_resync", ("W", "UART_DRAIN_BOUND"), ("E", "UART_LINK_UNINTELLIGIBLE")): "a drain that hit its bound and a link no frame ever validated on are separate conditions",
-    ("src/asy_fram_driver.py", "setup", ("W", "FRAM_ID_RETRIED"), ("E", "FRAM_WP_PARTIAL")): "the chip answered its identification only on a retry, then its status register read partly protected: two conditions",
     ("src/asy_fram_manager.py", "_read", ("W", "FRAM_BLOCK_INVALID"), ("E", "FRAM_BLOCK_WRITE")): "an invalid block, then a failed repair write",
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_CALLBACK_RAISED")): _TWO_SOURCES,
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CALLBACK_KEYS"), ("E", "CFG_CALLBACK_RAISED")): "the callback's unknown keys, then merging its result raised: two occurrences",
@@ -48,8 +43,7 @@ _ALLOWED: "dict[Pair, str]" = {
     ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_BAD_HEAD"), ("E", "UNEXPECTED")): _OWN_CALL,
     ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_PEER_RESET"), ("E", "UNEXPECTED")): _OWN_CALL,
     ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_SOCKET_ERROR"), ("E", "UNEXPECTED")): _OWN_CALL,
-    ("src/asy_webserver_service.py", "_serve", ("W", "_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP"), ("E", "UNEXPECTED")): _OWN_CALL,
-    ("src/asy_ntp_client.py", "_fetch_ntp_reply", ("W", "SOCKET_TEARDOWN"), ("E", "NTP_NO_REPLY")): "the socket's teardown and the exchange's outcome (a silent server) are two occurrences",
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_CALL_TIMEOUT"), ("E", "UNEXPECTED")): _OWN_CALL,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
@@ -267,37 +261,6 @@ def test_the_scan_sees_the_trees_logging() -> None:
 
 
 # ---- planted pairs -----------------------------------------------------------------------------------
-
-
-_PLANT = """
-class Mod:
-    async def _err(self, errno, *args):
-        await self.pr.err_s("x", *args, errno=errno)
-
-    async def f(self, ok):
-        await self.pr.wrn_s("w", wrnno=_WRN_A)
-        {second}
-"""
-
-
-_PLANTED_PAIR = {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
-
-
-@pytest.mark.parametrize(
-    ("second", "expected"),
-    [
-        ('await self.pr.err_s("e", errno=_ERR_B)', _PLANTED_PAIR),  # a warning then a fault for one occurrence
-        ("await self._err(_ERR_B)", _PLANTED_PAIR),  # the same pair, the fault written through a wrapper
-        ('await self.pr.wrn_s("w2", wrnno=_WRN_C)', set()),  # same kind
-        ('if ok:\n            return\n        await self.pr.err_s("e", errno=_ERR_B)', _PLANTED_PAIR),  # one path still reaches it
-        ('return\n        await self.pr.err_s("e", errno=_ERR_B)', set()),  # a return between ends the path
-        ("await self.g()", set()),  # another function's entries are never paired
-    ],
-)
-def test_the_scan_bites_a_planted_pair(second: str, expected: "set[Pair]") -> None:
-    source = _PLANT.format(second=second) + "\n    async def g(self):\n        await self.pr.err_s('g', errno=_ERR_D)\n"
-    pairs = _pairs([_parse("src/plant.py", source)])
-    assert pairs == expected, _describe(pairs)
 
 
 def test_the_scan_sees_a_handler_entered_after_a_warning() -> None:

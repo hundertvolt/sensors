@@ -76,13 +76,9 @@ _BMP_ADDR = 0x77
 _BMP_STATUS = 0x03  # the STATUS register; bit 4 is cmd_rdy (bst-bmp388-ds001 sec 4.3.3)
 _BMP_CMD_RDY = 0x10
 _LET_GO_READS = 5000  # a wait still running this many clock reads in is ended by the world, so a lost bound fails, not hangs
-# @tunable l1.ticks_rollover_neopixel_frame_ms = 10
 _NEOPIXEL_FRAME_MS = 10  # the neopixel driver's frame, so its polls: each a real sleep, only its `time` faked
-# @tunable l1.ticks_rollover_held_run_ms = 50
 _HELD_RUN_MS = 50  # a real sleep spanning several of the driver's 10 ms polls, the fake clock held
-# @tunable l1.ticks_rollover_finish_poll_ms = 5
 _FINISH_POLL_MS = 5
-# @tunable l1.ticks_rollover_finish_polls = 200
 _FINISH_POLLS = 200
 _SIGNAL_WAIT_MS: int = src_int("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
 
@@ -266,9 +262,7 @@ def _install_stepping(module: object, start: int, step_ms: int, on_read: "Callab
 def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int | None") -> "tuple[bool, bool, bool]":
     # request_signal() behind a queued signal, its deadline armed at `start`: (still pending one ms before the deadline
     # or after the release, finished at the deadline, returned True); release_after_ms clears the signal that far in.
-    driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
-    driver.neopixel_freq = 100  # the driver's own fixed state, set from outside: 10 ms polls
-    driver._frame_ms = _NEOPIXEL_FRAME_MS
+    driver = NeopixelDriver(0, neopixel_freq=1000 // _NEOPIXEL_FRAME_MS, log=LogConfig(None, 10, None))
     run(driver.setup())
     fake = _install(asy_neopixel_driver, start)
 
@@ -346,7 +340,7 @@ def _scl_wait(start: int, timeout_us: int, *, sync: bool, held_reads: "int | Non
     Pin.set_external_level(_SCL_PIN, scl_level)
     scl = Pin(_SCL_PIN, Pin.IN, pull=Pin.PULL_UP)
     try:
-        released = asy_i2c_driver._scl_released_sync(scl, timeout_us) if sync else run(asy_i2c_driver._scl_released(scl, timeout_us))
+        released = run(asy_i2c_driver._scl_released(scl, timeout_us, awaited=not sync))
         return released, reads[0]
     finally:
         _restore(asy_i2c_driver)
@@ -683,13 +677,13 @@ def test_next_sleep_ms_crosses_the_ticks_wrap() -> None:
 
 
 def test_neopixel_signal_deadline_crosses_the_ticks_wrap() -> None:
-    # Armed half a wait before the wrap, the deadline lands past it: held one ms before, dropped at it.
+    # Armed half a wait before the wrap, the deadline lands past it: held one ms before, queued at it.
     wait_ms = _SIGNAL_WAIT_MS
     start = TICKS_PERIOD - wait_ms // 2
     assert start + wait_ms > TICKS_PERIOD
     wrapped = _neopixel_wait_outcome(start, wait_ms, release_after_ms=None)
     assert wrapped == _neopixel_wait_outcome(_REFERENCE_NOW, wait_ms, release_after_ms=None)
-    assert wrapped == (True, True, False)
+    assert wrapped == (True, True, True)
 
 
 def test_neopixel_signal_released_past_the_wrap_is_taken() -> None:
@@ -735,9 +729,9 @@ def test_the_uart_cancel_ack_wait_crosses_the_ticks_wrap() -> None:
 
 
 def test_the_udp_ready_deadline_crosses_the_ticks_wrap() -> None:
-    # Started 20 ms before the wrap: no datagram ends the wait at its 50 ms bound with no poll there, and one ready after
+    # Started 20 ms before the wrap: no datagram ends the wait at the first poll past its 50 ms bound, and one ready after
     # the wrap is reported, as away from it.
-    for arrive_at, expected in ((None, (False, 6)), (3, (True, 3)), (5, (True, 5))):
+    for arrive_at, expected in ((None, (False, 7)), (3, (True, 3)), (5, (True, 5))):
         wrapped = _udp_ready_wait(TICKS_PERIOD - 20, arrive_at)
         assert wrapped == _udp_ready_wait(_REFERENCE_NOW, arrive_at), (arrive_at, wrapped)
         assert wrapped == expected, (arrive_at, wrapped)

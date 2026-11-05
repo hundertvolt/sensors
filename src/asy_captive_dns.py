@@ -11,7 +11,7 @@ import asyncio
 
 from micropython import const
 
-from asy_dns_client import DNS_LABEL_MAX, DNS_NAME_MAX, DNS_QTYPE_A, DNS_UDP_MAX, ipv4_to_int
+from asy_dns_client import DNS_QTYPE_A, DNS_UDP_MAX, ipv4_to_int
 from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger, report_if_fatal
 from asy_udp_socket import UDPSocket
 
@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 
 _NAME = const("DNSSRV")
 
-_ERR_INIT = const(10)
 _ERR_BAD_ARG = const(21)
 _ERR_UNEXPECTED = const(23)
 _WRN_SOCKET_TEARDOWN = const(12)
@@ -56,7 +55,7 @@ class CaptiveDNS:
         # asy_webserver_service.py's registration lists key on (error_sources=).
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
-        self._udps = UDPSocket(("0.0.0.0", 53), mode="server")
+        self._udps = UDPSocket(("0.0.0.0", 53), mode="server", logger=self.pr)
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
@@ -88,7 +87,7 @@ class CaptiveDNS:
                 try:
                     self.pr.evt("Waiting for DNS request...")
                     # lwIP queues at most 4 datagrams per UDP socket and drops the rest uncounted (extmod/modlwip.c:299, 456-461, v1.29.0);
-                    # every queued one is read before _poll() sleeps, so a burst loses only what exceeds 4 per idle poll.
+                    # every queued one is read before ready() sleeps, so a burst loses only what exceeds 4 per idle poll.
                     data, addr = await self._udps.recvfrom(DNS_UDP_MAX)
                     if data is not None and addr is not None:
                         recv_fail_backoff_ms = _RECV_FAIL_BACKOFF_INITIAL_MS  # socket is receiving fine again
@@ -111,12 +110,8 @@ class CaptiveDNS:
                                 await self.pr.wrn_s("Reply dropped by sendto() to", addr[0], addr[1], wrnno=_WRN_DNS_REPLY_DROPPED)
                             else:
                                 self.pr.evt("Replying to", addr[0], addr[1], dns.domain, "->", server_ip)
-                    else:
-                        # (None, None) is local: the socket never bound, or the receive raised - never a client's datagram.
-                        if not self._udps.connected:
-                            await self.pr.err_s("Captive DNS socket could not bind port 53.", errno=_ERR_INIT)
-                        else:
-                            await self.pr.wrn_s("Receiving a DNS request failed.", wrnno=_WRN_DNS_RECV_FAILED)
+                    else:  # (None, None) is local: the socket never bound, or the receive raised - never a client's datagram
+                        await self.pr.wrn_s("Receiving a DNS request failed.", wrnno=_WRN_DNS_RECV_FAILED)
                         await asyncio.sleep_ms(recv_fail_backoff_ms)
                         recv_fail_backoff_ms = min(
                             recv_fail_backoff_ms * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_MS,
@@ -124,7 +119,6 @@ class CaptiveDNS:
 
                 except Exception as e:
                     # nothing supervises this task - never let an unexpected exception here kill it.
-                    report_if_fatal(e)
                     await self.pr.err_s("DNS Server error:", e, errno=_ERR_UNEXPECTED)
                     await asyncio.sleep(_ERROR_RETRY_WAIT_S)
 
@@ -135,7 +129,6 @@ class CaptiveDNS:
             except Exception as e:
                 # disconnect() is documented as never raising, but nothing supervises this task -
                 # never let cleanup itself become the uncaught exception.
-                report_if_fatal(e)
                 await self.pr.err_s("DNS Server error during disconnect:", e, errno=_ERR_UNEXPECTED)
                 disconnect_ok = True  # already logged above via the except-Exception branch
             if not disconnect_ok:
@@ -159,20 +152,14 @@ class DNSQuery:
         # RFC 1035 section 4.1.1/4.1.2: opcode is bits 3-6 of header byte 2; the question section
         # (a length-prefixed label sequence) starts at byte 12, right after the 12-byte header.
         try:
-            if data[2] & 0x80 or data[4:6] != b"\x00\x01":
-                raise ValueError("not a query with exactly one question")
             tipo = (data[2] >> 3) & 15  # Opcode bits
             if tipo == 0:  # Standard query
                 ini = 12
                 lon = data[ini]
                 while lon != 0:
-                    if lon > DNS_LABEL_MAX:
-                        raise ValueError("label type or length not supported")
                     self.domain += data[ini + 1 : ini + lon + 1].decode("utf-8") + "."
                     ini += lon + 1
                     lon = data[ini]
-                if ini - 11 > DNS_NAME_MAX:
-                    raise ValueError("name longer than 255 octets")
                 # ini now points at the zero-length terminator; QTYPE+QCLASS (4 bytes) follow -
                 # the end of the one question response() must echo, not the whole datagram.
                 question_end = ini + 5
@@ -182,8 +169,6 @@ class DNSQuery:
                     raise ValueError("truncated question: missing QTYPE/QCLASS")
                 self._question_end = question_end
                 self._parsed_ok = True
-        except MemoryError:
-            raise  # a heap failure is ours, not the client's: run() persists it rather than dropping a "malformed" query
         except Exception as e:
             # Truncated/malformed data (or non-bytes data, since this class is public) - not a
             # usable standard query. Reuses the empty-domain sentinel, no raise into run().

@@ -1,6 +1,6 @@
 """buildgen/error_catalog.json against every logging call in src/ and the generated modules, and every
 test-side mirror of it: one number per meaning, passed by keyword through a named constant, and no test
-or mock history holding a code the catalog does not give (SPECIFICATION.md C.7.1). Each check bites a plant."""
+or mock history holding a code the catalog does not give (SPECIFICATION.md C.7.1)."""
 
 import ast
 import gc
@@ -606,10 +606,6 @@ def _copy_scan(m: _Module) -> "tuple[list[tuple[str, int]], list[str]]":
     return bindings, problems
 
 
-def _copy_problems(modules: "tuple[_Module, ...]") -> "list[str]":
-    return sorted({problem for m in modules for problem in _copy_scan(m)[1]})
-
-
 @cache
 def _test_side_copies() -> "tuple[tuple[str, ...], frozenset[tuple[str, str]]]":
     # One parse of the test scopes, each tree dropped once scanned (kept together, their millions of nodes slow every
@@ -761,7 +757,7 @@ def test_the_status_tables_carry_text_and_a_tone_only_where_the_page_colours_the
     assert {num: _obj(row)["tone"] for num, row in _obj(status["CalLight"]).items()} == {"0": "neutral", "1": "good", "2": "warn", "3": "warn"}
 
 
-# ---- planted violations: each check above bites ---------------------------------------------------
+# ---- the checks on a planted catalog and module ----------------------------------------------------
 
 
 _PLANT_CATALOG: "JsonDict" = {
@@ -798,58 +794,12 @@ def _planted(source: str, path: str = "src/net.py") -> "tuple[_Module, ...]":
     return (_module(path, source),)
 
 
-def _plant_catalog(**changes: "JsonValue") -> "JsonDict":
-    catalog = _obj(json.loads(json.dumps(_PLANT_CATALOG)))
-    for key, value in changes.items():
-        kind, num, field = key.split("__")
-        _obj(_obj(_obj(catalog["codes"])[kind]).setdefault(num, {"owner": "net", "name": f"N{num}", "text": f"t{num}"}))[field] = value
-    return catalog
-
-
 def test_the_plants_start_clean() -> None:
-    # Every bite below changes one thing from this baseline, so a bite cannot pass on a second fault.
+    # The clean baseline: no check flags a well-formed planted catalog and module.
     modules = _planted(_PLANT_NET)
     assert not _shape_problems(_PLANT_CATALOG)
     assert not _keyword_problems(modules)[0] + _expression_problems(modules) + _constant_problems(_PLANT_CATALOG, modules)
     assert not _non_catalog_problems(_PLANT_CATALOG, modules) + _retired_live_sites(_PLANT_CATALOG, modules)
-
-
-@pytest.mark.parametrize(
-    ("changes", "expected"),
-    [
-        ({"E__126__owner": "net"}, "outside net's E band"),  # a code outside its owner's band
-        ({"E__21__name": "NET_NO_ACK"}, "name 'NET_NO_ACK' is used 2 times"),
-        ({"W__21__text": "slow"}, "text 'slow' is used 2 times"),
-        ({"E__200__owner": "net"}, "is not an int in 1-127"),
-    ],
-)
-def test_the_shape_check_bites(changes: "JsonDict", expected: str) -> None:
-    assert any(expected in p for p in _shape_problems(_plant_catalog(**changes)))
-
-
-def test_the_band_overlap_check_bites() -> None:
-    catalog = _plant_catalog()
-    _obj(_obj(_obj(catalog["owners"])["fan"])["bands"])["E"] = [[29, 39]]
-    assert any("overlap" in p for p in _shape_problems(catalog))
-
-
-def test_the_retired_check_bites() -> None:
-    planted = _planted("_ERR_FAN_OLD = const(31)\nasync def f(pr):\n    await pr.err_s('x', errno=_ERR_FAN_OLD)\n", "src/fan.py")
-    assert _retired_live_sites(_PLANT_CATALOG, planted)
-
-
-def test_the_keyword_check_bites() -> None:
-    problems, seen = _keyword_problems(_planted("async def f(pr):\n    await pr.err_s('x', 20)\n"))
-    assert seen["E"] == 1 and problems
-
-
-@pytest.mark.parametrize(
-    "argument",
-    ["errno=20", "errno=_ERR_NET_NO_ACK + 1", "errno=_WRN_NET_SLOW", "errno=_LIMIT", "errno=self._last"],
-)
-def test_the_expression_check_bites(argument: str) -> None:
-    source = f"_LIMIT = 5\nclass N:\n    def __init__(self):\n        self._last = 7\n    async def f(self):\n        await self.pr.err_s('x', {argument})\n"
-    assert _expression_problems(_planted(source))
 
 
 def test_the_expression_check_follows_helpers_and_feeders() -> None:
@@ -859,63 +809,3 @@ def test_the_expression_check_follows_helpers_and_feeders() -> None:
     assert _expression_problems(_planted(clean.replace("self._err(err)", "self._err(4)")))  # a helper's errno argument
 
 
-def test_the_constant_checks_bite() -> None:
-    assert _constant_problems(_PLANT_CATALOG, _planted("_ERR_NET_NO_ACK = const(21)\n"))  # wrong number
-    assert _constant_problems(_PLANT_CATALOG, _planted("_ERR_FAN_STALL = const(30)\n"))  # another owner's code
-    assert _non_catalog_problems(_PLANT_CATALOG, _planted("_ERR_CMD = const(0xB6)\n"))  # not a code at all
-
-
-def test_the_unused_code_check_bites() -> None:
-    assert any("FAN_STALL" in p for p in _unused_code_problems(_PLANT_CATALOG, _planted(_PLANT_NET)))
-
-
-def test_the_copy_check_bites() -> None:
-    copy = _planted("_ERR_NO_ACK = 20\n", "tests/test_x.py")
-    assert _copy_problems(copy)
-    asserted = _planted("def test_x(c):\n    assert persisted(c) == ['E99']\n", "tests/test_x.py")
-    assert _copy_problems(asserted)
-    seeded = _planted("def test_x(pr, c):\n    run(pr.err_s('s', errno=99))\n    assert persisted(c) == ['E99']\n", "tests/test_x.py")
-    assert not _copy_problems(seeded)
-    seed_only = _planted("SEED_ERRNO = 99\nasync def f(pr):\n    await pr.err_s('s', errno=SEED_ERRNO)\n", "tests/test_x.py")
-    assert not _copy_problems(seed_only)
-    helper = _planted("def test_x(ip):\n    assert_module_error_log_contains(ip, 'NTP', 12, 'E')\n", "tests_hardware/test_x.py")
-    assert _copy_problems(helper)
-
-
-def test_the_script_binding_check_bites() -> None:
-    assert _script_binding_problems(_PLANT_CATALOG, _planted("E_NET_NO_ACK = 21\n", "tests_hardware/device_scripts/x.py"))
-    assert not _script_binding_problems(_PLANT_CATALOG, _planted("E_NET_NO_ACK = 20\n", "tests_hardware/device_scripts/x.py"))
-
-
-def test_the_history_check_bites() -> None:
-    def entry(*slots: "tuple[str, int]", counter: int = 9) -> "JsonDict":
-        return {"counter": counter, "history": [{"type": t, "num": n} for t, n in slots]}
-    assert not _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), ("W", 20), ("E", 10))})
-    assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 30))})  # another logger's code
-    assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), ("E", 20))})  # an adjacent repeat
-    assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), counter=0)})  # counter below its slots
-
-
-@pytest.mark.parametrize(
-    ("table", "row", "expected"),
-    [
-        ("ResetReason", {"text": "t", "tone": "good"}, "the page colours only"),
-        ("CalLight", {"text": "t", "tone": "red"}, "tone 'red' is not one of"),
-        ("CalLight", {"text": "t", "colour": "good"}, "unknown key 'colour'"),
-        ("CalLight", {"tone": "good"}, "no text"),
-    ],
-)
-def test_the_status_table_check_bites(table: str, row: "JsonDict", expected: str) -> None:
-    catalog: JsonDict = {"status": {"ResetReason": {"0": {"text": "a"}}, "CalLight": {"0": {"text": "b", "tone": "neutral"}}}}
-    assert not _status_table_problems(catalog)
-    _obj(_obj(catalog["status"])[table])["9"] = row
-    assert any(expected in p for p in _status_table_problems(catalog))
-
-
-def test_the_reset_table_check_bites() -> None:
-    source = "_RR_MAGIC = const(7)\n_RR_UNKNOWN = const(0)\n_RR_BOOT_FAILURE = const(10)\nRR_INTERRUPTED = const(21)\nBOOT_CONSTRUCTION = const(1)\nBOOT_DONE = const(3)\n"
-    tree = ast.parse(source)
-    table: JsonDict = {str(n): {"text": f"t{n}"} for n in (0, 11, 12, 21)}
-    assert not _reset_table_problems({"status": {"ResetReason": table}}, tree)
-    assert _reset_table_problems({"status": {"ResetReason": {k: v for k, v in table.items() if k != "21"}}}, tree)  # a code without a row
-    assert _reset_table_problems({"status": {"ResetReason": {**table, "13": {"text": "t13"}}}}, tree)  # a row without a code

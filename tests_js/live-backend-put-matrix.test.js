@@ -23,10 +23,8 @@ const NO_DATA = /** @type {import("../js/definitions.js").MockDeviceData} */ ({
 // Generous per-case ceiling: one real nav-drawer click, one real fill/select/toggle, one real
 // Apply click, a data-apply-status poll, and (for most cases) a second real remount+read - all
 // against a local twin, but under real browser/event-loop scheduling.
-// @tunable l0.put_matrix_case_timeout_ms = 15000
 const CASE_TIMEOUT_MS = 15000;
 // The ResetErrors probe's wait for NTP to sync over a station link: one loopback round trip to the twin's responder.
-// @tunable l0.put_matrix_ntp_sync_timeout_ms = 5000
 const NTP_SYNC_TIMEOUT_MS = 5000;
 // The twin's local NTP responder, read from the module that points every boot at it: no copy to drift (agent, 2026-10-27).
 const RESPONDER_HOST = responderHost(offlineNtpConfigSource);

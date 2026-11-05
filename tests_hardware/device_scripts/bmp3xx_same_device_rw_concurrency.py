@@ -25,16 +25,11 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # the OSR encodings, datasheet sec 4.3.17
-# @tunable l3.bmp3xx_same_device_rw_concurrency_read_iterations = 20
 _READ_ITERATIONS = 20
-# @tunable l3.bmp3xx_same_device_rw_concurrency_write_iterations = 6
 _WRITE_ITERATIONS = 6
-# @tunable l3.bmp3xx_same_device_rw_concurrency_write_spread_s = 0.05
 _WRITE_SPREAD_S = 0.05
-# @tunable l3.bmp3xx_same_device_rw_concurrency_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
 # The reset rung's reads run this long on each side of the reset.
-# @tunable l3.bmp3xx_same_device_rw_concurrency_rung_margin_ms = 100
 _RUNG_MARGIN_MS = 100
 # The OSR the reset rung re-applies, distinct from the post-reset default x1 so a lost re-apply shows.
 _CONFIGURED_OSR = 8

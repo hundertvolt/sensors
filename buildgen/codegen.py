@@ -15,7 +15,7 @@ from buildgen.driver_registry import DriverInfo, class_has_read_triggers
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.model import MAINTENANCE_NAMES, DeviceModel, InstanceSpec, TomlDoc, TomlValue, instance_label, resolve_instance_key
 from buildgen.signals import WARN_SIGNALS
-from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, module_float_const, module_int_const, module_str_const, ntp_backoff
+from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, module_float_const, module_int_const, module_str_const
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 from buildgen.wiring import WiringField
 
@@ -203,9 +203,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             lines.append(f"    conn = WifiService({wifi}, {led_kw}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'conn')})")
             continue
         if node == "ntp":
-            # The backoff pair is always the effective one: [device]'s stated keys, else the src/ defaults.
-            retry_s, retry_max_s = ntp_backoff(device_table, ctx.src_dir)
-            timing = f"NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, {retry_s}, {retry_max_s})"
+            timing = "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS)"
             lines.append(f"    ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, {timing}, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'ntp')})")
             continue
         if node == "sysfunct":
@@ -290,11 +288,11 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     lines.extend(("    local_time = await ntp.cettime()", "    utc = time.gmtime() if await ntp.ntp_clock_valid() else None"))
     lines.append("    return {")
     lines.append('        "SysUptime": await sysfunct.get_uptime(), "BootSignature": await sysfunct.get_boot_signature(),')
-    lines.append('        "ResetReason": sysfunct.get_reset_reason(), "ResetBits": sysfunct.get_reset_bits(), "MemFree": gc.mem_free(),')
+    lines.append('        "ResetReason": sysfunct.get_reset_reason(), "MemFree": gc.mem_free(),')
     if "fram" in have:
         lines.append(f'        "MemPaused": {_singleton_var(ctx, "fram")}.get_pause(),')
     # Copied into the JSON value type: a list[str] is not a list of JSON values (lists are invariant).
-    lines.append('        "ConfigFaults": list(sysfunct.get_config_faults()), "ConfigUnpersisted": list(sysfunct.get_config_unpersisted()),')
+    lines.append('        "ConfigFaults": list(sysfunct.get_config_faults()),')
     lines.append('        "LastTaskEnd": sysfunct.get_last_task_end(),')
     lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UTCTime": _gmtimestruct_to_dict(utc), "UnixTime": utc_now(),')
     lines.append('        "TimeStale": None if utc_now() is None else not await ntp.ntp_issynced(),')
@@ -303,8 +301,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     if "notification" in have:
         notification = _singleton_var(ctx, "notification")
         lines.append('async def _notification_status() -> "JsonDict":')
-        lines.append(f"    data = await {notification}.get_data()")
-        lines.append(f'    return {{"Triggered": data.Triggered, "State": data.State, "TS": data.TS, "PauseTime": await {notification}.get_override_led()}}')
+        lines.append(f'    return {{"PauseTime": await {notification}.get_override_led()}}')
         lines.append("")
 
 
@@ -320,8 +317,8 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     lines.append("        sources.extend(module.get_error_sources())")
     lines.append("    return sources")
     lines.append("")
-    lines.append('def _collect_level_setters() -> "list[Callable[[int], bool]]":')
-    lines.append("    setters: list[Callable[[int], bool]] = []")
+    lines.append('def _collect_level_setters() -> "list[Callable[[int], None]]":')
+    lines.append("    setters: list[Callable[[int], None]] = []")
     lines.append(f"    for module in ({', '.join(modules)}, webserver):")
     lines.append("        setters.extend(logger.set_level for logger in module.get_loggers())")
     lines.append("    return setters")
@@ -850,28 +847,24 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
     return (
         docstring
         + 'Arms the watchdog before any product import (owner, 2026-09-25)."""\n\n'
-        + "from machine import WDT\n\n"
+        + "from machine import WDT, reset\n\n"
         + f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})\n\n"
         + head
-        + "\nfrom asy_print_log import console, report_if_fatal\nfrom asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record\n"
+        + "\nfrom asy_system_service import RR_INTERRUPTED, record_loop_end, write_reset_record\n"
         + threshold
-        + "# bound before the loop, so the handler's binding replaces a slot and never grows the globals dict\n"
-        "ended: BaseException | None = None\n"
-        "try:\n"
+        + "try:\n"
         "    asyncio.run(main(watchdog=watchdog))\n"
         "except KeyboardInterrupt:\n"
         "    # Ctrl-C on the console ends the whole loop and the armed watchdog then resets the unit: record\n"
         "    # why first, or the next boot reads a plain watchdog reset.\n"
         "    write_reset_record(RR_INTERRUPTED)\n"
         "    raise\n"
-        "except BaseException as ended:\n"
-        "    # Any other exception ending the loop: recorded, printed with no heap use, then this entry ends and the\n"
-        "    # armed watchdog resets the unit. Never re-raised: rp2 soft-resets on a SystemExit, running main.py again\n"
-        "    # at once with no I2C or SPI controller reset (SPECIFICATION.md F.5.4).\n"
-        "    report_if_fatal(ended)\n"
+        "except BaseException:\n"
+        "    # Any other exception ending the loop: recorded, then the chip resets at once, so rp2's REPL never starts (A.7).\n"
+        "    # Never re-raised: rp2 soft-resets on a SystemExit, running main.py again at once with no I2C or SPI\n"
+        "    # controller reset (SPECIFICATION.md F.5.4).\n"
         "    record_loop_end()\n"
-        '    console("SYSTEM", "event loop ended with an exception:")\n'
-        "    sys.print_exception(ended)\n"
+        "    reset()\n"
         "finally:\n"
         "    asyncio.new_event_loop()\n"
     )

@@ -133,15 +133,6 @@ def _plant_held_lock(runtime: Path, port: int) -> "subprocess.Popen[bytes]":
     return holder
 
 
-def _sgp40_default(tree: ast.Module, name: str) -> int:
-    # The default of one `NAME = const(((field, type, default, ...),))` schema of src/asy_sgp40_driver.py.
-    node = next(n for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
-    assert isinstance(node.value, ast.Call) and isinstance(node.value.args[0], ast.Tuple), ast.unparse(node)
-    field = node.value.args[0].elts[0]
-    assert isinstance(field, ast.Tuple) and isinstance(field.elts[2], ast.Constant) and isinstance(field.elts[2].value, int), ast.unparse(field)
-    return field.elts[2].value
-
-
 def _shared_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, counters: "list[dict[str, int]]") -> "list[object]":
     # Stub twins for a SharedBoot, each spawn recorded in the list returned: every slot reads free, and each GET /status
     # read takes the next of `counters`, each source's history one warning.
@@ -187,13 +178,6 @@ def _spawned_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.Monke
     return seen[0]
 
 
-def _toml_keys(node: object) -> "set[str]":
-    # Every key at any depth of a parsed TOML document.
-    if isinstance(node, dict):
-        return set(node) | {k for v in node.values() for k in _toml_keys(v)}
-    return {k for v in node for k in _toml_keys(v)} if isinstance(node, list) else set()
-
-
 def test_every_scenario_states_its_goal_and_a_known_device_filter(harness: ModuleType) -> None:
     assert harness.SCENARIOS, "the registry is empty - nothing would run"
     for item in harness.SCENARIOS.values():
@@ -228,12 +212,14 @@ def test_a_shared_port_53_deselects_the_dns_scenarios_by_reason(harness: ModuleT
     assert exclusive, "no scenario needs port 53 alone - the deselection rule has nothing to hold"
     chosen = {item.name: why for item, why in harness.select(DEVICE_NAMES[0], None, exclusive_port_53=False)}
     assert all(chosen[name] == "deselected: needs exclusive port 53 - run_digital_twin_ci.sh runs it" for name in exclusive), chosen
-    assert all(why is None for item, why in harness.select(DEVICE_NAMES[0], None, exclusive_port_53=True) if item.needs_exclusive_port_53)
+    exclusive_run = harness.select(DEVICE_NAMES[0], None, exclusive_port_53=True)
+    assert all(why is None for item, why in exclusive_run if item.needs_exclusive_port_53)
+    assert all(why == "deselected: runs on a shared port 53 - scripts/test.sh runs it" for item, why in exclusive_run if not item.needs_exclusive_port_53 and not str(why).startswith("skipped:"))
 
 
 def test_a_device_without_a_scenarios_driver_skips_it_by_name(harness: ModuleType) -> None:
     device = next(d for d in DEVICE_NAMES if "isl29125" not in {driver for _k, driver, _e in harness._instances(d)})
-    chosen = {item.name: why for item, why in harness.select(device, None, exclusive_port_53=True)}
+    chosen = {item.name: why for item, why in harness.select(device, None, exclusive_port_53=False)}
     assert chosen["isl29125_config_put_during_get_loops"] == "skipped: device wires no isl29125", chosen
 
 
@@ -243,13 +229,13 @@ def test_a_device_independent_scenario_runs_on_its_first_device_with_the_propert
     for item in firsts:
         having = [d for d in harness.generated_devices() if harness._has_property(d, item.first_device)]
         assert having, f"{item.name}: no generated device has {item.first_device}"
-        runs = {d: {s.name: why for s, why in harness.select(d, None, exclusive_port_53=True)}[item.name] for d in harness.generated_devices()}
+        runs = {d: {s.name: why for s, why in harness.select(d, None, exclusive_port_53=item.needs_exclusive_port_53)}[item.name] for d in harness.generated_devices()}
         assert runs[having[0]] is None and all(why == f"skipped: a device-independent mechanism, run on {having[0]} only (SPECIFICATION.md E.2.1)" for d, why in runs.items() if d != having[0]), runs
 
 
 def test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source(harness: ModuleType) -> None:
     # The watchdog's room beside one supervisor sleep, and each uart_link's reply slack (SPECIFICATION.md F.3), read
-    # here from the sources; the build rule, the twin scenario and the bench lag test all call buildgen's one export.
+    # here from the sources; the twin scenario and the bench lag test both call buildgen's one export.
     src = harness.REPO_ROOT / "src"
     task_check_s, reply_ms, gc_pause = module_int_const(src, "asy_system_service.py", "_TASK_CHECK_TIME"), module_int_const(src, "asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS"), module_int_const(src, "asy_uart_comm.py", "_GC_PAUSE_WORST_MS")
     linked = []
@@ -471,9 +457,9 @@ def test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing(harnes
 
 
 def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Built at error level by the runner's flag and kept there by a stored DebugLevel planted before the spawn, so a
+    # Built at warning level by the runner's flag and kept there by a stored DebugLevel planted before the spawn, so a
     # caught allocation failure's line reaches the memory gate; the scenario's own arguments follow unchanged.
-    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_ERR")
+    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_WARN")
     args, stored = _spawned_boot(harness, tmp_path, monkeypatch)
     assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-flash-stall-max"], args
     assert stored is not None and json.loads(stored) == {"DebugLevel": level}, stored
@@ -481,7 +467,7 @@ def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harn
 
 def test_a_device_wiring_a_uart_link_boots_its_link_on_the_driven_clock(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Its reply deadlines count the link's own waits, never the host's load; a device wiring none boots as before.
-    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_ERR")
+    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_WARN")
     args, _stored = _spawned_boot(harness, tmp_path, monkeypatch, instances=(("uart_link_init", "uart_link", "init"),))
     assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-uart-driven-clock", "--test-flash-stall-max"], args
 
@@ -660,9 +646,9 @@ def test_a_sharing_scenario_asking_for_its_own_arguments_is_refused(harness: Mod
     assert spawned == []
 
 
-def test_a_group_reaching_the_sgp40_backup_deadline_goes_on_on_a_fresh_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Three 40 s scenarios on a twin whose own background moves SGP40 at 94 s, as dev's measured: the twin is retired
-    # before its deadline, so no scenario's window holds that move and every idle check passes.
+def test_the_boots_own_untimestamped_sgp40_backup_is_no_scenarios_move(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Three 40 s scenarios on one twin whose own SGP40 writes its untimestamped backup (W35) at 94 s, as dev's measured:
+    # the twin is never retired by its age, and the idle check names that warning as the boot's own move.
     clock, spawned = _clocked_stub(harness, tmp_path, monkeypatch, first_move_s=94.0)
     shared = harness.SharedBoot(harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter(range(20000, 20010)), "fixture"))
     results = []
@@ -670,38 +656,22 @@ def test_a_group_reaching_the_sgp40_backup_deadline_goes_on_on_a_fresh_boot(harn
         with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
             clock[0] += 40.0
         results.append(shared.release(_item(harness, name), failed=False, last=last))
-    assert results == [[], [], []], results
-    assert len(spawned) >= 2 and all(later - earlier < 89.0 for earlier, later in zip(spawned, [*spawned[1:], clock[0]], strict=True)), spawned
+    assert results == [[], [], []] and len(spawned) == 1, (results, spawned)
 
 
-@pytest.mark.parametrize("age_s", [90.0, 100.0], ids=["before the twin's first move", "after it"])
-def test_a_count_moved_past_the_sgp40_backup_deadline_fails_as_the_boots_overrun(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, age_s: float) -> None:
-    # One scenario longer than the deadline: a count its window saw move fails naming the overrun, never blaming the
-    # scenario for the background's move; with nothing moved yet there is nothing to tell apart, so it passes.
-    clock, _spawned = _clocked_stub(harness, tmp_path, monkeypatch, first_move_s=94.0)
+def test_the_boots_backup_beside_an_unstated_repeat_of_the_newest_code_is_still_named(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A states SGP40's E110; B states nothing but repeats it in place while the boot's W35 lands: two counts moved.
+    _shared_stub(harness, tmp_path, monkeypatch, [])
+    e110, w35 = {"type": "E", "num": 110}, {"type": "W", "num": 35}
+    reads = iter([{"SGP40": {"counter": 0, "history": []}}, {"SGP40": {"counter": 1, "history": [e110]}}, {"SGP40": {"counter": 3, "history": [e110, w35]}}])
+    monkeypatch.setattr(harness, "_error_table", lambda _port: next(reads))
     shared = harness.SharedBoot(harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter(range(20000, 20010)), "fixture"))
-    with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
-        clock[0] += age_s
-    problems = shared.release(_item(harness, "slow"), failed=False, last=True)
-    if age_s < 94.0:
-        assert problems == [], problems
-        return
-    assert len(problems) == 1 and problems[0].startswith(f"idle check after slow: the shared boot outlived its SGP40 backup deadline ({age_s:.1f} s > 89 s)"), problems
-    assert "SGP40" in problems[0] and "does not state" not in problems[0], problems
-
-
-def test_the_shared_boot_deadline_is_sgp40s_first_untimestamped_backup(harness: ModuleType) -> None:
-    # 60 x BackupPeriod read cycles to the first backup, then WaitTimeNTP - 1 retries waiting for NTP, each one read
-    # period (asy_sgp40_driver.py _check_storage()/_run_backup()); no device overrides either default.
-    tree = ast.parse((_REPO_ROOT / "src" / "asy_sgp40_driver.py").read_text(encoding="utf-8"))
-    period = _sgp40_default(tree, "_VAL_BACKUP_PERIOD")
-    wait = min(_sgp40_default(tree, "_VAL_WAIT_TIME_NTP"), module_int_const(_REPO_ROOT / "src", "asy_sgp40_driver.py", "_MAX_NTP_WAITTIME"))
-    starter = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_timer")
-    read_ms = [k.value.value for c in ast.walk(starter) if isinstance(c, ast.Call) for k in c.keywords if k.arg == "period" and isinstance(k.value, ast.Constant) and isinstance(k.value.value, int)]
-    assert len(read_ms) == 1, read_ms
-    assert (60 * period + max(wait - 1, 0)) * read_ms[0] / 1000 == harness._SHARED_BOOT_DEADLINE_S, (period, wait, read_ms)
-    overrides = {device: sorted(_toml_keys(tomllib.loads(device_toml(device).read_text(encoding="utf-8"))) & {"BackupPeriod", "WaitTimeNTP"}) for device in DEVICE_NAMES}
-    assert overrides and not any(overrides.values()), overrides
+    results = []
+    for name, moves, last in (("a", ("SGP40",), False), ("b", (), True)):
+        with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
+            pass
+        results.append(shared.release(_item(harness, name, moves=moves), failed=False, last=last))
+    assert results[0] == [] and len(results[1]) == 1 and "'SGP40': (1, 3," in results[1][0], results
 
 
 def test_the_accept_queue_is_read_from_the_listening_row(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

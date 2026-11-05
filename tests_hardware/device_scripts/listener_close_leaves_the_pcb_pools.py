@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _HOST = "127.0.0.1"  # the listener's address changes nothing in its pcb's life, and loopback exposes no port
-_PORT = 50100  # any free port: production is stopped, and the twin's loopback needs an unprivileged one
+_PORT = 30100  # unprivileged for the twin's loopback, below the host's ephemeral range (32768-60999), above tests/_port_bands.py's bands
 _PAYLOAD = b"listener close round trip"
 _EXCHANGE_S = 2.0  # each blocking step of the twin's loopback exchange
 _WORD = 0xFFFFFFFF  # machine.mem32 returns a signed small int (extmod/machine_mem.c:85, v1.29.0)
@@ -115,11 +115,14 @@ def _round_trip() -> "bool | int | None":
         try:
             conn.settimeout(_EXCHANGE_S)
             conn.send(conn.recv(len(_PAYLOAD)))
+            echoed = client.recv(len(_PAYLOAD)) == _PAYLOAD
+            client.close()  # closed first, so its TIME_WAIT holds its own ephemeral port, never _PORT for the next run
         finally:
             conn.close()
-        return client.recv(len(_PAYLOAD)) == _PAYLOAD
     except OSError as e:
         return e.errno
+    else:
+        return echoed
     finally:
         client.close()
         server.close()

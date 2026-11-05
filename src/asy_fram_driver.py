@@ -9,9 +9,9 @@ Opcode/register-constant naming and the write-enable/write/write-disable method 
 Adafruit_CircuitPython_FRAM; RDID checking and the two-part table are this project's own addition, verified against the
 Fujitsu MB85RS64V (DS501-00015) and MB85RS2MTA (DS501-00032) datasheets.
 """
-# CRC/dual-copy recovery lives one layer up in asy_fram_manager.py. This file detects a device-ID mismatch, a
-# write-enable latch that did not set (retried once) or clear, a partly protected status register, an unavailable bus
-# and a chip lost mid-run, never raising (except __init__()/setup()'s one-time setup errors).
+# CRC/dual-copy recovery lives one layer up in asy_fram_manager.py. This file only detects a
+# device-ID mismatch, a write-enable latch that didn't set/clear and a stale write-protect
+# assumption, self-healing without raising (except __init__()/setup()'s one-time setup errors).
 
 import asyncio
 
@@ -58,14 +58,12 @@ _CMD_WRDI = const(b"\x04")
 _CMD_RDSR = const(b"\x05")
 _CMD_RDID = const(b"\x9f")
 
-# Status register bits (datasheet p.6): bit7 WPEN, bits6-4 unused, bit3 BP1, bit2 BP0, bit1 WEL, bit0
-# fixed 0. This driver only ever writes BP0+BP1 together (the whole array); a partial value is foreign.
+# Status register bits (datasheet): bit7 WPEN, bits6-4 unused, bit3 BP1, bit2 BP0, bit1 WEL, bit0
+# fixed 0. Block protection always covers the whole array (BP0+BP1 together), never a sub-range.
 _SR_WEL = const(0x02)
-_SR_FIXED_ZERO = const(0x01)  # bit 0 reads 0 on a live chip of either part (both datasheets p.6)
 _SR_WP_MASK = const(0x8C)  # WPEN | BP1 | BP0
 _SR_WP_SET = const(0x8C)
 _SR_WP_CLEAR = const(0x00)
-_SR_BP_MASK = const(0x0C)  # BP1 | BP0: any set bit protects part or all of the array
 
 # Address-buffer geometry: one opcode byte plus the chip's own address width. A chip larger than
 # a 16-bit address space needs three address bytes rather than two.
@@ -80,9 +78,6 @@ _VERIFY_PRESENT_LOCK_TIMEOUT_MS = const(1000)
 # Identification attempts setup() makes before it gives up, each its own CS cycle.
 # @tunable fram.setup_id_attempts = 3
 _ID_ATTEMPTS = const(3)
-# Consecutive write-latch anomalies after which one RDID probe asks whether the chip is still there.
-# @tunable fram.chip_probe_at = 2
-_PROBE_AT = const(2)
 
 # Outcomes of the synchronous write bodies below, as a bit set. They decide what happened; the
 # coroutine that owns the operation logs it - awaiting a persisted log entry is not something a
@@ -100,8 +95,6 @@ _SV_OK = const(0)
 _SV_NOT_INIT = const(16)  # errno 18
 _SV_NOT_LOCKED = const(32)  # errno 24
 _SV_BAD_RANGE = const(64)  # errno 21
-_SV_BUS_DOWN = const(128)  # errno 52
-_SV_CHIP_LOST = const(512)  # errno 54
 
 # Error-catalog codes this module logs (buildgen/error_catalog.json, SPECIFICATION.md Part C.7.1).
 _ERR_NOT_INIT = const(18)
@@ -109,9 +102,6 @@ _ERR_LOCK_TIMEOUT = const(19)
 _ERR_BAD_ARG = const(21)
 _ERR_CONTRACT = const(24)
 _ERR_FRAM_WP_MISMATCH = const(45)
-_ERR_FRAM_BUS_DOWN = const(52)
-_ERR_FRAM_WP_PARTIAL = const(53)
-_ERR_FRAM_CHIP_LOST = const(54)
 _WRN_FRAM_WEL_NOT_SET = const(26)
 _WRN_FRAM_WEL_STUCK = const(27)
 _WRN_FRAM_WRITE_PROTECTED = const(28)
@@ -131,14 +121,13 @@ class FRAM_SPI(Lockable):
     ) -> None:
         super().__init__()
         self.pr = logger
-        self._spidev = SPIDevice(spi_bus, spi_cs)
+        self._spidev = SPIDevice(spi_bus, spi_cs, baudrate=8_000_000)  # 24 MHz (rp2's ceiling) / 3, exact (owner, 2026-11-02)
         self._max_size = max_size
         self._wp = wp  # write protect
-        # Optional, and no generated code passes it: without it WP is assumed tied high. With WPEN=1 a low WP
-        # locks only the status register (MB85RS64V p.11); the array's protection is always BP1/BP0.
         self._wp_pin = None if wp_pin is None else Pin(wp_pin)
         self.initialized = False
-        # Pre-allocated scratch buffers, reused under the driver lock and the bus lock, which every path takes (C.8).
+        # Pre-allocated scratch buffers, reused under the bus lock, which every path takes; every body using them runs
+        # synchronously under it (C.8).
         self._id_buf = bytearray(4)
         self._status_buf = bytearray(1)
         self._addr_buf = bytearray(_ADDR_BUF_24BIT) if self._max_size > _ADDR_16BIT_MAX else bytearray(_ADDR_BUF_16BIT)
@@ -147,8 +136,6 @@ class FRAM_SPI(Lockable):
         # holding the bus across the whole block is what lets the byte-level path be synchronous.
         # SPIDevice's own async session takes this same lock for any other caller of the bus.
         self._bus_lock = self._spidev.session_lock
-        self._anomalies = 0  # consecutive write-latch anomalies, never above _PROBE_AT
-        self.lost = asyncio.Event()  # set when the chip stops answering its identification after setup()
 
     async def __aenter__(self) -> "Self":
         # Driver lock then bus, both for one whole block operation, so the chunk layer's byte-level
@@ -175,8 +162,8 @@ class FRAM_SPI(Lockable):
         return await super().__aexit__(exc_type, exc_val, exc_tb)
 
     def _is_write_protected(self) -> bool:
-        # The value get_write_protected() reports, without its not-initialized guard: every caller has passed it. With a
-        # pin, its level is read as the whole state because set_write_protected() always sets BP and the pin together.
+        # The value get_write_protected() reports, without its not-initialized guard: every caller
+        # of this one has already passed that guard at the public entry point.
         return self._wp if self._wp_pin is None else not bool(self._wp_pin.value())  # WP active-low
 
     def _set_write_protected(self, *, value: bool) -> int:
@@ -209,22 +196,6 @@ class FRAM_SPI(Lockable):
         prod_id = (self._id_buf[2] << 8) + self._id_buf[3]
         return self._id_buf[0] == _SPI_MANF_ID and self._id_buf[1] == _SPI_CONT_CODE and prod_id == expected_prod_id
 
-    def _check_write_anomaly(self, status: int) -> int:
-        # A silent chip reads a constant status byte, so every write ends in a latch fault: after _PROBE_AT in a row,
-        # or at once when the last RDSR had the fixed-zero bit set (no live chip sends it), one synchronous RDID
-        # under the caller's hold. A clean write reads no extra byte: the check is on _status_buf, already read.
-        if not status & (_W_WEL_NOT_SET | _W_WEL_STUCK):
-            self._anomalies = 0
-            return status
-        if not self._status_buf[0] & _SR_FIXED_ZERO and self._anomalies < _PROBE_AT - 1:
-            self._anomalies += 1
-            return status
-        self._anomalies = 0
-        if not self._check_device_id():
-            self.initialized = False
-            status |= _SV_CHIP_LOST
-        return status
-
     def _disable_write(self) -> bool:
         # Shared WRDI-and-verify epilogue: the MB85RS64V clears WEL after WRITE/WRSR, the MB85RS2MTA keeps it set
         # (continual programming, p.6), so this WRDI is what clears it on both - one cheap retry, then False, which
@@ -251,12 +222,6 @@ class FRAM_SPI(Lockable):
     def _read_status(self) -> int:
         self._send_and_read(_CMD_RDSR, self._status_buf)
         return self._status_buf[0]
-
-    async def _report_chip_lost(self) -> None:
-        # The one entry per loss, from whichever path found it: `initialized` is already False, so every later
-        # call stops at its guard before it could find the loss again.
-        await self.pr.err_s("FRAM chip stopped answering its identification - access stopped", errno=_ERR_FRAM_CHIP_LOST)
-        self.lost.set()
 
     def _send_and_read(self, command: bytes | bytearray, read_buffer: bytearray | memoryview) -> None:
         spidev = self._spidev
@@ -333,8 +298,6 @@ class FRAM_SPI(Lockable):
             return _SV_NOT_INIT
         if not self.session_lock.locked():  # from Lockable class
             return _SV_NOT_LOCKED
-        if not self._spidev.spi.available:  # checked once: the synchronous body below cannot lose the bus
-            return _SV_BUS_DOWN
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             return _SV_BAD_RANGE
         self._read_address(addr_start, buf)
@@ -347,10 +310,6 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
         return self._is_write_protected()
-
-    def is_ready(self) -> bool:
-        # False before setup() and from the moment a loss is found; `lost` is set only once the loss is reported.
-        return self.initialized
 
     async def set_values(self, buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
         status = self.set_values_sync(buf, addr_start)
@@ -365,27 +324,20 @@ class FRAM_SPI(Lockable):
         if not self.session_lock.locked():  # from Lockable class
             # Same internal-contract violation as get_values_sync() above.
             return _SV_NOT_LOCKED
-        if not self._spidev.spi.available:
-            return _SV_BUS_DOWN
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             return _SV_BAD_RANGE
-        return self._check_write_anomaly(self._write(addr_start, buf))
+        return self._write(addr_start, buf)
 
     async def set_write_protected(self, *, value: bool) -> bool:
-        # Always protects the entire array (BP0+BP1). Takes both FRAM locks itself like setup(): never call it
-        # inside `async with fram:` (asyncio.Lock is not reentrant).
+        # Always protects the entire array (BP0+BP1); per-block ranges are unused. Self-acquires the
+        # bus like setup(), so it must NOT be called from inside `async with fram:` - asyncio.Lock
+        # isn't reentrant and that would hang, the same caveat verify_present() carries.
         if not self.initialized:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
-        async with self.session_lock, self._bus_lock:
-            status = _SV_BUS_DOWN if not self._spidev.spi.available else self._check_write_anomaly(self._set_write_protected(value=value))
-        await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the locks
-        if status & _SV_CHIP_LOST:
-            await self._report_chip_lost()
-            return False
-        if status & _SV_BUS_DOWN:
-            await self.pr.err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)
-            return False
+        async with self._bus_lock:
+            status = self._set_write_protected(value=value)
+        await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the lock
         if status & _W_WEL_NOT_SET:
             await self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=_WRN_FRAM_WEL_NOT_SET)
             return False
@@ -405,11 +357,10 @@ class FRAM_SPI(Lockable):
         if status & _SV_NOT_INIT:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
         elif status & _SV_NOT_LOCKED:
-            # An internal-contract violation (a caller not holding the lock Lockable requires), not a hardware
-            # fault - a real code defect if it ever fires, so an errno, unlike the expected refusals elsewhere.
+            # WP8: an internal-contract violation (a caller failing to hold the lock the Lockable
+            # base class requires), not a hardware fault - a real code defect if it ever fires, so
+            # errno rather than wrnno, unlike the benign, expected refusals elsewhere.
             await self.pr.err_s("get_values: FRAM access not locked!", errno=_ERR_CONTRACT)
-        elif status & _SV_BUS_DOWN:
-            await self.pr.err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)
         elif status & _SV_BAD_RANGE:
             await self.pr.err_s("get_values: Invalid FRAM address range!", errno=_ERR_BAD_ARG)
         else:
@@ -419,17 +370,11 @@ class FRAM_SPI(Lockable):
     async def report_set_values(self, status: int) -> bool:
         # set_values()' own numbers and messages. A stuck write-enable latch is the one status that
         # warns and still reports success: the payload landed, only the housekeeping is stuck.
-        if status & _SV_CHIP_LOST:
-            await self._report_chip_lost()
-            return False
         if status & _SV_NOT_INIT:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
         if status & _SV_NOT_LOCKED:
             await self.pr.err_s("set_values: FRAM access not locked!", errno=_ERR_CONTRACT)
-            return False
-        if status & _SV_BUS_DOWN:
-            await self.pr.err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)
             return False
         if status & _SV_BAD_RANGE:
             await self.pr.err_s("set_values: Invalid FRAM address range!", errno=_ERR_BAD_ARG)
@@ -448,39 +393,26 @@ class FRAM_SPI(Lockable):
             await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=_WRN_FRAM_WEL_STUCK)
         return True
 
-    async def setup(self) -> bool:
-        # Takes both FRAM locks, like set_write_protected(); raises only for a chip that never identifies.
+    async def setup(self) -> None:
         await self._spidev.setup()
-        if not self._spidev.spi.available:
-            raise OSError("SPI bus not initialized")
         attempt = 0
         present = False
-        wp_bits = _SR_WP_CLEAR
-        async with self.session_lock, self._bus_lock:
+        async with self._bus_lock:
             while not present and attempt < _ID_ATTEMPTS:
                 attempt += 1
                 present = self._check_device_id()  # each attempt its own CS cycle, which resets the chip's command state
             if present:
-                # WPEN/BP0/BP1 are nonvolatile: re-sync from the chip, not the constructor's wp=
-                wp_bits = self._read_status() & _SR_WP_MASK
-                self._wp = bool(wp_bits & _SR_BP_MASK)
+                # WPEN/BP0/BP1 are nonvolatile (datasheet) - re-sync _wp from hardware, not the ctor's wp=.
+                self._wp = (self._read_status() & _SR_WP_MASK) == _SR_WP_SET
         await asyncio.sleep(0)
         if not present:
             raise OSError("FRAM SPI device not found")
         if attempt > 1:
             await self.pr.wrn_s("FRAM answered its identification only on attempt", attempt, wrnno=_WRN_FRAM_ID_RETRIED)
-        if wp_bits not in (_SR_WP_SET, _SR_WP_CLEAR):
-            await self.pr.err_s(
-                "FRAM status register partly write-protected:", hex(wp_bits), "- writes refused until set_write_protected() rewrites it",
-                errno=_ERR_FRAM_WP_PARTIAL,
-            )
         if self._wp_pin is not None:
             self._wp_pin.init(self._wp_pin.OUT, value=not self._wp)  # level before direction: no glitch on WP
         self.initialized = True
-        self._anomalies = 0
-        self.lost.clear()
         self.pr.one("SPI FRAM Driver Setup complete")
-        return True
 
     async def verify_present(self) -> bool:
         # Re-probe entry point (cheaper than a full setup()); reverts to initialized=False on
@@ -495,9 +427,6 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("FRAM verify_present: lock busy, giving up.", errno=_ERR_LOCK_TIMEOUT)
             return False
         try:
-            if not self._spidev.spi.available:
-                await self.pr.err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)
-                return False
             async with self._bus_lock:
                 present = self._check_device_id()
             await asyncio.sleep(0)
@@ -505,6 +434,4 @@ class FRAM_SPI(Lockable):
                 self.initialized = False
         finally:
             self.session_lock.release()
-        if not present:
-            await self._report_chip_lost()
         return present

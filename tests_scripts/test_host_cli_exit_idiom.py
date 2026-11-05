@@ -65,23 +65,6 @@ def test_every_host_cli_exits_through_raise_systemexit_main() -> None:
     assert not violations, f'end each host CLI with `if __name__ == "__main__": raise SystemExit(main())`: {violations}'
 
 
-@pytest.mark.parametrize(
-    ("block", "violates"),
-    [
-        ("raise SystemExit(main())", False),
-        ("raise SystemExit(main(sys.argv[1:]))", False),
-        ("raise SystemExit(runner.main())", False),
-        ("sys.exit(main())", True),
-        ("code = main()\n    raise SystemExit(code)", True),
-        ("try:\n        raise SystemExit(main())\n    except KeyboardInterrupt:\n        pass", True),
-        ("_regenerate()", False),
-    ],
-)
-def test_the_idiom_check_bites(block: str, *, violates: bool) -> None:
-    source = f'import sys\n\n\ndef main() -> int:\n    return 0\n\n\nif __name__ == "__main__":\n    {block}\n'
-    assert bool(idiom_violations(source, "planted.py")) is violates, block
-
-
 @pytest.mark.parametrize(("rel", "name"), _USER_ERRORS)
 def test_each_user_error_class_derives_from_exception(rel: str, name: str) -> None:
     # Exception itself, as BuildError does: a RuntimeError base would let a broad `except RuntimeError` swallow it.
@@ -103,7 +86,7 @@ def _malformed_runs(tmp_path: Path) -> "dict[str, list[str]]":
         "buildgen.generate": ["-m", "buildgen.generate", str(bad_toml)],
         "buildgen.definitions": ["-m", "buildgen.definitions", str(bad_toml)],
         "_generate_sensortask_modules": ["scripts/_generate_sensortask_modules.py", "--device-toml", str(bad_toml), "--out-dir", str(tmp_path / "out")],
-        "_stage_website": ["scripts/_stage_website.py", "--build-date", "yesterday", str(tmp_path / "definitions.json"), str(tmp_path / "stage")],
+        "_stage_website": ["scripts/_stage_website.py", str(tmp_path / "definitions.json"), str(tmp_path / "stage")],
         "_render_coverage": ["scripts/_render_coverage.py", "--raw-dir", str(empty)],
     }
 

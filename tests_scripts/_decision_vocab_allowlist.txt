@@ -223,7 +223,6 @@ tests/test_asy_notification_service.py	must never raise, for any of the above
 tests/test_asy_ntp_client.py	Deliberately one single f-string, not a plain literal adjacent to an f-string: c
 tests/test_asy_ntp_client.py	This used to produce a bogus-but-accepted "successful sync".
 tests/test_asy_ntp_client.py	one must never suppress the other's slot.
-tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_print_log.py	SPECIFICATION.md Part C.7: reset() deliberately has no "uninitialized" guard.
 tests/test_asy_scd30_driver.py	An invalid argument must never reach _send_command at all (no partial/garbage I2
 tests/test_asy_scd30_driver.py	the three getters are pure cache reads (see src/asy_scd30_driver.py on why they

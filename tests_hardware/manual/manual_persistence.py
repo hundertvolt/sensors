@@ -16,20 +16,13 @@ if TYPE_CHECKING:
 
 from buildgen.validate import module_int_const
 
-# @tunable l4.manual_persistence_power_cut_window_s = 20
 _POWER_CUT_WINDOW_S = 20
-# @tunable l4.manual_persistence_power_off_s = 10
 _POWER_OFF_S = 10
-# @tunable l4.manual_persistence_serving_timeout_s = 120.0
 _SERVING_TIMEOUT_S = 120.0
-# @tunable l4.manual_persistence_script_timeout_s = 180.0
 _SCRIPT_TIMEOUT_S = 180.0
-# @tunable l4.manual_persistence_repl_prompt_s = 3.0
 _REPL_PROMPT_S = 3.0
-_POWER_ON_BIT = 0x100  # ResetBits' CHIP_RESET HAD_POR (src/asy_system_service.py's _CHIP_RESET_BITS)
-_RUN_BIT = 0x10000  # ResetBits' CHIP_RESET HAD_RUN
-_WATCHDOG_BITS = 0x3  # ResetBits' REASON half, TIMER and FORCE: both clear when no watchdog reset followed the power-on
 _MID_WRITE_ROUNDS = 3
+_POWER_ON_BIT = 0x100  # CHIP_RESET's HAD_POR, read by reset_code_invalid_record.py (STATE boot_phase) with the REASON bits
 _RR_POWER_ON, _RR_REBOOT, _RR_INTERRUPTED, _RR_BOOT_FAILURE, _BOOT_CONSTRUCTION = (
     module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_POWER_ON", "_RR_REBOOT", "RR_INTERRUPTED", "_RR_BOOT_FAILURE", "BOOT_CONSTRUCTION")
 )
@@ -74,19 +67,13 @@ def _power_cycle(context: str) -> "JSONObject":
     return _served_after_power(context, amb_before)
 
 
-def _power_on_bits(context: str, system: "JSONObject") -> None:
-    bits = system.get("ResetBits")
-    assert isinstance(bits, int) and bits & _POWER_ON_BIT and not bits & _WATCHDOG_BITS, f"{context}: ResetBits {bits}, not HAD_POR alone in the watchdog's absence"
-
-
 def _served_after_power(context: str, amb_before: object) -> "JSONObject":
     wait_until(lambda: bool(rest_get("/status")), timeout_s=_SERVING_TIMEOUT_S, description=f"the DUT serving after the power cut ({context})")
     system = rest_get("/status").get("system")
     assert isinstance(system, dict), "GET /status carries no system block"
-    bits = system.get("ResetBits")
     amb_after = _get("/sensors", "SCD30", "AmbPres")
     sends = "sends" if _boot_sends_continuous_measurement() else "does not send"
-    print_instruction(f"{context}: ResetReason {system.get('ResetReason')}, ResetBits {bits} (power-on bit {_POWER_ON_BIT}); SCD30 AmbPres {amb_before} -> {amb_after}, and the product's boot {sends} 0x0010.")
+    print_instruction(f"{context}: ResetReason {system.get('ResetReason')}; SCD30 AmbPres {amb_before} -> {amb_after}, and the product's boot {sends} 0x0010.")
     record_assertion()
     assert system.get("ResetReason") == _RR_POWER_ON, f"{context}: the boot after the cut read ResetReason {system.get('ResetReason')}, not {_RR_POWER_ON}"
     return system
@@ -246,7 +233,7 @@ def test_power_loss_mid_scd30_nvm_write() -> None:
 
 @register(
     "run_pin_reset_keeps_or_clears_the_record",
-    "Whether mem_backup() survives a RUN-pin reset: reset_code_invalid_record.py writes a valid record (code 3) and waits; the operator grounds RUN briefly; ResetReason 3 after the boot means it survives, 1 or 0 that it does not, and ResetBits should show the RUN bit.",
+    "Whether mem_backup() survives a RUN-pin reset: reset_code_invalid_record.py writes a valid record (code 3) and waits; the operator grounds RUN briefly; ResetReason 3 after the boot means it survives, 1 or 0 that it does not.",
     "[USB+WiFi][MANUAL]",
 )
 def test_run_pin_reset_keeps_or_clears_the_record() -> None:
@@ -259,12 +246,12 @@ def test_run_pin_reset_keeps_or_clears_the_record() -> None:
     wait_until(lambda: bool(rest_get("/status")), timeout_s=_SERVING_TIMEOUT_S, description="the DUT serving after the RUN-pin reset")
     system = rest_get("/status").get("system")
     assert isinstance(system, dict), "GET /status carries no system block"
-    reason, bits = system.get("ResetReason"), system.get("ResetBits")
+    reason = system.get("ResetReason")
     survives = "survives" if reason == _RR_REBOOT else "does not survive"
-    print_instruction(f"ResetReason {reason}, ResetBits {bits} (RUN bit {_RUN_BIT}): mem_backup() {survives} a RUN-pin reset; script facts {facts}.")
+    print_instruction(f"ResetReason {reason}: mem_backup() {survives} a RUN-pin reset; script facts {facts}.")
     record_assertion()
     assert "run_not_pressed" not in facts, "RUN was not pressed within the script's wait"
-    confirm_pass("Record those two figures in the round's notes - done? [y/N]")
+    confirm_pass("Record that figure in the round's notes - done? [y/N]")
 
 
 def _console_soft_reset(board: Board, context: str) -> "JSONObject":
@@ -283,13 +270,13 @@ def _console_soft_reset(board: Board, context: str) -> "JSONObject":
     wait_until(lambda: bool(rest_get("/status")), timeout_s=_SERVING_TIMEOUT_S, description=f"the DUT serving after the console soft reset ({context})")
     system = rest_get("/status").get("system")
     assert isinstance(system, dict), "GET /status carries no system block"
-    print_instruction(f"After the soft reset ({context}): ResetReason {system.get('ResetReason')}, ResetBits {system.get('ResetBits')}.")
+    print_instruction(f"After the soft reset ({context}): ResetReason {system.get('ResetReason')}.")
     return system
 
 
 @register(
     "console_soft_reset_keeps_the_reset_record",
-    "Three steps on one power cycle, no flash write: reset_code_invalid_record.py (STATE valid_record_wait) holds a valid reset record (code 3), the watchdog fed, while the operator cuts power - the boot after reads 1 only if the cut cleared the scratch registers; on that power-on boot a Ctrl-C at the REPL, then a Ctrl-D inside the watchdog window - the soft reset's boot must read 21; then the same script (STATE boot_phase) runs begin_boot(), leaving boot phase 1 marked and no record, and a Ctrl-D at the REPL - that boot must read 11. Neither soft reset's ResetBits may name a watchdog reset.",
+    "Three steps on one power cycle, no flash write: reset_code_invalid_record.py (STATE valid_record_wait) holds a valid reset record (code 3), the watchdog fed, while the operator cuts power - the boot after reads 1 only if the cut cleared the scratch registers; on that power-on boot a Ctrl-C at the REPL, then a Ctrl-D inside the watchdog window - the soft reset's boot must read 21; then the same script (STATE boot_phase) runs begin_boot(), leaving boot phase 1 marked and no record, and a Ctrl-D at the REPL - that boot must read 11.",
     "[USB+WiFi][MANUAL]",
 )
 def test_console_soft_reset_keeps_the_reset_record() -> None:
@@ -305,18 +292,19 @@ def test_console_soft_reset_keeps_the_reset_record() -> None:
     record_assertion()
     assert "run_not_pressed" not in facts and isinstance(facts.get("valid_record"), list), f"no record written, or no power cut within the script's wait: {facts}"
     confirm("Press Enter once power is restored")
-    _power_on_bits("the boot after the cut", _served_after_power("a valid record held across the cut", None))
+    _served_after_power("a valid record held across the cut", None)
     system = _console_soft_reset(board, "after the Ctrl-C")
     assert system.get("ResetReason") == _RR_INTERRUPTED, f"the soft reset's boot read ResetReason {system.get('ResetReason')}, not the recorded {_RR_INTERRUPTED}"
-    _power_on_bits("the soft reset's boot", system)
     # The cause is still the power-on's. mpremote's raw-REPL soft reset runs no main.py (ports/rp2/main.c:246); the
     # script's begin_boot() clears the 21 its Ctrl-C recorded and marks phase 1; mpremote leaves for the friendly REPL.
     facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "reset_code_invalid_record.py", soft_reset_after=False, STATE="boot_phase"))
     phase = facts.get("phase")
     record_assertion()
     assert facts.get("begin_boot") == _RR_INTERRUPTED and facts.get("record") == [0, 0, 0, 0] and isinstance(phase, list) and phase[1:2] == [_BOOT_CONSTRUCTION], f"the script's begin_boot() did not read 21, clear the record and mark phase {_BOOT_CONSTRUCTION}: {facts}"
+    # The power-on boot and the soft reset's: HAD_POR alone, no watchdog reset since the cut (the script reads them, as an
+    # exec here would stop main.py with the watchdog armed).
+    assert facts.get("reset_bits") == [_POWER_ON_BIT, 0], f"after the cut and the soft reset: CHIP_RESET HAD_POR and watchdog REASON read {facts.get('reset_bits')}, not HAD_POR alone"
     system = _console_soft_reset(board, "after a boot-phase marker")
     expected = _RR_BOOT_FAILURE + _BOOT_CONSTRUCTION
     assert system.get("ResetReason") == expected, f"the soft reset's boot read ResetReason {system.get('ResetReason')}, not the marked phase's {expected}"
-    _power_on_bits("the boot-phase soft reset's boot", system)
     confirm_pass()

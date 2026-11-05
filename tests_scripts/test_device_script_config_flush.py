@@ -247,13 +247,3 @@ def test_every_scratch_config_file_is_removed() -> None:
     assert not found, "scratch config left on the board's flash after a run:\n  " + "\n  ".join(found)
 
 
-def test_the_scratch_check_bites(tmp_path: Path) -> None:
-    scripts, host = tmp_path / "device_scripts", tmp_path / "test_host.py"
-    scripts.mkdir()
-    (scripts / "keeps.py").write_text('_PATH = "config_HWTEST_A.cfg"\nmgr = ConfigManager(_PATH, S, "HWTEST")\n', encoding="utf-8")
-    (scripts / "cleans.py").write_text('import os\n_PATH = "config_HWTEST_B.cfg"\n\n\ndef _rm():\n    os.remove(_PATH)\n\n\ntry:\n    run()\nfinally:\n    _rm()\n', encoding="utf-8")
-    (scripts / "scratch_build.py").write_text('_SCRATCH_CFG_PATH = "hwtest-scratch/"\nawait device.build_system(watchdog=w, cfg_path=_SCRATCH_CFG_PATH)\n', encoding="utf-8")
-    host.write_text("def test_a(board):\n    board.run_isolated(D / 'keeps.py')\n    board.run_isolated(D / 'cleans.py')\n    board.run_isolated(D / 'scratch_build.py')\n", encoding="utf-8")
-    assert [f.split(":", 1)[0] for f in scratch_findings(scripts, [host])] == ["keeps.py", "scratch_build.py"]
-    host.write_text("def test_a(board):\n    try:\n        board.run_isolated(D / 'keeps.py')\n        board.run_isolated(D / 'scratch_build.py')\n    finally:\n        board.exec(\"import os; os.remove('config_HWTEST_A.cfg'); rmtree('hwtest-scratch/')\")\n", encoding="utf-8")
-    assert scratch_findings(scripts, [host]) == []

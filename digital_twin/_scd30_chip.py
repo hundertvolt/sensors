@@ -91,7 +91,7 @@ def _pack_measurement_word(raw2: bytes) -> bytes:
 
 
 class SCD30Chip:
-    TEST_API = ("bad_crc_commands", "co2", "corrupt_next", "fault", "hum", "nvm_writes", "power_cycle", "rdy_stuck_high", "save_state", "temp")
+    TEST_API = ("bad_crc_commands", "co2", "corrupt_next", "fault", "hum", "nvm_writes", "power_cycle", "save_state", "temp")
 
     def __init__(
         self,
@@ -121,7 +121,6 @@ class SCD30Chip:
         self._rdy_pin = rdy_pin
         self.fault = FaultInjector()
         self._corrupt_next = False
-        self.rdy_stuck_high = False  # twin-only test knob: RDY reads high while no new measurement completes
         # Twin-only test surface: the NVM-writing commands the fake applied, and the argument frames it refused.
         self.nvm_writes = 0
         self.bad_crc_commands = 0
@@ -167,7 +166,7 @@ class SCD30Chip:
 
     def _drive_rdy(self, level: int) -> None:
         if self._rdy_pin is not None:
-            self._rdy_pin.simulate_edge(1 if self.rdy_stuck_high else level)
+            self._rdy_pin.simulate_edge(level)
 
     def _load_state(self) -> None:
         if self.state_path is None:
@@ -211,9 +210,6 @@ class SCD30Chip:
     def _produce_new_reading(self) -> None:
         if not self._measuring:
             return  # stopped (0x0104, or an unprovisioned chip): no measurement, no RDY edge
-        if self.rdy_stuck_high:
-            self._drive_rdy(1)  # the line is stuck, and no measurement completes behind it
-            return
         co2, temp, hum = self.co2, self.temp, self.hum
         self._co2 = self._clamp(self._co2 + self._random.uniform(-co2.step, co2.step), co2.lo, co2.hi)
         self._temp = self._clamp(self._temp + self._random.uniform(-temp.step, temp.step), temp.lo, temp.hi)

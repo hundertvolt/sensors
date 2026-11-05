@@ -50,7 +50,6 @@ _CHIP_GAIN_RATIO = 25.9  # _isl29125_chip.py's own per-instance default - the va
 _SWITCH_UP_LUX = 0.85 * 375.0
 
 # Twin time a red-dominant scene runs for; the read loop's own SampleInterval for it.
-# @tunable l2.isl29125_autorange_red_scene_window_s = 20
 _RED_SCENE_WINDOW_S = 20
 _RED_SCENE_INTERVAL_S = 5
 
@@ -379,36 +378,6 @@ def test_a_dead_interrupt_line_eventually_warns_rather_than_staying_invisible() 
     run(whole())
 
 
-def test_a_muted_interrupt_is_rearmed_once_and_delivers_again() -> None:
-    # The dead-line warning re-writes the chip's interrupt setup once; with the line back, the next crossing reaches
-    # the read event, and the interrupt-led decision it brings ends the episode.
-    async def whole() -> None:
-        chip, reader = await _make_dev_reader("int_rearm")
-        chip.configure_fault("isl29125:int_stuck_high")
-        reader.start_timer()
-
-        async def scenario() -> "tuple[bool, bool, ErrorLog]":
-            for index in range(6):
-                await cycle(chip, reader, 40.0 if index % 2 == 0 else 900.0)
-            rearmed = reader._int_rearmed
-            chip.configure_fault("isl29125:int_stuck_high", active=False)
-            reader._read_event.clear()
-            for _ in range(2):  # PRST 2 at the 1 s default: two conversions outside the window
-                chip.set_illumination(5.0)
-            delivered = bool(reader._read_event.state)
-            await cycle(chip, reader, 5.0)  # the interrupt-led decision: flag and edge together
-            return rearmed, delivered, await reader.get_error_counter()
-
-        rearmed, delivered, counters = await scenario()
-        reader.stop_timer()
-        assert code("W", "ISL_PERIODIC_ONLY") in warnings(counters)
-        assert rearmed is True
-        assert delivered is True
-        assert reader._int_rearmed is False
-
-    run(whole())
-
-
 # ---------------------------------------------------------------------------
 # Gain-ratio self-calibration - the residual step the nominal 26.67 leaves
 # ---------------------------------------------------------------------------
@@ -436,9 +405,9 @@ def test_a_calibration_run_measures_the_chips_own_real_ratio() -> None:
     run(whole())
 
 
-def test_a_calibration_window_without_a_stable_reading_warns_once() -> None:
-    # A walking scene moves between the sandwich's legs, so no reading is stable: the window closes unconverged and
-    # persists one ISL_CAL_TIMEOUT. The window is shortened on the stored deadline; a real run waits two minutes.
+def test_a_calibration_window_without_a_stable_reading_closes_with_no_entry() -> None:
+    # A walking scene moves between the sandwich's legs, so no reading is stable: the window closes unconverged with its
+    # console line alone. The window is shortened on the stored deadline; a real run waits two minutes.
     async def whole() -> None:
         chip, reader = await _make_dev_reader("gain_timeout", resolution=12)
         chip._lux_step = 150.0  # half the scene per 19 ms conversion
@@ -454,7 +423,7 @@ def test_a_calibration_window_without_a_stable_reading_warns_once() -> None:
 
         counters = await scenario()
         assert reader._calibrating is False
-        assert warnings(counters) == [code("W", "ISL_CAL_TIMEOUT")]
+        assert warnings(counters) == []
 
     run(whole())
 

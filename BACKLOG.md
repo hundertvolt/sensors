@@ -284,8 +284,8 @@ gates, traps).
   `bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict`:
   one `PUT /status {"UartHazards": true}` while 3 readers GET `/status` until the run ends.
   Expected: every hazard verdict as the twin judges it, the echo's `Failures` unchanged, the echo
-  resumed, the WEBSERVER counter at 0 and no task ended; the run's elapsed is recorded against Part
-  N's estimated `l4.uart_link_under_api_load_hazard_run_timeout_s` (600 s). Wear: none (the command
+  resumed, the WEBSERVER counter at 0 and no task ended; the run's elapsed is recorded against the
+  test's estimated 600 s run timeout. Wear: none (the command
   is dispatch-only). Twin row: `tests/test_digital_twin_uart_link.py`'s
   `test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict`.
 - **Hard resets during natural FRAM backups, the torn writes expected** — on `dev`, the gated
@@ -431,16 +431,12 @@ gates, traps).
   erased nor floating (the probe's `_bmp3xx_calibration_set`), recorded so the twin's synthetic
   block can be set against them. Wear: none (a read). Twin row: the fidelity table's BMP3XX
   calibration row, synthetic until then.
-- **`mem_backup()` and `reset_cause()` after a BOOTSEL round trip** — on `dev`, a value written to
-  the watchdog scratch registers, `machine.bootloader()`, the board brought back out of BOOTSEL,
-  then both read: whether the registers survive and which cause rp2 reports is not in the pinned
-  MicroPython source (the bootrom is not in the corpus); the twin keeps the registers and reports a
-  watchdog reset. `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` runs the
-  round trip through `PUT /system {"SystemCmd": "bootloader"}`. Expected: the board serves again and
-  `GET /status`'s `ResetReason` reads 4, the bootloader code, since the record survived (the test's
-  assertion; `ResetBits` recorded beside it); a 2 or a 1 means the bootrom's reboot lost it. Wear:
-  none (no flash write; leaving BOOTSEL needs the owner or `picotool reboot`). Twin row: the
-  fidelity table's bootloader assumption.
+- **The bootloader command's BOOTSEL round trip** — the bench found both backup regions lost
+  (the bootrom's `reset_usb_boot()`; cause 3, REASON TIMER), so the command writes no code of its
+  own. `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` runs the round trip
+  through `PUT /system {"SystemCmd": "bootloader"}`. Expected: the board serves again and
+  `GET /status`'s `ResetReason` reads 2. Wear: none (no flash write; leaving BOOTSEL needs the owner
+  or `picotool reboot`). Twin row: the fidelity table's BOOTSEL row.
 - **Every reset code read back through `/status`** — `bench/test_reset_reasons.py` on `dev`, the
   session saving `errcount` and the raw FRAM first: the harness hard reset (a watchdog reset with no
   record), the bootloader reboot, the supervisor's escalation reboot, the starved-watchdog fallback,
@@ -495,10 +491,7 @@ gates, traps).
   `bench/test_reset_reasons.py`, `bench/test_system_commands_over_rest.py`,
   `flash/test_system_commands.py`, `conftest.py`'s `bench` fixture, now a plain return, and its
   VL805 read, `bench_control.py`'s two `contextlib.suppress` forms, `twin_board.py`,
-  `website_identity.py`); `dev`'s UART link, whose listen and whose GET, train and ACK waits now
-  name a frame their read dropped ("listen read dropped a corrupted or incomplete frame", "answer
-  read dropped ... for GET", "train read dropped ... at chunk", "ACK read dropped ... after sending
-  frame") apart from a silence; and one `GET /status` on `dev`'s own firmware, its
+  `website_identity.py`); and one `GET /status` on `dev`'s own firmware, its
   `system.LastTaskEnd` read (`null` while no supervised task has ended this boot). Then the gated
   run, `--allow-persistence-write`, for the persistence-gated tests among them
   (`bench/test_hotspot_role_reversal.py`, `bench/test_system_commands_over_rest.py`,
@@ -518,8 +511,7 @@ gates, traps).
   standing requirement as BACKLOG.md recorded it on 2026-09-17, `569c6bb`). Last measured 2026-09-25
   on the one-after-another reset since replaced: about 3.5 s per reader, three readers at
   13.2-14.7 s, four past the connection ceiling. Wear: none (the clears are FRAM writes). Twin row:
-  `_RESET_ERRORS_BUDGET_S` in `scripts/_digital_twin_ci_suite.py` (Part N
-  `l2.reset_errors_budget_ratio`).
+  `_RESET_ERRORS_BUDGET_S` in `scripts/_digital_twin_ci_suite.py`.
 - **S4, the six-hour soak** — on `dev`, after the round's FRAM evidence is saved and on top of a
   clean bench run, `scripts/run_bench_soak_tests.sh --duration long` (six hours,
   `tests_hardware/soak_durations.py`) runs the soak-duration tests, among them
@@ -805,8 +797,7 @@ gates, traps).
   `scripts/_strip_type_checking.py`, `scripts/build_firmware.py`, `toolchain/micropython_overrides.py`
   and `toolchain/setup_toolchain.py` drop `from __future__ import annotations` (Python 3.11 evaluates
   their annotations natively; `requires-python = ">=3.11"`), as do the host-side files of
-  `tests_scripts/` and `tests_hardware/`, which the new `tests_scripts/test_host_annotations.py` keeps
-  that way; the two `toolchain/` files change in that import line alone. `scripts/lint.sh`'s
+  `tests_scripts/` and `tests_hardware/`; the two `toolchain/` files change in that import line alone. `scripts/lint.sh`'s
   `gc.collect()` guard names `run_setups()` and `start_tasks()` and refuses any `gc.collect(` under
   `buildgen/`. `scripts/_generate_sensortask_modules.py` also writes each device's two boot entries
   (`sensortask_<d>_main.py`, `sensortask_<d>_main_noautostart.py`) and its expected boot facts
@@ -821,7 +812,7 @@ gates, traps).
   `test_buildgen_fuzz.py`, `test_buildgen_locale.py` (`dev`'s whole build under an ASCII locale with
   Python's UTF-8 mode off: `buildgen` now reads `src/` as UTF-8 whatever the host's locale),
   `test_buildgen_reproducible.py` (two CPython children under different `PYTHONHASHSEED`s),
-  `test_buildgen_source_agreement.py`, `test_host_annotations.py`, `test_toml_schema_contract.py` and
+  `test_buildgen_source_agreement.py`, `test_toml_schema_contract.py` and
   `test_twin_wiring_contract.py`. No dependency, pin or installer
   step changed: a chroot's lint, typecheck and `scripts/test.sh` legs cover all of it, the installer
   leg is not owed, and the ARM image build `build_firmware.py` feeds stays opt-in, its staging tested
@@ -991,7 +982,7 @@ gates, traps).
     `digital_twin/typecheck.ini` names its own `files`; `host_typecheck.ini` loses its
     `[mypy-scripts._digital_twin_ci_suite]` section.
   - every host text read or write in `scripts/`, `toolchain/` and `tests_scripts/` names
-    `encoding="utf-8"` (`tests_scripts/test_host_text_encoding.py`), so a chroot without a UTF-8 locale
+    `encoding="utf-8"`, so a chroot without a UTF-8 locale
     reads and writes the same bytes;
   - `scripts/_render_coverage.py`'s PEP 723 header pins `coverage==7.16.2`, the dev group's pin, and every
     script block follows `pyproject.toml` (`tests_scripts/test_script_metadata_pins.py`), so a `--coverage` run
@@ -1118,6 +1109,17 @@ gates, traps).
   `cp -r` of a checkout is one, a copied worktree (whose `.git` file points outside the chroot) is not
   (agent, 2026-10-27). A failed `--coverage` render's input now moves into the run's evidence archive,
   named under `Notes:`. `git` is already in the recipe's package list; nothing new to install.
+  **2026-11-03, lint config and test orchestration only, no build impact**: `pyproject.toml`'s per-file ignore for
+  `src/asy_system_service.py` is RUF006 instead of PLW0603; `scripts/_digital_twin_ci_suite.py`'s fresh-boot check and
+  `scripts/_digital_twin_scenarios.py`'s storm bound expect each config store's not-found warning. Nothing new to install.
+  **2026-11-03, `pyproject.toml`'s ruff per-file-ignores, lint only, no build impact**: the notification module's entry
+  is ARG002 alone (the default LED sink an instance method again, no NaN self-compare left); nothing new to install.
+  **2026-11-04, lint config and the website build's arguments, no dependency or installer change**: `pyproject.toml`'s
+  generated boot entry ignore is E402 alone; `scripts/build_website.sh` and `scripts/_stage_website.py` take no
+  `--build-date` and `scripts/build_firmware.py` passes none. Nothing new to install.
+  **2026-11-04, test orchestration and CI only, no dependency or installer change**: the twin CI runs suite and
+  exclusive-port-53 scenarios in one job per device and GC stage (`scripts/run_digital_twin_ci.sh`, `ci.yml`), the
+  launcher stop file is gone, and `@tunable` lines outside Part N's scope left `scripts/`. Nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

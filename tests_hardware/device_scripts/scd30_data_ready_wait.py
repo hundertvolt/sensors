@@ -22,9 +22,7 @@ if TYPE_CHECKING:
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-# @tunable l3.scd30_data_ready_poll_ms = 1000
 _POLL_MS = 1000
-# @tunable l3.scd30_data_ready_wait_margin_s = 2
 _MARGIN_S = 2
 
 

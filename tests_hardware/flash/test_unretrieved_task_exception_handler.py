@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 
-# @tunable l3.unretrieved_task_exception_handler_script_timeout_s = 30.0
 _SCRIPT_TIMEOUT_S = 30.0
 
 

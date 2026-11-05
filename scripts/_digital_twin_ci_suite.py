@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections_by_name, module_float_const, module_int_const
+from buildgen.validate import device_max_connections_by_name, module_int_const
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 from scripts._twin_process import (
@@ -129,13 +129,10 @@ _LEFT_OUT = {
     ("wlan", "fault", "*"): "every WLAN raise_on method is tests/test_asy_wifi_service.py's; Run 7 drives connect outcomes by --wifi-outcome",
     ("uart_link", "fault", "bounded"): "drop, corrupt and truncate are tests/test_digital_twin_uart_link.py's; Run 3 carries uart_link:silent",
 }
-# @tunable l2.ntp_unreachable_watch_s = 90.0
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
-# The attempts the NTP backoff (10 s, doubling) makes inside that bound, measured failing at ~4, 22 and 62 s of
-# serving, the next at ~142 s: Run 9's watch ends once that many failed (agent, 2026-10-15).
-# @tunable l2.ntp_unreachable_failures = 3
-_NTP_UNREACHABLE_FAILURES = 3
-# @tunable l2.bus_fault_error_count = 500
+# The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
+# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
+_NTP_UNREACHABLE_FAILURES = 2
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
 # instance's name appends "_<name_ext>" (instance_name()). Not driver.upper(): uart_link's is "UART".
@@ -165,11 +162,9 @@ _TEST_WARN_CO2 = 1800
 _TEST_SCD30_MEAS_INT = 4
 _TEST_SSID = "digital-twin-test-ssid"
 _MIN_VERBOSE_LOG_LINES = 5
-# @tunable l2.bounded_fault_count = 3
 _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40's measure reads in Run 5/5b, then
 # one link per chip instance in Run 5c; each injected fault fails one SGP40 measure read, and three exhaust the
 # supervisor's restart budget elsewhere, which is why the count stays this small.
-# @tunable l2.wifi_scripted_failures = 5
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
 # The five identical verdicts spend ONE history slot (the central newest-entry rule, asy_print_log.py) and count
 # five; the fifth's fallback to the hotspot persists its own WLAN_TO_HOTSPOT warning in a second slot (Part C.7.1).
@@ -189,12 +184,10 @@ _SHUTDOWN_S5_PREFIXES = ("Shutdown: resetconfig", "Shutdown: erasefram")
 # README.md has the derivation and SPECIFICATION.md Part C.7 the real-hardware measurements.
 # @tunable web.outer_cap_s = 15.0
 _SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's _DEFAULT_OUTER_CAP_S - keep in sync
-# @tunable l2.reset_errors_timeout_margin_s = 2.0
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
 # The BUDGET rather than the timeout above, which only catches a call that never finished. Sized from both datasets -
 # twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of the cap sits ~45% above anything legitimate,
 # and a device wiring the most FRAM-backed sources still leaves ~10 before the budget.
-# @tunable l2.reset_errors_budget_ratio = 0.8
 _RESET_ERRORS_BUDGET_S = _SERVER_OUTER_CAP_S * 0.8
 
 # Run 11 (soak), host-side ("Driver/DUT process separation"): every soak request goes over real HTTP, so the client's
@@ -220,42 +213,28 @@ _MEM_TREND_TOLERANCE_SD_MULTIPLIER = 4.0
 
 # Wait budgets and poll steps, one per purpose. Each wait polls for its condition and returns early;
 # the fixed sleeps wait for an absence, which no probe can observe.
-# @tunable l2.error_count_wait_s = 30.0
 _ERROR_COUNT_WAIT_S = 30.0  # an error-log entry a fault or a restore has to land
-# @tunable l2.first_fault_wait_s = 45.0
 _FIRST_FAULT_WAIT_S = 45.0  # a faulted driver's first "E" entry after its boot
-# @tunable l2.long_wait_s = 90.0
 _LONG_WAIT_S = 90.0  # a bounded fault settling, and WiFi falling back to the hotspot and its DNS
-# @tunable l2.escalation_wait_s = 120.0
 _ESCALATION_WAIT_S = 120.0  # the supervisor's escalation, then its reset: Run 3's restart budget spent, Run 12's stack overflow
-# @tunable l2.ntp_first_sync_wait_s = 60.0
 _NTP_FIRST_SYNC_WAIT_S = 60.0  # a station link's first sync against the twin's local NTP responder
-# @tunable l2.read_cycle_wait_s = 30.0
 _READ_CYCLE_WAIT_S = 30.0  # two observed SGP40 read cycles after Run 5's fault is spent
-# @tunable l2.hang_run_exit_wait_s = 45.0
 _HANG_RUN_EXIT_WAIT_S = 45.0  # Run 10's --duration 15 run, hung bus call included
-# @tunable l2.failed_run_exit_wait_s = 5.0
 _FAILED_RUN_EXIT_WAIT_S = 5.0
 # A commanded reset runs the controlled shutdown, whose first step may wait one supervisor period, then the
 # reset's own delay; the margin covers the twin's scheduling on a loaded host.
-# @tunable l2.commanded_reset_margin_s = 10.0
 _COMMANDED_RESET_MARGIN_S = 10.0
-# @tunable l2.verbose_poll_s = 0.5
 _VERBOSE_POLL_S = 0.5
-# @tunable l2.errcount_poll_s = 1.0
 _ERRCOUNT_POLL_S = 1.0
-# @tunable l2.dns_poll_s = 0.5
 _DNS_POLL_S = 0.5
-# @tunable l2.concurrent_get_join_margin_s = 5.0
 _JOIN_MARGIN_S = 5.0  # past a burst's own timeout, so a thread is joined only once its request gave up
-# @tunable l2.slot_release_wait_s = 1.0
 _SLOT_RELEASE_WAIT_S = 1.0  # a readiness probe would occupy a max_connections slot, the property under test
 
 # A fixed, recognizable DNS transaction ID, so a real answer from CaptiveDNS can be told
 # apart from an echo of the query itself; the header prefix is _try_dns_query()'s own ">HH" unpack.
 _DNS_QUERY_ID = 0x1234
 _DNS_RESPONSE_HEADER_LEN = 4
-_DNS_BIND_ERROR_TEXT = "Captive DNS socket could not bind port 53."  # asy_captive_dns.py's own error line
+_DNS_RECV_FAILED_TEXT = "Receiving a DNS request failed."  # asy_captive_dns.py's own warning line, a failed port-53 bind included
 
 # The run names --only takes, in run_suite()'s order, and the run each consumes the state or result of.
 RUN_NAMES = ("1", "2", "3", "4", "5", "5b", "5c", "6", "7", "8", "9", "10", "11", "11b", "12", "13")
@@ -295,6 +274,7 @@ class RunContext:
     routes: tuple[str, ...]  # every GET route the device serves, from its API reference
     hostname: str = ""
     micropypath: str = TWIN_MICROPYPATH
+    responders: frozenset[str] = frozenset()  # the uart_link instances' fault keys whose role is responder
 
     @property
     def runs_dir(self) -> Path:
@@ -311,7 +291,6 @@ class RunContext:
 # OK/FAIL line is tagged with which gc.threshold() pass produced it, set once per run_suite() call,
 # so no run function needs a per-message edit.
 _CURRENT_PASS_LABEL = ""
-# @tunable l2.ceiling_rounds = 3
 _CEILING_ROUNDS = 3  # back-to-back, so a leaked slot or a pool that only fills over time shows up
 
 
@@ -393,12 +372,9 @@ def _check_crc16_links(ctx: RunContext) -> None:
 
 
 def _check_exit(run: TwinRun, ec: int, run_label: str) -> None:
-    # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check;
-    # a stop file the twin never acted on fails too, though the SIGINT fallback then ended the run cleanly.
+    # A negative exit the suite did not cause is a crash, reported as one with the log tail, beside the caller's check.
     if ec < 0 and not run.killed:
         _fail(f"{run_label}: {exit_reason(ec, killed=run.killed)}; last log lines:\n{log_tail(run)}")
-    if run.stop_ignored:
-        _fail(f"{run_label}: the twin never acted on its stop file, so only the SIGINT fallback ended it; last log lines:\n{log_tail(run)}")
 
 
 def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
@@ -408,19 +384,22 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     _check(condition=verdict is None, msg=f"{run_label}: log carries none of {_MEMORY_ERROR_MARKERS}" + (f" - {verdict}" if verdict else ""))
 
 
-def _check_quiet_boot(label: str, spawned_at: float, keep: Path, expected: "tuple[tuple[str, str, str], ...]" = ()) -> None:
-    # One /status read, its errcount kept at keep, whose E and W slots are exactly expected ((module, type, catalog
-    # name), no tolerance list); read before the boot's own first background warning can land (_quiet_boot_deadline_s()).
+def _check_quiet_boot(label: str, keep: Path, *, fresh_config: bool = False, blank_backups: "tuple[str, ...]" = ()) -> None:
+    # One /status read, its errcount kept at keep, whose E and W slots are exactly what the boot owes (no tolerance list):
+    # over a fresh config directory each config store's W CFG_FILE_UNREADABLE (the launcher writes NTP's file), and each
+    # blank SGP40 backup chunk's W SGP_NO_BACKUP, its first restore's, waited for; else none (a late read: SGP40's W35).
+    for name in blank_backups:
+        _wait_for_error_type_count(name, 1, _FIRST_FAULT_WAIT_S, "W")
     status, body = _http("GET", "/status")
-    age_s = time.monotonic() - spawned_at
     table = errcount_table(status, body)
     keep.parent.mkdir(parents=True, exist_ok=True)
     keep.write_text(json.dumps(table, indent=1) + "\n", encoding="utf-8")
-    deadline_s = _quiet_boot_deadline_s()
-    _check(condition=age_s < deadline_s, msg=f"{label}: the errcount was read {age_s:.1f}s after the spawn, before a boot's own first background warning can land ({deadline_s:.0f}s)")
     found = _boot_entries(table)
-    wanted = [(name, kind, code(kind, entry)) for name, kind, entry in expected]
-    named = "exactly " + ", ".join(f"{name}'s {kind} {entry}" for name, kind, entry in expected) if expected else "no E and no W entry"
+    owed = {name: code("W", "SGP_NO_BACKUP") for name in blank_backups}
+    owed |= {name: code("W", "CFG_FILE_UNREADABLE") for name in table if fresh_config and name.startswith("CFGMGR_") and name != "CFGMGR_NTP"}
+    wanted = [(name, "W", owed[name]) for name in table if name in owed]
+    named = "exactly each config store's W CFG_FILE_UNREADABLE" if fresh_config else "no E and no W entry"
+    named += ", plus each blank SGP40 backup chunk's W SGP_NO_BACKUP" if blank_backups else ""
     _check(condition=found == wanted, msg=f"{label}: the boot logged {named} (kept in {keep}: {found!r})")
 
 
@@ -627,6 +606,12 @@ def _link_crc_modes(device_toml: Path) -> list[str]:
     return [str(spec.fields.get("crc", "none")) for spec in model.instances.values() if spec.driver == "uart_link"]
 
 
+def _link_responders(device_toml: Path) -> frozenset[str]:
+    # The fault key of each uart_link instance of a TOML whose role is responder.
+    model = load_device(device_toml)
+    return frozenset(instance_label(spec.key) for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "responder")
+
+
 def _link_failures(before: JSONObject, after: JSONObject) -> int:
     # One process's own failures: a boot-time warning folded into an older slot before it cancels out.
     return _failure_events(after) - (_failure_events(before) if before else 0)
@@ -748,10 +733,10 @@ def _put_system_cmd(cmd: JSONValue) -> str | None:
     return word if isinstance(word, str) else None
 
 
-def _quiet_boot_deadline_s() -> float:
-    # A boot's own first error-count move, SGP40's untimestamped-backup warning, comes no earlier than the scenarios'
-    # shared-boot deadline after the spawn; one source for both readers of that background.
-    return module_float_const(REPO_ROOT / "scripts", "_digital_twin_scenarios.py", "_SHARED_BOOT_DEADLINE_S")
+def _blank_backups(ctx: RunContext) -> "tuple[str, ...]":
+    # Run 1's SGP40s on FRAM: no boot of it lives long enough to write a backup, so each restore finds the chunk blank.
+    fram = any(inst.driver == "fram" for inst in ctx.instances)
+    return tuple(inst.errcount_name for inst in ctx.instances if inst.driver == "sgp40" and fram)
 
 
 def _real_reading(reading: object) -> bool:
@@ -765,9 +750,9 @@ def _record(kind: str, full_msg: str) -> None:
     _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = _CHECKS_PER_PASS.get(_CURRENT_PASS_LABEL, 0) + 1
 
 
-def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None, interrupt: bool = False) -> None:
+def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None) -> None:
     # Boots on the same state and checks the reset reason the product read at boot (and, given its catalog name, the one
-    # SYSTEM entry that reset logged), then shuts down on its stop file, or by SIGINT with interrupt=True.
+    # SYSTEM entry that reset logged), then shuts down.
     proc = _spawn(ctx, [], ctx.logs_dir / log_name)
     try:
         _wait_until_serving(proc)
@@ -779,7 +764,7 @@ def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, 
     except Exception as exc:
         _fail(f"{label}: {exc!r}")
     finally:
-        ec = _shutdown(proc, label, interrupt=interrupt)
+        ec = _shutdown(proc, label)
         _check(condition=ec == 0, msg=f"{label}: clean shutdown (exit code {ec})")
 
 
@@ -916,9 +901,9 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
 
 
 def _run_12_reset_reasons(ctx: RunContext) -> None:
-    # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; bootloader exits as a bootloader entry,
-    # its relaunch reads its code and clears the record; a SIGINT relaunch reads power-on; a C-stack overflow reboots with
-    # 20. The task budget's escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
+    # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; the bootloader's relaunch reads 2,
+    # BOOTSEL having lost both regions; a SIGINT relaunch reads power-on; a C-stack overflow reboots with 20. The
+    # task budget's escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
     _archive_state(ctx, "run12")
     proc = _spawn(ctx, [], ctx.logs_dir / "run12_a_power_on_then_bootloader.log")
     try:
@@ -931,9 +916,9 @@ def _run_12_reset_reasons(ctx: RunContext) -> None:
     reset = parse_machine_reset_line(read_log(proc.log_path))
     _check(condition=reset is not None and reset.kind == "bootloader", msg=f"Run 12: the runner's machine reset line names the bootloader entry ({reset!r})")
     log_b = ctx.logs_dir / "run12_b_after_bootloader.log"
-    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_BOOTLOADER"), interrupt=True)  # what the SIGINT relaunch follows
+    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"))  # what the SIGINT relaunch follows
     line = _shutdown_line(log_b, "Run 12 (after bootloader)")
-    _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot that read the bootloader record cleared it (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
+    _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot after the bootloader left no record (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
     _relaunch_reason(ctx, "run12_c_sigint_relaunch.log", "Run 12 (SIGINT relaunch)", _reset_code("_RR_POWER_ON"))
     _run_12_stack_exhaustion(ctx)
 
@@ -1121,22 +1106,21 @@ def _run_13_system_commands(ctx: RunContext) -> None:
     _run_13_erase_fram(ctx)
     _run_13_near_misses(ctx)
     _run_13_reboot_sequence(ctx, "reboot", EXIT_SIMULATED_RESET, "_RR_REBOOT")
-    _run_13_reboot_sequence(ctx, "bootloader", EXIT_SIMULATED_BOOTLOADER, "_RR_BOOTLOADER")
+    _run_13_reboot_sequence(ctx, "bootloader", EXIT_SIMULATED_BOOTLOADER, "_RR_WATCHDOG")
 
 
 def _run_1_baseline(ctx: RunContext) -> None:
-    # ---- Run 1: fresh boot, walk every GET endpoint, and nothing logged (kept in runs/ before the reset). With no
-    # station link yet the device has never synced its clock, so both time fields read null. Its reformat relaunch
-    # PUTs the settings later runs carry forward. ----
+    # ---- Run 1: fresh boot, walk every GET endpoint, nothing logged but each config file and SGP40 backup not found
+    # (kept in runs/ before the reset). With no station link the clock never synced, so both time fields read null. Its
+    # reformat relaunch PUTs the settings later runs carry forward. ----
     log1 = ctx.logs_dir / "run1_baseline.log"
-    spawned_at = time.monotonic()
     proc = _spawn(ctx, [], log1)
     try:
         _wait_until_serving(proc)
         for path in (*ctx.routes, "/"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 1: GET {path} -> 200")
-        _check_quiet_boot("Run 1", spawned_at, ctx.runs_dir / "run1_errcount.json")
+        _check_quiet_boot("Run 1", ctx.runs_dir / "run1_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
         stale = _status_field("system", "TimeStale")
@@ -1156,7 +1140,7 @@ def _run_1_baseline(ctx: RunContext) -> None:
 
 def _run_1_reformat_relaunch(ctx: RunContext) -> None:
     # Run 1's second boot on an emptied config directory beside the kept FRAM state, as a reformatted filesystem leaves
-    # a unit: SYSTEM logs exactly one W CONFIG_LOST (kept in runs/ before the reset), then the settings Run 2 reads are PUT.
+    # a unit: each config store logs its file not found (kept in runs/ before the reset), then the settings Run 2 reads are PUT.
     label = "Run 1 (reformat relaunch)"
     config_dir = state_paths(ctx.state_dir).config_dir
     try:
@@ -1165,11 +1149,10 @@ def _run_1_reformat_relaunch(ctx: RunContext) -> None:
     except OSError as exc:
         _fail(f"{label}: emptying {config_dir} failed: {exc!r}")
         return
-    spawned_at = time.monotonic()
     proc = _spawn(ctx, [], ctx.logs_dir / "run1_reformat_relaunch.log")
     try:
         _wait_until_serving(proc)
-        _check_quiet_boot(label, spawned_at, ctx.runs_dir / "run1_reformat_errcount.json", (("SYSTEM", "W", "CONFIG_LOST"),))
+        _check_quiet_boot(label, ctx.runs_dir / "run1_reformat_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
 
         status, body = _http("PUT", "/system", {"DebugLevel": _TEST_DEBUG_LEVEL})
         _check(condition=status == _HTTP_OK and _field(body, "result", "DebugLevel") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /system DebugLevel={_TEST_DEBUG_LEVEL} accepted")
@@ -1232,10 +1215,14 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     proc = _spawn(ctx, fault_args, log3)
     seen: dict[str, JSONObject] = {}
     ec = -1
+    backed = 0
     try:
         _wait_until_serving(proc)
+        backed = sum(1 for name in _errcount_all() if name not in _IN_MEMORY_ONLY_ERROR_SOURCES)
         # Keyed on "E" entries, never the raw counter a "W" recovery notice also bumps; each poll stops at the reset.
         for inst in faulted:
+            if inst.key in ctx.responders:  # a silent link leaves a responder listening, never failed: it logs nothing of its own
+                continue
             seen[inst.errcount_name] = _wait_for_error_type_count(inst.errcount_name, 1, timeout_s=_FIRST_FAULT_WAIT_S, run=proc)
         for name, entry in seen.items():
             _check(condition=_error_type_count(entry) > 0, msg=f"Run 3: {name}'s injected sustained fault was recorded as a real error while the process lived ({entry!r})")
@@ -1257,6 +1244,7 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     writes = line.fram_writes + line.fram_silent_writes if line is not None else None
     _check(condition=writes is not None and writes <= ceiling, msg=f"Run 3: the FRAM chip's {writes!r} writes, landed or issued while silent, stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
     attempts = -(-line.fram_silent_wrens // 2) if line is not None else None
+    ceiling += backed  # each FRAM-backed logger's one setup write, before any rate applies (from /status: the console may be off)
     _check(condition=attempts is not None and attempts <= ceiling, msg=f"Run 3: the {attempts!r} FRAM write attempts its silent chip saw (WRENs / 2) stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
 
 
@@ -1416,9 +1404,11 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         status = _put_reset_errors_timed("Run 5c")
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
         cleared_table = _errcount_all()
+        # An SGP40's first restore after the reboot may land after the reset: its blank chunk's one W SGP_NO_BACKUP.
+        owed = {inst.errcount_name: [("W", code("W", "SGP_NO_BACKUP"))] for inst in ctx.instances if inst.driver == "sgp40"}
         for name in recorded:
             entry = cleared_table.get(name, {})
-            _check(condition=_error_type_count(entry) == 0 and entry.get("counter", -1) == 0, msg=f"Run 5c: {name}'s restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
+            _check(condition=(entry.get("counter", -1), _error_codes(entry)) in ((0, []), (1, owed.get(name))), msg=f"Run 5c: {name}'s restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
     except Exception as exc:
         _fail(f"Run 5c (history survived the commanded reboot): {exc!r}")
     finally:
@@ -1460,8 +1450,8 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
         logged = _error_type_count(entry, type_char="W")
         _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent one history slot, not one each, and the fallback one more ({_WIFI_PERSISTED_WARNINGS}) - the ring still holds what preceded the outage ({entry!r})")
         answered = _wait_for_dns_answer(HOST, timeout_s=_LONG_WAIT_S)
-        bind_failed = _DNS_BIND_ERROR_TEXT in read_log(log7) or code("E", "INIT") in [num for kind, num in _error_codes(_errcount_required("DNSSRV")) if kind == "E"]
-        _check(condition=answered, msg="Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback" + ("" if answered else f" - {'the DNS server logged its port-53 bind failure' if bind_failed else 'no bind failure was logged'}"))
+        recv_failed = _DNS_RECV_FAILED_TEXT in read_log(log7) or code("W", "DNS_RECV_FAILED") in [num for kind, num in _error_codes(_errcount_required("DNSSRV")) if kind == "W"]
+        _check(condition=answered, msg="Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback" + ("" if answered else f" - {'the DNS server logged a failed receive (a port-53 bind failure among its causes)' if recv_failed else 'no failed receive was logged'}"))
         status, _ = _http("GET", "/status")
         _check(condition=status == _HTTP_OK, msg="Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition")
     except Exception as exc:
@@ -1512,11 +1502,11 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         system_before = _counter(_errcount_required("SYSTEM"))
-        # Past every attempt the backoff makes within the old give-up's reach, then one supervisor pass: the time a task
+        # Past every attempt the retry makes within the old give-up's reach, then one supervisor pass: the time a task
         # that ended on the last failure takes to be restarted, an absence no probe can observe.
         failed = _failure_events(_wait_for_failure_events("NTP", _NTP_UNREACHABLE_FAILURES, timeout_s=_NTP_UNREACHABLE_WATCH_S))
         time.sleep(_src_int("asy_system_service.py", "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
-        _check(condition=failed >= _NTP_UNREACHABLE_FAILURES, msg=f"Run 9: NTP failed {failed} time(s) within the {_NTP_UNREACHABLE_WATCH_S:.0f}s watch, every attempt its backoff schedules there")
+        _check(condition=failed >= _NTP_UNREACHABLE_FAILURES, msg=f"Run 9: NTP failed {failed} time(s) within the {_NTP_UNREACHABLE_WATCH_S:.0f}s watch, every attempt its retry schedules there")
         status, _ = _http("GET", "/system")
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
         nums = [num for _kind, num in _error_codes(_errcount_required("NTP"))]
@@ -1565,6 +1555,7 @@ def _run_both_passes(args: argparse.Namespace) -> int:
         routes=_get_routes(reference),
         hostname=_toml_hostname(device_toml),
         micropypath=micropypath,
+        responders=_link_responders(device_toml),
     )
     crc16 = args.device_toml is not None and "crc16" in _link_crc_modes(device_toml)
     # The WHOLE suite runs twice (Part I.4(e)): clean at MicroPython's own gc.threshold(-1), zero MemoryErrors anywhere,
@@ -1610,8 +1601,8 @@ def _save_fram_evidence(ctx: RunContext, label: str) -> None:
         shutil.copy2(fram, evidence / fram.name)
 
 
-def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False, interrupt: bool = False) -> int:
-    ec = shutdown(run, run_label, timeout_s, interrupt=interrupt)
+def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False) -> int:
+    ec = shutdown(run, run_label, timeout_s)
     _check_exit(run, ec, run_label)
     _check_run_log(run, run_label, starves_watchdog=starves_watchdog)
     return ec

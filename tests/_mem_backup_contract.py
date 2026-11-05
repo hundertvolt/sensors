@@ -59,7 +59,21 @@ def check_a_reset_keeps_the_regions_and_reads_watchdog(m: "ModuleType") -> None:
     m.power_on()
 
 
+def check_a_bootsel_round_trip_loses_both_regions(m: "ModuleType") -> None:
+    # The bench's record: the bootrom's reset_usb_boot() overwrites both regions; the boot after reads cause 3, REASON TIMER.
+    m.power_on()
+    m.mem_backup(0)[1] = 0x12345678
+    m.mem_backup(1)[2] = 0xFFFFFFFF
+    try:
+        m.bootloader()
+    except m.SimulatedRebootError:
+        pass
+    assert (list(m.mem_backup(0)), list(m.mem_backup(1)), m.reset_cause(), m.mem32[0x40058008]) == ([0] * 4, [0] * 3, m.WDT_RESET, 0x1)
+    m.power_on()
+
+
 ALL_CHECKS = (
+    check_a_bootsel_round_trip_loses_both_regions,
     check_a_reset_keeps_the_regions_and_reads_watchdog,
     check_any_other_region_is_invalid,
     check_each_call_answers_the_same_view,

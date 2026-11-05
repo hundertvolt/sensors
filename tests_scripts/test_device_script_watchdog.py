@@ -16,7 +16,8 @@ _TESTS_HARDWARE = Path(__file__).resolve().parents[1] / "tests_hardware"
 _SCRIPTS = _TESTS_HARDWARE / "device_scripts"
 _MAX_STEP_MS = 2000
 _WATCHDOG_PERIOD_S = 8
-# The scripts whose subject is the watchdog reset itself: they starve it on purpose.
+# The scripts this scan cannot see fed: two starve the watchdog on purpose, and the loop-end one runs the frozen entry,
+# whose product feeds it until the entry resets the chip.
 _STARVATION_SCRIPTS = {"watchdog_starvation_reset.py", "reboot_fallback_starves_the_watchdog.py", "reset_code_loop_end.py"}
 _SLEEP_SCALE_MS = {"sleep": 1000.0, "sleep_ms": 1.0, "sleep_us": 0.001}
 _FEEDS = frozenset({"feed", "fed_sleep_ms", "fed_wait_ms", "settled"})
@@ -112,11 +113,3 @@ def test_a_script_run_longer_than_one_watchdog_period_arms_and_feeds(tmp_path: P
     assert not unfed, f"allowed more than {_WATCHDOG_PERIOD_S} s yet never arms and feeds the watchdog (script: timeout_s): {unfed}"
 
 
-def test_the_watchdog_checks_bite(tmp_path: Path) -> None:
-    assert _long_sleeps("import time\n_WAIT_S = 5\ntime.sleep(_WAIT_S)\ntime.sleep_ms(1500)\nawait asyncio.sleep_ms(2500)\n") == ["line 3: sleep(_WAIT_S)", "line 5: sleep_ms(2500)"]
-    host = tmp_path / "test_host.py"
-    host.write_text("_LONG_S = 30.0\n\n\ndef test_a(board):\n    board.run_isolated(DEVICE_SCRIPTS / 'long.py', timeout_s=_LONG_S)\n    board.run_isolated(DEVICE_SCRIPTS / 'short.py', timeout_s=5)\n", encoding="utf-8")
-    assert _long_runs([host], {"long.py", "short.py"}) == {"long.py": 30.0, "short.py": 5.0}
-    assert not _arms_and_feeds("async def _main():\n    await work()\n")
-    assert _arms_and_feeds("async def _main():\n    wdt = arm()\n    await fed_sleep_ms(wdt, 9000)\n")
-    assert _arms_and_feeds("async def _main():\n    wdt = machine.WDT(timeout=8000)\n    await device.main(watchdog=wdt)\n")

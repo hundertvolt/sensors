@@ -1,6 +1,6 @@
 """A sensor re-plugged on a running unit recovers without a reboot: the task ends, the supervisor restarts it, setup()
 runs again (owner, 2026-07-13, paraphrase). Each bus-attached driver on one device the generated plans wire it on, alone
-on its supervisor; FRAM's re-plug is tests/test_digital_twin_fram.py's booted silent-chip case."""
+on its supervisor; FRAM's writes resume once it answers: tests/test_digital_twin_fram.py's booted silent-chip case."""
 
 import sys
 
@@ -18,13 +18,13 @@ skip_idle_flag_polls()  # no 1 ms poll wait per step while a flag waits, as on r
 
 import asyncio  # noqa: E402 - imported after the prewarm and the UDP shim
 
+import _bmp3xx_chip  # noqa: E402 - imported after the prewarm and the UDP shim
 import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
 from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
-from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -63,9 +63,7 @@ if TYPE_CHECKING:
         def get_timer_starters(self) -> "list[TimerStarter]": ...
         def get_trigger_starters(self) -> "list[TimerStarter]": ...
 
-# @tunable l2.hot_replug_wait_s = 40.0
 _WAIT_S = 40.0
-# @tunable l2.hot_replug_run_bound_s = 90.0
 _RUN_BOUND_S = 90.0
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
@@ -125,15 +123,16 @@ def _power_cycled_bmp3xx_on(device: str) -> None:
         async def body() -> None:
             sysfunct = module.sysfunct
             await _until(clock, f"{device}'s BMP3XX never read", lambda: reader._datastruct.Pres is not None)
-            osr, config = chip._osr, chip._config
             tasks = list(sysfunct._tasks)
+            count = (await reader.get_error_counter())["BMP3XX"]["ErrCount"]
             chip.power_cycle()
             before = reader._datastruct
             await _until(clock, f"{device}'s BMP3XX never read after the power cycle", lambda: reader._datastruct is not before and reader._datastruct.Pres is not None)
             log = (await reader.get_error_counter())["BMP3XX"]
-            resets = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "W"]
-            assert resets == [code("W", "BMP_CHIP_RESET")], f"{device}: the power cycle left {log}"
-            assert (chip._osr, chip._config) == (osr, config), f"{device}: OSR/CONFIG {chip._osr:#x}/{chip._config:#x} after the reset, not {osr:#x}/{config:#x}"
+            entries = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
+            assert (log["ErrCount"], entries) == (count, []), f"{device}: the power cycle left {log}"
+            # The chip's own reset values (the twin model's), which the driver leaves as they are.
+            assert (chip._osr, chip._config) == (_bmp3xx_chip._OSR_RESET, _bmp3xx_chip._CONFIG_RESET), f"{device}: OSR/CONFIG read {chip._osr:#04x}/{chip._config:#04x}"
             assert list(sysfunct._tasks) == tasks, "a task ended over the power cycle"
             assert watchdog.would_have_triggered_count == 0
 
@@ -235,9 +234,9 @@ def test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot() -> 
         _replug(driver)
 
 
-def test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step() -> None:
-    # A supply blip resets OSR/CONFIG behind the driver's back: the next cycle notices, persists one W BMP_CHIP_RESET
-    # and writes its stored settings back; the task never ends (SPECIFICATION.md C.7's chip-reset row).
+def test_a_power_cycled_bmp3xx_reads_on_at_the_chip_defaults_without_a_ladder_step() -> None:
+    # A supply blip resets OSR/CONFIG behind the driver's back: forced mode is written every cycle, so the reads go on
+    # at the chip's reset values with nothing logged, and the task never ends (SPECIFICATION.md A.4).
     for device in distinct_wirings("bmp3xx"):
         machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
         network.reset_test_state()

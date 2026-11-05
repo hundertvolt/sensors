@@ -35,11 +35,6 @@ if TYPE_CHECKING:
         def read(self) -> bytes: ...
 
 
-class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
-    def hold(self, closable: object) -> None:
-        pass
-
-
 def _bundle_modules(body: bytes) -> "list[str]":
     # The bundle's module list, read from its banner (scripts/_stage_website.py writes it in dependency order).
     for line in body.split(b"\n")[:3]:
@@ -73,8 +68,7 @@ def _make_app() -> "tuple[WebserverService, Microdot]":
 
 
 def _make_request(app: "Microdot", method: str, path: str) -> Request:
-    sock = (_NoopHolder(), _NoopHolder())
-    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"", sock=sock)  # type: ignore[arg-type]  # the stub types sock as asyncio's stream pair; the product reads only _Holder.hold() off it
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"")
 
 
 def _src_const(name: str) -> str:

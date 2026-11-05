@@ -53,7 +53,8 @@ def _frc_ready_on(device: str) -> None:
     chip.temp = Walk(chip.temp.lo, chip.temp.hi, 0.0)  # and a steady temperature
 
     async def scenario() -> "tuple[list[int | None], dict[str, CfgValue]]":
-        assert await reader.setup() is True
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
         assert await reader._init_scd() is True  # the chip answers its interval: 2 s, so 180 samples settle
         states = []
         for _ in range(180):
@@ -91,7 +92,8 @@ def _healed_flush_on(device: str) -> None:
         return dict(results)
 
     with FastAsyncSleep():  # the driver's command waits cost no real time
-        assert run(reader.setup()) is True  # the store loaded, as at boot
+        run(reader.setup())
+        assert reader.cfgmgr.valid is True  # the store loaded, as at boot
         with WriteCountingOpen(asy_config_manager, fail_writes=True) as failing:
             first = run(put({"FRCNoise": 25.0}))  # a file-held setting: the chip's own ones live in its NVM
         unpersisted = store.unpersisted
@@ -125,7 +127,8 @@ def _largest_offset_on(device: str) -> None:
     reader, chip = _reader_on_the_twin_bus(device, cfg_path=_scratch.dir())
 
     async def scenario() -> "tuple[float | None, bool, float, int]":
-        assert await reader.setup() is True
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
         body: dict[str, CfgValue] = {"TempOffset": 655.35}
         assert await reader._set_dict_cfg(body, reader.get_cfg_schema()) == {"TempOffset": "Valid"}
         chip._produce_new_reading()
@@ -137,6 +140,35 @@ def _largest_offset_on(device: str) -> None:
     assert new_data is True
     assert errors == 0  # no "Reading rejected"
     assert temperature is not None and abs(temperature - (sensed - 655.35)) < 0.01
+
+
+def _missed_edge_on(device: str) -> None:
+    # The test below on one device.
+    reader, chip = _reader_on_the_twin_bus(device, cfg_path=_scratch.dir())
+
+    async def scenario() -> "tuple[list[bool], bool, int, int]":
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
+        assert await reader._init_scd() is True
+        errors = (await reader.get_error_counter())["SCD30"]["ErrCount"]
+        reader._read_event.clear()
+        chip._produce_new_reading()  # data ready, the line held high; no IRQ is registered, so its rising edge is missed
+        loop = asyncio.get_event_loop().create_task(reader._irq_loop())
+        due = []
+        for _ in range(reader._trigger_half_ticks):  # base ticks with the line high, up to the fallback's threshold
+            reader._base_trigger_event.set()
+            for _turn in range(3):
+                await asyncio.sleep(0)
+            due.append(bool(reader._read_event.state))
+        await cancel(loop)
+        results, new_data = await reader._read_scd()  # the one read the read loop then makes
+        assert await reader._error_check(results, condition=results[0] is None)
+        return due, new_data, errors, (await reader.get_error_counter())["SCD30"]["ErrCount"]
+
+    with FastAsyncSleep():
+        due, new_data, errors, after = run(scenario())
+    assert due == [False] * (len(due) - 1) + [True], f"the read fell due at ticks {due}, not at the threshold's last"
+    assert new_data is True and after == errors, f"the fallback read found no data ({new_data}) or logged {after - errors} entr(ies)"
 
 
 def _reader_on_the_twin_bus(device: str, cfg_path: str) -> "tuple[SCD30_Reader, SCD30Chip]":
@@ -184,7 +216,8 @@ def _silent_scd30_on(device: str) -> None:
     reader, chip = _reader_on_the_twin_bus(device, cfg_path=_scratch.dir())
 
     async def scenario() -> "tuple[int | None, int | None, bool, int, int, int]":
-        assert await reader.setup() is True
+        await reader.setup()
+        assert reader.cfgmgr.valid is True
         assert await reader._init_scd() is True  # the chip answers its interval: 2 s, four 500 ms ticks
         for _ in range(3):
             chip._produce_new_reading()
@@ -211,36 +244,6 @@ def _silent_scd30_on(device: str) -> None:
     assert (settling, silent) == (1, 0), f"FRCState went {settling} -> {silent}, expected settling (1) then not measuring (0)"
     assert not triggered, "a low data-ready line re-triggered a read"
     assert (streak, after) == (0, errors), f"silence stepped the streak to {streak} or logged {after - errors} entr(ies)"
-
-
-def _stuck_rdy_on(device: str) -> None:
-    # The test below on one device.
-    reader, chip = _reader_on_the_twin_bus(device, cfg_path=_scratch.dir())
-
-    async def warnings() -> int:
-        log = (await reader.get_error_counter())["SCD30"]
-        return sum(1 for kind, number in zip(log["ErrType"], log["ErrNum"]) if (kind, number) == ("W", code("W", "SCD_NOT_READY")))
-
-    async def scenario() -> "tuple[list[int], int]":
-        assert await reader.setup() is True
-        chip.rdy_stuck_high = True
-        seen = []
-        for _ in range(5):
-            chip._produce_new_reading()  # the line reads high, but no measurement completes
-            _results, new_data = await reader._read_scd()
-            assert new_data is False
-            seen.append(await warnings())
-        chip.rdy_stuck_high = False
-        for _ in range(3):
-            chip._produce_new_reading()
-            _results, new_data = await reader._read_scd()
-            assert new_data is True
-        return seen, await warnings()
-
-    with FastAsyncSleep():
-        seen, after = run(scenario())
-    assert seen == [0, 0, 0, 0, 1]
-    assert after == 1  # new data ended the episode: no further entry
 
 
 def _tmp_path(name: str) -> str:
@@ -675,24 +678,6 @@ def test_power_cycle_drops_the_unread_measurement_and_keeps_the_nvm_interval() -
     assert _get(chip, 0x46, 0x00) == word(5)
 
 
-def test_rdy_stuck_high_holds_the_line_high_while_no_new_measurement_arrives() -> None:
-    pin = _LevelPin()
-    chip = SCD30Chip(rdy_pin=pin, random_source=FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
-    chip.rdy_stuck_high = True
-    chip._produce_new_reading()
-    assert pin.level == 1
-    assert _get(chip, 0x02, 0x02) == word(0)
-    chip.handle_writeto(b"\x03\x00")
-    chip.handle_readfrom_into(18)
-    assert pin.level == 1  # the read-out does not drop a stuck line
-    chip.rdy_stuck_high = False
-    chip._produce_new_reading()
-    assert _get(chip, 0x02, 0x02) == word(1)
-    chip.handle_writeto(b"\x03\x00")
-    chip.handle_readfrom_into(18)
-    assert pin.level == 0
-
-
 def test_nvm_writes_counts_each_accepted_nvm_command_and_nothing_else() -> None:
     # The six NVM-writing argument commands and the bare stop (Interface Description 1.4.1-1.4.3,
     # 1.4.6-1.4.8); register reads, data-ready, read-out, firmware version and soft reset write none.
@@ -742,18 +727,20 @@ def test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_
         _frc_ready_on(device)
 
 
-def test_a_stuck_high_rdy_line_warns_once_after_five_empty_reads_and_new_data_ends_it() -> None:
-    for device in distinct_wirings("scd30"):
-        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
-        _stuck_rdy_on(device)
-
-
 def test_a_silent_scd30_publishes_not_measuring_and_runs_no_cycle_streak_or_entry() -> None:
     # Data-ready never rises after three readings (the helper stops the chip's own measurement Timer): the irq
     # loop's base ticks find the line low, FRCState drops to 0 after two intervals, and nothing is retried or logged.
     for device in distinct_wirings("scd30"):
         machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
         _silent_scd30_on(device)
+
+
+def test_a_missed_data_ready_edge_is_read_by_the_fallback_at_its_threshold_with_no_entry() -> None:
+    # The RDY edge missed with the line held high: the irq loop's base ticks count it, the read falls due at the
+    # _trigger_half_ticks-th tick and not before, and it reads the waiting measurement with nothing logged.
+    for device in distinct_wirings("scd30"):
+        machine.reset_test_state()  # the file's per-test reset: a run never inherits the previous device's board
+        _missed_edge_on(device)
 
 
 def test_fault_injection_on_writeto_and_readfrom_into() -> None:

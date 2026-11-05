@@ -33,7 +33,6 @@ _MICROPYPATH = tomllib.loads((Path(__file__).resolve().parent.parent / "scripts"
 _HEAPSIZE = "16M"
 _PROBE = "tests/_boot_contiguity_probe.py"
 _GENERATED = Path(__file__).resolve().parent.parent / "build" / "generated_src"
-# @tunable l0.boot_contiguity_probe_timeout_s = 120
 _PROBE_TIMEOUT_S = 120
 
 _ARM_LIVE = "collects"
@@ -70,20 +69,16 @@ _BOOT_MEDIAN_DEPTH_MIN = 256 * 1024  # worst live 739,680 (2.82x)
 # device's suppressed arm. A band near the suppressed reach counts only its edge; the slack is for one future large
 # allocation that genuinely cannot fit a low hole, not for a drift in placement.
 _HIGH_BAND = 32 * 1024
-# @tunable l0.boot_contiguity_high_band_blocks_max = 32
 _HIGH_BAND_BLOCKS_MAX = 32
 
 # How much deeper the live arm must place than the suppressed one. A ratio between the two arms of the same run, so it
 # needs no absolute bound and no unit - the strictest thing this file asserts. Measured on the control device: the
 # suppressed batch median and whole-sequence reach both sit ABOVE the seam, the live ones below.
-# @tunable l0.boot_contiguity_arm_depth_ratio_min = 1.5
 _ARM_DEPTH_RATIO_MIN = 1.5
-# @tunable l0.boot_contiguity_arm_reach_ratio_min = 4.0
 _ARM_REACH_RATIO_MIN = 4.0
 
 # Retention must be arm-independent: the collects change WHERE the next survivor is born, never how
 # much survives (MEASUREMENTS archive 7A.1's finding; the control device's arms differ by 0.007% here). 1% is over 100x that.
-# @tunable l0.boot_contiguity_retention_tolerance = 0.01
 _RETENTION_TOLERANCE = 0.01
 
 # The allocation-failure markers every gate shares, from the hardware tier's harness

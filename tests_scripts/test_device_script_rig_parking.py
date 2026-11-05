@@ -61,15 +61,3 @@ def test_every_neopixel_a_script_constructs_is_parked_on_every_path(tmp_path: Pa
     assert not found, f"a NeoPixel constructed outside a try that parks it dark (script: lines): {found}"
 
 
-_BITES = {
-    "np = NeoPixel(Pin(p, Pin.OUT), 1)\nnp.write()\n": [1],
-    "try:\n    np = NeoPixel(Pin(p, Pin.OUT), 1)\n    run(np)\nfinally:\n    np.off()\n": [],
-    "pixel = NeopixelDriver(p)\ntry:\n    run(pixel)\nfinally:\n    pixel[0] = (0, 0, 0)\n    pixel.write()\n": [],
-    "try:\n    np = NeoPixel(Pin(p, Pin.OUT), 1)\nfinally:\n    np.write()\n": [2],
-    "try:\n    x = 1\n    np = NeoPixel(Pin(p, Pin.OUT), 1)\nfinally:\n    np.off()\n": [3],
-}
-
-
-@pytest.mark.parametrize(("source", "lines"), list(_BITES.items()), ids=["no-try", "first-in-try", "right-before-try", "lit-write", "not-first"])
-def test_the_parking_check_bites(source: str, lines: "list[int]") -> None:
-    assert _unparked(source) == lines

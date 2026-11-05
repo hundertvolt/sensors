@@ -22,9 +22,7 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link", "uart_load")
 
 # GET only: every worker below hits a read-only endpoint, so nothing here can persist to flash in a
 # loop. A PUT belongs in this tier only where it is documented command-only and never persisted.
-# @tunable l4.uart_link_under_api_load_get_workers = 2
 _GET_WORKERS = 2
-# @tunable l4.uart_link_under_api_load_get_iterations = 10
 _GET_ITERATIONS_PER_WORKER = 10
 # Generous next to a single request's own budget, but far below the point at which a stalled link
 # would look like a slow one: the claim is coexistence, not a latency number.
@@ -32,31 +30,20 @@ _GET_ITERATIONS_PER_WORKER = 10
 _REQUEST_BUDGET_S = 15.0
 # The echo test's readers' answered floor: of the 3 readers x 30 reads it sends, a third, since the script's own boot
 # and handover eat into the window the readers run in.
-# @tunable l4.uart_link_under_api_load_echo_min_answered = 30
 _ECHO_MIN_ANSWERED = 30
-# @tunable l4.uart_link_under_api_load_echo_readers = 3
 _ECHO_READERS = 3
-# @tunable l4.uart_link_under_api_load_echo_iterations = 30
 _ECHO_ITERATIONS = 30
 
-# @tunable l4.uart_link_under_api_load_join_timeout_s = 120.0
 _JOIN_TIMEOUT_S = 120.0
-# @tunable l4.uart_link_under_api_load_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.uart_link_under_api_load_wait_timeout_s = 30.0
-_WAIT_TIMEOUT_S = 30.0
-# @tunable l4.uart_link_under_api_load_wait_poll_s = 2.0
+_WAIT_TIMEOUT_S = 30.0  # source: this test's own bound, not the SGP40's WaitTimeNTP
 _WAIT_POLL_S = 2.0
-# @tunable l4.uart_link_under_api_load_short_join_timeout_s = 60.0
 _SHORT_JOIN_TIMEOUT_S = 60.0
-# @tunable l4.uart_link_under_api_load_burst_workers = 6
 _BURST_WORKERS = 6
-# @tunable l4.uart_link_under_api_load_echo_script_timeout_s = 240.0
 _ECHO_SCRIPT_TIMEOUT_S = 240.0
 # The hazard run (owner, 2026-10-21, asked "Leave the UART hazards under API load untested?": "b - system shall be
 # proven stable unter max load allover"): 208 s at dev's 1000 ms reply budget on the twin's driven clock; the bound
 # leaves silicon's own load room (agent, 2026-10-21).
-# @tunable l4.uart_link_under_api_load_hazard_run_timeout_s = 600.0
 _HAZARD_RUN_TIMEOUT_S = 600.0
 _TOML_HINT = "check the bench device's TOML still declares its uart_link instances and this build used it"
 

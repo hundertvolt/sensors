@@ -35,17 +35,11 @@ from _twin_devices import distinct_wirings
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 
-# @tunable l2.launch_short_duration_s = 0.5
 _SHORT_DURATION_S = 0.5
-# @tunable l2.launch_main_bound_s = 10
 _MAIN_BOUND_S = 10
-# @tunable l2.launch_fault_duration_s = 2.5
 _FAULT_DURATION_S = 2.5
-# @tunable l2.launch_long_duration_s = 4.5
 _LONG_DURATION_S = 4.5
-# @tunable l2.launch_long_main_bound_s = 15
 _LONG_MAIN_BOUND_S = 15
-# @tunable l2.launch_long_min_readings = 5
 _LONG_MIN_READINGS = 5
 
 _READ = ("bmp3xx", "scd30", "sgp40")  # the chips main()'s sensor loop reads: each main() run takes a device wiring all three

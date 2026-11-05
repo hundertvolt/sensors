@@ -51,7 +51,6 @@ else:
 
 require_fresh()  # every scenario boots a generated module and reads its plan
 
-# @tunable l2.construction_scenarios_run_timeout_s = 10.0
 _RUN_TIMEOUT_S = 10.0
 # The product's own maintenance modules, which every generated build_system() constructs whatever its TOML declares.
 _MAINTENANCE = ("conn", "ntp", "sysfunct", "webserver")

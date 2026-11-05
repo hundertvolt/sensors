@@ -1,15 +1,15 @@
-"""Long FRAM run at dev's 1 MHz for rare-event rates: RDID against its first read (the ID retries' W29), 256-byte reads
+"""Long FRAM run at the final image's 8 MHz for rare-event rates: RDID against its first read (the ID retries' W29), 256-byte reads
 of a known pattern (F.5.2's EIO, wrong bytes), and 1-byte writes read back, each counted with its worst duration.
 Writes only the scratch block 0x3FF00-0x3FFFF and puts back what it found; DUR_S per run."""
 
 import time
 
-from machine import SPI, Pin
+from machine import SPI, WDT, Pin
 
-DUR_S = 1200
+DUR_S = 36000  # overnight, 10 h; run_all.sh still overrides it with SLICE_S
 SCRATCH = 0x3FF00
 cs = Pin(5, Pin.OUT, value=1)
-spi = SPI(0, baudrate=1_000_000, polarity=0, phase=0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+spi = SPI(0, baudrate=8_000_000, polarity=0, phase=0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
 
 
 def xfer(head: bytes, rx: bytearray | None = None, tx: bytes | None = None) -> None:
@@ -64,6 +64,7 @@ def write1(k: int) -> bool:
     return one[0] == pattern[k]
 
 
+wdt = WDT(timeout=8000)  # the final image's boot armed it, and a soft reset leaves it armed
 end = time.ticks_add(time.ticks_ms(), DUR_S * 1000)
 i = 0
 try:
@@ -74,6 +75,7 @@ try:
         c_wr.run(lambda: write1(k))
         i += 1
         if i % 64 == 0:
+            wdt.feed()
             time.sleep_ms(1)
 finally:
     xfer(WREN)

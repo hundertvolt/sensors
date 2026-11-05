@@ -23,9 +23,7 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency",)
 # max_connections: at it, real wireless timing overlaps into an undesired reject-when-full. Derived,
 # so a raised ceiling really means more concurrent bus-facing API load.
 _GET_WORKERS = max(2, configured_max_connections() - 3)
-# @tunable l4.bus_concurrency_under_api_load_get_iterations = 8
 _GET_ITERATIONS_PER_WORKER = 8
-# @tunable l4.bus_concurrency_under_api_load_put_reset_count = 2
 _PUT_RESET_COUNT = 2
 # Ceiling refusals fetch() retried, by "METHOD path": a connection reset under a config write shares
 # their signature, so the two config-write arms note these and a gated run tells the two apart.
@@ -34,56 +32,33 @@ _ceiling_retries_lock = threading.Lock()
 
 # The readers' answered floors, of the 24 reads dev's TOML sends per arm (3 readers x 8): every read where nothing
 # faults, half under a light network fault, a quarter while the link flaps or the board reboots under the load.
-# @tunable l4.bus_concurrency_under_api_load_plain_min_answered = 24
 _PLAIN_MIN_ANSWERED = 24
-# @tunable l4.bus_concurrency_under_api_load_degraded_min_answered = 12
 _DEGRADED_MIN_ANSWERED = 12
-# @tunable l4.bus_concurrency_under_api_load_ntp_min_answered = 12
 _NTP_MIN_ANSWERED = 12
-# @tunable l4.bus_concurrency_under_api_load_flap_min_answered = 6
 _FLAP_MIN_ANSWERED = 6
-# @tunable l4.bus_concurrency_under_api_load_write_min_answered = 24
 _WRITE_MIN_ANSWERED = 24
-# @tunable l4.bus_concurrency_under_api_load_command_min_answered = 6
 _COMMAND_MIN_ANSWERED = 6
 
-# @tunable l4.bus_concurrency_under_api_load_fetch_timeout_s = 15.0
 _FETCH_TIMEOUT_S = 15.0
-# @tunable l4.bus_concurrency_under_api_load_ceiling_retry_backoff_s = 0.25
 _CEILING_RETRY_BACKOFF_S = 0.25
-# @tunable l4.bus_concurrency_under_api_load_ceiling_retry_attempts = 3
 _CEILING_RETRY_ATTEMPTS = 3
-# @tunable l4.bus_concurrency_under_api_load_join_timeout_s = 120.0
 _JOIN_TIMEOUT_S = 120.0
-# @tunable l4.bus_concurrency_under_api_load_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.bus_concurrency_under_api_load_recovery_timeout_s = 30.0
 _RECOVERY_TIMEOUT_S = 30.0
-# @tunable l4.bus_concurrency_under_api_load_recovery_poll_s = 2.0
 _RECOVERY_POLL_S = 2.0
-# @tunable l4.bus_concurrency_under_api_load_degraded_fetch_timeout_s = 20.0
 _DEGRADED_FETCH_TIMEOUT_S = 20.0
-# @tunable l4.bus_concurrency_under_api_load_degraded_join_timeout_s = 180.0
 _DEGRADED_JOIN_TIMEOUT_S = 180.0
-# @tunable l4.bus_concurrency_under_api_load_ntp_resync_timeout_s = 20.0
 _NTP_RESYNC_TIMEOUT_S = 20.0
-# @tunable l4.bus_concurrency_under_api_load_ntp_resync_poll_s = 1.0
 _NTP_RESYNC_POLL_S = 1.0
-# @tunable l4.network_resilience_flap_step_s = 3.0
 _FLAP_STEP_S = 3.0
-# @tunable l4.network_resilience_flap_cycles = 3
 _FLAP_CYCLES = 3
-# @tunable l4.bus_concurrency_under_api_load_flap_recovery_timeout_s = 150.0
 _FLAP_RECOVERY_TIMEOUT_S = 150.0
-# @tunable l4.bus_concurrency_under_api_load_reboot_ready_timeout_s = 60.0
 _REBOOT_READY_TIMEOUT_S = 60.0
-# @tunable l4.bus_concurrency_under_api_load_ntp_block_margin_s = 10.0
 _NTP_BLOCK_MARGIN_S = 10.0
-# @tunable l4.bus_concurrency_under_api_load_command_after_answered = 3
 _COMMAND_AFTER_ANSWERED = 3
 _SYSTEM = "asy_system_service.py"
 # The read paths' new codes, named so a load arm that provokes one says which (catalog names, checked at run time).
-_LOAD_CODES = (("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
+_LOAD_CODES = (("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
 
 
 @pytest.mark.provokes_log(
@@ -121,7 +96,6 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
 )
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
@@ -204,11 +178,9 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
-    ("WEBSERVER", "W", "HTTP_REQUEST_CAP"),
     ("WEBSERVER", "W", "HTTP_SOCKET_ERROR"),
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
-    ("NTP", "E", "NTP_DNS_NOT_SENT"),
     ("NTP", "E", "NTP_DNS"),
     ("NTP", "E", "NTP_NOT_SENT"),
     ("NTP", "E", "NTP_NO_REPLY"),
@@ -252,7 +224,6 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
 # read overlapping a write, so that proof is the flash test's overlapped_reads.
 # ---------------------------------------------------------------------------
 
-# @tunable l4.bus_concurrency_under_api_load_isl29125_write_cycles = 4
 _ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle here is a real HTTP round trip, not a bare I2C write
 
 
@@ -356,9 +327,7 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
 # PUT /sensors reaches SCD30's NVM through its chip store: two owned writes and the restore, gated
 # (tests_hardware/README.md budget table). The counterpart of flash/test_bus_concurrency.py's SCD30 write arm.
 
-# @tunable l4.bus_concurrency_under_api_load_scd30_write_cycles = 2
 _SCD30_WRITE_CYCLES = 2
-# @tunable l4.bus_concurrency_under_api_load_scd30_offset_step_k = 0.5
 _SCD30_OFFSET_STEP_K = 0.5
 
 
@@ -421,9 +390,9 @@ def test_fram_erase_under_api_load(board: Board, bench: "BenchBridge", dut_ip: s
     _command_under_load(board, bench, dut_ip, "erasefram", noted)
     if not noted.recovered:
         assert _reset_reason(dut_ip) == _load.src_number(_SYSTEM, "_RR_FRAM_ERASED"), f"the erase's reset reads ResetReason {_reset_reason(dut_ip)!r}, not the erase's own code (a watchdog reset reads 2)"
-    counts = get_errcount(dut_ip)
-    kept = {name: errcount_entry(counts, name) for name in fram_backed_logger_names() if [h for h in errcount_entry(counts, name)["history"] if h.get("type") != "N"]}
-    assert not kept, f"FRAM-backed logs still hold entries after the erase: {kept}"
+    counts, owed = get_errcount(dut_ip), {name: (1, [("W", code("W", "SGP_NO_BACKUP"))]) for name in _load.instance_loggers("sgp40")}
+    kept = {name: errcount_entry(counts, name) for name in fram_backed_logger_names() if (errcount_entry(counts, name)["counter"], [(h.get("type"), h.get("num")) for h in errcount_entry(counts, name)["history"] if h.get("type") != "N"]) not in ((0, []), owed.get(name))}
+    assert not kept, f"FRAM-backed logs still hold entries after the erase, each SGP40's W SGP_NO_BACKUP for its blank backup chunk aside: {kept}"
 
 
 def test_reboot_under_api_load(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:

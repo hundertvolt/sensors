@@ -7,9 +7,7 @@ import subprocess
 from harness import REPO_ROOT, bench_device
 from runner import confirm, confirm_pass, print_instruction, register, state_expected_outcome
 
-# @tunable l3.toolchain_flash_boot_build_timeout_s = 600
 _BUILD_TIMEOUT_S = 600
-# @tunable l3.toolchain_flash_boot_load_timeout_s = 120
 _LOAD_TIMEOUT_S = 120
 
 

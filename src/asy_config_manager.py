@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     # `# @wiring`/`# @value-wiring`/`# @limits` comment tags, so nothing the firmware reads becomes
     # frozen bytecode just to serve the generator (SPECIFICATION.md Part L.6.4).
 
-from asy_print_log import DEFAULT_LOG, make_logger, report_if_fatal
+from asy_print_log import DEFAULT_LOG, make_logger
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and CFGMGR's band.
 _ERR_ALLOC = const(20)
@@ -325,9 +325,7 @@ class ConfigManager:
         self.valid = False
         self.writable = True  # False once setup() met a file it could not read: never overwritten this boot
         self.faulted = False  # setup() met a file it could not read or a damaged one (repaired, still listed)
-        self.absent_at_boot = False  # setup() found no file and wrote the defaults (a fresh filesystem)
         self.unpersisted = False  # the latest file write failed: the store runs on values the flash lacks
-        self._read_failing = False  # a run of failed reads, persisted once: the next good read or a cleared history ends it
         self.module_name = name  # the module name a config-fault report lists
         self._closed = False  # close_writes() before a commanded reset; one-way
         # The owning module's PUT lock, set once by that module after construction: a commanded reset takes it
@@ -344,7 +342,7 @@ class ConfigManager:
 
     async def _get_typed_values(self, keys: "ConfigSchema", coerce: "Callable[[CfgValue], T | None]") -> "list[T] | None":
         # Each stored value through the getter's own exact-type coercer, all-or-nothing: a refusal is a
-        # stored value of the wrong type, persisted once, and the caller gets None.
+        # stored value of the wrong type, persisted, and the caller gets None.
         values = await self._get_values(keys)
         if values is None:
             return None
@@ -353,25 +351,21 @@ class ConfigManager:
         for i, value in enumerate(values):
             checked = coerce(value)
             if checked is None:
-                if self._read_run_starts():
-                    await self.pr.err_s(self._config_file, "- stored value has the wrong type:", names[i], errno=_ERR_CONTRACT)
+                await self.pr.err_s(self._config_file, "- stored value has the wrong type:", names[i], errno=_ERR_CONTRACT)
                 return None
             typed.append(checked)
-        self._read_failing = False
         return typed
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[CfgValue] | None":
         if not self.valid:
-            if self._read_run_starts():
-                await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
+            await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
             return None
         self.pr.all(self._config_file, "- Reading config data into list.")
         try:
             current = self._current()
             return [current[key] for key in schema_names(keys)]
         except KeyError as e:  # unknown key
-            if self._read_run_starts():
-                await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
+            await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
             return None
 
     def _closed_for_reset(self) -> bool:
@@ -415,16 +409,8 @@ class ConfigManager:
                     if self._pending_flush is asyncio.current_task():
                         self._pending_flush = None
         except Exception as e:  # an unsupervised task's top: its end is persisted, never left unretrieved
-            report_if_fatal(e)
             self.unpersisted = True  # the finally above already made the unwritten snapshot the cache
             await self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)
-
-    def _read_run_starts(self) -> bool:
-        # True for a run's first failed read, which alone persists and prints: a store invalid for the boot fails every
-        # read, and a reader on a fixed cycle would otherwise log each cycle.
-        starts = not self._read_failing
-        self._read_failing = True
-        return starts
 
     def _write_file(self, text: str) -> None:
         # The one flash write, setup()'s and _flush_staged()'s: opened for writing, written and closed with no yield, so
@@ -441,19 +427,15 @@ class ConfigManager:
         # (read-your-write). No lock needed: neither write_config() nor _flush_staged() awaits
         # mid-mutation of the field this reads, so no partial state is observable.
         if not self.valid:
-            if self._read_run_starts():
-                await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
+            await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
             return None
         self.pr.all(self._config_file, "- Reading config data into dict.")
         try:
             current = self._current()
-            values = {key: current[key] for key in keys}
+            return {key: current[key] for key in keys}
         except KeyError as e:  # unknown key
-            if self._read_run_starts():
-                await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
+            await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
             return None
-        self._read_failing = False
-        return values
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
@@ -505,18 +487,14 @@ class ConfigManager:
             await pending
 
     async def reset_error_counter(self) -> bool:
-        # A cleared history ends the run of failed reads, so a store still failing shows again once.
-        if not await self.pr.reset():
-            return False
-        self._read_failing = False
-        return True
+        return await self.pr.reset()
 
-    async def setup(self) -> bool:  # True when the store is valid (the self.valid gate)
+    async def setup(self) -> None:
         await self.pr.setup()  # required for every logged warning and error, like every other
         # FRAM-capable module's setup(): without it self.pr.initialized never becomes True and each later
         # err_s()/wrn_s() silently skips its own FRAM write (the implicit FRAM-wiring rule, SPECIFICATION.md A.7).
         data: dict[str, CfgValue] | None = None
-        missing = False
+        absent: OSError | None = None  # no file: written once with the defaults (owner, 2026-10-01); an unreadable one never is
         damaged = False  # unparseable, not an object, or a stored value the schema refuses: repaired, still listed
         try:
             if (os.stat(self._config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
@@ -534,14 +512,10 @@ class ConfigManager:
             else:  # filename exists but is a directory and cannot be used: a file fault
                 self.faulted = True
                 await self.pr.err_s(self._config_file, "exists but is not a file, cannot write!", errno=_ERR_CFG_PATH_IS_DIR)
-                return False
+                return
         except (MemoryError, OSError) as e:  # absent, or unreadable (an I/O error, json.load() exhausting the heap)
-            missing = isinstance(e, OSError) and e.errno == errno.ENOENT
-            if missing:
-                self.absent_at_boot = True
-                # A genuinely absent file is written once with the defaults (owner, 2026-10-01); an unreadable one never is.
-                self.pr.one("Config file", self._config_file, "not present - writing the defaults once")
-            else:
+            absent = e if isinstance(e, OSError) and e.errno == errno.ENOENT else None
+            if absent is None:
                 self.writable = False
                 self.faulted = True
                 await self.pr.wrn_s("Config file", self._config_file, "could not be read:", e, wrnno=_WRN_CFG_FILE_UNREADABLE)
@@ -549,15 +523,15 @@ class ConfigManager:
         defaults = schema_dict(self._cfg_vals)
         if len(defaults) == 0:  # default config contains no values
             await self.pr.err_s(self._config_file, "- Defaults are empty, config is not valid!", errno=_ERR_CFG_NO_DEFAULTS)
-            return self.valid
+            return
 
-        rewrite = missing or damaged  # an absent file is written once, an unparseable or non-object one repaired
+        rewrite = absent is not None or damaged  # an absent file is written once, an unparseable or non-object one repaired
         valid_cfg: dict[str, CfgValue] = {}  # create surely valid config
         for key, field in defaults.items():  # iterate through default config
             use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
             if default_val is None:  # invalid config, no default or special-alone value
                 await self.pr.err_s(self._config_file, "- Default Key", key, "Error or None, config is not valid!", errno=_ERR_CFG_BAD_DEFAULT)
-                return self.valid
+                return
             if not use_value:  # special-alone value
                 continue  # not used for storage, skip loop iteration
             new_cfg: CfgValue
@@ -587,6 +561,8 @@ class ConfigManager:
         if not (valid_cfg and self.writable and rewrite):  # a command-only schema (no values) creates no file
             self.pr.one(self._config_file, "- config is ready, nothing to write" if valid_cfg else "- schema stores no values, no file")
         else:  # this boot's one write: the defaults of an absent file, or the repair of a readable one
+            if absent is not None:  # persisted where its defaults are written; a command-only schema's absence only prints
+                await self.pr.wrn_s("Config file", self._config_file, "not found:", absent, wrnno=_WRN_CFG_FILE_UNREADABLE)
             self.pr.one(self._config_file, "- Writing configuration file!")
             try:
                 text = json.dumps(valid_cfg)  # serialised before the open: a failure leaves the file intact
@@ -600,7 +576,6 @@ class ConfigManager:
         # refusing it ended every reader's task and looped the device through reboots (C.7.3).
         self._cache = valid_cfg
         self.valid = True
-        return self.valid
 
     async def write_config(self, data: "JsonMapping", *, defer: bool = False) -> "tuple[bool, WriteValidity]":
         # Validates against the manager's own schema and stages synchronously, then hands the flash write to an
