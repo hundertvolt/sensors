@@ -5867,11 +5867,11 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
 
 - **An absolute heap-delta bound is host-dependent; a leak is a rate.** Retention scales with the
   work done, while an interpreter's internal caching is a fixed sprinkle that varies by host *and
-  by run*. Two hammer tests bounded `gc.mem_alloc()` growth at a few frames because both measured
-  exactly 0 on the bench, and failed CI at 64 B. Assert a per-operation rate instead —
+  by run*. A `gc.mem_alloc()` bound of a few frames, set from the bench's exact 0, fails CI at 64 B.
+  Assert a per-operation rate instead —
   `tests/test_uart_comm_hazard.py` uses `< 6.0 B/transaction` and `< 16.0 B/failure`, against a real
   retained frame's 13+ B/transaction and an injected 16 B/transaction leak's measured 636.
-  **Two follow-on traps, both paid for:** the rate must be divided by the span actually measured,
+  **Two follow-on traps:** the rate must be divided by the span actually measured,
   not by the loop's total round count — the clean hammer sampled a third of the way in and still
   divided by all 150, understating itself by half again. And one runner observation does not
   calibrate a floor: the same commit measured 64 B on one GitHub runner and 288 B on another, so a
@@ -9024,33 +9024,33 @@ can be that scalar — `errcount` holds ints alone (`_shape_errcount_entry()`), 
 bounds its list — so the ceiling is the longest string any schema permits, which is `NTPHost`'s
 253 characters (RFC 1035, `asy_ntp_client.py`'s `_VAL_NTP_HOST`), giving a ~255 B piece on
 `/networking`, inside the cap — `/status`'s networking section carries live link state, not the
-configured host. **Measured on silicon (2026-09-25, limit of 6)** at the 1,024-character bound this
-one superseded, a fourfold longer value still fitted: `/networking` came back complete (1,182 B)
-and `/status` unchanged (6,871 B), and both the full-ceiling burst and the peak heap test passed,
-the worst of 72 peak samples leaving a 36,864 B largest free run. At 7 it would not have fit that
-run's 528 B.
+configured host. **On silicon (2026-09-25, limit of 6)** a 1,024-character value, four times
+longer, still fits: `/networking` came back complete (1,182 B)
+and `/status` unchanged (6,871 B), the full-ceiling burst and the peak heap test pass, and the
+worst of 72 peak samples leaves a 36,864 B largest free run; at 7 it would not fit that run's 528 B.
 
 **Static files.** The static page is the one
 response the writer does not build: microdot's `send_file` streams the file, reading
 `Response.send_file_buffer_size` bytes per write — **1,024** by default, so each read is one fresh
-1,025 B allocation, four times the JSON cap. On silicon that failed from N = 6, and worse, *after*
-the `200` and its headers were out: the response is HTTP/1.0 with no `Content-Length`, so the
-client saw a cut-off gzip page as a complete one. `_StaticRoutes.serve()` now opens the file
-itself, passes it to `send_file(stream=...)`, sets that attribute on the one response to the same
+1,025 B allocation, four times the JSON cap, which on silicon fails from N = 6 *after* the `200`
+and its headers are out; an HTTP/1.0 response with no `Content-Length` then reads to the client as
+a complete, cut-off gzip page. So `_StaticRoutes.serve()` opens the file itself, passes it to
+`send_file(stream=...)`, sets that attribute on the one response to the same
 `chunk_bytes` (**256**) and adds `Content-Length` from the stream's own size; Microdot closes the
 stream after the body, a `HEAD` or cut-short response's at the next collection (its finaliser, read-only
 files). The attribute
 is microdot's own, public, per-instance knob — nothing in `ext/microdot.py` changes — and the page
-now needs 320 B on the 32-bit twin with `dev`'s own site (1,536 B before). **A write-phase failure is never a success**:
+needs 320 B on the 32-bit twin with `dev`'s own site (1,536 B at the default). **A write-phase
+failure is never a success**:
 a response whose body can still fail after its status line goes out must carry its length, so the
 failure reaches the client as a short read. The same holds inside the header block:
 microdot writes the status line and each header apart, and a client that reads EOF mid-headers
 (Python's `http.client` among them) takes it as their end — a `200` with no `Content-Length` and no
-body, read as complete: the empty `200` silicon showed twice (`HEAP_FRAGMENTATION_MEASUREMENTS.md`
-archive §7R.5). `_TimeoutStreamProxy.awrite()` holds the block until its blank line and sends it as one
+body, read as complete (seen twice on silicon, `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive
+§7R.5). `_TimeoutStreamProxy.awrite()` holds the block until its blank line and sends it as one
 write, so a cut response ends before its status line or after its `Content-Length`.
 
-The sources were never the problem; the assembly was. **256, not smaller**: at 128 the list holding
+**256, not smaller**: at 128 the list holding
 a response's pieces grows to 64 slots, a 256 B array, and the measured ceiling does not move (archive §7Q),
 while the write count doubles.
 
@@ -9903,16 +9903,12 @@ margins are:
 | `tests/test_uart_comm_hazard.py` and `tests/test_uart_comm_cancel_sweep.py`, CRC16 | 240 ms (`_TIMEOUT_MS` × 8, `tests/_uart_comm_hazard_common.py`) | 2·1 + 1 + 21 = 24 ms | 10× |
 | same files, no CRC | 30 ms (`_TIMEOUT_MS`) | 24 ms | **1.25×** |
 
-The no-CRC arm is the outlier, and it is the one that failed: measured max scheduling gap 3 ms idle,
-23–26 ms at 8× CPU oversubscription, and past 30 ms in a loaded full-file run — reproduced twice in
-a row locally under load after CI run `35468454090` saw it once, always as `only 149/150 hammered
-transactions completed`, one transaction short at the very end. **Not a listener-budget shortfall**,
-which was the first hypothesis: instrumented, 150 transactions consume exactly 150 of the 450
-available listen rounds.
-
-The fix is confined to the two tests that assert a *clean* run completes in full (`_hammer_clean`,
-`_measure_retention`), which build their pair at `_TIMEOUT_MS * 8`
-— the same 10× margin the CRC arm already had. A
+The no-CRC arm's 1.25× is too thin for a check that a clean run completes in full: the host's
+scheduling gap is 3 ms idle, 23–26 ms at 8× CPU oversubscription and past 30 ms in a loaded
+full-file run, which ends a hammer one transaction short (`only 149/150 hammered transactions
+completed`); the listener budget is not the cause (150 transactions consume exactly 150 of the 450
+listen rounds). So the two tests that assert a *clean* run completes in full (`_hammer_clean`,
+`_measure_retention`) build their pair at `_TIMEOUT_MS * 8`, the CRC arm's 10× margin. A
 clean run never consumes the timeout, so this costs no wall clock; the short budget stays where it
 earns its keep, in the fault-injecting tests whose recovery cycles it actually makes cheap. Neither
 test would now catch a *latency* regression below 240 ms — they assert completion and heap
@@ -9922,9 +9918,9 @@ the latency check instead: a clean `uart_set(1, b"x")` with its listener must fi
 `_write_frame_with_ack()`'s frame write left the clean hammers green in both CRC modes and turned
 this check red (agent, 2026-10-21).
 
-A wall-clock budget still failed both checks, and the faulted hammer's retention per failure, when
-one host stall inside the measured window outlasted it: reproduced with a planted 300 ms stall, and
-on the coverage build under a slow CI runner. All three therefore run on a poll-round clock: the
+A wall-clock budget fails both checks, and the faulted hammer's retention per failure, whenever one
+host stall inside the measured window outlasts it (a planted 300 ms stall reproduces it), so all
+three run on a poll-round clock: the
 protocol modules' `ticks_ms()` advances only through their own sleeps, plus 1 ms per read, so a host
 stall spends no budget. One planted-stall guard per check and CRC arm pins this (agent, 2026-10-07).
 The faulted hammer's guard stalls each of its three windows; reading the least window after a
@@ -11013,8 +11009,7 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   field name dropped, tag name typo'd, no cross-family contamination, and the edit-distance boundary
   just outside each family's tolerance, which must stay silent); real drivers (every tagged `src/`
   file parsing to exactly the expected tags). The reason: a change breaks an unchecked scope
-  silently (a driver signature change once broke two `tests_hardware/device_scripts/` call sites
-  for a day), and a malformed comment tag silently parsing to "no tag declared" is the same class of
+  silently, and a malformed comment tag silently parsing to "no tag declared" is the same class of
   risk one layer down.
 - **Never produce a corrupted or partial build.** On any detected error, abort the entire build
   immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
