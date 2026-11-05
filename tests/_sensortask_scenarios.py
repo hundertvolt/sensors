@@ -2680,7 +2680,7 @@ def _scenario_serving_demand(device: str) -> None:
             filled.clear()
             res = _dispatch(module, "GET", route)
             assert res.status_code == 200 and len(filled) == 1, (route, res.status_code, len(filled))
-            pieces = filled[0]
+            pieces = list(filled[0])  # the writer's piece objects, listed before the send drains its list
             body: Iterable[bytes] = res.body  # type: ignore[assignment]  # the stub types Response.body as bytes (microdot.pyi:162), yet a streamed route's is an iterator over its pieces - removal trigger: SPECIFICATION.md B.15
             sent = list(body)
             assert len(sent) == len(pieces) and all(sent[i] is pieces[i] for i in range(len(pieces))), route
