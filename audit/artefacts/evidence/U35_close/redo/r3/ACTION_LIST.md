@@ -134,3 +134,30 @@ be done anyway and which is independent and does not cause interference can alre
     (the passed ones are never spent again). Day 1 is `run 1 2`, build the GC control image, `run 4a 5g` (step 2's env
     deletes the rp2 build directory). Pushed 5d089968 ([skip ci]). The `cleared:` push only with no bench run active.
     Owner's second Claude session (database work): MongoDB's default 27017 lies in the twin test band 27000-27999.
+24. Bench precheck (PRECHECK_20261105.md, 274baab3) answered. Runner fixes: .uvpin first and the pyproject uv
+    required (1); a failed wear step ends the range (2); the pass grep reads to the end, no SIGPIPE pass (3). Ring
+    (4): devices/dev.toml uart1 rx_ring 512 -> 8192 on int (33974760), snapshot 37 ecca7f3b pushed (CI pending; next
+    PARENT ecca7f3b); KNOWN emptied. Bench branch a52b54db (answers 4506909d + snapshot 37 merged). HANDOVER "Tree
+    ready: no" until snapshot 37's CI is green; steps 1, 2, 4a may run before. Scratch removed from r3/ before the
+    snapshot: r1b_pyc/, r1b_head.sh, r1b_tail.sh (the runner agent's). R4's r4a_*.py, la2/, lb/ are edit scripts:
+    not published (r4/ is outside snapshot.sh's list); delete before R4's snapshot.
+25. Snapshot 37's CI green: run 41987205017, 07:26-07:56 (34 jobs; a duplicate run 41987193805 cancelled by the
+    concurrency group). Next PARENT ecca7f3b. Bench started 07:52: step 1 rc=1 (fram_raw_dump.py's project imports
+    on October's bare image). Fix committed locally 7b127a0f (mount src for the dump; flash() refuses until step 1's
+    dump; "Tree ready: yes"); NOT pushed while a bench run is live (its hand-back push would be refused). Push when
+    the owner says the run has ended; then `run 1`, the GC control image, `run 4a 5g`.
+26. Owner relayed the bench session (08:4x): step 1 worked around by hand for this run, runner unchanged; waits for
+    "Tree ready". Step 2 rc=0 (14 min); 4a running since about 08:13. Pushed 511104a8 (rebased onto the bench's
+    d681fd55, ff, during 4a at the bench's request): Tree ready: yes, step 1 mounts src, flash() waits for DONE in
+    logs/1.log. The bench must pull (ff-only) before 4a ends, or its next hand-back push is refused.
+27. Bench hand-backs 09:18-09:27 read (scratch copy u35r/r3/hb_0927.md): step 1 rc=0 (by hand, src mounted), 4a rc=1
+    (FINDINGS 12.1, 12.2, 12.4), 3g rc=0 (control image flashed, FC 1), 4g/5g stopped at the standard-state check
+    (12.3). Relay to the bench via the owner: repair and rerun 4g 5g (PYTEST_ADDOPTS, no runner change), the gdb
+    backtrace commands, tests_scripts durations later, logs outside the checkout. No push.
+28. Owner relay 09:56: the bench's three blockers. Lead: int f15ae3e7 (twin UART object.__new__), 1247d18d (SCD30
+    snapshot by firmware name; bench facts gain `name`); checks r1fix_checks (lint, three mypy, five UART twin files at
+    both stages, bench-facts test, tests_hardware collect): all green on x86. Bench branch 5db7ce94 (cherry-picks
+    bbaaaed9, ec11142b; 4a's TESTS_SCRIPTS_TIMEOUT_S=2400; HANDOVER section), pushed fast-forward at the bench's request.
+29. Owner relay 10:33: HANDOVER's "rebuild ..., run 3g 5g" contradicted the relay (lead's slip); corrected, plus a
+    short-window line (run 3 4b first, 5 next day, 4a when the board is idle). Bench branch fd00dd1d, pushed during
+    4g at the bench's request: it pulls at once (git pull --no-rebase), else its next hand-back push is refused.

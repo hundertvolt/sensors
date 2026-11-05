@@ -304,3 +304,28 @@ found the crossover's interrupts-off ring test failing up front on dev: the resp
 lands before round 1 builds any image, so the round's final firmware carries it (owner, 2026-11-05: wear tests on code
 "as final as possible"). R4's lanes are not in this snapshot; `redo/r3/ACTION_LIST.md` items 20-23 hold round 1's
 preparation.
+
+## Thirty-eighth snapshot (2026-11-05): R4, the docs written once from the final state; round 1's blockers
+
+R4 rewrote the docs from the final tree, by the row table in `redo/r4/ROWS.md`: facts, rules and agreements, no
+history; SPECIFICATION.md gains Part 0 (design principles) and K.0 (the owner-discussion stage), and Part K is the one
+checklist; CLAUDE.md keeps one role, every rule kept or pointed to (`redo/r4/LEDGER_B.md`, none vanished); README is
+task-first with a CLI reference per tool, checked by `tests_scripts/test_tool_help.py` on option names (the synopsis
+line left out, so a deleted option row fails); tests_hardware/README.md gains "How a round runs". The falsification
+round (`redo/r4/FALSIFY.md`) refuted seven claims; each is fixed or listed for the owner. Over 31 files: 2,383 lines in,
+2,821 out (the estimate was 711 out net; README grew by its CLI reference). Outside the docs only comments changed:
+`src/asy_uart_driver.py` (bytecode unchanged), `js/templates.js`, `html/style.css` and the two device TOMLs.
+
+Round 1's blockers (bench session, 2026-11-05; `redo/findings/FINDINGS.md` 12.1-12.5): the twin's UART instance is
+made with `object.__new__` (on arm64 the Unix port segfaulted through `super().__new__` over the native `io.IOBase`);
+the bench's start snapshot reads `GET /sensors` by the firmware name, which the bench facts now carry. The Pi's
+tests_scripts timeout is the bench runner's own setting, on the bench branch only.
+
+The gate on `932510fc` (53 min): rebuild, lint and the three mypy passes clean; the MicroPython tier 5,832 passed
+and 0 failed at both GC stages, with no allocation marker; the twin tier's suite and harness green at both stages;
+the web tier green. tests_scripts held one red at both stages: the variant-literal test's pending list still named
+the citation allow-list, whose pruning had left no device name in it. `193f851a` removes the entry (that test,
+citations and vocabulary: 40 passed; lint clean).
+
+The new-module procedure's proof has its two stripped trees and briefs; the trees are source copies and stay out of
+the evidence. R5's closure inventory is `redo/r5/INVENTORY.md`.

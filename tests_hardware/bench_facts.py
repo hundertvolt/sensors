@@ -86,14 +86,14 @@ def _float_fields(model: DeviceModel) -> FactDict:
 
 
 def _instance_facts(model: DeviceModel) -> "tuple[FactDict, FactDict]":
-    # Per instance label: driver, bus, address and pins; and the label -> I2C address table, both through the twin
+    # Per instance label: driver, firmware name (the REST key), bus, address and pins; and the label -> I2C address table, both through the twin
     # wiring plan's own address reader (buildgen.twin_wiring), never a second table.
     plan = compute_twin_wiring(model)
     attached = {(a["driver"], a["name_ext"]): a["address"] for attachments in plan["buses"].values() for a in attachments}
     instances: FactDict = {}
     addresses: FactDict = {}
     for spec in model.instances.values():
-        facts: FactDict = {"driver": spec.driver, "name_ext": spec.name_ext}
+        facts: FactDict = {"driver": spec.driver, "name": str(spec.resolved_name), "name_ext": spec.name_ext}
         for key in ("bus", *_INSTANCE_PINS):
             if key in spec.fields:
                 facts[key] = _fact(spec.fields[key], f"{spec.label}.{key}")

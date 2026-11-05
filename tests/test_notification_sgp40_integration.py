@@ -120,7 +120,7 @@ def _make_sgp_reader() -> "tuple[SGP40_Reader, _MachineI2C]":
 
 
 def _make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationService]":
-    # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), the registration shape the generated
+    # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.3), the registration shape the generated
     # build_system() emits.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 

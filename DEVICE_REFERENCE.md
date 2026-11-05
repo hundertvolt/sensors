@@ -4,6 +4,26 @@ End-user notes for configuring/operating a deployed unit — not an AI-session o
 (see README.md/CLAUDE.md/SPECIFICATION.md for those). Add to this file, don't duplicate it
 elsewhere, when a new user-facing behavior needs explaining.
 
+## Commissioning and operating: what needs a person
+
+Once configured, a unit runs "without any user interaction" (owner, 2026-09-26). These need a person:
+
+- **Wi-Fi setup**, at the first boot or after the network changed: with no SSID stored the unit opens
+  its hotspot at once, otherwise after a failed connection streak. Join the network named like the
+  unit's hostname (password: **Hotspot Password**); any web address then leads to the unit's site,
+  whose Networking page stores SSID, password, country and hostname with **Apply & Reconnect**. A
+  silent unit ("Neopixel LED" below) gets its hotspot back by being unplugged and replugged.
+- **Ambient Pressure**, once after commissioning: the SCD30 starts measuring only on that first
+  setting (owner, 2026-09-26).
+- **Forced Calibration Reference**, when CO₂ readings have drifted (enter it once **FRC Readiness**
+  reads ready), and **Automatic Self-Calibration**, only where the unit sees fresh air daily: each
+  field's description on the page states its conditions. ISL29125 calibration: its section below.
+- **After an unexpected restart**: read the Status page's **Last Reset Reason**, and save `GET
+  /status` before clearing anything ("Clearing the error logs" below).
+- **I2C sensors still unreadable after reboots**: power-cycle the unit; a chip holding SCL, or one
+  the bus clear does not free, needs it (SPECIFICATION.md F.2).
+- **Moving a unit from the legacy firmware, or back**: README.md's reflash runbook.
+
 ## Neopixel LED
 
 One physical LED serves two independent purposes, arbitrated by `asy_neopixel_driver.py`:
@@ -61,6 +81,15 @@ the next successful sync (owner, 2026-09-29). `DNSFallback` (Networking) lists u
 servers, comma-separated, tried in order after the one the network hands out (default
 `8.8.8.8,1.1.1.1`); empty means none. The Networking page's **Clear** button empties it, after
 asking "Clear Fallback DNS Servers?".
+
+## Local time
+
+The unit keeps UTC from NTP. **NTP Offset** (Networking, default 0 s) is added to that time itself,
+so the clock and every timestamp the unit stores or reports move with it. Local time (`/system`'s
+`LocalTime` and the notification window) adds **GMT Offset** all year and **DST Offset** on top from
+01:00 UTC on the last Sunday of March to 01:00 UTC on the last Sunday of October (System page, both
+default 3600 s): the EU rule, as the legacy firmware applied it. No other region's switch dates are
+built in; elsewhere set DST Offset to 0 and change GMT Offset at your local switch (agent, 2026-09-30).
 
 ## SGP40 VOC baseline FRAM backup
 

@@ -480,9 +480,9 @@ button.field-value.code-value {
     font-style: italic;
 }
 
-/* One horizontal wrapping row of pills per module, not a vertical list: a module can carry 10+
-   entries, each just a small number, so stacking them wastes height and reads worse than a strip
-   of "one module's recent history at a glance". */
+/* One horizontal wrapping row of pills per module, not a vertical list: a module carries up to 10
+   entries (asy_print_log.py's DEFAULT_LOG), each a small number, so a strip reads as "one module's
+   recent history at a glance" where a stack wastes height. */
 .history-list {
     display: flex;
     flex-wrap: wrap;

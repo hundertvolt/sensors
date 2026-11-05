@@ -661,3 +661,29 @@ their context). From now on every owner word is appended here as it is given.
   session, time not taken): "Push your current findings into a handover so the main session can check"; "Nothing
   from the old campaign remains. It's all new now". Recorded as: a task for this session (check and answer the
   precheck); the relayed words read as no reliance on October's results for round 1. No ruling on the ring.
+
+## 2026-11-05 09:07 UTC (status question)
+"How is your progress going?"
+A question; answered with a status report.
+
+## 2026-11-05 09:09 UTC (budget, parallelism)
+"51% for now and the bench is running on shell scripts. Remember our agreements on parallelism, you may start work which is to be done anyway whenever it fits"
+Budget reading 51 %. Start pending work in parallel within PLAN 4.3 (at most two writing units).
+
+## 2026-11-05 09:56 UTC (round 1 blocked; relayed from the bench session)
+"Bench ran into issues: Round 1 is blocked. 3g flashed OK; 4g and 5g stop at session setup with no tests run.
+tests_hardware/conftest.py:379 _scd30_snapshot() uses the TOML label (scd30) to look up GET /sensors, whose key is the firmware name (SCD30). bench_facts instance facts carry no firmware name, so it needs adding (spec.resolved_name). Every step with --dut-ip fails here.
+Twin segfault cause: digital_twin/machine.py:1082, super().__new__(cls) in UART(io.IOBase). py/objtype.c:203 reads subobj[0] on the class object, which is the make_new function pointer, and treats it as an object. It reproduces in 8 lines; object.__new__(cls) fixes the reproducer. Why x86-64 CI survives is probably function alignment, not verified. The fix is being checked on the 18 crashing files.
+tests_scripts/ hits its 1,200 s limit at about 94 % on this Pi on all 3 attempts. Attempts 2 and 3 show the same 18 F marks at the same positions, no names because pytest was killed. TESTS_SCRIPTS_TIMEOUT_S would let it finish.
+Please push fixes to the bench branch. I'll pull, rebuild the GC image from the new head and rerun 3g 5g."
+Topic: round 1 blockers; fixes to the bench branch requested (the bench asks: push allowed, it pulls at once).
+
+## 2026-11-05 10:33 UTC (relayed from the bench session: HANDOVER conflict, timing)
+"Two things for the main session:
+Conflicting instructions: the new HANDOVER.md section still says "rebuild the GC control image from this head, run 3g 5g". Its message to you says not to. I followed the message, since it's newer and no firmware input changed. The file should be corrected so a later reader doesn't spend a flash cycle.
+Timing: run 3 5 is about 5 h 35 by the runner's estimates. After 4g, 5g and 4a it won't fit before 20:52 UTC unless those steps run well under their estimates, as earlier steps have. I'll decide when 4a ends, and I won't start a step that can't finish inside the window without asking you."
+Topic: the lead's HANDOVER line contradicts its relay (correct the file); the day's window.
+
+## 2026-11-05 10:41 UTC
+"Still on track and optimal parallel work on the non-bench topics?"
+Topic: status check; whether the non-bench work uses the parallel slots well.

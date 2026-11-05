@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 
 class _FakeSource:
-    # A controllable NotificationSignal producer (Part C.14.2): get_data() returns self, exposing exactly
+    # A controllable NotificationSignal producer (Part C.14.3): get_data() returns self, exposing exactly
     # one attribute - whatever field name the caller configures - at a fixed value, matching every removed
     # inline closure's own fixed-return shape.
     def __init__(self, field: str, value: int) -> None:

@@ -375,10 +375,11 @@ def _scd30_snapshot(board: "Board", dut_ip: "str | None") -> "dict[str, object]"
     if dut_ip is not None:
         body = _get_json(dut_ip, "/sensors")
         snapshot: dict[str, object] = {}
-        for label in sorted(_bench_instances("scd30")):
-            values = body.get(label)
+        for label, spec in sorted(_bench_instances("scd30").items()):
+            name = str(spec["name"])  # GET /sensors is keyed by the firmware name ("SCD30"), not the TOML label
+            values = body.get(name)
             if not isinstance(values, dict):
-                raise HardwareTestFailureError(f"GET /sensors carries no {label} object: {values!r}")
+                raise HardwareTestFailureError(f"GET /sensors carries no {name} object: {values!r}")
             snapshot.update({f"{label}.{key}": values.get(key) for key in _SCD30_SNAPSHOT})
         return snapshot
     facts = scd30_prerequisite.interval_facts(board)

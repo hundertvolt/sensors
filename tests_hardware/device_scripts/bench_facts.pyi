@@ -26,6 +26,7 @@ class BusFacts(TypedDict, total=False):
 
 class InstanceFacts(TypedDict, total=False):
     driver: str
+    name: str
     name_ext: str
     bus: str
     address: int

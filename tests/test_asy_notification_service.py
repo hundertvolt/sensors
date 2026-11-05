@@ -50,7 +50,7 @@ def _driven() -> DrivenTime:
 
 
 class _FakeValue:
-    # A controllable NotificationSignal producer (Part C.14.2): get_data() returns self, exposing exactly
+    # A controllable NotificationSignal producer (Part C.14.3): get_data() returns self, exposing exactly
     # one attribute - whatever field the caller configures - at a fixed value, or raising once armed.
     # Mirrors a real *_Reader.get_data()'s "always available, field can be None" contract.
     def __init__(self, value: "int | float | None" = None, field: str = "Value") -> None:
