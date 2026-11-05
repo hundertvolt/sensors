@@ -195,5 +195,9 @@ step 1's dump finished, since a boot of the product writes FRAM. Rerun `run 1` b
   check, `tc-int` v1.29.0): the five UART twin files pass at both GC stages, no allocation-failure marker.
 - **tests_scripts/ on the Pi:** step 4a runs with `TESTS_SCRIPTS_TIMEOUT_S=2400` (the hang backstop stays; the Pi
   reached 94 % at 1,200 s with 18 crashing twins in it).
-- Then: rebuild the GC control image from this head, `run 3g 5g`; afterwards `run 4a` once, to show the twin tier
-  green on the Pi.
+- Then: no rebuild and no reflash (these fixes change no firmware input, so 3g again would spend a flash cycle on an
+  identical image): with the control image still on the board, `run 4g 5g`; afterwards `run 4a` once, to show the
+  twin tier green on the Pi.
+- **A short window:** the board's time comes first. `run 3 4b` alone (the final image, then its flash tier) and
+  `run 5` on the next day: the board keeps the final image overnight, so day 2 starts with no flash. 4a needs no
+  board and can run while the board is idle or on the next day.
