@@ -1079,7 +1079,7 @@ class UART(io.IOBase):
             return existing
         if id not in (0, 1):
             raise ValueError(f"UART({id}) doesn't exist")
-        uart: UART = super().__new__(cls)
+        uart: UART = object.__new__(cls)  # super() through the native io.IOBase segfaults the Unix port (py/objtype.c:203)
         # machine_uart_obj[], machine_uart.c:130-137: baudrate 0 until a first init, 8N1, the bus's default pins.
         uart.id = id
         uart.baudrate, uart.bits, uart.parity, uart.stop = 0, 8, None, 1
