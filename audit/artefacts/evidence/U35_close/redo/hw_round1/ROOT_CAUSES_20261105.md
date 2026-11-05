@@ -177,3 +177,29 @@ Run by hand after `scripts/test.sh`, each stage even if an earlier one fails, wi
 **Step 3 reads rc=1 in the hand-back, but the image is good.** It flashed and verified at 16:29:41, then `/system` and `/status` got no answer within 180 s each. AP log: the stale entry dropped at 16:31:03 and the board rejoined at 16:38:58, its hotspot time being 8 minutes. `/system` read by hand afterwards: `board_BuildDate=2026-11-05T16:25:34Z`, matching the record. I did not reflash.
 
 `round1.sh`'s `flash()` has no kick, unlike the harness's new `kick_after_reset()`. 3g got through at 09:24 with the same `flash()`, so this depends on the AP's entry at that moment. `get system 180` is shorter than the worst case of about 9.5 minutes. **For the main session:** `flash()` is used again by 15's fallback, and 180 s will fail again in that case. The runner is yours, so I have not changed it.
+
+## 13. Step 4b on the final image (`logs/4b.log`, archive `build/archive/run_flash_hardware_suite/20261105T165007Z`)
+
+**Run at 16:50, 1,410 s: 72 passed, 14 failed, 4 skipped, 17 deselected.** All 14 also failed on the control image, and none is new. The cascade is gone: 4g's first run had 39 failures. `test_no_frame_is_lost…` (both modes), `test_get_and_set…` (all three) and `test_comm_hazards…` (both) pass. No `MemoryError` line appears in the log.
+
+| Test | Measured | Reading | Status |
+|---|---|---|---|
+| `test_a_held_sda_line…` | `stuck_errno` None | `_stuck_errno` uses `writeto(address, b"")`. On rp2 a zero-length write goes through soft I2C (`ports/rp2/machine_i2c.c:127-142`), whose start doesn't check SDA, so a held-low line can read as an ACK. A test assumption. Proposed: a 1-byte transfer, which takes the hardware path | Path read in the pinned source; not tried on the board |
+| `test_bmp3xx_alone…` | `pwr_ctrl` 0 to 3 | `before` is read before the reader's first forced read. The same run's conformance shows `B05_pwr_ctrl_after_conversion` 03 on the chip, so the enable bits stay after any conversion; the general call need not be involved. Proposed: take `before` after one read | Inferred |
+| `test_fram_erase_blanks…`, `test_an_erase…[mempause]` | erase `ok` in 16,529 and 16,370 ms; `reset` code 8 reached; then `no_reset_after_ms=16000` | `_RESET_WAIT_MS` (2 x watchdog, 16 s) runs from the command's answer, so it ends about when the erase does, before the reset's one-shot fires. The script then ends the run itself. Script timing, not firmware. Proposed: start the wait at the `reset` fact | Inferred from the facts' order and figures |
+| `test_fram_erase_racing…` | `erase` None | Likely the same wait: with loads the erase ends later than 16 s. `[loads]` in `test_system_commands.py` passed in the same run, so it's a close race | Inferred; I read only the assertion |
+| `test_scd30_matches…` | `C03_read_before_a_command` chip `dddddd`, twin `000000` | Twin differs from the chip | Measured at both GC settings; datasheets not checked |
+| `test_sgp40_matches…` | `A02_serial_stable` chip `yes`, twin `no` | Same | Same |
+| `test_bmp3xx_matches…` | `B03` 13/00, `B05` 03/00, `B07` 10/70, `C02` 0000/0200 (chip/twin) | Same | Same |
+| `test_fram_matches…` | `C02_wel_after_write` chip 1, twin 0 | Same | Same |
+| `test_real_gc_heap_headroom…` | 128,576 B used (bound 100,000); free 59,568 B; largest 44,896 B (min 32,768) | Over by 28,576 B, about equal at -1 and 32768. Bound or graph: yours to judge. The free figure is below Part N's 68,790 B demand and 72,232 B budget, as in item 8 | Measured |
+| `test_routine_no_yield…` | `voc_max_us` 41,345 (bound 21,000); `gc_max_us` 17,680 | VOC stretch about twice the GC term | Measured |
+| `test_c_stack_peak…` | 4,020 B of 7,936 B (half is 3,968 B), chain `fram.get_values_sync` | 52 B over | Measured |
+| `test_the_link_keeps…[crc16]` | 9 transfers (floor 20) | Item 10: CRC16's Python cost against limits measured without CRC | As item 10 |
+| `test_reboot_falls_back…` teardown | `/status` timed out after a passing test | Not read | Open |
+
+**The first 4b attempt at 16:44 ran no test.** All 90 skipped: the `board` fixture's one `is_reachable()` call failed, and being session-scoped, that skips the whole tier (`tests_hardware/conftest.py:207`). The board reset at 16:44:30, then went to its hotspot through the stale entry. It came about a minute after the third load run. Three later probes took 0.4 s each, and the rerun at 16:50 got through. Not explained; 1 sample. The gate correctly read the skips as failures. Proposed: retry the probe once.
+
+**The image record reads dirty.** I edited this file in `audit/` while the image built. No file outside `audit/` differs between `b7533307` and the head, so the firmware is `b7533307`'s.
+
+**Plan unless you change it:** the final 4a now, no board. `PER_FILE_TIMEOUT_S=900`, which `scripts/_run_lower_levels.sh` applies to both GC stages since they share the variable. Device mask off, to check your `--twin` fix under real conditions. A `STOP` at 20:45 UTC keeps it inside the window; the full stage list may not fit (about 4 hours at today's times), so the rest of the twins go to day 2. `run 5` stays on day 2, because its 66 prerequisite flash writes would be spent again if the `/status` result (item 12) leads to a new image.
