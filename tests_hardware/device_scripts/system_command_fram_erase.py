@@ -129,8 +129,11 @@ async def _main() -> None:
             fact("mempause", await webserver._dispatch_system_cmd("mempause"))
         answer = await webserver._dispatch_system_cmd("erasefram")
         fact("answer", answer)
-        if answer == "Valid":
-            for _ in range(_RESET_WAIT_MS // _WAIT_STEP_MS):  # the product owns the feed from here: never fed
+        if answer == "Valid":  # the product owns the feed from here: never fed
+            # The erase runs after the answer and can outlast the wait (16.5 s on silicon): it counts from the arm.
+            while not stop[0]:
+                await asyncio.sleep_ms(_WAIT_STEP_MS)
+            for _ in range(_RESET_WAIT_MS // _WAIT_STEP_MS):
                 await asyncio.sleep_ms(_WAIT_STEP_MS)
             fact("no_reset_after_ms", _RESET_WAIT_MS)
     except Exception as e:  # a pre-reset failure: reported, then the cleanup below
