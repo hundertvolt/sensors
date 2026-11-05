@@ -1,12 +1,12 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-05 17:13 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-05 18:15 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
 | 1 | evidence | rc=0; NOTE step 1 rerun by hand with src/ mounted: the bare image has no frozen drivers, read-only, no flash write |  | 2026-11-05 08:14:31 | 0h00 | 0.45 | 0/0/0/0 |
 | 2 | host_env | rc=0 |  | 2026-11-05 07:56:11 | 0h14 | 4.17 | 0/0/0/0 |
-| 4a | lower_levels | rc=1; FAIL; failed: tests/test_sensortask.py[wozi] | 21 | 2026-11-05 12:50:13 | 0h28 | 1.10 | 0/0/0/0 |
+| 4a | lower_levels | rc=1; PASS; FAIL; failed: scenarios[dev] | 2 | 2026-11-05 17:17:14 | 0h58 | 1.05 | 0/0/0/0 |
 | 3g | gc_control_image | rc=0 | 2 | 2026-11-05 09:23:57 | 0h00 | 0.97 | 1/0/0/0 |
 | 4g | flash_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16], flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16], flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none], flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none], flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16] and 1 more |  | 2026-11-05 10:51:56 | 0h08 | 1.08 | 0/0/1/136 |
 | 5g | bench_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping, bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load, bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load and 92 more | 21 | 2026-11-05 11:03:40 | 0h33 | 0.61 | 0/0/0/66 |
@@ -3099,21 +3099,24 @@ SUM status not read: no JSON answer
 
 <!-- step 4a -->
 ```
+[scenarios[dev]] PASSED: watchdog_fault_main_exit - 12.6s
 [scenarios[dev]] == watchdog_fault_supervisor_raise: A raise escaping the supervisor's dead-task report stops every feed, and the starved watchdog engages.
-................................[scenarios[dev]] == Launching: /home/nico/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /home/nico/programming/sensors-bench/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20224 --fram-state-path /tmp/tmp.HicEt7VMYl/scenarios_dev/watchdog_fault_supervisor_raise/state_01/fram_state.json --scd30-state-path /tmp/tmp.HicEt7VMYl/scenarios_dev/watchdog_fault_supervisor_raise/state_01/scd30_state.json --mem-backup-state-path /tmp/tmp.HicEt7VMYl/scenarios_dev/watchdog_fault_supervisor_raise/state_01/mem_backup_state.json --config-dir /tmp/tmp.HicEt7VMYl/scenarios_dev/watchdog_fault_supervisor_raise/state_01/config/ --gc-threshold -1 --debug-level 2 --test-kbd-traceback --test-uart-driven-clock --test-watchdog-fault supervisor-raise (log: /tmp/tmp.HicEt7VMYl/scenarios_dev/watchdog_fault_supervisor_raise/twin_01.log)
-[scenarios[dev]] PASSED: watchdog_fault_supervisor_raise - 12.3s
+.................... [ 65%]
+..................................[scenarios[dev]] == Launching: /home/nico/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /home/nico/programming/sensors-bench/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20224 --fram-state-path /tmp/tmp.oKk3kSuo8Z/scenarios_dev/watchdog_fault_supervisor_raise/state_01/fram_state.json --scd30-state-path /tmp/tmp.oKk3kSuo8Z/scenarios_dev/watchdog_fault_supervisor_raise/state_01/scd30_state.json --mem-backup-state-path /tmp/tmp.oKk3kSuo8Z/scenarios_dev/watchdog_fault_supervisor_raise/state_01/mem_backup_state.json --config-dir /tmp/tmp.oKk3kSuo8Z/scenarios_dev/watchdog_fault_supervisor_raise/state_01/config/ --gc-threshold 32768 --debug-level 2 --test-kbd-traceback --test-uart-driven-clock --test-watchdog-fault supervisor-raise (log: /tmp/tmp.oKk3kSuo8Z/scenarios_dev/watchdog_fault_supervisor_raise/twin_01.log)
+[scenarios[dev]] PASSED: watchdog_fault_supervisor_raise - 12.6s
 [scenarios[dev]] == zero_think_time_readers_saturate_then_recover: Four zero-think-time /status readers beside an unchanged write degrade the service, never break it, and it answers within its cap after.
-............................. [ 65%]
-........................................................................ [ 66%]
-..[scenarios[dev]] == Launching: /home/nico/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /home/nico/programming/sensors-bench/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20225 --fram-state-path /tmp/tmp.HicEt7VMYl/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/fram_state.json --scd30-state-path /tmp/tmp.HicEt7VMYl/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/scd30_state.json --mem-backup-state-path /tmp/tmp.HicEt7VMYl/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/mem_backup_state.json --config-dir /tmp/tmp.HicEt7VMYl/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/config/ --gc-threshold -1 --debug-level 2 --test-kbd-traceback --test-uart-driven-clock (log: /tmp/tmp.HicEt7VMYl/scenarios_dev/zero_think_time_readers_saturate_then_recover/twin_01.log)
-[scenarios[dev]]    dev: each reader's (answered, refused) [(20, 0), (19, 1), (19, 1), (17, 3)]; the writer's answers {'Unchanged': 43, 'refused': 1}
-[scenarios[dev]] PASSED: zero_think_time_readers_saturate_then_recover - 35.6s
+...................................... [ 66%]
+........................................................................ [ 67%]
+................................[scenarios[dev]] == Launching: /home/nico/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /home/nico/programming/sensors-bench/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20225 --fram-state-path /tmp/tmp.oKk3kSuo8Z/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/fram_state.json --scd30-state-path /tmp/tmp.oKk3kSuo8Z/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/scd30_state.json --mem-backup-state-path /tmp/tmp.oKk3kSuo8Z/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/mem_backup_state.json --config-dir /tmp/tmp.oKk3kSuo8Z/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/config/ --gc-threshold 32768 --debug-level 2 --test-kbd-traceback --test-uart-driven-clock (log: /tmp/tmp.oKk3kSuo8Z/scenarios_dev/zero_think_time_readers_saturate_then_recover/twin_01.log)
+[scenarios[dev]]    dev: each reader's (answered, refused) [(20, 0), (19, 1), (19, 1), (17, 3)]; the writer's answers {'Unchanged': 48}
+[scenarios[dev]] PASSED: zero_think_time_readers_saturate_then_recover - 39.7s
 [scenarios[dev]] == Summary: scripts/_digital_twin_scenarios.py ==
-[scenarios[dev]] Commit: 1d2f900a
+[scenarios[dev]] Commit: dad8d551
 [scenarios[dev]] Levels: L2 (dev)
-[scenarios[dev]] GC stage: -1
-[scenarios[dev]] Counts (scenarios): passed 65 · failed 0 · skipped 1 · deselected 1 · retried 0 · recovered 0 · vacuous 0
-[scenarios[dev]] Failed: none
+[scenarios[dev]] GC stage: 32768
+[scenarios[dev]] Counts (scenarios): passed 64 · failed 1 · skipped 1 · deselected 1 · retried 0 · recovered 0 · vacuous 0
+[scenarios[dev]] Failed:
+[scenarios[dev]]   - failed_config_snapshot_is_sent_as_unavailable: AssertionError: SCD30: 1 GET(s) sent the marker and the verify took 0 of 2 faults (38.6s)
 [scenarios[dev]] Skipped:
 [scenarios[dev]]   - a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog: a device-independent mechanism, run on arzi only (SPECIFICATION.md E.2.1)
 [scenarios[dev]] Deselected:
@@ -3122,10 +3125,9 @@ SUM status not read: no JSON answer
 [scenarios[dev]] Recovery passes: none
 [scenarios[dev]] Notes: none
 [scenarios[dev]] Checked nothing: none
-[scenarios[dev]] Result: PASS
-[scenarios[dev]] Exit code: 0
-...................................................................... [ 67%]
-........................................................................ [ 68%]
+[scenarios[dev]] Result: FAIL
+[scenarios[dev]] Exit code: 1
+........................................ [ 68%]
 ........................................................................ [ 69%]
 ........................................................................ [ 70%]
 ........................................................................ [ 72%]
@@ -3145,26 +3147,25 @@ SUM status not read: no JSON answer
 ........................................................................ [ 86%]
 ........................................................................ [ 87%]
 ........................................................................ [ 88%]
+........................................................................ [ 89%]
 ........................................................................ [ 90%]
 ........................................................................ [ 91%]
 ........................................................................ [ 92%]
 ........................................................................ [ 93%]
-........................................................................ [ 94%]
 ........................................................................ [ 95%]
 ........................................................................ [ 96%]
 ........................................................................ [ 97%]
 ........................................................................ [ 98%]
 ........................................................................ [ 99%]
-..............................                                           [100%]
+........................................................                 [100%]
 =============================== warnings summary ===============================
 tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
   /home/nico/programming/sensors-bench/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
     datasheets=_datasheets_checked(),
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-6792 passed, 6 skipped, 1 warning in 1664.39s (0:27:44)
+6890 passed, 6 skipped, 1 warning in 1792.59s (0:29:52)
 == Checkout-write guard: 0 new path(s) outside the tiers' own outputs
-root-cause item: test_sensortask[dev] needed attempt 2/3 - record it as a root-cause item
 tests_scripts/ skipped:
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[arzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[dev]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
@@ -3172,16 +3173,16 @@ tests_scripts/ skipped:
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[klkizi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[schlafzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[wozi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
-== Evidence archived in /home/nico/programming/sensors-bench/build/archive/test_sh/20261105T131850Z
+== Evidence archived in /home/nico/programming/sensors-bench/build/archive/test_sh/20261105T181530Z
 == Summary: scripts/test.sh ==
-Commit: 1d2f900a
-Levels: L0 PASS · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)
-GC stage: -1 (reactive default)
-Counts (files): passed 135 · failed 1 · skipped 74 · deselected 6 · retried 1 · recovered 0 · vacuous 0
-Counts (tests_scripts tests): passed 6792 · failed 0 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
-Counts (tests): passed 5837 · failed 1 · skipped 74 · deselected 6 · retried 0 · recovered 0 · vacuous 0
+Commit: dad8d551
+Levels: L0 PASS · L1 PASS · L2 FAIL (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)
+GC stage: 32768
+Counts (files): passed 136 · failed 1 · skipped 74 · deselected 6 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 6890 · failed 0 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 5843 · failed 1 · skipped 74 · deselected 6 · retried 0 · recovered 0 · vacuous 0
 Failed:
-  - tests/test_sensortask.py[wozi]: 1 of 101 tests failed (FAIL test_only_the_api_writes_the_scd30: AssertionError: (4, 3, 2))
+  - scenarios[dev]: 1 of 65 scenarios failed (FAIL failed_config_snapshot_is_sent_as_unavailable: AssertionError: SCD30: 1 GET(s) sent the marker and the verify took 0 of 2 faults (38.6s))
 Skipped:
   - scenarios[arzi]::isl29125_config_put_during_get_loops: device wires no isl29125
   - scenarios[arzi]::a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog: a device-independent mechanism, run on dev only (SPECIFICATION.md E.2.1)
@@ -3264,28 +3265,27 @@ Deselected:
   - scenarios[klkizi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
   - scenarios[schlafzi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
   - scenarios[wozi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
-Passed only on retry:
-  - tests/test_sensortask.py[dev] (attempt 2/3)
+Passed only on retry: none
 Recovery passes: none
 Notes: none
 Checked nothing: none
 Result: FAIL
 Exit code: 1
-== scripts/test.sh: exit 1
-== scripts/test.sh failed - stopping before L3, no hardware touched
-== step 4a end rc=1 2026-11-05 13:18:53 1721s load 1.10 1.38 2.50
+== GC_THRESHOLD=32768 scripts/test.sh: exit 1
+== GC_THRESHOLD=32768 scripts/test.sh failed - stopping before L3, no hardware touched
+== step 4a end rc=1 2026-11-05 18:15:36 3502s load 1.05 1.21 2.58
 == read-across: GET /status after step 4a
-SUM status system={"BootSignature": 3577532463, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 14, "MDay": 5, "Minute": 18, "Month": 11, "Second": 54, "Weekday": 3, "Year": 2026, "Yearday": 309}, "MemFree": 23648, "MemPaused": false, "ResetReason": 21, "SysUptime": 1125, "TimeStale": false, "UTCTime": {"Hour": 13, "MDay": 5, "Minute": 18, "Month": 11, "Second": 54, "Weekday": 3, "Year": 2026, "Yearday": 309}, "UnixTime": 1793884734}
-SUM status sensors={"SGP40": {"BackupTS": 1793884686, "RestoreTS": 1793883539}, "UARTLINK": {"Failures": 2, "Transfers": 964}, "UART_init": {"Last": null, "Pending": false, "Runs": 0}}
+SUM status system={"BootSignature": 1467040962, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 19, "MDay": 5, "Minute": 15, "Month": 11, "Second": 36, "Weekday": 3, "Year": 2026, "Yearday": 309}, "MemFree": 50576, "MemPaused": false, "ResetReason": 2, "SysUptime": 775, "TimeStale": false, "UTCTime": {"Hour": 18, "MDay": 5, "Minute": 15, "Month": 11, "Second": 36, "Weekday": 3, "Year": 2026, "Yearday": 309}, "UnixTime": 1793902536}
+SUM status sensors={"SGP40": {"BackupTS": 1793902518, "RestoreTS": 1793901713}, "UARTLINK": {"Failures": 0, "Transfers": 700}, "UART_init": {"Last": null, "Pending": false, "Runs": 0}}
 SUM errcount BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount CFGMGR_BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount CFGMGR_ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount CFGMGR_NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount CFGMGR_NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":1}
+SUM errcount CFGMGR_ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":1}
+SUM errcount CFGMGR_NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":1}
+SUM errcount CFGMGR_NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":1}
 SUM errcount CFGMGR_SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount CFGMGR_SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount CFGMGR_SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount CFGMGR_WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":1}
+SUM errcount CFGMGR_SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":1}
+SUM errcount CFGMGR_WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":1}
 SUM errcount DNSSRV {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount FRAM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
@@ -3293,12 +3293,12 @@ SUM errcount NEOPIXEL {"history":[{"type":"N","num":0},{"type":"N","num":0},{"ty
 SUM errcount NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":33},{"type":"W","num":35},{"type":"W","num":33},{"type":"W","num":35},{"type":"W","num":33},{"type":"W","num":35},{"type":"W","num":33},{"type":"W","num":35}],"counter":27}
-SUM errcount SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":85},{"type":"E","num":81},{"type":"E","num":22},{"type":"E","num":81},{"type":"E","num":22},{"type":"E","num":81},{"type":"E","num":22},{"type":"E","num":81}],"counter":13}
-SUM errcount UART_resp {"history":[{"type":"E","num":80},{"type":"W","num":56},{"type":"E","num":80},{"type":"W","num":56},{"type":"E","num":80},{"type":"W","num":56},{"type":"E","num":80},{"type":"W","num":56},{"type":"E","num":80},{"type":"E","num":81}],"counter":29}
-SUM errcount WEBSERVER {"history":[{"type":"W","num":60},{"type":"E","num":23},{"type":"W","num":60},{"type":"E","num":23},{"type":"W","num":60},{"type":"W","num":48},{"type":"W","num":60},{"type":"W","num":48},{"type":"W","num":60},{"type":"E","num":23}],"counter":108}
-SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":38},{"type":"W","num":79},{"type":"W","num":38},{"type":"W","num":79},{"type":"W","num":38},{"type":"W","num":79},{"type":"W","num":38},{"type":"W","num":79}],"counter":30}
+SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":65},{"type":"W","num":35}],"counter":17}
+SUM errcount SYSTEM {"history":[{"type":"E","num":126},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":125}],"counter":18}
+SUM errcount UART_init {"history":[{"type":"E","num":22},{"type":"E","num":81},{"type":"E","num":22},{"type":"E","num":81},{"type":"E","num":22},{"type":"E","num":81},{"type":"E","num":22},{"type":"E","num":81},{"type":"E","num":22},{"type":"E","num":81}],"counter":28}
+SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":81}],"counter":25}
+SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":23}],"counter":2}
+SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":38},{"type":"W","num":79},{"type":"W","num":38},{"type":"W","num":79}],"counter":12}
 ```
 <!-- end step -->
 
