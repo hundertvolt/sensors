@@ -1,6 +1,6 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-05 10:51 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-05 11:03 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
@@ -8,7 +8,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-05 10:51 UTC. Each verdict
 | 2 | host_env | rc=0 |  | 2026-11-05 07:56:11 | 0h14 | 4.17 | 0/0/0/0 |
 | 4a | lower_levels | rc=1; FAIL; failed: scenarios[dev], tests/test_digital_twin_bus_hazard_concurrency.py, tests/test_digital_twin_wifi_modes.py, tests/test_digital_twin_uart_link.py, tests/test_digital_twin_sensortask_integration.py[dev] and 16 more |  | 2026-11-05 08:15:05 | 1h00 | 0.92 | 0/0/0/0 |
 | 3g | gc_control_image | rc=0 | 2 | 2026-11-05 09:23:57 | 0h00 | 0.97 | 1/0/0/0 |
-| 4g | flash_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: flash/test_task_supervisor.py::test_the_supervisor_restarts_a_real_dead_task, flash/test_toolchain_flash_boot.py::test_mpremote_connection_is_stable_across_repeated_calls, flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent, flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test, flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none] and 20 more | 21 | 2026-11-05 10:48:45 | 0h01 | 0.83 | 0/0/1/136 |
+| 4g | flash_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16], flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16], flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none], flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none], flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16] and 1 more |  | 2026-11-05 10:51:56 | 0h08 | 1.08 | 0/0/1/136 |
 | 5g | bench_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping and 101 more | 21 | 2026-11-05 10:50:05 | 0h01 | 0.72 | 0/0/0/66 |
 | 3 | final_image | not run |  |  |  |  | 1/0/0/0 |
 | 4b | flash_tier | not run |  |  |  |  | 0/0/0/136 |
@@ -5889,6 +5889,582 @@ SUM errcount UART_init {"history":[{"type":"E","num":127},{"type":"E","num":125}
 SUM errcount UART_resp {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":31}
 SUM errcount WEBSERVER {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":28}
 SUM errcount WIFI {"history":[{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127},{"type":"E","num":125},{"type":"E","num":126},{"type":"E","num":127}],"counter":27}
+== step 4g start 2026-11-05 10:51:56 1793875916 load 1.08 0.95 0.91
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+== Marker selection: -m "not soak_duration and not multi_day_rollover"
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors-bench/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors-bench
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 107 items / 83 deselected / 24 selected
+
+tests_hardware/flash/test_task_supervisor.py::test_the_supervisor_restarts_a_real_dead_task 
+board not in the standard state:
+  - scratch files: read hwtest-scratch, the standard state holds none - --repair-standard-state repairs it (a listed prerequisite write)
+
+tests_hardware/flash/test_task_supervisor.py::test_the_supervisor_restarts_a_real_dead_task PASSED [  4%]
+tests_hardware/flash/test_toolchain_flash_boot.py::test_mpremote_connection_is_stable_across_repeated_calls PASSED [  8%]
+tests_hardware/flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent SKIPPED [ 12%]
+tests_hardware/flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test SKIPPED [ 16%]
+tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none] PASSED [ 20%]
+tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16] FAILED [ 25%]
+tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[cobs] PASSED [ 29%]
+tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[none] PASSED [ 33%]
+tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[crc16] PASSED [ 37%]
+tests_hardware/flash/test_uart_crossover.py::test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving PASSED [ 41%]
+tests_hardware/flash/test_uart_crossover.py::test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate PASSED [ 45%]
+tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[none] PASSED [ 50%]
+tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16] PASSED [ 54%]
+tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[none] PASSED [ 58%]
+tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16] FAILED [ 62%]
+tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none] FAILED [ 66%]
+tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[crc16] PASSED [ 70%]
+tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none] FAILED [ 75%]
+tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16] FAILED [ 79%]
+tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[none] PASSED [ 83%]
+tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[crc16] PASSED [ 87%]
+tests_hardware/flash/test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware PASSED [ 91%]
+tests_hardware/flash/test_watchdog_starvation.py::test_watchdog_starvation_triggers_a_real_hardware_reset PASSED [ 95%]
+tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm PASSED [100%]
+tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm ERROR [100%]
+
+==================================== ERRORS ====================================
+_ ERROR at teardown of test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm _
+
+self = <urllib.request.HTTPHandler object at 0x7fbc6e52b0>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7fbc71c830>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               TimeoutError: timed out
+
+/usr/lib/python3.13/socket.py:849: TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+request = <SubRequest 'standard_state' for <Function test_the_supervisor_restarts_a_real_dead_task>>
+fram_evidence_saved = FramDump(path=PosixPath('/home/nico/programming/sensors-bench/build/archive/run_flash_hardware_suite/20261105T105157Z/... 262144, 'zero_pieces': 0, 'read_failed_at': None, 'status_register': 0, 'write_protected': False, 'rdid': '047f4803'})
+
+    @pytest.fixture(scope="session", autouse=True)
+    def standard_state(request: pytest.FixtureRequest, fram_evidence_saved: "harness.FramDump | None") -> "Iterator[None]":
+        # DebugLevel 5, FRAM write-protect clear, no scratch files and the SCD30 snapshot - at the session start and end,
+        # over REST when a bench is configured. A deviation is reported, then repaired on request or fails the start.
+        config = request.config
+        if config.getoption("--twin"):
+            record_session_note(config, "twin run: the twin's board starts fresh, nothing to check", source="standard_state")
+        board = _board_if_present(request)
+        if board is None:
+            yield
+            return
+        bench = request.getfixturevalue("bench") if BenchBridge().is_configured() else None
+        dut_ip: str | None = request.getfixturevalue("dut_ip") if bench is not None else None
+        if bench is not None:
+            _vl805_note(config)
+        level, files = _board_state(board, bench, dut_ip)
+        deviations = board_state_deviations(level, files, fram_evidence_saved.facts.get("write_protected") if fram_evidence_saved else None)
+        if deviations and not config.getoption("--repair-standard-state"):
+            exit_on_deviations(config, deviations)
+        if deviations:
+            report_to_console(config, standard_state_message(deviations))
+            _repair(config, board, bench, dut_ip, deviations)
+            # A repair that reported success is read back like the start was, so a write that did not take still fails.
+            dump = harness.save_fram_raw(board, "after-repair")
+            level, files = _board_state(board, bench, dut_ip)
+            remaining = board_state_deviations(level, files, dump.facts.get("write_protected"))
+            if remaining:
+                exit_on_deviations(config, remaining)
+        start = _scd30_snapshot(board, dut_ip)
+        yield
+        if dut_ip is not None:
+>           error_log_helpers.save_errcount(dut_ip, "session-end")
+
+tests_hardware/conftest.py:494: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/error_log_helpers.py:270: in save_errcount
+    return _saved_status(dut_ip, reason)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/error_log_helpers.py:92: in _saved_status
+    body, status = _status(dut_ip)
+                   ^^^^^^^^^^^^^^^
+tests_hardware/error_log_helpers.py:79: in _status
+    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_ERRCOUNT_TIMEOUT_S)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7fbc6e52b0>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7fbc71c830>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error timed out>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+=================================== FAILURES ===================================
+_______ test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16] _______
+
+board = <harness.Board object at 0x7fbc6e4d70>, crc_mode = 'crc16'
+
+    @pytest.mark.parametrize("crc_mode", [*_CRC_MODES, "cobs"])
+    def test_get_and_set_and_a_multi_chunk_train_cross_the_jumper(board: Board, crc_mode: str) -> None:
+        # One Python instance as initiator and one as responder interoperating is a required property of this protocol, and
+        # the jumper is where it is physically true; the maximum train each way, and an over-cap train refused unallocated.
+        facts = _run_or_fail(board, "uart_crossover_exchange.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+        assert facts["crc_mode"] == crc_mode, facts
+        _setup_ok(facts)
+        for key in ("get_answer_ok", "set_ok", "empty_set_ok", "max_set_ok", "max_set_intact", "max_get_intact"):
+            assert facts[key] is True, f"{key} failed across the jumper ({facts['train_bytes']}-byte train, {facts['max_train_bytes']}-byte maximum): {facts}"
+        _clean_counts(facts)
+        assert facts["capped_setup"] is True and facts["over_cap_refused"] is True, f"the over-cap train was not refused: {facts}"
+        assert _codes(facts["over_cap_log"]) == [code("E", "UART_TRANSFER_CAP")], f"the refusal was not logged exactly once: {facts['over_cap_log']}"
+>       assert facts["largest_block_after"] == facts["largest_block_before"], f"the refused train moved the largest free block: {facts['largest_block_before']} -> {facts['largest_block_after']}"
+E       AssertionError: the refused train moved the largest free block: 37168 -> 37936
+E       assert 37936 == 37168
+
+tests_hardware/flash/test_uart_crossover.py:106: AssertionError
+_ test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16] __
+
+board = <harness.Board object at 0x7fbc6e4d70>, crc_mode = 'crc16'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_the_link_keeps_transferring_while_every_other_subsystem_is_busy(board: Board, crc_mode: str) -> None:
+        # The realistic worst case for a stop-and-wait link sharing one core, asserted both ways: the link keeps progressing
+        # with echo-checked multi-chunk SETs, and it did not do so by starving anything else.
+        facts = _run_or_fail(board, "uart_link_under_concurrent_system_load.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+        assert facts["crc_mode"] == crc_mode and facts["gc_threshold"] == -1, facts
+        _setup_ok(facts)
+        bounds = _dict(facts["bounds"])
+        transfers, worst = _int(facts["transfers"]), _int(facts["worst_rtt_ms"])
+>       assert transfers >= _int(bounds["min_transfers"]), f"only {transfers} transfers completed under load, under the {bounds['min_transfers']} floor"
+E       AssertionError: only 9 transfers completed under load, under the 20 floor
+E       assert 9 >= 20
+E        +  where 20 = _int(20)
+
+tests_hardware/flash/test_uart_crossover.py:193: AssertionError
+_____________ test_no_frame_is_lost_while_interrupts_are_off[none] _____________
+
+board = <harness.Board object at 0x7fbc6e4d70>, crc_mode = 'none'
+result_note = <function result_note.<locals>._note at 0x7fbb659b20>
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_no_frame_is_lost_while_interrupts_are_off(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
+        # Interrupts held off for the flash windows while the other UART streams through DMA: within the ring's bound no
+        # frame is lost and no overrun shows; past it the overrun is reported and every frame after the resync is intact.
+        _ring_holds_the_flash_window()
+        facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
+        _setup_ok(facts)
+        result_note(f"heap {facts['heap']}")
+        bound = facts["ring_bound_us"]
+        assert isinstance(bound, int), facts
+        for window in map(_dict, _list(facts["windows"])):
+            assert window["streamed"] is True, f"the sender's DMA stream did not finish: {window}"
+            window_us = window["window_us"]
+            assert isinstance(window_us, int), window
+            if window_us < bound:
+                assert window["frames_intact"] == window["frames_sent"] and window["uartrsr_oe"] is False and window["overrun_detected"] == 0, f"a frame was lost within the ring's {bound} us bound: {window}"
+            else:
+                assert isinstance(window["overrun_detected"], int) and window["overrun_detected"] >= 1, f"no overrun reported past the ring's {bound} us bound: {window}"
+>               assert window["after_intact"] == window["after_sent"], f"frames after the overrun's resync were not intact: {window}"
+E               AssertionError: frames after the overrun's resync were not intact: {'window_us': 800000, 'streamed': True, 'frames_sent': 196, 'frames_intact': 10, 'overrun_detected': 1, 'uartrsr_oe': False, 'after_sent': 4, 'after_intact': 0}
+E               assert 0 == 4
+
+tests_hardware/flash/test_uart_crossover.py:230: AssertionError
+________ test_a_soft_reset_during_traffic_leaves_no_running_ring[none] _________
+
+board = <harness.Board object at 0x7fbc6e4d70>, crc_mode = 'none'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_a_soft_reset_during_traffic_leaves_no_running_ring(board: Board, crc_mode: str) -> None:
+        # The harness's trailing soft reset lands while frames stream into the ring; afterwards the same DMA channels are
+        # free and a fresh buffer stays untouched (the rp2.DMA finaliser and soft reset, ports/rp2/rp2_dma.c at v1.29.0).
+        before = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="soft_reset")
+        _setup_ok(before)
+        after = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="after_soft_reset")
+>       assert after["channels_free"] == before["channels"], f"the DMA channels the ring held were not free after the soft reset: {before['channels']} -> {after['channels_free']}"
+E       AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]
+E       assert [0, 1, 2] == [1, 2, 0]
+E         
+E         At index 0 diff: 0 != 1
+E         
+E         Full diff:
+E           [
+E         +     0,
+E               1,...
+E         
+E         ...Full output truncated (3 lines hidden), use '-vv' to show
+
+tests_hardware/flash/test_uart_crossover.py:243: AssertionError
+________ test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16] ________
+
+board = <harness.Board object at 0x7fbc6e4d70>, crc_mode = 'crc16'
+
+    @pytest.mark.parametrize("crc_mode", _CRC_MODES)
+    def test_a_soft_reset_during_traffic_leaves_no_running_ring(board: Board, crc_mode: str) -> None:
+        # The harness's trailing soft reset lands while frames stream into the ring; afterwards the same DMA channels are
+        # free and a fresh buffer stays untouched (the rp2.DMA finaliser and soft reset, ports/rp2/rp2_dma.c at v1.29.0).
+>       before = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="soft_reset")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/flash/test_uart_crossover.py:240: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/flash/test_uart_crossover.py:84: in _run_or_fail
+    output = board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode) if state is None else board.run_isolated(path, timeout_s=timeout_s, CRC_MODE=crc_mode, STATE=state)
+                                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7fbc6e4d70>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True
+extras = {'CRC_MODE': 'crc16', 'STATE': 'soft_reset'}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+E           stdout:
+E           FACT crc_mode="crc16"
+E           FACT state="soft_reset"
+E           FACT gc_threshold=-1
+E           
+E           stderr:
+E           Traceback (most recent call last):
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+E               handler_func(state, args)
+E               ~~~~~~~~~~~~^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+E               _do_execbuffer(state, buf, args.follow)
+E               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+E               ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+E                              ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+E               data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+E               if self.is_pty or self.serial.inWaiting() > 0:
+E                                 ~~~~~~~~~~~~~~~~~~~~~^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+E               return self.in_waiting
+E                      ^^^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+E               s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+E           OSError: [Errno 5] Input/output error
+E           
+E           During handling of the above exception, another exception occurred:
+E           
+E           Traceback (most recent call last):
+E             File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+E               sys.exit(main())
+E                        ~~~~^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 644, in main
+E               do_disconnect(state)
+E               ~~~~~~~~~~~~~^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 89, in do_disconnect
+E               state.transport.close()
+E               ~~~~~~~~~~~~~~~~~~~~~^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 132, in close
+E               raise er
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 125, in close
+E               self.serial.rts = False
+E               ^^^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 463, in rts
+E               self._update_rts_state()
+E               ~~~~~~~~~~~~~~~~~~~~~~^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 708, in _update_rts_state
+E               fcntl.ioctl(self.fd, TIOCMBIC, TIOCM_RTS_str)
+E               ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           OSError: [Errno 5] Input/output error
+
+tests_hardware/harness.py:908: HardwareTestFailureError
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]
+ERROR tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm
+= 5 failed, 17 passed, 2 skipped, 83 deselected, 1 error in 507.13s (0:08:27) ==
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Not covered: 14 test(s) deselected by a wear gate; --allow-persistence-write would select them.
+== Summary: run_flash_hardware_suite ==
+Commit: f3926aec
+Levels: L3
+Counts (tests): passed 16 · failed 6 · skipped 2 · deselected 83 · retried 0 · recovered 2 · vacuous 0
+Failed:
+  - tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16]: failed in call: AssertionError: the refused train moved the largest free block: 37168 -> 37936
+  - tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16]: failed in call: AssertionError: only 9 transfers completed under load, under the 20 floor
+  - tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none]: failed in call: AssertionError: frames after the overrun's resync were not intact: {'window_us': 800000, 'streamed': True, 'frames_sent': 196, 'frames_intact': 10, 'overrun_detected': 1, 'uartrsr_oe': False, 'after_sent': 4, 'after_intact': 0}
+  - tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none]: failed in call: AssertionError: the DMA channels the ring held were not free after the soft reset: [1, 2, 0] -> [0, 1, 2]
+  - tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py failed (exit 1):
+  - tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm: error in teardown: urllib.error.URLError: <urlopen error timed out>
+Skipped:
+  - tests_hardware/flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent: a full toolchain re-verification: network fetches and ~8 min of builds; pass --allow-toolchain-reverify (gate --allow-toolchain-reverify not given)
+  - tests_hardware/flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test: this IS a real flash cycle - pass --allow-flash-cycle to deliberately run it (gate --allow-flash-cycle not given)
+Deselected:
+  - tests_hardware/flash/test_bus_concurrency.py::test_scd30_same_device_read_write_concurrency: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_scd30_argument_reaction_is_recorded: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_config_float_round_trip.py::test_config_floats_round_trip_unchanged: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_flash_write_loop_gap_is_recorded: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_reboot_persistence.py::test_config_value_survives_a_genuine_hard_reset: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame[none]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame[crc16]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_link_transactions_during_config_writes_are_recorded[none]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_link_transactions_during_config_writes_are_recorded[crc16]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_same_device_concurrent_sessions_never_corrupt_each_other: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_cross_device_concurrent_sessions_genuinely_interleave: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_every_chip_setup_resets_it_once_after_a_read_identified_it: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_same_device_read_write_concurrency: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_reboot_command_shuts_down_then_resets: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_soft_timer_callback_drop_self_heals_under_scheduler_saturation: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_irq_edge_drives_a_real_read: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_single_precision_float_boundary_at_2pow24: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_a_malformed_country_code_reaction_is_recorded: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_scd30_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_sgp40_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_fram_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_fram_chunk_write_read_roundtrips_against_the_real_chip: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[1]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[2]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[3]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[4]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[5]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_write_protection_actually_gates_a_real_write_and_a_real_read: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_heap_layout.py::test_the_live_arm_keeps_the_boot_survivors_under_the_high_band: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_heap_layout.py::test_the_suppressed_arm_breaks_the_high_band: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_modlwip_listener_close.py::test_closing_a_listener_and_a_failed_listen_leave_the_pcb_pools_as_they_were: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_reboot_persistence.py::test_boot_import_mechanism_actually_boots_the_real_system: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_scd30_real_reading_is_within_datasheet_plausible_bounds: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_scd30_frc_window_sums_hold_in_float32: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_voc_algorithm_produces_plausible_and_stable_results: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_real_reading_is_within_datasheet_plausible_bounds: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_survives_recombined_realistic_lighting_scenarios: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_refused_commands_change_nothing_and_never_stop_the_feed: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[loads]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[mempause]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[50]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[150]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[250]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel: by runner selection (-m), not covered by this run
+Passed only on retry: none
+Recovery passes:
+  - standard_state: removed the scratch config files (flash writes)
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.3s, retried
+Notes:
+  - tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[none]: stalled TX (crc none): failed True, logged [81], recovered in 2
+  - tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16]: stalled TX (crc crc16): failed True, logged [81], recovered in 2
+  - tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none]: heap {'heap_after': 118240, 'largest_before': 102416, 'largest_after': 86032, 'ring_bytes': 8192, 'heap_before': 136544}
+  - tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[crc16]: heap {'heap_after': 117840, 'largest_before': 72992, 'largest_after': 56608, 'ring_bytes': 8192, 'heap_before': 136112}
+  - tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[none]: break (crc none): rsr_error_counted 0
+  - tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[crc16]: break (crc crc16): rsr_error_counted 1
+  - tests_hardware/flash/test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware: gc.threshold -1: reports [{'us': 92, 'case': 'raised', 'level': 0, 'cleared': True, 'alloc_delta': 0}, {'us': 79, 'case': 'locked_heap', 'level': 0, 'cleared': True, 'alloc_delta': 0}, {'us': 546, 'case': 'raised', 'level': 1, 'cleared': True, 'alloc_delta': 0}, {'us': 575, 'case': 'exhaustion_subclass', 'level': 1, 'cleared': True, 'alloc_delta': 0}], 1000 deaths in 955 ms, drift [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], default handler kept 2480 B
+  - tests_hardware/flash/test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware: gc.threshold 32768: reports [{'us': 89, 'case': 'raised', 'level': 0, 'cleared': True, 'alloc_delta': 0}, {'us': 78, 'case': 'locked_heap', 'level': 0, 'cleared': True, 'alloc_delta': 0}, {'us': 550, 'case': 'raised', 'level': 1, 'cleared': True, 'alloc_delta': 0}, {'us': 569, 'case': 'exhaustion_subclass', 'level': 1, 'cleared': True, 'alloc_delta': 0}], 1000 deaths in 1188 ms, drift [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], default handler kept 2480 B
+  - session (standard_state): vl805_firmware: not read (no VL805 CURRENT line, exit 1)
+Checked nothing: none
+Result: FAIL (pytest exited 1)
+Exit code: 1
+== step 4g end rc=1 2026-11-05 11:00:27 511s load 1.08 0.89 0.88
+== read-across: GET /status after step 4g
+SUM status not read: no JSON answer
 ```
 <!-- end step -->
 
