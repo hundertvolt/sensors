@@ -287,7 +287,7 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
 # ---------------------------------------------------------------------------
 # Connected-socket source-address filtering (SPECIFICATION.md F.1, UDP on rp2/lwIP), which the garbage tests cannot
 # reach: conntrack rewrites the reply's source. The real reply is held back, the DUT's port captured with tcpdump, and
-# a reply answered from this host's own address (tests_hardware/README.md 'Known assumptions and open findings').
+# a reply answered from this host's own address (tests_hardware/README.md 'What the network-fault injections reach').
 # ---------------------------------------------------------------------------
 
 _NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - inside _parse_ntp_reply()'s 2025-2100 plausibility window
