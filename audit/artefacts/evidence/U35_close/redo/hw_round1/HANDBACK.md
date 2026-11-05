@@ -1,12 +1,12 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-05 12:12 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-05 12:43 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
 | 1 | evidence | rc=0; NOTE step 1 rerun by hand with src/ mounted: the bare image has no frozen drivers, read-only, no flash write |  | 2026-11-05 08:14:31 | 0h00 | 0.45 | 0/0/0/0 |
 | 2 | host_env | rc=0 |  | 2026-11-05 07:56:11 | 0h14 | 4.17 | 0/0/0/0 |
-| 4a | lower_levels | rc=1; FAIL; failed: tests_scripts/ (pytest), the checkout | 21 | 2026-11-05 11:39:30 | 0h33 | 0.97 | 0/0/0/0 |
+| 4a | lower_levels | rc=1; FAIL; failed: tests/test_asy_uart_driver.py | 21 | 2026-11-05 12:14:51 | 0h28 | 1.37 | 0/0/0/0 |
 | 3g | gc_control_image | rc=0 | 2 | 2026-11-05 09:23:57 | 0h00 | 0.97 | 1/0/0/0 |
 | 4g | flash_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16], flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16], flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none], flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none], flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16] and 1 more |  | 2026-11-05 10:51:56 | 0h08 | 1.08 | 0/0/1/136 |
 | 5g | bench_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping, bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load, bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load and 92 more | 21 | 2026-11-05 11:03:40 | 0h33 | 0.61 | 0/0/0/66 |
@@ -3099,62 +3099,73 @@ SUM status not read: no JSON answer
 
 <!-- step 4a -->
 ```
-tests_scripts/test_live_twin_ceiling_parser.py:65: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-tests_scripts/test_live_twin_ceiling_parser.py:35: in _js_ceiling
-    node = _pinned_node()
-           ^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-nvmrc = PosixPath('/home/nico/programming/sensors-bench/.nvmrc')
-
-    def _pinned_node(nvmrc: Path = _NVMRC) -> str:
-        # The Node the browser tier runs, .nvmrc's major, or a failure naming both: a module run on another major could
-        # pass here and differ there.
-        node = shutil.which("node")
-        assert node is not None, "node is not on PATH - the browser tier this pins cannot run without it either"
-        version = subprocess.run([node, "--version"], capture_output=True, text=True, check=True, timeout=_NODE_TIMEOUT_S).stdout.strip()
-        pinned = nvmrc.read_text(encoding="utf-8").strip()
-        message = f"node {version} on PATH, .nvmrc pins {pinned} - run toolchain/setup_toolchain.py env or put the pinned Node first"
->       assert version.lstrip("v").split(".")[0] == pinned.lstrip("v").split(".")[0], message
-E       AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-E       assert '26' == '24'
-E         
-E         - 24
-E         + 26
-
-tests_scripts/test_live_twin_ceiling_parser.py:30: AssertionError
+...........................[scenarios[dev]] == Launching: /home/nico/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /home/nico/programming/sensors-bench/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20223 --fram-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_main_exit/state_01/fram_state.json --scd30-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_main_exit/state_01/scd30_state.json --mem-backup-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_main_exit/state_01/mem_backup_state.json --config-dir /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_main_exit/state_01/config/ --gc-threshold -1 --debug-level 2 --test-kbd-traceback --test-uart-driven-clock --test-watchdog-fault main-exit (log: /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_main_exit/twin_01.log)
+[scenarios[dev]] PASSED: watchdog_fault_main_exit - 12.3s
+[scenarios[dev]] == watchdog_fault_supervisor_raise: A raise escaping the supervisor's dead-task report stops every feed, and the starved watchdog engages.
+.........................[scenarios[dev]] == Launching: /home/nico/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /home/nico/programming/sensors-bench/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20224 --fram-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_supervisor_raise/state_01/fram_state.json --scd30-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_supervisor_raise/state_01/scd30_state.json --mem-backup-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_supervisor_raise/state_01/mem_backup_state.json --config-dir /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_supervisor_raise/state_01/config/ --gc-threshold -1 --debug-level 2 --test-kbd-traceback --test-uart-driven-clock --test-watchdog-fault supervisor-raise (log: /tmp/tmp.ICEaJ9kJtp/scenarios_dev/watchdog_fault_supervisor_raise/twin_01.log)
+[scenarios[dev]] PASSED: watchdog_fault_supervisor_raise - 12.2s
+[scenarios[dev]] == zero_think_time_readers_saturate_then_recover: Four zero-think-time /status readers beside an unchanged write degrade the service, never break it, and it answers within its cap after.
+............. [ 65%]
+........................................................................ [ 66%]
+........................................................................ [ 67%]
+.....................[scenarios[dev]] == Launching: /home/nico/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /home/nico/programming/sensors-bench/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20225 --fram-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/fram_state.json --scd30-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/scd30_state.json --mem-backup-state-path /tmp/tmp.ICEaJ9kJtp/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/mem_backup_state.json --config-dir /tmp/tmp.ICEaJ9kJtp/scenarios_dev/zero_think_time_readers_saturate_then_recover/state_01/config/ --gc-threshold -1 --debug-level 2 --test-kbd-traceback --test-uart-driven-clock (log: /tmp/tmp.ICEaJ9kJtp/scenarios_dev/zero_think_time_readers_saturate_then_recover/twin_01.log)
+[scenarios[dev]]    dev: each reader's (answered, refused) [(19, 1), (20, 0), (19, 1), (19, 1)]; the writer's answers {'Unchanged': 34, 'refused': 6}
+[scenarios[dev]] PASSED: zero_think_time_readers_saturate_then_recover - 33.7s
+[scenarios[dev]] == Summary: scripts/_digital_twin_scenarios.py ==
+[scenarios[dev]] Commit: 8240e0a1
+[scenarios[dev]] Levels: L2 (dev)
+[scenarios[dev]] GC stage: -1
+[scenarios[dev]] Counts (scenarios): passed 65 · failed 0 · skipped 1 · deselected 1 · retried 0 · recovered 0 · vacuous 0
+[scenarios[dev]] Failed: none
+[scenarios[dev]] Skipped:
+[scenarios[dev]]   - a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog: a device-independent mechanism, run on arzi only (SPECIFICATION.md E.2.1)
+[scenarios[dev]] Deselected:
+[scenarios[dev]]   - wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by needs exclusive port 53 - run_digital_twin_ci.sh runs it
+[scenarios[dev]] Passed only on retry: none
+[scenarios[dev]] Recovery passes: none
+[scenarios[dev]] Notes: none
+[scenarios[dev]] Checked nothing: none
+[scenarios[dev]] Result: PASS
+[scenarios[dev]] Exit code: 0
+................................................... [ 68%]
+........................................................................ [ 69%]
+........................................................................ [ 70%]
+........................................................................ [ 72%]
+........................................................................ [ 73%]
+........................................................................ [ 74%]
+........................................................................ [ 75%]
+........................................................................ [ 76%]
+........................................................................ [ 77%]
+........................................................................ [ 78%]
+........................................................................ [ 79%]
+........................................................................ [ 80%]
+........................................................................ [ 81%]
+........................................................................ [ 82%]
+........................................................................ [ 83%]
+........................................................................ [ 84%]
+........................................................................ [ 85%]
+........................................................................ [ 86%]
+........................................................................ [ 87%]
+........................................................................ [ 88%]
+........................................................................ [ 90%]
+........................................................................ [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 93%]
+........................................................................ [ 94%]
+........................................................................ [ 95%]
+........................................................................ [ 96%]
+........................................................................ [ 97%]
+........................................................................ [ 98%]
+........................................................................ [ 99%]
+..............................                                           [100%]
 =============================== warnings summary ===============================
 tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
   /home/nico/programming/sensors-bench/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
     datasheets=_datasheets_checked(),
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-=========================== short test summary info ============================
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[arzi]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[dev]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[grkizi]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[klkizi]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[schlafzi]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[wozi]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_synthetic_tomls_resolve_as_buildgen_resolves_them[crlf-[device]\r\nname = "x"\r\nmax_connections = 4\r\n\r\n[bus.i2c0]\r\nsda = 0\r\n-4]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_synthetic_tomls_resolve_as_buildgen_resolves_them[trailing_comment-[device]\nname = "x"\nmax_connections = 5  # raised for the bench\n-5]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_synthetic_tomls_resolve_as_buildgen_resolves_them[other_table_only-[device]\nname = "x"\n\n[webserver]\nmax_connections = 9\n-None]
-FAILED tests_scripts/test_live_twin_ceiling_parser.py::test_synthetic_tomls_resolve_as_buildgen_resolves_them[missing_key-[device]\nname = "x"\n-None]
-10 failed, 6782 passed, 6 skipped, 1 warning in 1934.06s (0:32:14)
-== Checkout-write guard: 8 new path(s) outside the tiers' own outputs
-root-cause item: test_sensortask[dev] needed attempt 2/3 - record it as a root-cause item
-tests_scripts/ failed:
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[arzi]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[dev]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[grkizi]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[klkizi]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[schlafzi]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_every_real_device_resolves_to_buildgen_s_own_ceiling[wozi]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_synthetic_tomls_resolve_as_buildgen_resolves_them[crlf-[device]\r\nname = "x"\r\nmax_connections = 4\r\n\r\n[bus.i2c0]\r\nsda = 0\r\n-4]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_synthetic_tomls_resolve_as_buildgen_resolves_them[trailing_comment-[device]\nname = "x"\nmax_connections = 5  # raised for the bench\n-5]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_synthetic_tomls_resolve_as_buildgen_resolves_them[other_table_only-[device]\nname = "x"\n\n[webserver]\nmax_connections = 9\n-None]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
-  - tests_scripts/test_live_twin_ceiling_parser.py::test_synthetic_tomls_resolve_as_buildgen_resolves_them[missing_key-[device]\nname = "x"\n-None]: failed in call: AssertionError: node v26.13.0 on PATH, .nvmrc pins 24 - run toolchain/setup_toolchain.py env or put the pinned Node first
+6792 passed, 6 skipped, 1 warning in 1643.14s (0:27:23)
+== Checkout-write guard: 0 new path(s) outside the tiers' own outputs
 tests_scripts/ skipped:
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[arzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[dev]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
@@ -3162,26 +3173,16 @@ tests_scripts/ skipped:
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[klkizi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[schlafzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
   - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[wozi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
-Left in the checkout by the run (only the tiers' own outputs are exempt: tests/_tmp/, __pycache__/, .pytest_cache/):
-  - build/archive/pytest/20261105T120455Z/errcount-session-end.json
-  - build/archive/pytest/20261105T120455Z/errcount-session-start.json
-  - build/archive/pytest/20261105T120455Z/fram-raw-session-end.txt
-  - build/archive/pytest/20261105T120455Z/fram-raw-session-start.txt
-  - build/archive/pytest/20261105T120620Z/errcount-session-end.json
-  - build/archive/pytest/20261105T120620Z/errcount-session-start.json
-  - build/archive/pytest/20261105T120620Z/fram-raw-session-end.txt
-  - build/archive/pytest/20261105T120620Z/fram-raw-session-start.txt
-== Evidence archived in /home/nico/programming/sensors-bench/build/archive/test_sh/20261105T121236Z
+== Evidence archived in /home/nico/programming/sensors-bench/build/archive/test_sh/20261105T124309Z
 == Summary: scripts/test.sh ==
-Commit: d18fc081
-Levels: L0 FAIL · L1 PASS (retried 1) · L2 PASS (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)
+Commit: 8240e0a1
+Levels: L0 PASS · L1 FAIL · L2 PASS (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)
 GC stage: -1 (reactive default)
-Counts (files): passed 136 · failed 2 · skipped 74 · deselected 6 · retried 1 · recovered 0 · vacuous 0
-Counts (tests_scripts tests): passed 6782 · failed 10 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
-Counts (tests): passed 5838 · failed 0 · skipped 74 · deselected 6 · retried 0 · recovered 0 · vacuous 0
+Counts (files): passed 136 · failed 1 · skipped 74 · deselected 6 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 6792 · failed 0 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 5837 · failed 1 · skipped 74 · deselected 6 · retried 0 · recovered 0 · vacuous 0
 Failed:
-  - tests_scripts/ (pytest): pytest exited nonzero or timed out; 10 failed (listed above)
-  - the checkout: 8 path(s) left behind by the run: build/archive/pytest/20261105T120455Z/errcount-session-end.json, build/archive/pytest/20261105T120455Z/errcount-session-start.json, build/archive/pytest/20261105T120455Z/fram-raw-session-end.txt, build/archive/pytest/20261105T120455Z/fram-raw-session-start.txt, build/archive/pytest/20261105T120620Z/errcount-session-end.json, +3 more
+  - tests/test_asy_uart_driver.py: 1 of 165 tests failed (FAIL test_two_concurrent_cancellers_both_return: AssertionError:)
 Skipped:
   - scenarios[arzi]::isl29125_config_put_during_get_loops: device wires no isl29125
   - scenarios[arzi]::a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog: a device-independent mechanism, run on dev only (SPECIFICATION.md E.2.1)
@@ -3264,8 +3265,7 @@ Deselected:
   - scenarios[klkizi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
   - scenarios[schlafzi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
   - scenarios[wozi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
-Passed only on retry:
-  - tests/test_sensortask.py[dev] (attempt 2/3)
+Passed only on retry: none
 Recovery passes: none
 Notes: none
 Checked nothing: none
@@ -3273,10 +3273,10 @@ Result: FAIL
 Exit code: 1
 == scripts/test.sh: exit 1
 == scripts/test.sh failed - stopping before L3, no hardware touched
-== step 4a end rc=1 2026-11-05 12:12:41 1991s load 0.97 1.10 2.28
+== step 4a end rc=1 2026-11-05 12:43:12 1701s load 1.37 1.66 2.47
 == read-across: GET /status after step 4a
-SUM status system={"BootSignature": 1793880456, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 13, "MDay": 5, "Minute": 12, "Month": 11, "Second": 42, "Weekday": 3, "Year": 2026, "Yearday": 309}, "MemFree": 15152, "MemPaused": false, "ResetReason": 21, "SysUptime": 316, "TimeStale": false, "UTCTime": {"Hour": 12, "MDay": 5, "Minute": 12, "Month": 11, "Second": 42, "Weekday": 3, "Year": 2026, "Yearday": 309}, "UnixTime": 1793880762}
-SUM status sensors={"SGP40": {"BackupTS": 1793880755, "RestoreTS": 1793880262}, "UARTLINK": {"Failures": 0, "Transfers": 284}, "UART_init": {"Last": null, "Pending": false, "Runs": 0}}
+SUM status system={"BootSignature": 1793882500, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 13, "MDay": 5, "Minute": 43, "Month": 11, "Second": 21, "Weekday": 3, "Year": 2026, "Yearday": 309}, "MemFree": 21632, "MemPaused": false, "ResetReason": 21, "SysUptime": 112, "TimeStale": false, "UTCTime": {"Hour": 12, "MDay": 5, "Minute": 43, "Month": 11, "Second": 21, "Weekday": 3, "Year": 2026, "Yearday": 309}, "UnixTime": 1793882601}
+SUM status sensors={"SGP40": {"BackupTS": 1793882562, "RestoreTS": 1793881715}, "UARTLINK": {"Failures": 0, "Transfers": 42}, "UART_init": {"Last": null, "Pending": true, "Runs": 0}}
 SUM errcount BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount CFGMGR_BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount CFGMGR_ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
@@ -3287,7 +3287,7 @@ SUM errcount CFGMGR_SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},
 SUM errcount CFGMGR_SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount CFGMGR_WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount DNSSRV {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount FRAM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount FRAM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":46},{"type":"W","num":63}],"counter":2}
 SUM errcount ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount NEOPIXEL {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
@@ -3295,10 +3295,10 @@ SUM errcount NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"
 SUM errcount SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":33}],"counter":6}
 SUM errcount SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
-SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":85},{"type":"E","num":81}],"counter":2}
+SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":88},{"type":"E","num":80},{"type":"E","num":86},{"type":"E","num":80},{"type":"W","num":56},{"type":"E","num":80}],"counter":7}
+SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":23},{"type":"W","num":48},{"type":"W","num":60},{"type":"E","num":23},{"type":"W","num":60},{"type":"E","num":23}],"counter":26}
+SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":38}],"counter":6}
 ```
 <!-- end step -->
 
