@@ -488,8 +488,8 @@ def test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_gener
 
 
 def test_fram_recovers_after_a_write_its_chip_never_enabled() -> None:
-    # The twin is FRAM's only write-failure-then-recovery verification for a device never flashed. rp2's SPI write
-    # never raises (ports/rp2/machine_spi.c), so the write fails as silicon can: WREN dropped.
+    # The twin is FRAM's only write-failure-then-recovery verification for a device the bench does not flash.
+    # rp2's SPI write never raises (ports/rp2/machine_spi.c), so the write fails as silicon can: WREN dropped.
     async def scenario(device: str) -> None:
         module, _watchdog = await _boot(device)
         fram_spi = module.fram.fram

@@ -1,5 +1,5 @@
-# wozi.toml - the exemplary/base device; never physically flashed, its correctness comes from tests/
-# (CLAUDE.md). The source of truth buildgen reads (SPECIFICATION.md Part L).
+# wozi.toml - wiring sourced from legacy/firmware/modules/sensortask-wozi.py (legacy, read-only
+# reference). The source of truth buildgen reads (SPECIFICATION.md Part L).
 
 [device]
 name = "Wozi"

@@ -1265,8 +1265,8 @@ def test_device_wiring_optional_field_absent_is_fine(tmp_path: Path, src_dir: Pa
 
 
 def test_device_wiring_fram_target_reference_unresolved(tmp_path: Path, src_dir: Path) -> None:
-    # fram_target has 4 consumers today (sysfunct/conn/ntp/webserver, WP1's implicit-FRAM-wiring
-    # rule) - a bad reference must still be caught exactly like led_target's single-consumer case
+    # fram_target has 4 consumers (sysfunct/conn/ntp/webserver, the implicit FRAM-wiring rule of
+    # SPECIFICATION.md A.7) - a bad reference must still be caught exactly like led_target's single-consumer case
     # above, regardless of how many consumers actually check it.
     doc = base_doc()
     table_at(doc, "device", "wiring")["fram_target"] = "does_not_exist"
