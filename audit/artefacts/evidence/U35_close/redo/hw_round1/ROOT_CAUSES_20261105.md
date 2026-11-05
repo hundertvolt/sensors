@@ -129,7 +129,7 @@ WEBSERVER Unhandled exception in route handler: memory allocation failed, alloca
 - **Not done:** I have no repeat rate, because my repeat runs used a wrong module path. A third 4a is running now and will add one sample.
 
 - **4a's third run (12:50-13:18 UTC):** this test passed (165 of 165), so it is intermittent on the Pi: 1 failure in 3 full runs here. The same run failed `test_only_the_api_writes_the_scd30[wozi]` with `AssertionError: (4, 3, 2)` at `tests/_sensortask_scenarios.py:3078`, which passed in the 2 runs before. Output: `test_sensortask_wozi_20261105T131850Z.log`. `test_sensortask[dev]` exceeded its 240 s and passed on attempt 2 in 2 of the 3 runs (83 of 101, then 95 of 101, when stopped).
-- **Lead on `(4, 3, 2)` (inferred from reading, not tried):** `idle_ticks` is read after 10 ticks (`:1420`, `4 * interval + 2`, interval 2 s). The 4 means the counter went back to 0 at about the sixth tick, which `_frc_reset()` or `_frc_step()` does (`src/asy_scd30_driver.py:384, 398`). The helper does not wait for the reader's init before it ticks, so a late soft reset on a slow host would do this. That reader of the unit has the code; I did not inject a delay.
+- **Lead on `(4, 3, 2)` (inferred from reading, not tried):** `idle_ticks` is read after 10 ticks (`tests/_sensortask_scenarios.py:1417`, `4 * interval + 2`, interval 2 s). The 4 means the counter went back to 0 at about the sixth tick, which `_frc_reset()` or `_frc_step()` does (`src/asy_scd30_driver.py:384, 398`). The helper does not wait for the reader's init before it ticks, so a late soft reset on a slow host would do this. I did not inject a delay to test it.
 
 ## 10. Other 4g and 5g failures
 
@@ -142,3 +142,17 @@ WEBSERVER Unhandled exception in route handler: memory allocation failed, alloca
 | `test_fram_erase_blanks…` and 6 others in `test_system_commands.py`, `test_bus_concurrency.py` | The script's output ends before `erasefram`, with no `failure` fact. `refusals`, which skips `_seed()`, passes | Inferred: `_seed()`'s 60 unfed FRAM writes outlast the watchdog. Not tested |
 | 5g's NTP tests, first 200 after the RTC set, SGP40 `W33`/`W35`, `E85`, `UART_resp` `W56`/`E80`, `wifi_radio_reinit_recovery.py` | See `logs/5g.log` | Not read yet; they need a run without the cascade |
 | 4g's other 9: `test_chip_conformance.py` (4), `test_memory_stress.py` (3), held SDA, general call | Listed in my 10:50 UTC report | Measurements, not read further |
+
+## 11. 4a's later stages on this Pi, first run (`b6a7bc1e`, 13:22 UTC onward, old head)
+
+Run by hand after `scripts/test.sh`, each stage even if an earlier one fails, with Node 24.22.2 and `MPREMOTE_DEVICE` masked. My board probes (HTTP and serial only) ran during part of the GC stage; I did not separate their effect.
+
+- **`GC_THRESHOLD=32768 scripts/test.sh`: exit 1, 2,044 s.** `gc32768_summary_20261105T135658Z.txt`. No `MemoryError` line named. 5 files failed: 4 exceeded `PER_FILE_TIMEOUT_S` (240 s) on all 3 attempts, and 1 scenario failed.
+  - `tests/test_sensortask.py[dev]`: 38, 33, 35 of 101 when stopped (at -1 it reaches 83-101).
+  - `tests/test_sensortask.py[wozi]`: 83, 64, 82 of 101.
+  - `tests/test_digital_twin_bus_hazard_concurrency.py`: 22, 20, 22 of 25.
+  - `tests/test_digital_twin_uart_link.py`: 4 of 22 on all 3, each at `test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict`.
+  - `scenarios[dev]`: `loop_lag_under_combined_load`: "the SGP40 fault storm never reached its 5-read streak under the load (40.1s)".
+  - **Inferred, not measured per file:** collecting every 32 KB on the Unix port's 16 MB heap is much slower on this Pi, so these look like the slow-host class rather than firmware. Stopped by a time limit, they say nothing about the tests they never reached.
+- **`npm test`: exit 1, 942 s.** `npm_live_backend_failure_20261105.txt`. 1,622 passed, 1 failed, 1 passed on retry: `tests_js/live-backend.test.js > live digital-twin backend: arzi > the real website ... round-trips a real PUT`, "still applying DebugLevel when its test's 45000ms were up". The twin's output also says "UDP port 123 is held by another NTP responder". Cause not looked into.
+- **Twin CI:** `arzi` exit 0 in 1,275 s. `dev` and the rest still running at 14:45 UTC, stopped when the push lands if not finished.
