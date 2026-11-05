@@ -3097,8 +3097,8 @@ buffers from `__init__` and sends its one-byte commands as module constants.
   SCD30's 100 kHz), then a STOP — and hands both pins back to the controller (`ALT_I2C`,
   pulled up); `I2C.recover()` runs the clear and rebuilds the controller by re-construction with the
   stored frequency and timeout, re-construction being the only controller re-init rp2 offers
-  (F.5.1). Both step `recoveries` on entry, before their bus-lock wait, so a second reader whose rung
-  comes while one waits finds it taken; both hold the bus lock throughout and report their outcome as status
+  (F.5.1). Both step `recoveries` on entry, and `recover()` also `rebuilds`, before their bus-lock wait, so a
+  second reader whose rung comes while one waits finds it taken (the clear reads `recoveries`, the rebuild `rebuilds`); both hold the bus lock throughout and report their outcome as status
   bits: 1 SDA was low, 2 SDA stayed low through nine pulses, 4 SCL stayed held; an SCL still held
   when the wait ends is 4 alone, with no pulse sent. One routine does every clear, its SCL waits
   awaited at run time; the constructor runs it once, unawaited, before the controller owns the pins —
