@@ -48,6 +48,9 @@ async def _main() -> None:
         await bmp.set_temperature_oversampling(_DISTINCT[1])
         await bmp.set_filter_coefficient(_DISTINCT[2])
         await take_por(bmp)  # cleared: a later True is a reset this script did not make
+        # A forced conversion returns only the mode to sleep, so press_en and temp_en stay set (sec 3.3.2, 4.3.16): the
+        # state is read after one, as it is after the reader's.
+        await bmp.get_pressure_and_temperature()
         fact("before", await _state(bmp))
 
         async def read() -> "str | None":
