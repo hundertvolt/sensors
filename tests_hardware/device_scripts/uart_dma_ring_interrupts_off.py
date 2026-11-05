@@ -76,7 +76,7 @@ async def _after_soft_reset(wdt: "machine.WDT") -> None:
     claimed = (rp2.DMA(), rp2.DMA())
     writer = _raw_uart(send_bus)
     sender = _Sender(send_bus, _UNTOUCHED_MS * 1000)
-    await sender.build()
+    await sender.build(wdt)
     fact("channels_free", [claimed[0].channel, claimed[1].channel, sender.dma.channel])
     probe = bytearray(2 * recv_bus["rx_ring"])  # the driver allocates twice its ring to align it
     for i in range(len(probe)):
@@ -133,10 +133,13 @@ class _Sender:
         self.deadline = time.ticks_ms()
         self.dma = rp2.DMA()
 
-    async def build(self) -> None:
+    async def build(self, wdt: "machine.WDT") -> None:
+        # Fed per frame, as finished() feeds: CRC16 costs ~21 ms a frame on silicon (bench, 2026-11-05), so a 2 s
+        # stream's build alone outlasts the watchdog.
         crc = _crc()
         frame = bytearray(FRAME)
         for i in range(self.frames):
+            wdt.feed()
             frame[0] = i & 0xFF
             for j in range(1, FRAME):
                 frame[j] = (i + j) & 0xFF
@@ -170,7 +173,7 @@ async def _config_write(wdt: "machine.WDT") -> None:
     send_bus, recv_bus = _bus("uart_link_init"), _bus("uart_link_resp")
     writer = _raw_uart(send_bus)
     sender = _Sender(send_bus, _FLASH_WINDOWS_US[-1])
-    await sender.build()
+    await sender.build(wdt)
     driver = _driver(recv_bus)
     fact("setup", await _comm(driver, ROLE_RESPONDER, recv_bus).setup())
     _remove_scratch()
@@ -313,7 +316,7 @@ async def _rxdmae_window(wdt: "machine.WDT") -> None:
     initiator, responder = _comm(drivers[0], ROLE_INITIATOR, send_bus), _comm(drivers[1], ROLE_RESPONDER, recv_bus)
     fact("rxdmae_setup", {"initiator": await initiator.setup(), "responder": await responder.setup()})
     sender = _Sender(send_bus, _OE_BOUND_US)
-    await sender.build()
+    await sender.build(wdt)
     sender.start(0, sender.frames)
     oe = _overrun_with_rxdmae_off(recv_bus)
     wdt.feed()
@@ -333,12 +336,12 @@ def _scratch_manager() -> "cm.ConfigManager":
     return mgr
 
 
-async def _soft_reset() -> None:
+async def _soft_reset(wdt: "machine.WDT") -> None:
     # Streams into the receiver's ring and returns at once: the harness's trailing soft reset lands while frames arrive.
     send_bus, recv_bus = _bus("uart_link_init"), _bus("uart_link_resp")
     _raw_uart(send_bus)
     sender = _Sender(send_bus, _RESET_STREAM_MS * 1000)
-    await sender.build()
+    await sender.build(wdt)
     driver = _driver(recv_bus)
     fact("setup", await _comm(driver, ROLE_RESPONDER, recv_bus).setup())
     rx = driver._rx_dma
@@ -355,7 +358,7 @@ async def _sweep(wdt: "machine.WDT") -> None:
     fact("ring_bound_us", bound_us)
     writer = _raw_uart(send_bus)
     sender = _Sender(send_bus, max(windows) + 2 * _STREAM_MARGIN_US, _AFTER_FRAMES)
-    await sender.build()
+    await sender.build(wdt)
     gc.collect()
     heap_before, largest_before = gc.mem_free(), largest_block()
     driver = _driver(recv_bus)
@@ -413,7 +416,7 @@ async def _main() -> None:
     fact("state", state)
     fact("gc_threshold", gc.threshold())
     if state == "soft_reset":
-        await _soft_reset()
+        await _soft_reset(wdt)
     elif state == "after_soft_reset":
         await _after_soft_reset(wdt)
     elif state == "config_write":
