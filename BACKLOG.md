@@ -33,7 +33,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   webserver/notification/config-push were all swept, real call chains traced end-to-end rather than
   grep-counted. Full account, including what was fixed, what's a confirmed structural exception, and
   what's named-but-not-fixed (needing either a dedicated real-hardware session or a project-owner
-  design decision): `tests_hardware/README.md`'s "Tenth pass". No second instance of the
+  design decision): `tests_hardware/README.md`'s "Tier parity beyond the bus hazards". No second instance of the
   SGP40-shaped bug (a real hardware trigger silently substituted with a software-only one) turned
   up, but several real tier-parity gaps did, most now closed. Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structural
   exception until injection hardware exists (2026-09-22, SPECIFICATION.md E.6.6 row
@@ -137,7 +137,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    is correct but effectively dead code on this platform). Technique, results, and the bench-harness
    gap the pass also closed (`start_udp_source_capture()`, a real `tcpdump` capture, replacing a
    DNAT redirect that does not deliver locally at `route_localnet=0`): `tests_hardware/README.md`'s
-   "Fourth pass" and "Known assumptions and open findings".
+   "What the network-fault injections reach" and "Known assumptions and open findings".
 6. ~~Should `asy_wifi_service.py` gain an independent WiFi reachability check?~~ — **closed
    (2026-09-08): investigated, no `src/` change.** The CYW43 firmware/lwIP stack can silently mask a
    real link disruption from `wlan.isconnected()` entirely; decided, with full upstream research
