@@ -8931,8 +8931,8 @@ DMA ring (`setup_rx_ring()`): construction phase (the link's `setup()` in the on
 long-lived, fixed by the device TOML's ring size — one allocation of twice the ring's size, so a
 naturally aligned window always fits, never reallocated by a task restart; `dev`'s two links, at the
 driver-default 512-byte ring, hold 2 × 1,024 B, and the boot contiguity
-test asserts where they land (I.4(f.1)). A larger ring costs twice its size, which is why a ring for
-the bench's continuous-sender window is sized on the bench with its heap cost measured (J.6).
+test asserts where they land (I.4(f.1)). A larger ring costs twice its size, which is why `dev` keeps
+the default ring rather than one for the bench's continuous-sender window (J.6).
 `readline_until_complete()` is capped by `max_transfer_bytes` and assembles a `PieceBuffer`, never
 growing by concatenation, a heap too short for its pieces answering `None` with the caught text
 through its user's logger (owner, 2026-10-27); `read_until_complete()` is bounded by its `n`.
@@ -9766,9 +9766,10 @@ number (owner, 2026-10-05). At the defaults the floor is 128 bytes against the d
 default ring (Part N `uart.rx_ring_default`); at `payload_size = 255` it is 512, which the default
 still holds, and a 100 ms `timeout` there raises it to 2,048. A device may declare a larger ring
 than its floor for a reason of its own; `dev` states the driver default, 512 bytes, four times its
-links' floor, and a ring for the bench's continuous-sender window (400
-ms of interrupts off at 115200 baud is 4,608 B) is sized on the bench, its heap cost measured there
-(agent, 2026-10-08). `rxbuf` is still checked against the
+links' floor. A ring for the bench's continuous-sender window (400 ms of interrupts off at 115200
+baud is 4,608 B) would be 8,192 B at 16,384 B of heap, more than `dev`'s serving can spare, so the
+bench's sender runs past the 512-byte ring's bound and checks the overrun's report and resync
+(owner, 2026-11-05). `rxbuf` is still checked against the
 first two floors (at `payload_size = 255` the 260-byte frame alone
 overruns the driver's 256-byte default, `uart.rxbuf_default`), since it stays the largest single
 read. The bytes land in the ring through a DMA channel (F.5.8), while `machine.UART`'s own receive

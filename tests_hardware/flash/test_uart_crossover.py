@@ -6,9 +6,8 @@ import sys
 from pathlib import Path
 from typing import Protocol
 
-import bench_facts
 import pytest
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, Board, bench_device, parse_facts
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, Board, parse_facts
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from buildgen.validate import module_int_const
@@ -31,7 +30,6 @@ _CMD_SET = module_int_const(_SRC, "asy_uart_comm.py", "CMD_SET")
 _UID_MAX = module_int_const(_SRC, "asy_uart_comm.py", "_UID_MAX")
 # A first-chunk SET's verdict per field (J.3/J.4), the rule tests/test_digital_twin_uart_field_sweep.py checks at L2.
 _LEGAL = {"cmd": lambda v: v == _CMD_SET, "size": lambda v: v == 1, "chunks": lambda v: v >= 2, "cur_chunk": lambda v: v == 1, "uid": lambda v: v <= _UID_MAX}
-_FLASH_WINDOW_MAX_US = 400000  # W25Q16JV tSE max: the longest interrupts-off stretch the ring must hold (the script's own)
 _RING_LINK_TRANSACTIONS = 5
 
 _SCRIPT_TIMEOUT_S = 120.0
@@ -64,17 +62,6 @@ def _int(value: object) -> int:
 def _list(value: object) -> "list[object]":
     assert isinstance(value, list), value
     return value
-
-
-def _ring_holds_the_flash_window() -> None:
-    # The receiving bus's ring against what a continuous sender puts in it during the longest flash window.
-    facts = bench_facts.build(bench_device())
-    bus = _dict(_dict(facts["bus"])[str(_dict(_dict(facts["instances"])["uart_link_resp"])["bus"])])
-    ring, baudrate = bus["rx_ring"], bus["baudrate"]
-    assert isinstance(ring, int) and isinstance(baudrate, int), bus
-    need = _FLASH_WINDOW_MAX_US * (baudrate // 10) // 1000000
-    if ring < need:
-        pytest.fail(f"the bench TOML's rx_ring {ring} B cannot hold the {_FLASH_WINDOW_MAX_US // 1000} ms flash window ({need} B at {baudrate} baud): size it in the device TOML")
 
 
 def _run_or_fail(board: Board, script: str, timeout_s: float, *, crc_mode: str = "none", state: "str | None" = None) -> "dict[str, object]":
@@ -213,7 +200,6 @@ def _setup_ok(facts: "dict[str, object]", key: str = "setup") -> None:
 def test_no_frame_is_lost_while_interrupts_are_off(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
     # Interrupts held off for the flash windows while the other UART streams through DMA: within the ring's bound no
     # frame is lost and no overrun shows; past it the overrun is reported and every frame after the resync is intact.
-    _ring_holds_the_flash_window()
     facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode)
     _setup_ok(facts)
     result_note(f"heap {facts['heap']}")

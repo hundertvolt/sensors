@@ -345,11 +345,11 @@ gates, traps).
   entry, 6 the starved-watchdog fallback, 0 an invalid record, 9 an incomplete command, 10 + phase a
   hang in boot phases 1-5, 20 a C-stack exhaustion, 21 a console interrupt; the board serving after
   each. Wear: no owned write (the tests carry no wear marker). Twin row: each script's twin run.
-- **The UART receive ring sized for the bench's interrupts-off window** — on `dev`, the responder's
-  `rx_ring` is 8,192 B (`devices/dev.toml`), the power of two above the 4,608 B a continuous sender
-  puts into the 400 ms flash window at 115200 baud;
+- **The UART receive ring under the bench's interrupts-off windows** — on `dev`, the responder's
+  `rx_ring` is the 512 B default (`devices/dev.toml`, J.6), whose bound a continuous sender passes
+  at about 44 ms, so the 45 ms window lies just past it;
   `flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off` runs on it and
-  measures the ring's heap cost (the test reports it). Expected: every frame intact with the overrun bit clear within the ring's bound,
+  reports the ring's heap cost. Expected: every frame intact with the overrun bit clear within the ring's bound,
   an overrun reported past it, the frames after its resync intact, and the receive-DMA-off overrun
   failing one transaction and recovering. Wear: none (`uart_dma_ring_interrupts_off.py` holds
   interrupts off with a busy-wait, no flash write). Twin row: none.
