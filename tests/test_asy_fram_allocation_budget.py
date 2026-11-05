@@ -1,6 +1,6 @@
 """Allocation budget for the FRAM path's boot-time cost: one blank and one valid PrintLogHistoryStore.setup() priced in
 one window from a collected floor, against a ceiling set from a measured run. The efficiency half of SPECIFICATION.md
-I.4(e) - it fails if a coroutine-per-CS-cycle, or any comparable per-call allocation, regresses back into the path."""
+I.4(e) - it fails if a per-CS-cycle allocation, a coroutine say, regresses into the path; a few bytes per setup pass."""
 # Absolute figures are binary-dependent, not board figures: plain runs use build-standard; --coverage runs
 # build-settrace, which inflates every figure 4-5x - one budget per binary (SPECIFICATION.md E.5.2).
 

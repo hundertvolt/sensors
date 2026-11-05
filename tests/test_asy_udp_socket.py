@@ -1740,8 +1740,8 @@ def test_cancelling_connect_or_ready_at_each_await_leaves_the_lock_free() -> Non
 
 def test_write_on_an_unconnected_server_mode_socket_returns_none_sentinel() -> None:
     # write() semantically requires a connected socket, so calling it on a bound-but-unconnected
-    # server-mode socket is a caller misuse this file deliberately does not guard structurally
-    # (BACKLOG.md). The real ENOTCONN-style OSError is caught like any other socket failure.
+    # server-mode socket is a caller misuse this file deliberately does not guard structurally.
+    # The real ENOTCONN-style OSError is caught like any other socket failure.
     addr = _make_addr()
 
     async def scenario() -> int | None:
