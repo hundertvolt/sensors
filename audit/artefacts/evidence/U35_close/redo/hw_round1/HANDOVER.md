@@ -95,17 +95,16 @@ prerequisite file writes up to 422 (the tiers twice, 136 + 66 each, then 10a, 10
 
 ## What each step expects, where it differs from the sheet
 
-- **3g-5g, the GC control image** (no threshold). 4g's verdict is FAIL from the same two known nodes as 4b; 5g's
-  has none known. No hardware test checks the board's own threshold: every device script sets its GC stage itself
+- **3g-5g, the GC control image** (no threshold). No node is known to fail on 4g or 5g. No hardware test checks the board's own threshold: every device script sets its GC stage itself
   ("never inherited"), and the image check compares device, BuildDate, lwIP, `maxConnections` and the tick offset.
   The production-mode scripts (`loop_lag_under_combined_load.py`, `boot_stretch_final.py`) do inherit it: on this
   image they run at -1, which is the proof's point, not a known failure. `test_heap_layout.py`'s note names
   `build/firmware-dev.json`, not the record given, so on 4g it names the wrong image.
-- **4b, the flash tier.** Its verdict is FAIL from exactly two nodes, marked "(known)":
-  `test_no_frame_is_lost_while_interrupts_are_off[none]` and `[crc16]`. They fail up front: `rx_ring` 512 B is less
-  than the 4,608 B of the 400 ms window (`devices/dev.toml:55, :65`). The loop-lag skip no longer reads "unexpected
+- **4b, the flash tier.** No node is known to fail. `test_no_frame_is_lost_while_interrupts_are_off[none]` and
+  `[crc16]` now run their windows: dev's responder ring is 8192 B (snapshot 37, `ecca7f3b`), above the 4,608 B of
+  the 400 ms window; the test reports the ring's heap cost. The loop-lag skip no longer reads "unexpected
   skip": `scripts/_hardware_verdict.py`'s `PERMANENT_SKIPS` lists it since `d6bd2d45`.
-- **5 and 5g, the bench tier.** `run_bench_hardware_suite.sh` re-runs L3 under `set -e`, so the two known FAILs would
+- **5 and 5g, the bench tier.** `run_bench_hardware_suite.sh` re-runs L3 under `set -e`, so any L3 FAIL would
   stop it before `tests_hardware/bench`, after 17 more scratch builds. The steps run the runner's own bench line
   instead (`_require_clean_hardware_run.sh --runner run_bench_hardware_suite`); a pass reads NOT CLEAN, naming 4a.
 - **Rows 6 and 16 are no steps.** They are the `/status` read after every step: `ResetReason` in the verdict table,
@@ -154,3 +153,28 @@ prerequisite file writes up to 422 (the tiers twice, 136 + 66 each, then 10a, 10
 
 These stay on the Pi: `logs/`, `logs/status_before.json` (the verbatim `/status`, with networking) and the
 harness's own `build/archive/` evidence.
+
+## The precheck of 2026-11-05: answers (lead, 2026-11-05)
+
+`PRECHECK_20261105.md`'s findings, in its numbering. 1-3 are fixed in `round1.sh`, 4 in the tree:
+1. **uv.** `run` puts `.uvpin/bin` first on PATH when it exists, and refuses any uv other than `pyproject.toml`'s
+   `required-version`, naming the fix. Launch from the checkout that holds `claude/u35-bench-campaign` (`sensors-bench`):
+   `run` pulls it there, and a `git checkout -B` elsewhere fails while that worktree holds the branch.
+2. **A failed wear step ends the range.** Its fix may touch code a later wear step exercises. A failed non-wear step
+   does not end the range: the later steps' data is still wanted.
+3. **The pass record** reads its log to the end (`grep` without `-q`), so a `Result: FAIL` line always blocks it.
+4. **The ring.** `devices/dev.toml`'s uart1 (the responder) ring is 8192 B in snapshot 37, which this branch carries.
+   **Tree ready: no.** Build no image (3g's control image, step 3, the lwIP control image) until this line reads
+   "Tree ready: yes", once snapshot 37's CI is green. Steps 1, 2 and 4a may run before that.
+5. **`stall.flash_program`.** October's figure stays out of SPECIFICATION.md (the owner, 2026-11-05: "Nothing from
+   the old campaign remains. It's all new now"). Step 7f records the final firmware's figure. It does not bear on
+   `cleared:`, which judges code, not a measurement.
+
+The unchecked items:
+- **Round 1's scripts** (12a-12f, 13) entered the tree in snapshot 35 (`d6bd2d45`), the snapshot of `src/`'s last
+  change, and were written against it. `long_fram.py` uses `machine.SPI` alone.
+- **The board's image** is whatever is on it. Step 1 tolerates a board that does not answer `/status`.
+- **The flash bound.** SPECIFICATION's 2,129 ms is the worst case for the largest config file (5 erases). Two erases
+  for a 700 B file fit inside it.
+- **Part N's owed rows** are mapped after round 1, from its results (R5), not before.
+- **October's files** stay as evidence. They go with `audit/` at the audit's end.

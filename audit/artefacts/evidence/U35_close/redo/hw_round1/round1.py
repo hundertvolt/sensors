@@ -15,7 +15,7 @@ from aggregate import fold  # noqa: E402
 from handback import clean  # noqa: E402
 
 BUDGET = (9, 126, 14, 422)  # the sheet's round plus the GC proof (3g-5g): FC, FS owned, NVM, prerequisite writes
-KNOWN = "test_no_frame_is_lost_while_interrupts_are_off["  # 4b's and 4g's standing FAILs: rx_ring 512 B < 4,608 B
+KNOWN: "tuple[str, ...]" = ()  # standing FAILs by node prefix; none since dev's responder ring holds the 400 ms window
 TAIL = {"4a": 200}  # the lower levels' last lines, their summary blocks among them
 SECRET = re.compile(r"[\"']PW[\"']\s*:|(?<!_)password[\"']?\s*[:=]", re.I)  # a PW key or a password value; not a test name
 SECTION = re.compile(r"<!-- step (\S+) -->\n(.*?)<!-- end step -->\n", re.S)
@@ -83,7 +83,7 @@ def verdict(lines: list[str]) -> list[str]:
     end = next((re.search(r" end rc=(\d+) .* (\d+)s load (\S+)", ln) for ln in run if ln.startswith("== step ") and " end rc=" in ln), None)
     parts = [f"rc={end[1]}" if end else "running or cut off (partial log)"]
     parts += [ln[8:].strip() for ln in run if ln.startswith("Result: ")]
-    names = [f"{n} (known)" if KNOWN in n else n for n in failed(run)]
+    names = [f"{n} (known)" if any(k in n for k in KNOWN) else n for n in failed(run)]
     if names:
         parts.append("failed: " + ", ".join(names[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else ""))
     parts += [ln.strip() for ln in run if re.match(r"NOTE |SUM .*refused", ln)][:2]

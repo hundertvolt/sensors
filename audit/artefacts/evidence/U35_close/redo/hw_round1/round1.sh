@@ -229,11 +229,12 @@ step() {  # one step in its own session, so a terminal's Ctrl-C reaches only thi
   wait "$pid"
   rc=$?
   echo "== step $id end rc=$rc $(date -u '+%F %T') $(($(date +%s) - t0))s load $(cut -d' ' -f1-3 /proc/loadavg)" >> "$log"
-  if [ "$rc" = 0 ] && [[ "$WEAR_IDS" == *" $id "* ]] && ! sed -n "/^== step $id start .* $t0 load /,\$p" "$log" | grep -qE '^(NOTE wear step|Result: [^PN])'; then
+  if [ "$rc" = 0 ] && [[ "$WEAR_IDS" == *" $id "* ]] && ! sed -n "/^== step $id start .* $t0 load /,\$p" "$log" | grep -E '^(NOTE wear step|Result: [^PN])' > /dev/null; then  # grep reads to the end: no SIGPIPE
     echo "passed: $id $(date -u '+%F %T')" >> "$WEAR"  # rc 0 and every Result PASS or NOT CLEAN; never on a skip
   fi
   [ -z "${DUT_IP:-}" ] || { echo "== read-across: GET /status after step $id"; py get status 180; } >> "$log" 2>&1
   handback
+  return "$rc"
 }
 
 index() {  # a step id's position in STEPS
@@ -263,13 +264,17 @@ run_range() {  # continues the fetched bench branch, then runs the inclusive ran
   fi
   mkdir -p "$L" && chmod 700 "$L"
   rm -f "$H/STOP"
+  [ ! -x .uvpin/bin/uv ] || PATH=$PWD/.uvpin/bin:$PATH  # the pinned uv, where October left it
+  local want; want=$(sed -n 's/^required-version = "==\(.*\)"/\1/p' pyproject.toml)
+  [ "$(uv --version | cut -d' ' -f2)" = "$want" ] || { echo "uv $want needed (pyproject.toml): put it first on PATH, or uv self update $want" >&2; return 1; }
   scripts/uv_sync_retried.sh > "$L/sync.out" 2>&1 || { cat "$L/sync.out"; return 1; }
   trap 'touch "$H/STOP"; handback' INT TERM HUP
   trap 'handback; rm -f "$H/STOP"' EXIT
   for ((i = a; i <= b; i++)); do
     IFS='|' read -r id _ _ _ _ _ _ kind _ <<< "${STEPS[i]}"
     stopping && { echo "$(date -u '+%F %T') STOP found: ending before step $id" >> "$L/runner.log"; exit 0; }
-    step "$id" "$kind"
+    step "$id" "$kind" && continue
+    case "$WEAR_IDS" in *" $id "*) echo "$(date -u '+%F %T') wear step $id did not pass: the range ends" >> "$L/runner.log"; exit 1 ;; esac
   done
 }
 
