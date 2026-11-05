@@ -4578,11 +4578,9 @@ A driver that needs a live cross-instance value at construction time declares a 
 # @wiring <toml_field> <ProducerClass> <target> <required|optional> <kwarg|attr>
 ```
 
-**A comment, never a real Python value** — placed at module level beside the schema it describes.
-Nothing the running firmware itself ever reads should become a real frozen-bytecode value just to
-serve the generator (owner, 2026-09-10; SPECIFICATION.md Part L.5), and this declaration is read
-only by `buildgen/wiring.py`. As comments, it, `_VALUE_WIRING`, `_LIMITS` and their type aliases
-cost no frozen bytecode (3,576 bytes as real values, 2026-09-10). Every element is a bare word, and dropping any one of the
+**A comment, never a real Python value** (L.6.4), placed at module level beside the schema it
+describes and read only by `buildgen/wiring.py`. Every element is a bare word, and dropping any one
+of the
 five makes the tag fail the build loud rather than parse as "no tag here" (`tag_comments.py`).
 `target`/`mode` say how the resolved producer instance is actually handed to the consumer:
 
@@ -7824,9 +7822,21 @@ reachable somewhere in the GUI. Standing constraints (the owner's brief, 2026-08
 all met: no boilerplate (content generated dynamically from a per-device definitions file, H.5);
 same skeleton/JS for every device (`render.js`/`nav.js` have zero device-specific branching); full
 coverage of the REST API (owner, 2026-09-26: 'The reference for us is the new API.'); small, lean,
-no external runtime deps; stable on major browsers, light/dark (automatic-only via
+no external runtime deps; runs on current Chromium, Firefox and Safari (owner, 2026-09-26,
+paraphrase), at the ES2022 library level `tsconfig.json`'s `lib` binds, each engine driven by H.7's
+cross-browser smoke (WebKit through WebKitGTK); light/dark (automatic-only via
 `prefers-color-scheme`); modern hamburger/drawer nav; build = gzip → `freezefs` → frozen bytecode →
 mount on startup → served via Microdot as gzip-compressed HTML (A.9).
+
+**Placement** (owner, 2026-09-26, asked whether a placement rule is written into Part H and every
+page checked against it: "2. yes"): every value a route returns or accepts is shown or settable on
+the page of the section that owns it, with its control, unit, label, description and range, nothing
+missing, duplicated or orphaned. The six sections mirror the six endpoints: Measurements the live
+readings, Sensors the sensor settings, Networking Wi-Fi, NTP and identity, System the system
+settings, Notification the LEDs and notifications, Status health, errors and uptime. A value read
+from another endpoint keeps its owner's page: the captive DNS server's history (`/status`) shows on
+Networking, `PauseTime`'s live value (`/status`) on Notification
+(`tests_scripts/test_buildgen_definitions.py`).
 
 **Accessibility baseline** (agent, 2026-09-27; owner-reviewed, 2026-10-01): unique ids, every label
 bound to its control, the closed drawer inert with focus handled, WCAG 2.1 AA contrast in both
@@ -7972,12 +7982,12 @@ call evades it.
 | Page model | Single-page shell, JS-driven view switching | One HTML skeleton; menu swaps sections via JS, no reload — makes the poll-manager's single-active-poll rule trivial. Each menu selection is a `#<key>` history entry, so Back and Forward walk the sections and a `#<key>` URL opens its section (owner, 2026-10-01, asked about "The website meets an accessibility baseline": 'I want "back" to move backwards through the sensor subpages openend through the menu as well (actually the most intuitive way)'). |
 | Definitions file | One JSON per device, fetched once | Covers nav, labels, units, ranges, special values (H.5). |
 | REST target | `asy_webserver_service.py` (A.8) | Six endpoints, sparse-body PUT, no `cmd` envelope, no `Led` prefix. |
-| Nav grouping | Mirrors the 6 REST endpoints 1:1 | Measurements, Sensors, Networking, System, Status, Notification. |
-| History depth | Counts always visible; full history on demand; no pagination | A realistic depth stays well under 20 entries, rides along in `/status`. |
+| Nav grouping | Mirrors the 6 REST endpoints 1:1 | The placement rule, H.1. |
+| History depth | Counts always visible; full history on demand; no pagination | Each logger holds `history_length` = 10 entries (C.7), well under the 20 a realistic history stays below, and the whole history rides along in `/status`. |
 | Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently, a page only ever needing one or the other; every request, the definitions fetch at startup included, goes through the one queue (`pollManager.request(url, init, timeoutMs, signal, queueSignal)`), and its shared `AbortController` timeout covers the whole request, the body read included — `DEFAULT_TIMEOUT_MS = 15000`, see the row below for why that exact value. A section that is left drops its queued GETs; its GET on the wire runs to its end, discarded, when the next section is rendered (a switch), and is aborted when the page itself stops (before a reload), with any GET a switch handed it (agent, 2026-10-13, decided on the owner's behalf for review): an aborted GET would reset a connection the device is still answering, which the device logs as a peer reset (`wrnno` 48), on ordinary navigation. The cost: the next section's first GET waits for the left one, measured on the twin (2026-10-13) at a median 216.6 ms after the click against 6.6 ms when it was aborted, at most the 15 s request cap. Polling pauses while the tab is hidden. The poll interval is Part N `web.poll_interval_ms`; a page load opens `web.connections_per_page_load` connections. |
-| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0 s, Part N `web.outer_cap_s`) | Not an independently-chosen UI number: the server aborts any request at `outer_cap_s` (applied via `asyncio.wait_for_ms()`), so matching it is what makes a slow request surface as *the server's own abort*, which the UI can report, rather than a client-side give-up it cannot explain. Giving up earlier would hide real server aborts behind a generic timeout; later would leave the UI hanging past the point the server already gave up. The heaviest real request is `PUT /status {"ResetErrors": true}`, which resets every error source concurrently (its measured cost: C.7) — this ceiling is a product constraint for its operators, not a test-harness number. The mirror is enforced structurally by `tests_scripts/test_request_timeout_ceiling.py`, which parses `outer_cap_s` out of `src/` with `ast` and pins this constant and both test tiers' own `ResetErrors` client timeouts against it. |
-| API reachability | No dedicated API-browser page | Reachable somewhere in the ordinary GUI is enough. |
-| Definitions validation | Strict — visible error banner on mismatch | Checks shape/version including `pollGroup` and poll-interval fields. |
+| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0 s, Part N `web.outer_cap_s`) | The client never waits longer than the longest request the server serves (`outer_cap_s`, applied through `asyncio.wait_for_ms()`). Equality leaves no margin in the server's favour: the client's timer starts before connect and covers the whole request, the server's cap starts after accept, so the client gives up first, by the connect-and-accept time, and the page reports a timeout, never the server's abort. The heaviest real request is `PUT /status {"ResetErrors": true}`, which resets every error source concurrently (its measured cost: C.7) — this ceiling is a product constraint for its operators, not a test-harness number. The mirror is enforced structurally by `tests_scripts/test_request_timeout_ceiling.py`, which parses `outer_cap_s` out of `src/` with `ast` and pins this constant and both test tiers' own `ResetErrors` client timeouts against it. |
+| API reachability | No dedicated API-browser page | Every value on its page (H.1) is enough. |
+| Definitions validation | Strict — visible error banner on mismatch | Every problem is listed with where it sits (`js/definitions.js`); the Python shape check and this validator agree over one shared case corpus (H.5.1). |
 | Landing page | Measurements | Matches legacy's default. |
 | Card/nav visual treatment | Modernized flat cards; slide-in drawer nav | Soft border/shadow, real light/dark tokens. |
 | Rendering safety | `textContent` only, never `innerHTML` | XSS-safe by construction: ESLint's `no-restricted-properties` refuses `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` and `document.writeln` in `js/` and `html/` (`tests_js/` exempt), and `tests_scripts/test_website_layering.py` fails when that rule is dropped. |
@@ -7987,6 +7997,8 @@ call evades it.
 | PUT/GET error handling | Non-2xx / null body / `res:"ERR"` = whole-request failure, surfacing the server's `descr` | A field missing from `result` shows `"Failed"`. A GET failure shows a per-section banner without clearing stale data. Apply first re-reads the section (one GET before the PUT, so a value another client changed is the baseline), then asks the confirmations, an enum's chosen option label or a toggle's card submit label with "?" (A.8); a declined or suppressed confirmation sends nothing and reads "Not sent - the confirmation was declined.". A GET with an empty body raises the section banner (`"GET <url> returned an empty body"`); a non-ok GET reads `"GET <url> failed: <descr>"`, or `"... HTTP <n>"` without a `descr`. |
 | Per-device page-scheme mechanism | The definitions file itself | `render.js`/`nav.js` have zero device-specific branching. |
 | Submit-button labels | The identity and NTP groups keep legacy's "Apply & Reconnect" and "Apply & Resync" | Restored from the legacy pages (owner, 2026-09-29). |
+| Sparse PUT | Sent only on an explicit Apply, never retried or repeated (owner, 2026-09-26) | `collectGroupBody()`: a number or string input is sent whenever non-empty, even when equal to the stored value ("Unchanged" is the device's answer), a composite when any sub-input is filled, a plain toggle or enum when it differs from its baseline; a dispatch toggle only when On, a dispatch enum when an option is chosen, an always-executed toggle whenever it is set. Number input that is not plain decimal text is sent as typed, for the device to refuse (`parseNumberInput()`). |
+| After Apply | Stored inputs cleared, rejected ones kept, commands reset (owner, 2026-09-29) | Every dispatch toggle or enum returns to Off or its placeholder and every always-executed toggle to unset, whatever the answer; a submitted text or composite the device stored is cleared; a submitted plain toggle or enum the device stored shows the value the post-write GET reports (`resetSettledControls()`, `resetToBaseline()`). |
 | Known accepted gap | An empty string can't be set via this UI for any field but one, the DNS fallback list, whose Clear button sends `""` (owner, 2026-09-26) | The sparse-PUT "blank = untouched" convention makes it structurally impossible (`PW`'s "open network" sentinel, which `PW`'s hint states as `"" = Open network`: a number or string field's hint lists its special values). Accepted (owner, 2026-08-22, `cc999c1`: leave as-is). |
 | Divergences from the legacy site | A whole-request Apply failure, which legacy only logged to the console, marks every submitted field Failed (agent, 2026-08-22; owner-reviewed, 2026-10-01). The Apply result is a left stripe on the card and on each field rather than legacy's full background recolour, keeping legacy's two levels (owner, 2026-08-21). The legacy favicon is inlined as a 16×16 image, so a page load still opens two connections (agent, 2026-09-30; owner-reviewed, 2026-10-02). The Altitude warning `"Ignored: <label> is set."` replaces legacy's "turn off continuous measurement" note (owner, 2026-09-29). `ContMeas` shows no state until it is set (agent, 2026-09-30; owner-reviewed, 2026-10-02). Inputs clear after an Apply as legacy's did, a rejected one keeping its value (owner, 2026-09-29). A failed GET is retried with a capped back-off (agent, 2026-09-30; owner-reviewed, 2026-10-01), and a changed build reloads the page (agent, 2026-09-30; owner-reviewed, 2026-10-01). Timestamps show as an age against the device clock (owner, 2026-09-29). The error and warning numbers are clickable for their description (owner, 2026-09-29: '... don't change the current look of the website, make the codes clickable and show the description on click'), and so are the status codes, `ResetReason` first (owner, 2026-10-02, asked about "The reset-reason and boot-phase numbers": 'Good, and make the numbers clickable in the website like the errno and wrnno numbers.'). The DNS fallback list has an explicit Clear (owner, 2026-09-26). | Every behaviour that departs from the legacy pages is listed here with its decider and date. |
 
@@ -8059,7 +8071,9 @@ set (agent, 2026-09-30; owner-reviewed, 2026-10-02).
 ## H.5.1 Definitions-file autogeneration
 
 `buildgen.definitions.generate_definitions(model, src_dir)` builds the dict above from an already-
-`buildgen.validate.build_model()`-validated `DeviceModel` plus two source-derived inputs: the
+`buildgen.validate.build_model()`-validated `DeviceModel` in construction order (the cards follow
+it; `definitions_for_toml(toml_path, src_dir)` runs all three steps from a TOML) plus two
+source-derived inputs: the
 `# @web <Field> key=value ...` / `# @web-group key=value ...` comment-tag family
 (`buildgen/web_tag.py`, built on `buildgen/tag_comments.py`'s shared near-miss-enforcing scanner
 exactly like `@requires` — never a second, separately-tested detector) and a best-effort,
@@ -8081,10 +8095,7 @@ bmp3xx, the only drivers a device can carry more than one instance of; every oth
 `identity`/`wifiLed`, NTP's `ntp`, System's `settings`, Notification's `autoConfig`) uses a literal
 key instead. Every tag names its target explicitly (`section=`/`submitGroup=`) rather than relying
 on file position, since a field's group is not always inferable from where in the file it sits.
-Grammar is deliberately minimal, matching BACKLOG.md's own original sketch: a quoted value may not
-contain a literal `"` (no escaping), and every tag is a single physical line (no continuation
-syntax, unlike `@wiring`'s bracketed-continuation-line allowance — a `@web` tag's payload never
-needs it).
+The grammar floor (one physical line per tag, no `"` inside a quoted value) is L.6.4's.
 
 Every schema field of a tagged driver needs a `@web` tag, or `@web <Field> hidden="<reason>"` to
 leave it off the website on purpose — the reason non-empty, no other key beside it, and never a
@@ -8193,19 +8204,23 @@ publishes, so an instance named `scd30_fan_pressure` needs rows under `SCD30_fan
 wrong fails in both directions — a published source with no row is never rendered at all, which
 nothing shows, and a row with no published source reads "no data" (one whose source sent the
 unavailable marker, "unavailable"), counted in the rollup's `"<n> module(s) without data"`, a line
-shown only when there are some; no fallback paints a healthy zero. **History
+shown only when there are some; no fallback paints a healthy zero. No logger has two rows, and the
+captive DNS server's (`DNSSRV`) sits on Networking, every other on Status (H.1's placement;
+`tests_scripts/test_buildgen_definitions.py`). **History
 entry**: `{"num": <raw errno>, "type": "N"|"E"|"W"}`, a fixed `history_length`-long list (the ring and its
 repeat rule: C.7.1), no per-entry timestamp — `type` only colors `num`. **Errcount UX**: same `.card` shell as other
 groups, starts collapsed to a rollup + two filter buttons; the buttons and the rollup are wired
 inside `templates.js`, and the controller only hands each poll's `errcount` to
-`updateErrcountGroup()`. **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`,
-`LightCmdLED` (R/G/B/T, bounds matching legacy exactly, rejecting not clamping),
-`ResetErrors`, `ContMeas`, `ResetVOC`: `"Invalid"` for a bad or unknown key or a value out of its
+`updateErrcountGroup()`. **Never-"Unchanged" field semantics** — every field of H.5's two classes,
+read from the definitions' `dispatch` and `alwaysExecuted` flags, never from a list (`LightCmdLED`'s
+R/G/B/T bounds match legacy's, rejecting, never clamping): `"Invalid"` for a bad or unknown key or
+a value out of its
 type or range; a valid submission reports `"Valid"` on every repeat (never `"Unchanged"`), except
 `LightCmdLED`, answered `"Failed"` while a signal is still queued or running (owner, 2026-09-29) — a
 refusal that tells the caller to try again later, its envelope's `descr` reading "LED busy - retry
-later" (owner, 2026-10-02). `js/mock-server.js` mirrors this via dedicated dispatch functions —
-none ever persisted into the generic settings store. **Server-side settings-group failure**: if a
+later" (owner, 2026-10-02). `js/mock-server.js` mirrors this: a dispatch field is never stored, an
+always-executed one only where the composed data carries its key (H.4). **Server-side
+settings-group failure**: if a
 `SettingsGroup`'s post-write hook raises, every field that group attempted is reported `"Failed"` —
 never silently dropped — while the overall envelope still reports success.
 
@@ -10845,7 +10860,8 @@ needs CPython 3.11 (`tomllib`, `datetime.UTC`).
   `buildgen/definitions.py`, which inlines the code descriptions into every device's definitions
   (H.5).
 - **Website `definitions.json`**: `buildgen.definitions.generate_definitions(model, src_dir)` takes
-  an already-validated `DeviceModel`, scans each relevant instance's and mandatory-infra file's
+  an already-validated `DeviceModel` in construction order (`definitions_for_toml()` runs all three
+  steps, H.5.1), scans each relevant instance's and mandatory-infra file's
   `# @web`/`# @web-group` tags (`buildgen/web_tag.py`) and assembles the full
   `definitions.json`-shaped dict, keyed by each instance's own `resolved_name` so a multi-instance
   device gets distinct, correctly-labelled cards. `buildgen/schema_ast.py` AST-evaluates a driver's
@@ -10932,19 +10948,13 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   against `instance_name()`/each driver's own `_NAME` constant. L.3 has the full reasoning and the
   concrete `"NOTIFY"`-vs-`"NOTIFICATION"` case a naive implementation silently fails to resolve.
 - **Driver-declared bus requirements are enforced via a `# @requires` comment tag, never a real
-  Python variable** — nothing the running firmware itself reads should become a real
-  frozen-bytecode value just to serve this generator. Grammar: `# @requires bus.<field><op><value>`
+  Python variable** (the comment-tag rule, L.6.4). Grammar: `# @requires bus.<field><op><value>`
   (e.g. `# @requires bus.timeout>=200000`), placed at module level near the driver's other tags.
   The generator parses driver source files as text for these tags (never imports and introspects),
   resolves the instance's `bus = "..."` reference to its `[bus.*]` table, and evaluates the
   predicate against that table's actual field value — failing loudly, naming device, instance, bus,
   field and expected-versus-actual value, if it is not satisfied.
-- **Every driver-declared fact the running firmware never reads is a comment tag, not a Python
-  value** (owner, 2026-09-10: 'nothing the running firmware itself ever reads should become a real
-  frozen-bytecode value just to serve this generator') — uniformly for `# @wiring`,
-  `# @value-wiring` and `# @limits` alike (L.6 has each grammar and rationale). The one exception is
-  a `_Default<Field>` class, which is live code the generated module actually constructs, not
-  metadata, so it stays real Python.
+- **Driver-declared facts are comment tags**: the rule, its owner quote and each grammar are L.6.4.
 - **Standing rule for every tag in this comment-tag family (owner, 2026-09-10, `12d62b6`): a tag
   that is present, or close to present with a typo, must be verified correct in every dimension —
   exact wording, location, format, content, validity — or fail the build loud, never be silently
@@ -11174,12 +11184,20 @@ recognised as interchangeable until its field is renamed to match.
 
 ### L.6.4 The comment-tag family
 
-`_WIRING`, `_VALUE_WIRING` and `_LIMITS` are all `#`-comment tags rather than real tuples, for the
-reason L.5 states. Measured saving from that conversion plus the `_Default*` `TYPE_CHECKING`
-aliases: ~3,576 bytes, about 2.6 % of `src/`'s frozen bytecode.
+**Every driver-declared fact the running firmware never reads is a `#`-comment tag, never a Python
+value** (owner, 2026-09-10: 'nothing the running firmware itself ever reads should become a real
+frozen-bytecode value just to serve this generator'), and the tag is the only source buildgen reads
+for it. The one exception is a `_Default<Field>` class, live code the generated module constructs.
+A tag sits at module level beside what it describes (a comment on a bracketed continuation line of
+a module-level statement is module level too) and is one physical line, never continued; a quoted
+value never contains `"` (no escaping). As comments, `_WIRING`,
+`_VALUE_WIRING`, `_LIMITS` and the `_Default*` `TYPE_CHECKING` aliases save ~3,576 bytes, about
+2.6 % of `src/`'s frozen bytecode.
 
 | Tag | Grammar | Parser |
 |---|---|---|
+| `# @web` | `<Field> key=value ...` (the keys and what they feed: H.5.1) | `buildgen/web_tag.py` |
+| `# @web-group` | `key=value ...` (H.5.1) | `buildgen/web_tag.py` |
 | `# @wiring` | `<toml_field> <ProducerClass> <target> <required\|optional> <kwarg\|attr>` | `buildgen/wiring.py` |
 | `# @value-wiring` | `<toml_field> <kwarg> <required\|optional>` | `buildgen/value_wiring.py` |
 | `# @limits` | `<field> <min>..<max>` or `<field> in {a, b, ...}` (`*` on either side of a range = unchecked that side; `min == max` = exact value) | `buildgen/limits.py` |
@@ -11359,7 +11377,8 @@ and this Part cite by number** — the numbering is load-bearing and must not be
 16. **The driver is self-healing and never reports a stale value as fresh.** `BOUTF` set means the
     chip lost its configuration, so the whole shadow is re-applied and the cycle discarded; startup
     tolerates transient I²C failure on the same leaky-bucket terms as steady state; a sample the
-    driver cannot prove is current is reported as `None`, never re-stamped.
+    driver cannot prove is current is not published, the last good sample keeping its original `TS`,
+    never re-stamped (C.4.2's one staleness rule, owner, 2026-09-29, replacing "reported as `None`").
 17. **Auto-range must not depend on the interrupt alone.** If the INT line never asserts — a missing
     pull-up, a broken jumper, a mis-set `INTSEL` — the periodic read evaluates the same switch
     condition: the interrupt is the *fast* path, the periodic read the *guaranteed* one, on the same
@@ -11558,12 +11577,12 @@ agent's (agent, 2026-09-13). Each constant named below is a Part N row (`isl2912
 - **Whether the light suits a calibration is published** as `CalLight`, decided per sample by the
   same band test the calibration run applies (owner, 2026-09-28; the codes, agent, 2026-09-28):
 
-  | `CalLight` | Meaning |
-  |---|---|
-  | 0 | not applicable now (fixed range, or the range is changing) |
-  | 1 | suitable for Calibrate Gain Ratio |
-  | 2 | too dark |
-  | 3 | too bright |
+  | `CalLight` | Meaning | Tone (`codeTones`) |
+  |---|---|---|
+  | 0 | not applicable now (fixed range, or the range is changing) | neutral |
+  | 1 | suitable for Calibrate Gain Ratio | good |
+  | 2 | too dark | warn |
+  | 3 | too bright | warn |
 
 - **A run ends with its console line alone** (`Gain-ratio calibration finished:` and the reason),
   converged or not; the window is checked on the cycles that measure.
@@ -11691,9 +11710,11 @@ feature-set check, since the datasheet documents none (owner, 2026-07-21).
 0-100 %RH convert to ticks rounded to nearest, never wrapped; a non-finite value is a read failure
 and leaves a pending algorithm reset pending.
 
-**The VOC algorithm's state is published** as `VOCState` (codes: `buildgen/error_catalog.json`'s
-`status.VOCState`, the tag's description): 0 during the blackout, whose samples publish `VOC` 0 with
-a fresh `TS` (the reference's defined blackout output for the first 46 samples, not a failed read).
+**The VOC algorithm's state is published** as `VOCState` (texts: `buildgen/error_catalog.json`'s
+`status.VOCState`): 0 blackout, the first 46 samples, which publish `VOC` 0 with a fresh `TS` (the
+reference's defined blackout output, not a failed read); 1 learning, a fresh start's first 24 h; 2
+settled, past the 24 h learning time (owner, 2026-10-02: "2 settled"); 3 restored from the FRAM
+backup, its first 24 h.
 
 **Sample cadence.** The raw signal feeds the algorithm at a fixed 1 s period ("a measurement is
 performed every second", datasheet 3.1); a merged tick costs one algorithm sample, and
