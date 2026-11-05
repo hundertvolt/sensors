@@ -9,11 +9,14 @@ import sys
 from pathlib import Path
 
 _FLOOR = "not soak_duration and not multi_day_rollover"
+# The conftest's session note for a run whose session fixtures act on no board, whatever is attached to the host.
+_NO_BOARD = {"text": "twin run: the twin's board starts fresh, nothing to check", "recovery": False, "source": "standard_state"}
 
 
 def _pytest(repo_root: Path, *args: str, cwd: Path) -> "subprocess.CompletedProcess[str]":
+    # --twin: the conftest's session fixtures then look for no board, so whatever the host has attached is never touched.
     env = dict(os.environ, PYTHONPATH=os.pathsep.join((str(repo_root / "scripts"), str(repo_root / "tests_hardware"))))
-    return subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", *args], capture_output=True, text=True, check=False, cwd=cwd, env=env, timeout=120)
+    return subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--twin", *args], capture_output=True, text=True, check=False, cwd=cwd, env=env, timeout=120)
 
 
 def test_collecting_the_hardware_levels_records_why_each_test_was_deselected(repo_root: Path, tmp_path: Path) -> None:
@@ -78,6 +81,7 @@ def test_result_note_and_session_notes_land_in_the_record(repo_root: Path, tmp_p
     assert ["result_note", "graceful wait 150.0s"] in props, props
     assert ["recovery", "recovered via a fallback hard_reset()"] in props, props
     assert {"text": "stale credentials repaired", "recovery": True, "source": "dut_ip"} in record["session_notes"], record["session_notes"]
+    assert _NO_BOARD in record["session_notes"], "the session fixtures looked for a board"
 
 
 def test_a_session_note_is_printed_when_no_record_is_written(repo_root: Path, tmp_path: Path) -> None:
@@ -87,4 +91,5 @@ def test_a_session_note_is_printed_when_no_record_is_written(repo_root: Path, tm
     ran = _pytest(repo_root, "-p", "conftest", str(tmp_path / "test_stub.py"), cwd=tmp_path)
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert "RECOVERY (dut_ip): stale credentials repaired" in ran.stdout, ran.stdout
+    assert f"NOTE (standard_state): {_NO_BOARD['text']}" in ran.stdout, "the session fixtures looked for a board"
 
