@@ -71,7 +71,7 @@ Paths are from the bench branch's tree, head `1d2f900a`. The fixes are proposals
 - **Cause:** it accepts any 200, including from the boot that has not yet reset. USB shows no reset between the rejoin at 11:23:49 and the cleanup's at 11:24:00, so it read the old boot, and 21 is what the previous reset left. The reboot's own reset did not get to happen.
 - **Fix:** take `BootSignature` before the command and wait for it to change.
 
-## 8. The `MemoryError`: reproduced; root cause not found
+## 8. The `MemoryError`: reproduced; cause measured on the board (update 13:55 UTC below)
 
 - **Exact lines (console, `DebugLevel` 5):**
 
@@ -100,7 +100,23 @@ WEBSERVER Unhandled exception in route handler: memory allocation failed, alloca
 - **Reproduce:** `DUT_IP=<addr> .venv/bin/python repro_status_load.py base 3 60 /status`; add the hazard run with `hazard` in place of `base`. Needs `pyserial` from the venv, and the console must be free. Writes no flash, only `WEBSERVER` log entries to FRAM.
 - **Lead (inferred):** those sizes sit just under `_DEFAULT_CHUNK_BYTES = 256` (`src/asy_webserver_service.py:149`), so the failing allocation looks like `_PieceWriter`'s piece join (`:200-219`) during `_build_status_pieces`. The comment at `:150-151` sized that value to the holes a fragmented heap has at -1. A failure at 256 B would mean those holes are now smaller, or the heap is really full.
 - **So it depends on overlapping `/status` requests.** One response is 7,369 B and takes 1.4 s; `/measurements` is 572 B and takes 0.24 s. `_build_status_pieces` (`:641-671`) builds the whole response before any of it is sent, with awaits between sections, and `_pieces_response` (`:971`) holds every piece until the socket has taken it. So each open `/status` holds up to about 7.4 KB in 256 B blocks while others build theirs, and each build also reads config files (212 `Reading config data` lines over 42 requests). This fits the rates above; I did not measure the heap at the moment of failure.
-- **Not known:** whether the threshold image shows it, and what else holds the heap. `MemFree` is read mid-load, so it does not show the state at the failure.
+- **Measured with a heap map at the failure (13:20-13:50 UTC, no flash write).** `heap_probe/heap_probe.py` runs the frozen firmware on the control image under `mpremote run`, wraps `_PieceWriter.flush`, and prints `micropython.mem_info(1)` from the `except MemoryError`, before anything is unwound. Allocation failed after its own collection, so those maps show live data. Maps: `heap_probe/heap_maps_20261105.txt`. 3 readers, 60 s, one run each:
+
+| Run (`mpremote run`, control image) | Reads | Failed flushes | Baseline after `gc.collect()`, idle: free / runs / largest | Free at failure | Largest free run at failure |
+|---|---|---|---|---|---|
+| `gc.threshold` -1 | 21 answered 200, 10 answered 500, 1 timeout | 11 | 57,632 B / 384 / 153 blocks | 13,952-23,392 B | 12-15 blocks (at most 240 B) |
+| `gc.threshold(32768)` (set by the script, where `main.py` sets it) | 37 answered 200, 8 answered 500 | 8 | 58,224 B / 142 / 122 blocks | 12,640-16,208 B | 15 blocks in the 3 maps taken |
+| 32768, pieces of 128 B | 36 answered 200, 1 answered 500 | 1 | 57,936 B / 121 / 144 blocks | 12,784 B | 7 blocks (112 B) |
+| 32768, pieces of 256 B, overlapping requests share one built response (2 s) | 117 answered 200, none 500 | 0 | 58,000 B / 127 / 87 blocks | no failure | no failure |
+
+- **Answer to the question asked at 13:45: placement, driven by load, on both GC settings.** The allocation fails with 12-23 KB free because no run of 16 blocks (16 B each) is left. The threshold does not help: it cuts the idle runs from 384 to 142, but leaves about the same room in runs that can hold a piece: 996 blocks (15.9 KB) at -1, 903 blocks (14.4 KB) at 32768.
+- **Mechanism (measured sizes, the sum is my arithmetic).** A `/status` piece of 256 B takes 17 blocks of data plus the 1-block `bytes` object. 7,369 B is about 30 pieces, so about 8.6 KB per held response. Objects of 16-63 blocks grow from 858 blocks at baseline to about 2,040 at failure (-1), and 2,270 (32768): 2.2 to 2.6 responses. So 15 KB of usable runs holds fewer than 2 responses, which fits 1 reader 0 of 42, 2 readers 1 of 46, 3 readers 8-14 of about 46.
+- **The intervention supports it:** sharing one built response among overlapping requests is the only change between the 8-of-45 run and the 0-of-117 run. The share is a test hook with a 2 s window, not a proposed fix: it serves data up to 2 s old.
+- **Corrections to my lead above:** builds do not overlap. The probe's in-flight counter around `_build_status_pieces` peaked at 1 in all four runs. What overlaps is the send: `_pieces_response` keeps the pieces alive until the slow send ends (1.4 s). The sizes just under 256 B are `flush()`'s join (`:242`), now caught there.
+- **Smaller pieces only move the limit:** 128 B still failed once in 37, with the largest run down to 7 blocks. They also add overhead per byte. The comment at `:150-151` ("sized to the holes a fragmented heap still has") does not hold here: the holes left at failure are smaller than the piece.
+- **The budget in Part N is too high for `dev` on this silicon:** `web.serving_demand_budget_b` is 72,232 B, an estimate from "about 105,000 B free after boot", with "measurement owed". Measured: 57,632-58,224 B free after `gc.collect()` at idle, uptime 45 s, in four boots. `dev`'s demand of 68,790 B is more than that free heap, and much more than the usable runs. Not checked on another device: only `dev` is benched.
+- **Options as I see them, for the unit to judge:** keep one response's pieces alive per route, whether by sharing the same list among requests that arrive during a send or by a lock around build and send. Or stream, one piece alive per connection, which loses the exact `Content-Length` and the 500 status for a late failure. Only the share was tried, and only as the test hook. I have not tested other routes under a mixed load; that run is next.
+- **Limits of these four runs:** one run each. The firmware ran under `mpremote run` rather than `main.py`, so the script's compile and the wrappers are on the heap (the idle free matches across all four). A failure's map printing adds delay, so read the rate as a rate under the probe, close to the earlier plain runs.
 - **Also seen under this load:** `UARTLINK` `Failures` rose by 2-4 per minute, though `test_the_link_stays_healthy_while_the_api_is_hammered` passes, and it hammers something other than `/status`.
 - **Why the suite did not see it first:** 5g's `test_serving_heap_at_default_gc.py` tests never ran; they were in the cascade.
 
