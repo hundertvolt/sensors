@@ -184,6 +184,12 @@ def test_config_reset_over_rest_brings_back_the_defaults(board: "Board", bench: 
     assert (back.get("SSID"), back.get("Hostname")) == (networking.get("SSID"), networking.get("Hostname")), f"the restored board serves {back}, not {networking}"
 
 
+@pytest.mark.provokes_log(
+    "the erase blanks the SGP40 backup chunk, which each boot reads and warns of once (owner, 2026-11-06) until the"
+    " first backup the test waits for, undated while NTP is unsynced",
+    ("SGP40", "W", "SGP_NO_BACKUP"),
+    ("SGP40", "W", "SGP_WRITTEN_NO_TS"),
+)
 def test_fram_erase_over_rest_blanks_every_error_log(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     save_errcount(dut_ip, "erase-over-rest")
     try:
@@ -201,6 +207,7 @@ def test_fram_erase_over_rest_blanks_every_error_log(board: "Board", bench: "Ben
         assert not kept, f"FRAM-backed logs not blank after the erase, each SGP40's W SGP_NO_BACKUP for its blank backup chunk aside: {kept}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
+        _load.wait_for_sgp40_backup(dut_ip)
 
 
 def test_reset_errors_after_an_accepted_reboot_is_refused_and_clears_nothing(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "_Note") -> None:
@@ -263,6 +270,12 @@ def test_near_miss_action_words_do_nothing_over_rest(board: "Board", bench: "Ben
         restore_board_to_serving(board, bench, dut_ip)
 
 
+@pytest.mark.provokes_log(
+    "an erase that wins the race blanks the SGP40 backup chunk, which each boot reads and warns of once (owner, 2026-11-06) until the"
+    " first backup the test waits for, undated while NTP is unsynced",
+    ("SGP40", "W", "SGP_NO_BACKUP"),
+    ("SGP40", "W", "SGP_WRITTEN_NO_TS"),
+)
 def test_erase_reboot_and_mempause_at_once(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     save_errcount(dut_ip, "erase-reboot-mempause")
     try:
@@ -279,6 +292,7 @@ def test_erase_reboot_and_mempause_at_once(board: "Board", bench: "BenchBridge",
         assert system.get("ResetReason") == expected, f"one reset, attributed to the winner: read {system.get('ResetReason')}, expected {expected} ({answers})"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
+        _load.wait_for_sgp40_backup(dut_ip)
 
 
 def test_reboot_and_bootloader_at_once(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
