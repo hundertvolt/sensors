@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from harness import Board, _Note
     from http_client import JSONObject, JSONValue
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_1_reformat_relaunch", "ci_suite._run_13_config_reset", "ci_suite._run_13_erase_fram", "ci_suite._run_13_near_misses", "scenarios.erasefram_concurrent_with_a_reboot_accepts_exactly_one", "scenarios.reboot_and_bootloader_at_once_accept_exactly_one", "scenarios.reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_1_reformat_relaunch", "ci_suite._run_13_config_reset", "ci_suite._run_13_erase_fram", "ci_suite._run_13_near_misses", "scenarios.a_command_right_after_the_first_answer_resets_cleanly", "scenarios.erasefram_concurrent_with_a_reboot_accepts_exactly_one", "scenarios.reboot_and_bootloader_at_once_accept_exactly_one", "scenarios.reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing")
 
 _SRC = "asy_system_service.py"
 _RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(SRC_DIR, _SRC, name) for name in ("_RR_WATCHDOG", "_RR_REBOOT", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED"))
@@ -39,12 +39,29 @@ _PICOTOOL_TIMEOUT_S = 30.0
 # The shutdown closes the listener once the supervisor parks, 0-2 s after the acceptance: a ResetErrors arriving later
 # meets a closed socket, and the test reboots once more for it (agent, 2026-11-06).
 _WINDOW_TRIES = 3
+# A fresh boot's first answer, polled often with short probes so the command lands as early as the host can reach it.
+_FIRST_ANSWER_POLL_S = 0.2
+_FIRST_ANSWER_PROBE_S = 2.0
 
 
 def _command(dut_ip: str, word: "JSONValue") -> str:
     answer = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": word}, timeout_s=_PUT_TIMEOUT_S).json()
     result = answer.get("result")
     return str(result.get("SystemCmd")) if isinstance(result, dict) else f"no result: {answer}"
+
+
+def _first_answer(dut_ip: str) -> "JSONObject":
+    # The system block of the first /status answered after the board left USB: only a boot after the reset answers.
+    found: list[JSONObject] = []
+
+    def answered() -> bool:
+        system = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_FIRST_ANSWER_PROBE_S).json().get("system")
+        if isinstance(system, dict):
+            found.append(system)
+        return bool(found)
+
+    wait_until(answered, timeout_s=_SERVING_TIMEOUT_S, poll_interval_s=_FIRST_ANSWER_POLL_S, description="a fresh boot's first answer")
+    return found[0]
 
 
 def _get(dut_ip: str, path: str) -> "JSONObject":
@@ -209,6 +226,24 @@ def test_reset_errors_after_an_accepted_reboot_is_refused_and_clears_nothing(boa
         after = get_errcount(dut_ip)
         cleared = [name for name in fram_backed_logger_names() if errcount_entry(after, name)["counter"] < errcount_entry(before, name)["counter"]]
         assert not cleared, f"FRAM-backed logs the refused ResetErrors cleared across the reboot: {cleared}"
+    finally:
+        restore_board_to_serving(board, bench, dut_ip)
+
+
+def test_a_reboot_at_a_boots_first_answer_resets_cleanly(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
+    # A command in the boot window: a reboot sent at a fresh boot's first answer ends in its own reset, ResetReason 3,
+    # never the watchdog's 2. Reboot alone: every command runs the one shutdown (A.8), and it writes nothing (agent, 2026-11-06).
+    save_errcount(dut_ip, "reboot-at-first-answer")
+    try:
+        assert _command(dut_ip, "reboot") == "Valid", "the reboot that starts a fresh boot was not accepted"
+        _kicked(board, bench, {"reboot": "Valid"})
+        first = _first_answer(dut_ip)
+        (answers, _replied), lines = observe_during(board, lambda: _kicked(board, bench, {"reboot": _command(dut_ip, "reboot")}))
+        _marked(lines, "the reboot at the first answer")
+        result_note(f"first answer: SysUptime {first.get('SysUptime')} s, BootSignature {first.get('BootSignature')}, ResetReason {first.get('ResetReason')}")
+        assert answers["reboot"] == "Valid", f"a reboot at the boot's first answer was answered {answers['reboot']}"
+        reason = _first_answer(dut_ip).get("ResetReason")
+        assert reason == _RR_REBOOT, f"the reboot sent at the first answer read ResetReason {reason}, not {_RR_REBOOT}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
 

@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "ci_suite._run_8_wifi_persistence_and_configure_ntp", "ci_suite._run_11b_full_ceiling_concurrency", "scenarios.api_burst_at_the_ceiling_during_bus_load", "scenarios.every_admitted_connection_is_actually_served_a_complete_correct_response", "scenarios.n_healthy_concurrent_connections_up_to_max_connections_all_succeed", "scenarios.connections_beyond_max_connections_are_rejected_cleanly_not_crashed", "scenarios.a_full_ceiling_of_real_page_loads_is_served_without_truncation", "scenarios.multiple_browser_like_sessions_concurrently_all_succeed", "scenarios.realistic_mixed_openhab_polling_and_browser_session_concurrently", "scenarios.a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "ci_suite._run_8_wifi_persistence_and_configure_ntp", "ci_suite._run_11b_full_ceiling_concurrency", "scenarios.api_burst_at_the_ceiling_during_bus_load", "scenarios.every_admitted_connection_is_actually_served_a_complete_correct_response", "scenarios.n_healthy_concurrent_connections_up_to_max_connections_all_succeed", "scenarios.connections_beyond_max_connections_are_rejected_cleanly_not_crashed", "scenarios.a_full_ceiling_of_real_page_loads_is_served_without_truncation", "scenarios.multiple_browser_like_sessions_concurrently_all_succeed", "scenarios.realistic_mixed_openhab_polling_and_browser_session_concurrently", "scenarios.a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly", "scenarios.negative_content_length_is_refused", "scenarios.refusal_at_the_ceiling_is_counted")
 
 # ---------------------------------------------------------------------------
 # WiFi outage or flap inside an already-established STA connection. Per
@@ -111,6 +111,9 @@ _WIFI = "asy_wifi_service.py"
 _WEBSERVER = "asy_webserver_service.py"
 # The two traced ways a connection ends at the ceiling: the refusal itself, and a client resetting one it gave up on.
 _CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
+# The head check refuses a signed length before any method dispatch, so a GET carries the twin's PUT case, never a raw
+# write request (agent, 2026-11-06); its 3,000-byte body is the twin scenario's own, never read.
+_NEGATIVE_LENGTH_REQUEST = b"GET /status HTTP/1.1\r\nHost: dut\r\nContent-Length: -1\r\n\r\n" + b"x" * 3000
 
 
 @pytest.mark.provokes_log(
@@ -454,6 +457,61 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
     wait_until(lambda: _load.serving(dut_ip), timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="webserver serving normally again after the connection-limit burst cleared")
     _assert_ceiling_traced(dut_ip, len(outcomes), "above the ceiling")
     assert_no_task_ended(dut_ip, "client misbehaviour")
+
+
+@pytest.mark.provokes_log("each refusal at the held ceiling, HTTP_REFUSED", ("WEBSERVER", "W", "HTTP_REFUSED"))
+def test_each_refusal_at_the_ceiling_is_counted_once_in_http_dropped(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # The held heads are ended and answered before they close, so no holder is a drop of its own (the twin's slow but
+    # healthy holders): HTTPDropped then rises by exactly the refusals the clients saw, each counted once.
+    reset_all_error_logs(dut_ip, request.node.name)  # ResetErrors clears the drop window too: no hourly bin ages out
+    before = _http_dropped(dut_ip)
+    time.sleep(_SLOT_RELEASE_WAIT_S)  # as the sibling above: the last request's slot outlives its response (Part I.6)
+    held: list[socket.socket] = []
+    outcomes: list[bytes] = []
+    answers: list[bytes] = []
+    try:
+        for _ in range(_MAX_CONNECTIONS):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
+            sock.connect((dut_ip, 80))
+            sock.sendall(HELD_REQUEST_LINE)
+            held.append(sock)
+        time.sleep(_HELD_ADMIT_WAIT_S)  # each held connection's _serve() has counted it before the first attempt
+        for attempt in range(_OVER_CEILING_ATTEMPTS):
+            outcomes.append(_extra_outcome(dut_ip, held))
+            if attempt < _OVER_CEILING_ATTEMPTS - 1:
+                time.sleep(_SLOT_RELEASE_WAIT_S)
+        for sock in held:
+            sock.sendall(b"\r\n")  # the head ends: each holder is answered (an unrouted method's 405), never dropped
+        answers = [sock.makefile("rb").read() for sock in held]  # to the server's own close: nothing left unread
+    finally:
+        for sock in held:
+            sock.close()
+    result_note(f"above-ceiling attempts: {[o[:40] for o in outcomes]}; holders answered {sorted({a[:12] for a in answers})}")
+    assert not [o for o in outcomes if o], f"a connection above the {_MAX_CONNECTIONS}-connection ceiling was admitted: {outcomes}"
+    assert all(a.startswith(b"HTTP/") for a in answers), f"a holder was dropped rather than answered: {answers}"
+    wait_until(lambda: _load.serving(dut_ip), timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="webserver serving again after the held ceiling")
+    dropped = _http_dropped(dut_ip)
+    assert dropped == before + len(outcomes), f"HTTPDropped {before} -> {dropped} after {len(outcomes)} refusal(s): each must count exactly once"
+    assert_no_task_ended(dut_ip, "client misbehaviour")
+
+
+@pytest.mark.provokes_log("the negative Content-Length's refused head, HTTP_BAD_HEAD", ("WEBSERVER", "W", "HTTP_BAD_HEAD"))
+def test_a_negative_content_length_is_refused_and_counted_once(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # A signed Content-Length answers 400 before its body is read, is counted as one drop and logged as one refused
+    # head, and the next client is served.
+    reset_all_error_logs(dut_ip, request.node.name)
+    before = _http_dropped(dut_ip)
+    with socket.create_connection((dut_ip, 80), timeout=_RAW_SOCKET_TIMEOUT_S) as sock:
+        sock.sendall(_NEGATIVE_LENGTH_REQUEST)
+        line = sock.makefile("rb").readline()
+    assert line.split()[1:2] == [b"400"], f"the negative Content-Length answered {line!r}, not 400"
+    # The drop is noted once the request returns, just after its answer: polled, then held to exactly one.
+    wait_until(lambda: _http_dropped(dut_ip) > before, timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="the refused head counted in HTTPDropped")
+    assert _http_dropped(dut_ip) == before + 1, f"HTTPDropped {before} -> {_http_dropped(dut_ip)} after one refused head"
+    assert_module_logged_one_code(dut_ip, "WEBSERVER", "W", code("W", "HTTP_BAD_HEAD"), None)
+    assert _load.serving(dut_ip), "webserver unresponsive after the negative Content-Length"
+    assert_no_task_ended(dut_ip, "a negative Content-Length")
 
 
 # ---------------------------------------------------------------------------
