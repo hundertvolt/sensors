@@ -376,7 +376,7 @@ def test_a_scenario_whose_premise_this_host_cannot_give_skips_with_its_reason(ha
     item = harness.Scenario("no_premise", no_premise, "Skips.", "fixture")
     ctx = harness.Context(DEVICE_NAMES[0], "micropython", -1, tmp_path, (), iter(()), "host")
     assert harness._run_one(item, ctx) == harness.Outcome("no_premise", "skipped", "file modes do not bind here")
-    ctx.failures.append("twin 1: the SIGINT shutdown ended killed")  # a boot's own failure still fails it
+    ctx.failures.append("twin 1: the shutdown ended killed")  # a boot's own failure still fails it
     assert harness._run_one(item, ctx).outcome == "failed"
 
 
@@ -407,7 +407,7 @@ def harness() -> ModuleType:
     ("log", "exited", "shutdown_code", "claim", "expected"),
     [
         (_SHUTDOWN_LINE, None, 0, False, None),
-        (_SHUTDOWN_LINE, None, 1, False, "the SIGINT shutdown ended"),
+        (_SHUTDOWN_LINE, None, 1, False, "the shutdown ended"),
         ("booted\n", None, 0, False, "printed no shutdown line"),
         (_SHUTDOWN_LINE, 3, 0, False, "ended on its own mid-scenario"),
         (_SHUTDOWN_LINE, 3, 0, True, None),
@@ -461,7 +461,7 @@ def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harn
     # caught allocation failure's line reaches the memory gate; the scenario's own arguments follow unchanged.
     level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_WARN")
     args, stored = _spawned_boot(harness, tmp_path, monkeypatch)
-    assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-flash-stall-max"], args
+    assert args == ["--debug-level", str(level), "--test-flash-stall-max"], args
     assert stored is not None and json.loads(stored) == {"DebugLevel": level}, stored
 
 
@@ -469,7 +469,7 @@ def test_a_device_wiring_a_uart_link_boots_its_link_on_the_driven_clock(harness:
     # Its reply deadlines count the link's own waits, never the host's load; a device wiring none boots as before.
     level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_WARN")
     args, _stored = _spawned_boot(harness, tmp_path, monkeypatch, instances=(("uart_link_init", "uart_link", "init"),))
-    assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-uart-driven-clock", "--test-flash-stall-max"], args
+    assert args == ["--debug-level", str(level), "--test-uart-driven-clock", "--test-flash-stall-max"], args
 
 
 def test_a_callers_twin_host_never_moves_a_boots_twin_off_where_the_scenarios_query(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -501,7 +501,7 @@ def test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing(harness: Mo
     (config / "config_SYSTEM.cfg").write_text('{"DebugLevel": 4}', encoding="utf-8")  # an earlier boot's own
     assert _spawned_boot(harness, tmp_path, monkeypatch)[1] == '{"DebugLevel": 4}'
     args, stored = _spawned_boot(harness, tmp_path / "unlogged", monkeypatch, logged=False)
-    assert (args, stored) == (["--test-kbd-traceback", "--test-flash-stall-max"], None)
+    assert (args, stored) == (["--test-flash-stall-max"], None)
 
 
 def test_only_the_scenario_reading_the_device_defaults_boots_unlogged(harness: ModuleType) -> None:

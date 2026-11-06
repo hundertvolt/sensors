@@ -810,3 +810,24 @@ Day 2 as I read bd67db94: new image, step 3, 4b, /status load check, run 5; then
 One question: bd67db94 changes devices/dev.toml, so nothing in this 4a ran with the 512 B ring. Your commit lists no 4a rerun. Should the dev twin or the GC stage rerun on the new tree? My default is to add the dev twin after arzi and schlafzi, and to cut it first if the day runs short."
 Topic: final 4a result (one GC-stage scenario failure, arzi red, schlafzi moved to day 2); the bench asks whether the
 dev twin or the GC stage reruns on the 512 B ring tree.
+
+- 05:21 UTC 2026-11-06, topic: the request to paste the three "DIAG: arzi twin 7:" lines from snapshot 41's failed
+  CI job (FINDINGS 12.29-12.30). Owner, verbatim: "Is that the job log?" followed by a paste of the job page's error
+  annotation for the step "Run unit tests at the shipped gc.threshold" (the scenarios[arzi] twin-log tail that opens
+  with the watchdog_fault_supervisor_raise config line and ends cut at "SGP40 No ba"; the same text the lead already
+  had from the log's tail). No DIAG line in it; not yet an answer to options A-C.
+- 05:24 UTC 2026-11-06, topic: the same request (snapshot 41's DIAG lines). Owner, verbatim: "@"/root/.claude/uploads/
+  185d5b0e-d0ae-57c0-8798-ed52081f7df8/6b6a1289-logs_114232277141-1.zip" Is this the right one?" (the run's whole log
+  archive; read as the owner's explicit hand-over of that one file, copied to S/ci41_upload/; it holds the three lines).
+- 2026-11-06 05:54 UTC, topic: R4 close, after the async-with cause and the stop-file fix were reported: "So for now, you continue with the remaining topics?"
+- 2026-11-06 06:08 UTC, topic: R5 owner questions, taken before R4 closes (after the lead's offer): "Start with the questions"
+- 2026-11-06 06:13 UTC, topic: R5 question 1 (r5I_B02, tier/hazard sweep: A close, B one sweep of the task graph / system service area, C keep open): "B"
+- 2026-11-06 06:16 UTC, topic: R5 question 2 (r5I_B18, UART drain bound W54 against a babbling peer: A limitation, B keep owed, C bench Pi4 UART as peer): "Defer, that can be done once the UART C implementation is done and can go into both directions. But this is out of the audit scope."
+- 2026-11-06 06:43 UTC, topic: R5 question 3 (r5I_B25 + FRAM CS at power-off: A scope checks as limitations plus a reset-with-held-SDA script, B plus manual scope checks, C limitations only): "Option A, I have no oscilloscope at hand"
+- 2026-11-06 06:45 UTC, topic: R5 question 4 (r5I_B52, clean-chroot legs and BACKLOG's 556-line change list: A bench session runs both legs on the Pi4 after its campaign runs, B this session in the container, C leave periodic and condense): "Option A"
+- 2026-11-06 06:47 UTC, topic: R5 question 5 (r5I_B58, manual Safari / mobile spot check: A owner pass with a checklist, B limitation at H.1, C keep owed): "Option B"
+- 2026-11-06 06:53 UTC, topic: R5 question 6 (r5I_U14, owner review of the 466 "(agent, date)" decisions: A full review, B sort then review what matters plus one blanket ruling, C blanket acceptance): "Option B, but with precompilation. Single decision is by far to fine grained, that's micro management. Group such decisions into topics and realms, get a big picture which is the result of all contained decisions, and put that high level big picture into the questions. Do you get that covered with 20 final top level, well human understandable questions?"
+- 2026-11-06 06:56 UTC, topic: R5 question 6 (U14 precompile), the question count: "About the remaining questions,, 20 would be a soft target, if it's really not fitting no matter what you do, it may be more, but preferably would even be less if it compiles well"
+- 2026-11-06 06:58 UTC, topic: R5 question 7 (BACKLOG numbering paragraph: A drop it, item 2 a plain bullet, B keep): "Option A"
+- 2026-11-06 06:59 UTC, topic: R5 sweep question 1 (read-trigger spacing on silicon: A a short fixed window in the standard bench run, B accept soak-only in E.6.6): "Option A"
+- 2026-11-06 07:01 UTC, topic: R5 sweep question 2 (level-containment granularity: A per-scenario and per-cell ids, B keep families and state the limit in E.6.1): "Option A"

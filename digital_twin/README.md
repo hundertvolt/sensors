@@ -486,7 +486,6 @@ host-side harness reads:
 | `--test-hold-system-entry ERRNO[:cut]` | `ENTRY_HELD`, `ENTRY_RELEASED` | SystemService's logger holds its entry with that errno (the supervisor's escalation entry) until an `ENTRY_RELEASE` line arrives on stdin; the service's bounded wait on that entry starts at the release, so the hold never counts against its bound. With `:cut` the entry's real write starts and is held inside its first FRAM block, after that block's busy mark, never released: the bound counts the hold and its cancel cuts the block, as a write that never finishes would (no `ENTRY_RELEASED`) |
 | `--test-loop-lag-ms N` | `LOOP_LAG max_us=<n> p99_us=<n> samples=<n> <link key>=<transfers> ...` | a task sleeping N ms at a time records each wake's overshoot; one line per 5 s window, that window's figures alone (SPECIFICATION.md Part F.3's `lag.loop`), ending with each wired `uart_link`'s transfers so far, one `<link key>=<transfers>` per link |
 | `--test-drop-timer-fire reset\|sequencer` | `DROP_ARMED <site>`, `FIRE_DROPPED <site> callbacks=<n>` | the twin's soft-callback drop is set before that one-shot's arm and cleared once its fire was dropped, as rp2's full scheduler queue loses it (SPECIFICATION.md Part F.1) |
-| `--test-kbd-traceback` | `KBD_CAPTURED <bool>`, `KBD_TRACEBACK` | the interpreter's one `KeyboardInterrupt` object, caught at start through a SIGINT to itself; a `KBD_TRACEBACK` line on stdin prints where the newest interrupt was raised |
 | `--test-watchdog-fault supervisor-raise\|main-exit\|block` | `WDT_AT_FAULT <feed_count>` | after the supervisor's first feed, one fault that ends the feeding: the dead-task report raises as a task ends, the product's `main()` is cancelled, or the whole loop blocks past the watchdog timeout |
 | `--test-defer-faults` | `FAULTS_ARMED` | every `--fault` is held back until a `FAULT_ARM` line arrives on stdin, then queued at once, so the boot meets none of them and a fault matching a read the boot shares reaches only what runs after it; a later `FAULT_ARM` queues nothing more |
 | `--test-pin-send-buffer` | `SNDBUF_PINNED bytes=<n> accepted_bytes=<n>` | each socket the server accepts has its send buffer set to the kernel's floor (socket(7): a request is doubled, then clamped) before it is served, as rp2's lwIP one is small and fixed (`TCP_SND_BUF` 6,400 B); both sizes are read back through libc's `getsockopt()`. Unpinned, a loopback socket starts with megabytes, so a whole page fits the kernel at once and a client's reset meets a finished write; pinned, a body larger than both ends' buffers is still being written when the client resets, on any host |
@@ -721,9 +720,9 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    warning entry from any module but each config store's one `CFG_FILE_UNREADABLE`, its file not
    found, and each SGP40's `SGP_NO_BACKUP`, waited for, its first restore finding the backup chunk
    blank — then clear them (`ResetErrors`); with no station link the clock
-   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly by
-   `SIGINT` (its handler flushes the FRAM/SCD30 state; never `SIGTERM`) and confirm the state files
-   landed on disk. Then
+   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
+   the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
+   does; never `SIGTERM`) and confirm the state files landed on disk. Then
    relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem
    leaves a unit: each config store logs its file not found and each SGP40 its blank backup chunk,
    as Run 1 (kept in `runs/`), and a setting is
@@ -862,7 +861,8 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     own buffers (SPECIFICATION.md Part E.9).
 12. **The reset reasons reachable at L2** — a fresh boot reads the power-on code; `bootloader` exits
     with code 4 and the relaunch reads 2, BOOTSEL having lost both regions (the fidelity table), with
-    no record left; a SIGINT relaunch reads power-on, the twin's non-reset launch. Last, on
+    no record left; the relaunch after a SIGINT shutdown, the suite's only one, reads power-on, the
+    twin's non-reset launch. Last, on
     the same state, a C-stack overflow in one read of the plan's first bus device (I2C buses in plan
     order before SPI): `--fault <instance>:<read op>:stack` (`readfrom_into` for SCD30 and SGP40,
     `readfrom_mem` for BMP3XX and ISL29125, `readinto` for the FRAM) queues one, the handler that
@@ -891,10 +891,9 @@ to turn logging on at error level or above in the unit tests that can actually r
 every unit test, or in none: "Option 1 is good"; applied to the harness too, agent, 2026-10-20):
 the runner's `--debug-level 2` over a stored `DebugLevel` of 2 planted before the spawn unless one
 is stored, but for the scenario reading the settings routes' defaults, which boots unplanted at the
-default level. Every boot also carries
-`--test-kbd-traceback`, so a twin that ignores its shutdown SIGINT is described before the kill:
-where its interrupt was raised, then what a second SIGINT does (`scripts/_twin_process.py`'s
-`shutdown()`), the verdict staying the kill's. Each scenario declares its family (webserver
+default level. Every boot ends through its stop file (`scripts/_twin_process.py`'s `shutdown()`,
+SPECIFICATION.md F.6.1), and one still running at the bound is described before the kill (`/proc`,
+the log tail), the verdict staying the kill's. Each scenario declares its family (webserver
 concurrency, sensortask integration, the real
 website, bus hazards, system commands, webserver requests, UART load), the drivers it needs (a
 device without them skips it) and whether it may share a boot. The sharing ones run first on one twin

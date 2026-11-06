@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import NamedTuple, Protocol, TypeVar
 
-    from _mpy_shed import IOBase_mp
     from _mpy_shed.time_mp import _TicksMs
     from launch import FaultSpec, HangSpec, _Chip, _KnobChip, _Plan
 
@@ -122,7 +121,7 @@ import _driven_clock
 import _flash_stall
 import _unix_port_udp_addr_shim
 import _wall_clock
-import ffi  # type: ignore[import-not-found]  # the Unix port's own module, no stub: --test-kbd-traceback's self-SIGINT, the send buffer's read-back
+import ffi  # type: ignore[import-not-found]  # the Unix port's own module, no stub: the send buffer's read-back
 import machine
 import network
 from _ntp_responder import NtpResponder
@@ -184,7 +183,6 @@ _DROP_TIMER_SITES = ("reset", "sequencer")  # the product one-shots --test-drop-
 _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
 _UART_CLOCK_MODULES = ("asy_crc_checks", "asy_uart_driver", "asy_uart_comm", "asy_uart_link_driver")  # the link's clock and its CRC's turns
-_SIGINT = 2  # Linux's signal number (signal(7)): MicroPython has no signal module
 _WATCHDOG_FAULT_KINDS = ("supervisor-raise", "main-exit", "block")
 _HOLD_CUT = "cut"  # --test-hold-system-entry's unreleased mode: the held entry's write cut inside its first block
 _SO_SNDBUF = 7  # Linux's (include/uapi/asm-generic/socket.h): the Unix port's socket module exports none (modsocket.c:722-727, v1.29.0)
@@ -212,7 +210,6 @@ if TYPE_CHECKING:
         flash_stall_max: bool
         uart_over_cap: bool
         hold_system_entry: tuple[int, bool] | None  # (errno, cut)
-        kbd_traceback: bool
         loop_lag_ms: int | None
         drop_timer_fire: str | None
         watchdog_fault: str | None
@@ -232,12 +229,12 @@ else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
     TestFlags = namedtuple(
         "TestFlags",
-        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire", "watchdog_fault", "defer_faults", "pin_send_buffer", "uart_driven_clock"),
+        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "loop_lag_ms", "drop_timer_fire", "watchdog_fault", "defer_faults", "pin_send_buffer", "uart_driven_clock"),
     )
     RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation", "debug_level"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False, False)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, None, None, None, False, False, False)
 _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS, None)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
@@ -254,7 +251,6 @@ _TEST_STDIN_POLL_MS = 50  # how often a --test-* trigger line on stdin is looked
 _LOOP_LAG_REPORT_MS = 5000  # one LOOP_LAG line per window of this length, its figures that window's alone
 _LOOP_LAG_BUCKETS = 64  # 1 ms histogram bins, the last one open-ended: a fixed fold, no list grows with the run
 _DROP_WINDOW_CALLBACKS = 1_000_000  # more soft callbacks than any one-shot's window can see: the queue stays full to its fire
-_KBD_CAPTURE_SPINS = 1000  # loop passes after the self-SIGINT, each jump a pending-exception check (py/vm.c:575, v1.29.0)
 
 # The WDT keeps its newest 200 feed times: a span it dropped between two folds lasts under one fold period,
 # well below the gaps worth flagging, so folding this often loses none of them; the harness judges the gap.
@@ -282,7 +278,6 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap),
   --test-hold-system-entry ERRNO[:cut] (SYSTEM's entry with that errno waits for ENTRY_RELEASE; with :cut its write is
         held inside its first block after the busy mark, never released),
-  --test-kbd-traceback (KBD_TRACEBACK prints the interrupt object's traceback),
   --test-loop-lag-ms N (a LOOP_LAG line every {_LOOP_LAG_REPORT_MS // 1000} s from a task sleeping N ms at a time, each link's transfers on it),
   --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it),
   --test-watchdog-fault supervisor-raise|main-exit|block (after the supervisor's first feed, one fault that ends the
@@ -454,7 +449,7 @@ async def _mem_sampler(interval_ms: int) -> None:
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin, uart_clock = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap, entry, lag, drop, wdt_fault, defer, pin, uart_clock = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -476,8 +471,6 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         if mode not in ("", _HOLD_CUT):
             raise ValueError(f"{arg} mode {mode!r} not recognized - expected ERRNO or ERRNO:{_HOLD_CUT}")
         entry = (_positive_int(arg, "ERRNO", errno_text), mode == _HOLD_CUT)
-    elif arg == "--test-kbd-traceback":
-        kbd = True
     elif arg == "--test-loop-lag-ms":
         lag = _positive_int(arg, "N", _pop_value(remaining, arg))
     elif arg == "--test-drop-timer-fire":
@@ -496,7 +489,7 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         uart_clock = True
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop, wdt_fault, defer, pin, uart_clock)
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, lag, drop, wdt_fault, defer, pin, uart_clock)
 
 
 def _print_boot_phases(device: str) -> None:
@@ -750,30 +743,6 @@ def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callabl
     return release
 
 
-def _test_kbd_traceback(say: "Callable[[str], None]" = print, out: "IOBase_mp | None" = None) -> "Callable[[], None]":
-    # Every SIGINT raises the interpreter's one KeyboardInterrupt object (py/scheduler.c:48-52, v1.29.0): caught once here
-    # through a SIGINT to this process, so KBD_TRACEBACK prints where the newest one was raised and how far it got.
-    libc = ffi.open("libc.so.6")
-    caught: list[BaseException] = []
-    try:
-        libc.func("i", "kill", "ii")(libc.func("i", "getpid", "")(), _SIGINT)
-        for _ in range(_KBD_CAPTURE_SPINS):  # the VM raises a pending interrupt at its next check
-            pass
-    except KeyboardInterrupt as e:
-        caught.append(e)
-    say(f"KBD_CAPTURED {bool(caught)}")
-
-    def show() -> None:
-        say("KBD_TRACEBACK")
-        for interrupt in caught:
-            if out is None:
-                sys.print_exception(interrupt)  # stdout, the log the host reads
-            else:
-                sys.print_exception(interrupt, out)
-
-    return show
-
-
 async def _test_loop_lag(period_ms: int, say: "Callable[[str], None]" = print, links: "Iterable[tuple[str, _LinkCounts, object]]" = ()) -> None:
     # One task sleeping period_ms at a time: each wake's overshoot past its due time folds into a fixed 1 ms histogram,
     # and each window's maximum, 99th percentile and sample count print as one LOOP_LAG line, with each link's transfers.
@@ -916,13 +885,11 @@ def _test_start(
         triggers["STALL_TRIGGER"] = _test_stall_loop(flags.stall_loop_ms)
     if flags.hold_system_entry:
         triggers["ENTRY_RELEASE"] = _test_hold_system_entry(module, flags.hold_system_entry[0], cut=flags.hold_system_entry[1])
-    if flags.kbd_traceback:
-        triggers["KBD_TRACEBACK"] = _test_kbd_traceback()
     if flags.defer_faults:
         triggers["FAULT_ARM"] = _test_arm_faults(arm)
     if flags.pin_send_buffer:
         _test_pin_send_buffer(module)
-    if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.kbd_traceback or flags.defer_faults:
+    if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.defer_faults:
         tasks.append(loop.create_task(_test_stdin_lines(triggers)))
     if flags.conn_status_interval_ms:
         tasks.append(loop.create_task(_test_conn_status(module, flags.conn_status_interval_ms)))

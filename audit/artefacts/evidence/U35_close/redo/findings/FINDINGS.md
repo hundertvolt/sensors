@@ -207,3 +207,50 @@ done-criteria, observations. Each with its evidence, for the owner.
 - 12.28 (lead, 03:10) Real-tree test fragility (compare (C) 11): tests/test_digital_twin_hot_replug.py:199 reads a
   reader's sources by getattr on `_temperature`/`_humidity`, a silent no-op for any other attribute name. Goes to
   the Part K fix unit (fail loudly, naming the attributes).
+- 12.29 (lead, 03:58 2026-11-06) Snapshot 41's CI (run 42157783475, job 127696270505): "Unit tests (shipped
+  gc.threshold)" red on scenarios[arzi] a_hung_shutdown_step_is_ended_by_the_watchdog, twin 7 ignored its SIGINT and
+  was killed (exit -9, 114.7 s); the rest green. The push touched only SPECIFICATION.md and the hot-replug test; the
+  same symptom as U28's on dev at 32768 (U28_close/lead/hang/handback.md, undetermined). Not re-run: root-cause unit
+  sig launched (S/u35r/r4/BRIEF_SIG.md). The CI log's instrument output is not fetchable from this session (log host
+  outside the allowlist, the tool returns the tail only). One PR comment posted (#107).
+- 12.30 (lead, 05:06) Unit sig (S/u35r/r4/HANDBACK_SIG.md): not reproduced in 1,041 S5reset SIGINT shutdowns at 32768
+  (four heavy runs up to load ~14); twin 7 is S5reset, as U28's dev case was. Static audit again finds no absorber.
+  Since d0eb67f3 (2026-11-04, stop file removed) SIGINT ends every scenario twin again: 1 red in 8 shipped-gc runs.
+  The deciding evidence is the three "DIAG: arzi twin 7:" lines in job 127696270505's console (scenarios[arzi]
+  block); put to the owner to paste. Instrument gaps held until read: the 20-line tail can cut a traceback's top;
+  the unit-test jobs upload no twin logs. In-band stop only if the lines show the signal held or never raised.
+- 12.31 (lead, 05:27) The DIAG lines (owner's log archive; excerpt S/u35r/r4/ci41_diag_excerpt.txt): SIGINT "blocked in
+  0 of 1 threads, caught"; second SIGINT "a clean exit: the first was raised and absorbed". The tail shows the
+  KeyboardInterrupt raised at src/asy_scd30_driver.py:512 (_store_scd, inside `async with self._data_lock:`) and an
+  unretrieved task exception from the same line, "AttributeError: 'NoneType' object has no attribute '__aexit__'":
+  the async-with exit path replaced the interrupt, killing only SCD30's read task. Points at MicroPython's async-with
+  exception handling under an asynchronously raised exception; product relevance (a thrown CancelledError) open.
+- 12.32 (lead, 05:41) Unit sig's cause verified: a MicroPython defect (v1.29.0, master unchanged). At an async-with
+  body's normal end the emitter writes LOAD_CONST None; ROT_TWO; JUMP (py/emitbc.c:681-683, read by the lead); the
+  JUMP's pending-exception check raises a pending KeyboardInterrupt while None sits in the context manager's slot, so
+  the finally path's load of __aexit__ raises AttributeError and the interrupt is lost. Lead rerun (a copy without the
+  later tail branch, S/u35/lead/ftmp/sigrepro/): 947/3000 lost at 32768, 522/3000 at -1, cancel 3000/3000 clean,
+  matching sig's 974/542. The left S/sig/repro_aexit.py carries the tail branch in both modes (1-4/3000): it is the
+  control only. Cancellation and wait_for timeouts are not exposed (thrown at an await). Plain KeyboardInterrupts left
+  the lock held in about a third of cycles (raised inside acquire/release): a second SIGINT-only hazard. Remedy taken:
+  the launcher ends twins through the runner's existing --stop-file again (unit stop, S/u35r/r4/BRIEF_STOP.md), no
+  SIGINT fallback; SIGINT stays where a run tests it on purpose. No MicroPython patch: the override mechanism cannot
+  carry a source change and a patch would change the firmware's frozen bytecode. Upstream report drafted for the
+  owner. The two held instrument gaps (20-line tail, no twin logs from unit-test jobs) are dropped: not needed.
+- 12.33 (lead, 06:2x) 12.27 resolved: the spec is right, the code is wrong. SGP40 datasheet Table 8: heater-off 1 ms
+  max. extmod/asyncio/core.py:57 sets the wake at ticks_add(ticks(), t) on a 1 ms tick, so sleep_ms(1) can end well
+  under 1 ms; U15 waited _HEATER_OFF_MAX_MS + 1 for that reason, as SPEC M.3:11750 states. 1206e862 (2026-11-03,
+  "back to pre-audit forms") dropped the + 1 as "the datasheet's 1 ms", but neither legacy nor pre-audit 25caf528 has a
+  heater-off at all: no pre-audit form and no owner ruling behind it. Fix for R5: restore the + 1 and its comment
+  (src/asy_sgp40_driver.py:754), one line; device effect: a command after heater-off could reach a still-busy chip.
+- 12.34 (lead, 06:4x) Sweep swp (owner "B", 06:13; S/u35r/r5/SWEEP.md, 10 findings). Lead checks: 1 confirmed
+  (flash/test_task_supervisor.py:13 claims twin Run 5, which is an SGP40 bounded read fault recovered in place, not a
+  task restart). 2 rejected: the device script's 0.9 s feed runs on the same asyncio loop, so a console stall stops it
+  too and hides nothing; the isolated script starts no product feeder and escalate/hold run 40 x 0.9 s > the 8.3 s
+  watchdog, so dropping the feed would make the test fail always. At DebugLevel 0 nothing prints after HOLD, which is
+  what the test proves on silicon (A.5). Plan: 1 fixed; 5 and 7 recorded (E.6.6 row lines, one BACKLOG line); 3, 4, 6, 8
+  as silicon tests in R5 for the bench campaign, else E.6.6 rows; 9 and 10 to the owner after the seven questions.
+- 12.35 (lead, 07:3x) U14 precompile (S/u35r/r5/U14_QUESTIONS.md, U14_TAGS.tsv): 466 tagged lines = 269 choices,
+  197 records (each with its replacing citation); 15 realms in 11 questions. Lead check: counts match the TSV; Q4's
+  "held SDA during the full system's boot" is already decided (owner 06:43, option A; unit r5c builds it), so Q4 asks
+  only the other three scripts; Q6's scan-budget line matches the sweep's finding 7. Asked one at a time from 07:3x.

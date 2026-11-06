@@ -805,9 +805,10 @@ gates, traps).
   step**: `scripts/_twin_process.py` launches, waits for, ends and reads the twin runner for the
   twin CI suite and for the scenario harness `scripts/test.sh` runs per derived device. Since
   2026-10-15 it reads the twin MICROPYPATH from `scripts/micropypath.toml` (stdlib `tomllib`) and
-  checks the watchdog feed gap; since 2026-10-19 it reports an ignored SIGINT's state; since
-  2026-10-20 it waits for a second SIGINT and holds arguments and MICROPYPATH entries to the Unix
-  port's 255-byte qstr limit. The chroot legs lint and type-check it, and `scripts/test.sh`'s pytest
+  checks the watchdog feed gap; since 2026-10-20 it holds arguments and MICROPYPATH entries to the
+  Unix port's 255-byte qstr limit; since 2026-11-06 it ends a twin through the runner's stop file
+  (SIGINT only where a run tests it) and describes one that outlives its shutdown. The chroot legs
+  lint and type-check it, and `scripts/test.sh`'s pytest
   tier and scenario harness run it; `env --tier generic` installs nothing new.
   **2026-10-14, the installer's command start, host Python only, no dependency change — the
   installer leg is owed**: `toolchain/setup_toolchain.py`'s `run()` holds SIGINT, SIGTERM and SIGHUP

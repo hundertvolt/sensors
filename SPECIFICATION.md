@@ -2275,8 +2275,9 @@ regression would be caught.
 
 ### B.14.1 `unix_kbd_intr` (implemented) - safe SIGINT delivery for the Unix port test binary
 
-**The problem**: `scripts/_digital_twin_ci_suite.py`'s shutdown step sends a real `SIGINT` to the
-twin subprocess and expects a clean exit. The Unix port's default SIGINT handling
+**The problem**: `scripts/_digital_twin_ci_suite.py`'s Run 12 ends one twin by a real `SIGINT`
+and expects a clean exit (every other twin ends through its stop file, F.6.1). The Unix port's
+default SIGINT handling
 (`ports/unix/unix_mphal.c`'s `sighandler()`, gated by `ports/unix/variants/mpconfigvariant_common.h`'s
 `MICROPY_ASYNC_KBD_INTR (!MICROPY_PY_THREAD_GIL)`, true for this project's non-threaded "standard"
 variant, `v1.29.0`) calls `nlr_raise()` — an immediate, `longjmp`-based unwind — **directly from the
@@ -7364,6 +7365,24 @@ symptom: call `gc.collect()` first in every `except KeyboardInterrupt:` handler 
 reaches `main()`'s own `finally` only when it lands while `main()` is running, and the outer handler
 otherwise. **`src/` needs nothing** — it has no `KeyboardInterrupt` shutdown path, and rp2 has no
 SIGINT.
+
+### F.6.1 A `KeyboardInterrupt` at an `async with` body's end is lost
+
+At an `async with` body's normal end the emitter writes `LOAD_CONST None; ROT_TWO; JUMP`
+(`py/emitbc.c:681-683`, v1.29.0; unchanged on master `a39e77f08`, 2026-10-26), and the `JUMP`'s
+pending-exception check (`py/vm.c:572-575, 1341-1371`) can raise a pending `KeyboardInterrupt` with
+`None` in the context manager's slot: the body's finally handler (`py/compile.c:1893`, `py/vm.c:1464,
+1478-1484`) loads `__aexit__` from `None` (`py/compile.c:1913-1916`) and raises `AttributeError:
+'NoneType' object has no attribute '__aexit__'` instead. The interrupt is lost, `__aexit__` never
+runs (a lock stays held) and only the task that met it dies: a twin serves on past its SIGINT until
+it is killed. A plain `with` is not affected (`py/emitbc.c:666-670`), nor are cancellation and
+timeouts: a `CancelledError` is thrown only where a task resumes at an await
+(`extmod/modasyncio.c:236`, `extmod/asyncio/core.py:193`), and the window holds none; on rp2 the one
+asynchronous exception is a USB console Ctrl-C (`shared/tinyusb/mp_usbd_cdc.c:88`, the UART REPL off,
+`ports/rp2/mpconfigport.h:48`). B.14's overrides cannot carry the source fix, so the twins end
+in-band: `scripts/_twin_process.py`'s `shutdown()` creates the runner's `--stop-file` (`_serve_until()`,
+`digital_twin/run_generic_integration.py`), and only the CI suite's Run 12, which tests the SIGINT
+path, sends one (agent, 2026-11-06).
 
 ## F.7 The Unix-port rig: where it differs from rp2
 
