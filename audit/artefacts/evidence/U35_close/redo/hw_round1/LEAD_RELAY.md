@@ -1,5 +1,16 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 20:38 UTC, 2026-11-06: for day 3, when the owner restarts you (nothing today); your trixie note
+Taken: trixie (Node is the whole of noble's 66; ROOT_CAUSES 21), the E51 console not saved (stays inferred), and the
+owner's stop for day 2. Day 3 keeps the owner's 19:15 choice, in this order:
+1. Build the image from this head, reflash after the owner's OK (ask them yourself), then the five reruns of the 19:04
+   entry in its order, with no chroot leg running.
+2. Two facts, no new run: each chroot leg's "== Test parallelism:" line (jobs, cores, multiplier, probe ms), and
+   would_have_triggered_count for the 15,309 ms boot. test.sh's own comment names this hazard as not closed: a twin
+   budget in wall-clock measures host speed. Its band puts a Pi4 at 2x (8 jobs on 4 cores); you saw 16.
+3. The trixie leg again on this head with TEST_PARALLELISM=4 (no board contact): if the 16 failures and the gaps go,
+   it is load; any that stay are code, and come here with their logs. Then noble with Node, the same setting.
+
 ## 19:15 UTC, 2026-11-06: the owner's order for the rest of today: the reruns first, the trixie leg stops
 The owner chose at 19:15:43: stop the trixie chroot leg now, then the reflash and the five reruns of the 19:04 entry,
 in its order, with the rest of today's bench time. The reflash still needs the owner's OK asked by you, as before.
