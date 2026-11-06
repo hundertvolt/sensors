@@ -660,7 +660,7 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, 
     bmp_result = _load.as_object(result.get("BMP3XX"), "result.BMP3XX")
     assert bmp_result.get("PresOvers") == "Invalid", f"a wrong-typed field was not marked Invalid: {bmp_result!r}"
     assert bmp_result.get("FiltCoeff") == "Invalid", f"an out-of-range field was not marked Invalid: {bmp_result!r}"
-    assert isinstance(body["result"], dict) and "TotallyUnknownSensor" not in body["result"], f"an entirely unknown sensor key was not silently ignored: {result!r}"
+    assert result.get("TotallyUnknownSensor") == "Invalid", f"an unknown sensor did not answer Invalid (SPECIFICATION.md A.8): {result!r}"
     assert _load.serving(dut_ip), "webserver unresponsive after nonsense PUT field values"
     try:
         # A rejected key logs BAD_ARG on its own CFGMGR_<NAME> logger, not the sensor's (write_config()).
