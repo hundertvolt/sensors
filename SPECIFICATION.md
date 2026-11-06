@@ -3159,7 +3159,8 @@ as both lock layers (C.8) stay genuinely distinct. What differs:
   0.8 × VDD (MB85RS64V p.17; 0.7 × VDD on the MB85RS2MTA, p.18) through power-down (tpd), and a
   reset or brown-out while VDD falls returns CS to the intermediate level above; SCK and SI stay
   pulled down, so no op-code can be clocked in, and whether the part can still disturb a cell is
-  unverified on this board (agent, 2026-10-06).
+  unverified on this board (agent, 2026-10-06). The CS level through power-down is unmeasured, a
+  limitation (owner, 2026-11-06: "I have no oscilloscope at hand").
 - Everything else (scratch buffers, session lock, compensation math, range checks) carries over
   unchanged.
 - **`FRAM_SPI._setup_addr_buffer()` trusts caller-supplied `max_size` for address width (3 vs. 4
@@ -6817,7 +6818,9 @@ Two consequences the wrappers now state accurately:
   `ports/rp2/machine_spi.c:37-41, 196-214`). Re-construction is also
   the only controller re-init rp2 offers — `machine.I2C.init()` raises `OSError`
   (`extmod/machine_i2c.c:320-326`) — and a real one: pico-sdk's `i2c_init()` resets the whole I2C
-  block first (F.2's controller rung, `I2C.recover()`).
+  block first (F.2's controller rung, `I2C.recover()`). What SCL and SDA do through a bus clear and
+  this re-construction is unmeasured, a limitation (owner, 2026-11-06: "I have no oscilloscope at hand");
+  the outcome is checked on silicon by the flash tier's `test_a_held_sda_line_is_cleared_and_every_device_answers`.
 - **`machine.I2C.deinit()` did not exist at all before 1.29** — `machine_i2c_locals_dict_table[]`
   at `v1.28.0` has no `deinit` entry, so the call raises `AttributeError` there. That gives
   `asy_i2c_driver.py` a hard **1.29 floor** on its `deinit()` path (unreachable from a fresh
@@ -7380,9 +7383,9 @@ timeouts: a `CancelledError` is thrown only where a task resumes at an await
 (`extmod/modasyncio.c:236`, `extmod/asyncio/core.py:193`), and the window holds none; on rp2 the one
 asynchronous exception is a USB console Ctrl-C (`shared/tinyusb/mp_usbd_cdc.c:88`, the UART REPL off,
 `ports/rp2/mpconfigport.h:48`). B.14's overrides cannot carry the source fix, so the twins end
-in-band: `scripts/_twin_process.py`'s `shutdown()` creates the runner's `--stop-file` (`_serve_until()`,
-`digital_twin/run_generic_integration.py`), and only the CI suite's Run 12, which tests the SIGINT
-path, sends one (agent, 2026-11-06).
+in-band: `scripts/_twin_process.py`'s `shutdown()` and `tests_js/_twin_process.js`'s `stopTwin()` create
+the runner's `--stop-file` (`_serve_until()`, `digital_twin/run_generic_integration.py`), and only the
+CI suite's Run 12, which tests the SIGINT path, sends one (agent, 2026-11-06).
 
 ## F.7 The Unix-port rig: where it differs from rp2
 
@@ -7860,9 +7863,10 @@ same skeleton/JS for every device (`render.js`/`nav.js` have zero device-specifi
 coverage of the REST API (owner, 2026-09-26: 'The reference for us is the new API.'); small, lean,
 no external runtime deps; runs on current Chromium, Firefox and Safari (owner, 2026-09-26,
 paraphrase), at the ES2022 library level `tsconfig.json`'s `lib` binds, each engine driven by H.7's
-cross-browser smoke (WebKit through WebKitGTK); light/dark (automatic-only via
-`prefers-color-scheme`); modern hamburger/drawer nav; build = gzip → `freezefs` → frozen bytecode →
-mount on startup → served via Microdot as gzip-compressed HTML (A.9).
+cross-browser smoke (WebKit through WebKitGTK) on Linux only, with no pass on a real Safari or a
+phone, a limitation (owner, 2026-11-06); light/dark (automatic-only via `prefers-color-scheme`);
+modern hamburger/drawer nav; build = gzip → `freezefs` → frozen bytecode → mount on startup →
+served via Microdot as gzip-compressed HTML (A.9).
 
 **Placement** (owner, 2026-09-26, asked whether a placement rule is written into Part H and every
 page checked against it: "2. yes"): every value a route returns or accepts is shown or settable on
