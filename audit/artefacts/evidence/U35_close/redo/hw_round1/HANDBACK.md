@@ -1,6 +1,6 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-06 06:44 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-06 07:32 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
@@ -12,7 +12,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-06 06:44 UTC. Each verdict
 | 5g | bench_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping, bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load, bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load and 92 more | 21 | 2026-11-05 11:03:40 | 0h33 | 0.61 | 0/0/0/66 |
 | 3 | final_image | rc=0 | 2 | 2026-11-06 06:16:54 | 0h04 | 2.76 | 1/0/0/0 |
 | 4b | flash_tier | rc=1; FAIL (pytest exited 1); failed: flash/test_chip_conformance.py::test_scd30_matches_its_twin_fake, flash/test_chip_conformance.py::test_sgp40_matches_its_twin_fake, flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake, flash/test_chip_conformance.py::test_fram_matches_its_twin_fake, flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build and 7 more | 21 | 2026-11-06 06:21:28 | 0h23 | 0.20 | 0/0/0/136 |
-| 5 | bench_tier | not run |  |  |  |  | 0/0/0/66 |
+| 5 | bench_tier | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load, bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load, bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly and 92 more | 21 | 2026-11-06 07:03:39 | 0h29 | 0.00 | 0/0/0/66 |
 | 9 | crc16_hazards | not run |  |  |  |  | 0/0/0/0 |
 | 10a | soak_short | not run |  |  |  |  | 0/0/0/8 |
 | 10m | soak_mid | not run |  |  |  |  | 0/0/0/8 |
@@ -38,7 +38,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-06 06:44 UTC. Each verdict
 | 10b | hotspot_case_b | not run |  |  |  |  | 0/4/0/2 |
 | 15 | rollover | not run |  |  |  |  | 2/0/0/0 |
 
-Wear started (the sheet's maxima per started step): FC 2 of 9, FS owned 0 of 126, NVM 1 of 14, prerequisite writes 338 of 422.
+Wear started (the sheet's maxima per started step): FC 2 of 9, FS owned 0 of 126, NVM 1 of 14, prerequisite writes 404 of 422.
 
 ## Long runs summed (October's aggregate)
 
@@ -15617,6 +15617,5900 @@ SUM errcount NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type
 SUM errcount NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":65}],"counter":1}
+SUM errcount SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+```
+<!-- end step -->
+
+### 5 bench_tier
+
+<!-- step 5 -->
+```
+== step 5 start 2026-11-06 07:03:39 1793948619 load 0.44 0.17 0.19
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.66ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+== Marker selection: -m "not soak_duration and not multi_day_rollover"
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors-bench/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors-bench
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 127 items / 22 deselected / 105 selected
+
+tests_hardware/bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes FAILED [  0%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes PASSED [  1%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation PASSED [  2%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry FAILED [  3%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry ERROR [  3%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping PASSED [  4%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load FAILED [  5%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load ERROR [  5%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load ERROR [  6%]
+tests_hardware/bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly ERROR [  7%]
+tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver ERROR [  8%]
+tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane ERROR [  9%]
+tests_hardware/bench/test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held ERROR [ 10%]
+tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall ERROR [ 11%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared ERROR [ 12%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname ERROR [ 13%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_the_dut_accepts_the_toml_hotspot_password ERROR [ 14%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window ERROR [ 15%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease ERROR [ 16%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet ERROR [ 17%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server ERROR [ 18%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip ERROR [ 19%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way ERROR [ 20%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly ERROR [ 20%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_an_aaaa_query_gets_an_empty_answer ERROR [ 21%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped ERROR [ 22%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored ERROR [ 23%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_leaves_captive_dns_serving_and_it_recovers ERROR [ 24%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link ERROR [ 25%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link ERROR [ 26%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link ERROR [ 27%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link ERROR [ 28%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly ERROR [ 29%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management ERROR [ 30%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect ERROR [ 31%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge ERROR [ 32%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_the_uart_link_across_the_mode_switch_is_recorded ERROR [ 33%]
+tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot ERROR [ 34%]
+tests_hardware/bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer ERROR [ 35%]
+tests_hardware/bench/test_modlwip_send_stall.py::test_no_send_stall_with_the_override ERROR [ 36%]
+tests_hardware/bench/test_modlwip_send_stall.py::test_send_stall_on_the_unpatched_image ERROR [ 37%]
+tests_hardware/bench/test_network_resilience.py::test_real_wifi_outage_and_recovery_while_in_normal_sta_mode ERROR [ 38%]
+tests_hardware/bench/test_network_resilience.py::test_real_wifi_flaps_repeatedly_without_wedging_the_system ERROR [ 39%]
+tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency ERROR [ 40%]
+tests_hardware/bench/test_network_resilience.py::test_rest_answers_first_try_under_light_realistic_wifi_congestion ERROR [ 40%]
+tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_real_packet_corruption ERROR [ 41%]
+tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_under_duplicated_and_reordered_packets ERROR [ 42%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage ERROR [ 43%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response ERROR [ 44%]
+tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response ERROR [ 45%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source ERROR [ 46%]
+tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly ERROR [ 47%]
+tests_hardware/bench/test_network_resilience.py::test_get_nonsense_path_is_shaped_404_over_the_normal_network ERROR [ 48%]
+tests_hardware/bench/test_network_resilience.py::test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network ERROR [ 49%]
+tests_hardware/bench/test_network_resilience.py::test_put_oversized_body_is_rejected_with_413_over_the_normal_network ERROR [ 50%]
+tests_hardware/bench/test_network_resilience.py::test_put_body_cap_boundary_is_exact_over_the_normal_network ERROR [ 51%]
+tests_hardware/bench/test_network_resilience.py::test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network ERROR [ 52%]
+tests_hardware/bench/test_network_resilience.py::test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap ERROR [ 53%]
+tests_hardware/bench/test_network_resilience.py::test_an_oversized_body_is_refused_before_it_is_read ERROR [ 54%]
+tests_hardware/bench/test_network_resilience.py::test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits ERROR [ 55%]
+tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status ERROR [ 56%]
+tests_hardware/bench/test_network_resilience.py::test_put_nonsense_field_values_are_marked_invalid_not_crashed ERROR [ 57%]
+tests_hardware/bench/test_network_resilience.py::test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout ERROR [ 58%]
+tests_hardware/bench/test_network_resilience.py::test_abrupt_disconnect_mid_response_does_not_hang_the_server ERROR [ 59%]
+tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures ERROR [ 60%]
+tests_hardware/bench/test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body ERROR [ 60%]
+tests_hardware/bench/test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one ERROR [ 61%]
+tests_hardware/bench/test_network_resilience.py::test_openhab_case_two_pollers_and_an_open_website_are_all_served ERROR [ 62%]
+tests_hardware/bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_watchdog_without_a_record ERROR [ 63%]
+tests_hardware/bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed ERROR [ 64%]
+tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[escalate] ERROR [ 65%]
+tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[hold_console] ERROR [ 66%]
+tests_hardware/bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed ERROR [ 67%]
+tests_hardware/bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown ERROR [ 68%]
+tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed ERROR [ 69%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1] ERROR [ 70%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2] ERROR [ 71%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3] ERROR [ 72%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4] ERROR [ 73%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5] ERROR [ 74%]
+tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed ERROR [ 75%]
+tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed ERROR [ 76%]
+tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception] ERROR [ 77%]
+tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base] ERROR [ 78%]
+tests_hardware/bench/test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network ERROR [ 79%]
+tests_hardware/bench/test_rest_endpoints_over_sta.py::test_measurements_endpoint_returns_plausible_values_for_every_real_sensor ERROR [ 80%]
+tests_hardware/bench/test_rest_endpoints_over_sta.py::test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot ERROR [ 80%]
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_notification_pause_time_push_counts_down_over_real_rest ERROR [ 81%]
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_sgp40_reset_voc_command_push_over_real_rest ERROR [ 82%]
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_calibrate_command_push_over_real_rest ERROR [ 83%]
+tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run ERROR [ 84%]
+tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default ERROR [ 85%]
+tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log PASSED [ 86%]
+tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log ERROR [ 86%]
+tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest PASSED [ 87%]
+tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest ERROR [ 87%]
+tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once PASSED [ 88%]
+tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once ERROR [ 88%]
+tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once PASSED [ 89%]
+tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once ERROR [ 89%]
+tests_hardware/bench/test_uart_link_crc16.py::test_the_link_suite_runs_on_a_crc16_image SKIPPED [ 90%]
+tests_hardware/bench/test_uart_link_under_api_load.py::test_the_link_stays_healthy_while_the_api_is_hammered PASSED [ 91%]
+tests_hardware/bench/test_uart_link_under_api_load.py::test_real_transfers_complete_while_the_api_is_hammered PASSED [ 92%]
+tests_hardware/bench/test_uart_link_under_api_load.py::test_an_api_overload_does_not_corrupt_the_link_or_the_reverse PASSED [ 93%]
+tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load FAILED [ 94%]
+tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load ERROR [ 94%]
+tests_hardware/bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict FAILED [ 95%]
+tests_hardware/bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict ERROR [ 95%]
+tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset PASSED [ 96%]
+tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset ERROR [ 96%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp FAILED [ 97%]
+tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp PASSED [ 98%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing PASSED [ 99%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing ERROR [ 99%]
+tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link FAILED [100%]
+tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link ERROR [100%]
+
+==================================== ERRORS ====================================
+_ ERROR at teardown of test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry _
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f9a162520>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry'
+pre_clear = [{'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}...': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}]
+expected = frozenset({('NTP', 'E', 71), ('WEBSERVER', 'W', 48), ('WEBSERVER', 'W', 60)})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry logged SGP40 W65 SGP_NO_BACKUP; SGP40 W35 SGP_WRITTEN_NO_TS - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_____________ ERROR at teardown of test_fram_erase_under_api_load ______________
+timed out
+
+During handling of the above exception, another exception occurred:
+<urlopen error timed out>
+
+During handling of the above exception, another exception occurred:
+_________________ ERROR at setup of test_reboot_under_api_load _________________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+___ ERROR at setup of test_real_reboot_sequencing_via_rest_completes_cleanly ___
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_real_concurrent_client_burst_does_not_crash_the_webserver _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+___ ERROR at setup of test_cold_boot_to_first_http_response_latency_is_sane ____
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_______ ERROR at setup of test_heap_at_peak_while_a_full_ceiling_is_held _______
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_________ ERROR at setup of test_report_the_boards_own_connection_wall _________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+______ ERROR at setup of test_dut_enters_hotspot_mode_after_ssid_cleared _______
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_______ ERROR at setup of test_hotspot_ssid_matches_configured_hostname ________
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_______ ERROR at setup of test_the_dut_accepts_the_toml_hotspot_password _______
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_____ ERROR at setup of test_bench_radio_associates_within_bounded_window ______
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+________ ERROR at setup of test_bench_radio_receives_a_valid_dhcp_lease ________
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_______ ERROR at setup of test_leased_ip_falls_within_the_aps_own_subnet _______
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_____ ERROR at setup of test_arbitrary_hostname_resolves_to_the_aps_own_ip _____
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+______ ERROR at setup of test_devices_own_hostname_resolves_the_same_way _______
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+____ ERROR at setup of test_genuine_root_domain_query_is_answered_correctly ____
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+__________ ERROR at setup of test_an_aaaa_query_gets_an_empty_answer ___________
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+____ ERROR at setup of test_malformed_truncated_packet_is_silently_dropped _____
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_____ ERROR at setup of test_spoofed_off_subnet_source_address_is_ignored ______
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_dns_flood_leaves_captive_dns_serving_and_it_recovers __
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_real_static_website_content_serves_over_the_hotspot_link _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_nonsense_path_redirects_to_root_over_the_hotspot_link _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_malformed_http_request_over_real_wireless_degrades_cleanly _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_rapid_associate_disassociate_churn_doesnt_wedge_station_management _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_invalid_credentials_rejected_without_triggering_reconnect _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge _
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+___ ERROR at setup of test_the_uart_link_across_the_mode_switch_is_recorded ____
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               OSError: [Errno 113] No route to host
+
+/usr/lib/python3.13/socket.py:849: OSError
+
+During handling of the above exception, another exception occurred:
+
+
+    @pytest.fixture(scope="module")
+    def hotspot_ssid(board: Board, dut_ip: str) -> str:
+        # The DUT's current Hostname, read over the bridge before anything flips: the SSID its hotspot will carry.
+>       hostname = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("Hostname")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_hotspot_role_reversal.py:626: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/_load.py:233: in get_object
+    res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f9a30d550>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f9a14eed0>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_ ERROR at setup of test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+____________ ERROR at setup of test_no_send_stall_with_the_override ____________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+___________ ERROR at setup of test_send_stall_on_the_unpatched_image ___________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_real_wifi_outage_and_recovery_while_in_normal_sta_mode _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_real_wifi_flaps_repeatedly_without_wedging_the_system _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_rest_answers_first_try_under_light_realistic_wifi_congestion _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_rest_stays_reachable_and_recovers_under_real_packet_corruption _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_rest_stays_reachable_under_duplicated_and_reordered_packets _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_ntp_server_sends_garbage_instead_of_a_valid_response __
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_dns_server_sends_garbage_instead_of_a_valid_response __
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_connections_at_and_above_the_real_socket_limit_degrade_cleanly _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_get_nonsense_path_is_shaped_404_over_the_normal_network _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_put_oversized_body_is_rejected_with_413_over_the_normal_network _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_put_body_cap_boundary_is_exact_over_the_normal_network _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+____ ERROR at setup of test_an_oversized_body_is_refused_before_it_is_read _____
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_put_nonsense_field_values_are_marked_invalid_not_crashed _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_abrupt_disconnect_mid_response_does_not_hang_the_server _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_openhab_case_two_pollers_and_an_open_website_are_all_served _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_a_harness_hard_reset_reads_as_watchdog_without_a_record _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+___________ ERROR at setup of test_a_bootloader_reboot_is_attributed ___________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_the_supervisor_escalation_reboot_is_attributed[escalate] _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_the_supervisor_escalation_reboot_is_attributed[hold_console] _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+______ ERROR at setup of test_the_starved_watchdog_fallback_is_attributed ______
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+__________ ERROR at setup of test_an_invalid_record_reads_as_unknown ___________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+__________ ERROR at setup of test_an_incomplete_command_is_attributed __________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+________ ERROR at setup of test_a_hang_in_boot_phase_p_is_attributed[1] ________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+________ ERROR at setup of test_a_hang_in_boot_phase_p_is_attributed[2] ________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+________ ERROR at setup of test_a_hang_in_boot_phase_p_is_attributed[3] ________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+________ ERROR at setup of test_a_hang_in_boot_phase_p_is_attributed[4] ________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+________ ERROR at setup of test_a_hang_in_boot_phase_p_is_attributed[5] ________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+__________ ERROR at setup of test_a_c_stack_exhaustion_is_attributed ___________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+___________ ERROR at setup of test_a_console_interrupt_is_attributed ___________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception] _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_a_loop_ended_by_an_exception_after_boot_is_attributed[base] _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_real_static_website_content_serves_over_the_normal_bridge_network _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_measurements_endpoint_returns_plausible_values_for_every_real_sensor _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_ ERROR at setup of test_notification_pause_time_push_counts_down_over_real_rest _
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+______ ERROR at setup of test_sgp40_reset_voc_command_push_over_real_rest ______
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+____ ERROR at setup of test_isl29125_calibrate_command_push_over_real_rest _____
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_____ ERROR at setup of test_every_source_and_route_fits_a_small_free_run ______
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+_________ ERROR at setup of test_serving_sweep_at_the_reactive_default _________
+[Errno 113] No route to host
+
+During handling of the above exception, another exception occurred:
+<urlopen error [Errno 113] No route to host>
+
+During handling of the above exception, another exception occurred:
+____ ERROR at teardown of test_fram_erase_over_rest_blanks_every_error_log _____
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_fram_erase_over_rest_blanks_every_error_log>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f9879e200>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+____ ERROR at teardown of test_near_miss_action_words_do_nothing_over_rest _____
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_near_miss_action_words_do_nothing_over_rest>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f98043b00>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_________ ERROR at teardown of test_erase_reboot_and_mempause_at_once __________
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_erase_reboot_and_mempause_at_once>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f9879d580>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+___________ ERROR at teardown of test_reboot_and_bootloader_at_once ____________
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_reboot_and_bootloader_at_once>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f9879bc40>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_ ERROR at teardown of test_a_multi_chunk_set_echoes_intact_under_serving_load _
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_multi_chunk_set_echoes_intact_under_serving_load>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f98798d60>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load logged FRAM E46 FRAM_STATUS_BYTE; FRAM W63 FRAM_BLOCK_INVALID; UART_init E85 UART_REENTRANT; WEBSERVER W51 HTTP_SOCKET_ERROR - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_ ERROR at teardown of test_a_hazard_run_under_the_readers_load_reports_every_verdict _
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_hazard_run_under_the_readers_load_reports_every_verdict>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f9879da80>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict'
+pre_clear = [{'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}...': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}]
+expected = frozenset({('UART_init', 'E', 22), ('UART_init', 'E', 80), ('UART_init', 'E', 81), ('UART_init', 'E', 84), ('UART_init', 'E', 85), ('UART_init', 'E', 86), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict logged WEBSERVER W60 HTTP_REFUSED - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_ ERROR at teardown of test_real_sta_connect_reaches_established_after_a_hard_reset _
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_real_sta_connect_reaches_established_after_a_hard_reset>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f9879d620>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset logged FRAM E51 FRAM_COPIES_DIFFER - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_ ERROR at teardown of test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing _
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f986485e0>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing'
+pre_clear = [{'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}...': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}]
+expected = frozenset({('NTP', 'E', 71)})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing logged SGP40 W35 SGP_WRITTEN_NO_TS - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+______ ERROR at teardown of test_the_radio_reinit_rung_restores_the_link _______
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_the_radio_reinit_rung_restores_the_link>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f9864a520>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link logged SGP40 W33 SGP_RESTORED_NO_TS - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+=================================== FAILURES ===================================
+__________ test_webserver_answers_before_the_first_ntp_sync_completes __________
+
+board = <harness.Board object at 0x7f9a30d010>
+bench = <bench_control.BenchBridge object at 0x7f9a589bd0>
+result_note = <function result_note.<locals>._note at 0x7f9a163a60>
+
+    def test_webserver_answers_before_the_first_ntp_sync_completes(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
+        stop = threading.Event()
+        log: list[tuple[float, str]] = []
+        answers: list[float] = []
+        threads = [threading.Thread(target=_stamp_console, args=(board.device, stop, log), name="console"), threading.Thread(target=_poll_status, args=(dut_ip, stop, answers), name="status-poller")]
+        reset_at = time.monotonic()
+        try:
+            kick_then_reset(board, bench)
+            reset_at = time.monotonic()
+            for thread in threads:
+                thread.start()
+            stop.wait(_BOOT_WINDOW_S)
+        finally:
+            stop.set()
+            alive = _load.join(threads, _JOIN_TIMEOUT_S)
+            restore_board_to_serving(board, bench, dut_ip)
+        assert not alive, f"{alive} still running after the boot window"
+        evidence.save_text("boot-log.txt", "\n".join(f"{t - reset_at:8.3f} {line}" for t, line in log))
+        assert answers, f"no GET /status answered within {_BOOT_WINDOW_S:g}s of the reset"
+        first_ok = answers[0]
+        boots = [t for t, line in log if boot_lines([line])]
+        assert boots, f"no boot line in the stamped log: the console needs DebugLevel >= 3 (log tail {[line for _t, line in log[-5:]]})"
+        assert max(boots) <= first_ok, f"a boot line came {max(boots) - first_ok:.2f}s after the first 200: the webserver answered mid-setup"
+        rtc_at = _first(log, _RTC_SET_LINE)
+        ntp_lines = [(t, line) for t, line in log if t <= first_ok and (_NTP_START_LINE in line or _RTC_SET_LINE in line)]
+        in_first_sync = bool(ntp_lines) and _NTP_START_LINE in ntp_lines[-1][1]
+>       assert rtc_at is None or first_ok < rtc_at or in_first_sync, f"the first 200 ({first_ok - reset_at:.2f}s) came after the first RTC set ({rtc_at - reset_at:.2f}s) with no sync under way"
+E       AssertionError: the first 200 (12.42s) came after the first RTC set (10.22s) with no sync under way
+E       assert (3424.291826895 is None or 3426.493465618 < 3424.291826895 or False)
+
+tests_hardware/bench/test_boot_order_and_triggers.py:72: AssertionError
+_ test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry _
+
+board = <harness.Board object at 0x7f9a30d010>
+bench = <bench_control.BenchBridge object at 0x7f9a589bd0>
+request = <FixtureRequest for <Function test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry>>
+result_note = <function result_note.<locals>._note at 0x7f9a2c9260>
+
+    @pytest.mark.provokes_log(
+        "the blocked NTP port's NTP_NO_REPLY the test waits for, and the ceiling's reject-when-full under the readers",
+        ("NTP", "E", "NTP_NO_REPLY"),
+        ("WEBSERVER", "W", "HTTP_REFUSED"),
+        ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    )
+    def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+        # A synced client attempts nothing for NTPInterval hours and an unchanged NTPHost PUT fires no post function
+        # (src/asy_api_response.py), so the reset under the block makes the boot's first sync fail; the client's own
+        # unsynced retry timer then runs inside the block, which lasts one retry period plus a margin.
+        networking = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S)
+        res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": networking.get("NTPHost")}, timeout_s=_PROBE_TIMEOUT_S)
+        word = _load.as_object(res.json().get("result"), "result").get("NTPHost")
+        assert res.status_code == 200 and word == "Unchanged", f"an NTPHost PUT of its current value answered {word!r}: something was written ({res.body!r})"
+        reset_all_error_logs(dut_ip, request.node.name)
+        context = " during the NTP outage"
+        load = _load.Load(context)
+        block_s = _load.ntp_retry_period_s() + _NTP_BLOCK_MARGIN_S
+        bench.block_udp_ports([123])
+        try:
+            _load.reset_and_wait(board, bench, dut_ip, timeout_s=_REBOOT_READY_TIMEOUT_S)
+            blocked_until = time.monotonic() + block_s
+            resets = threading.Thread(target=_sgp40_resets, args=(dut_ip, load, _DEGRADED_FETCH_TIMEOUT_S, context), name="sgp40-resets")
+            with _load.readers(_GET_WORKERS, dut_ip, load, iterations=_GET_ITERATIONS_PER_WORKER, timeout_s=_DEGRADED_FETCH_TIMEOUT_S, join_s=_DEGRADED_JOIN_TIMEOUT_S, fetch=fetch, others=(resets,)) as alive:
+                wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_NO_REPLY")), timeout_s=block_s, poll_interval_s=_NTP_RESYNC_POLL_S, description="an NTP attempt meeting the block (NTP_NO_REPLY)")
+                time.sleep(max(blocked_until - time.monotonic(), 0.0))
+        finally:
+            bench.unblock_udp_ports([123])
+        assert not alive, f"{alive} never finished within {_DEGRADED_JOIN_TIMEOUT_S:g}s during the NTP outage - possible real deadlock, not just slow requests"
+        _assert_load(load, _NTP_MIN_ANSWERED, context, transport_failures_allowed=True)
+    
+        # The client's own retry timer resyncs once the block lifts: no reset after the one that started the window.
+        started = time.monotonic()
+        wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_NTP_RESYNC_TIMEOUT_S + block_s, poll_interval_s=_NTP_RESYNC_POLL_S, description="NTP resynced by its own retry timer after the block, under bus load")
+        result_note(f"NTP resynced {time.monotonic() - started:.1f}s after the block lifted")
+>       _assert_bus_logs_empty(dut_ip)
+
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+
+    def _assert_bus_logs_empty(dut_ip: str, extra: "tuple[str, ...]" = ()) -> None:
+        # Every logger a bus load reaches (each I2C/SPI instance's, from the bench TOML) empty; the read paths' new codes are
+        # named so a failure says which of them a load provoked.
+        named = {code(kind, name): name for kind, name in _LOAD_CODES}
+        for module in (*_load.bus_loggers(), *extra):
+            entry = errcount_entry(get_errcount(dut_ip), module)
+            seen = sorted({named[num] for h in entry["history"] if isinstance(num := h.get("num"), int) and num in named})
+>           assert entry["counter"] == 0, f"{module!r} logged under bus load (of the read paths' load codes: {seen or 'none'}): {entry!r}"
+E           AssertionError: 'SGP40' logged under bus load (of the read paths' load codes: none): {'counter': 2, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 65}, {'type': 'W', 'num': 35}]}
+E           assert 2 == 0
+
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:421: AssertionError
+________________________ test_fram_erase_under_api_load ________________________
+
+board = <harness.Board object at 0x7f9a30d010>
+bench = <bench_control.BenchBridge object at 0x7f9a589bd0>
+request = <FixtureRequest for <Function test_fram_erase_under_api_load>>
+result_note = <function result_note.<locals>._note at 0x7f9a2f19e0>
+
+    def test_fram_erase_under_api_load(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+        # The FRAM evidence first (CLAUDE.md's FRAM rule): the erase clears every FRAM-backed log for good. The raw dump
+        # stops main.py, so the board is reset to serving before the load starts.
+        save_errcount(dut_ip, request.node.name)
+        save_fram_raw(board, request.node.name)
+        _load.reset_and_wait(board, bench, dut_ip, timeout_s=_REBOOT_READY_TIMEOUT_S)
+        noted = _load.Noted(result_note)
+>       _command_under_load(board, bench, dut_ip, "erasefram", noted)
+
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:390: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:452: in _command_under_load
+    _result, lines = observe_during(board, action)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/harness.py:557: in observe_during
+    result = action()
+             ^^^^^^^^
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:448: in action
+    kick_after_reset(board, bench, _REBOOT_READY_TIMEOUT_S)  # the reset is a real machine.reset(): no stale AP-side entry outlives it
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+board = <harness.Board object at 0x7f9a30d010>
+bench = <bench_control.BenchBridge object at 0x7f9a589bd0>, timeout_s = 60.0
+
+    def kick_after_reset(board: "Board", bench: "BenchBridge", timeout_s: float) -> float:
+        # kick_all_stations()'s workaround for a reset the board's own command arms, sent once the board has left USB (when
+        # it was seen gone is returned), as a DUT still shutting down rejoins after an earlier kick. Its node is watched,
+        # never opened, so a held log tail reads on.
+        if not _poll(lambda: not Path(board.device).exists(), timeout_s):
+>           raise HardwareTestFailureError(f"the board did not leave USB within {timeout_s}s of the command - no reset of its own to kick after")
+E           harness.HardwareTestFailureError: the board did not leave USB within 60.0s of the command - no reset of its own to kick after
+
+tests_hardware/harness.py:529: HardwareTestFailureError
+___________ test_a_multi_chunk_set_echoes_intact_under_serving_load ____________
+
+board = <harness.Board object at 0x7f9a30d010>
+bench = <bench_control.BenchBridge object at 0x7f9a589bd0>
+
+    def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
+        # The serving board's own initiator SETs and GETs a three-chunk echo while the host loads its API: every echo intact,
+        # the exerciser's own transfers failing none meanwhile, and the readers answered.
+        load = _load.Load()
+        stop = threading.Event()
+        driver = threading.Thread(target=_echo_load, args=(dut_ip, stop, load), name="echo-load")
+        try:
+            driver.start()
+            output = board.run_isolated(DEVICE_SCRIPTS_DIR / "uart_link_echo_under_serving_load.py", timeout_s=_ECHO_SCRIPT_TIMEOUT_S)
+        finally:
+            stop.set()
+            alive = _load.join([driver], 2 * _JOIN_TIMEOUT_S)  # the readers' own bounded join runs inside it
+            restore_board_to_serving(board, bench, dut_ip)
+        assert not alive, f"{alive} still running after the echo test - it would load every test that follows"
+        facts = parse_facts(output)
+        assert facts.get("initiator_found") is True, f"the script found no initiating uart_link instance - {_TOML_HINT}: {facts}"
+        assert facts.get("load_seen") is True, f"the host's load never reached the script's webserver, so nothing ran under load: {facts}"
+        total = facts.get("total")
+        assert isinstance(total, int) and total > 0 and facts.get("intact") == total, f"echoes came back damaged or missing under load: {facts}"
+        before, after = facts.get("before"), facts.get("after")
+>       assert isinstance(before, dict) and isinstance(after, dict) and after.get("Failures") == before.get("Failures"), f"the exerciser's own transfers failed during the echoes: {before!r} -> {after!r}"
+E       AssertionError: the exerciser's own transfers failed during the echoes: {'Failures': 0, 'Transfers': 15} -> {'Failures': 23, 'Transfers': 15}
+E       assert (True and True and 23 == 0)
+E        +  where True = isinstance({'Failures': 0, 'Transfers': 15}, dict)
+E        +  and   True = isinstance({'Failures': 23, 'Transfers': 15}, dict)
+E        +  and   23 = <built-in method get of dict object at 0x7f8b7bf780>('Failures')
+E        +    where <built-in method get of dict object at 0x7f8b7bf780> = {'Failures': 23, 'Transfers': 15}.get
+E        +  and   0 = <built-in method get of dict object at 0x7f9a156d40>('Failures')
+E        +    where <built-in method get of dict object at 0x7f9a156d40> = {'Failures': 0, 'Transfers': 15}.get
+
+tests_hardware/bench/test_uart_link_under_api_load.py:88: AssertionError
+________ test_a_hazard_run_under_the_readers_load_reports_every_verdict ________
+
+request = <FixtureRequest for <Function test_a_hazard_run_under_the_readers_load_reports_every_verdict>>
+
+    @pytest.mark.provokes_log(
+        "the hazard run's illegal first chunks are refused by the responder, which logs its UART frame codes, and its legal"
+        " ones are ACKed, then declined: their command id 0x07 is no command the exerciser serves",
+        ("UART_init", "E", "UART_FRAME_INVALID"),
+        ("UART_init", "E", "UART_WRONG_KIND"),
+        ("UART_init", "E", "UART_NO_ACK"),
+        ("UART_init", "E", "UART_PEER_INITIATED"),
+        ("UART_init", "E", "TIMEOUT"),
+        ("UART_init", "E", "UART_REENTRANT"),
+        ("UART_init", "E", "UART_SIZE_MISMATCH"),
+        ("UART_init", "E", "UART_TRANSFER_CAP"),
+        ("UART_resp", "E", "UART_FRAME_INVALID"),
+        ("UART_resp", "E", "UART_WRONG_KIND"),
+        ("UART_resp", "E", "UART_NO_ACK"),
+        ("UART_resp", "E", "UART_PEER_INITIATED"),
+        ("UART_resp", "E", "TIMEOUT"),
+        ("UART_resp", "E", "UART_REENTRANT"),
+        ("UART_resp", "E", "UART_TRANSFER_CAP"),
+        ("UART_resp", "W", "UART_CMD_DECLINED"),
+    )
+    def test_a_hazard_run_under_the_readers_load_reports_every_verdict(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
+>       check_hazard_run_under_load(dut_ip, request.node.name)
+
+tests_hardware/bench/test_uart_link_under_api_load.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+reason = 'test_a_hazard_run_under_the_readers_load_reports_every_verdict'
+
+    def check_hazard_run_under_load(dut_ip: str, reason: str) -> None:
+        # PUT /status's dispatch-only UartHazards starts one run while readers GET /status until it ends: every verdict as
+        # the twin judges it, every read answered, the echo resumed with no failure counted, no webserver error and no task ended.
+        _require_uart_modules(dut_ip)
+        reset_all_error_logs(dut_ip, reason)
+        runs = _hazard_report(dut_ip).get("Runs")
+        assert isinstance(runs, int), f"the hazard report counts no runs: {runs!r}"
+        before = _link_counters(dut_ip)
+        load = _load.Load()
+        stop = threading.Event()
+        threads = [threading.Thread(target=_gets_until, args=(dut_ip, "/status", n, stop, load), name=f"hazard-get-{n}") for n in range(_ECHO_READERS)]
+        try:
+            for thread in threads:
+                thread.start()
+            put = http_client.fetch(dut_ip, 80, "PUT", "/status", {"UartHazards": True}, timeout_s=_REQUEST_BUDGET_S)
+            assert put.status_code == 200 and put.json().get("result") == {"UartHazards": "Valid"}, f"PUT /status did not start the hazard run: {put.status_code} {put.body[:120]!r}"
+            wait_until(lambda: _hazard_run_ended(dut_ip, runs), timeout_s=_HAZARD_RUN_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="the hazard run's end under the readers' load")
+        finally:
+            stop.set()
+            alive = _load.join(threads, _JOIN_TIMEOUT_S)
+        assert not alive, f"{alive} never finished within {_JOIN_TIMEOUT_S:g}s - possible real deadlock under load"
+>       assert not load.failures, f"{len(load.failures)} API issue(s) during the hazard run: {'; '.join(load.failures[:10])}"
+
+tests_hardware/bench/test_uart_link_under_api_load.py:279: AssertionError
+_________________ test_real_ntp_sync_succeeds_over_genuine_udp _________________
+
+
+    def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board, dut_ip: str) -> None:
+        # A sync proven by state: an RTC set inside the window, or the client synced with its last sync no older than the
+        # window plus the read itself. The failure-word scan comes second.
+        _networking(dut_ip)  # the board answers before the window opens
+        started = time.monotonic()
+        lines = board.tail_log(duration_s=_SYNC_TAIL_S)
+        read_started = time.monotonic()
+        networking = _networking(dut_ip)
+        read_s = time.monotonic() - read_started
+        age = networking.get("NTPLastSyncAge")
+        synced = networking.get("NTPSynced") is True and isinstance(age, int) and age <= _SYNC_TAIL_S + read_s + 1
+>       assert any(_RTC_SET_LINE in line for line in lines) or synced, f"no NTP sync within the {time.monotonic() - started:.0f}s window: no '{_RTC_SET_LINE}' line, NTPSynced {networking.get('NTPSynced')!r}, NTPLastSyncAge {age!r}"
+E       AssertionError: no NTP sync within the 61s window: no 'RTC set to:' line, NTPSynced True, NTPLastSyncAge 98
+E       assert (False or False)
+E        +  where False = any(<generator object test_real_ntp_sync_succeeds_over_genuine_udp.<locals>.<genexpr> at 0x7f9a1db780>)
+
+tests_hardware/bench/test_wifi_networking.py:70: AssertionError
+_________________ test_the_radio_reinit_rung_restores_the_link _________________
+
+board = <harness.Board object at 0x7f9a30d010>
+bench = <bench_control.BenchBridge object at 0x7f9a589bd0>
+result_note = <function result_note.<locals>._note at 0x7f986489a0>
+
+    def test_the_radio_reinit_rung_restores_the_link(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
+        try:
+>           output = board.run_isolated(DEVICE_SCRIPTS_DIR / "wifi_radio_reinit_recovery.py", timeout_s=_SCRIPT_TIMEOUT_S)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_wifi_radio_reinit.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7f9a30d010>
+script_path = PosixPath('/home/nico/programming/sensors-bench/tests_hardware/device_scripts/wifi_radio_reinit_recovery.py')
+soft_reset_after = True, timeout_s = 120.0, allow_recovery = True, extras = {}
+
+    def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
+        # Isolated-driver mode: the rendered script (render_device_script()) run once against the real frozen src/
+        # drivers under a re-armed watchdog; then, when asked, a separate soft reset whose failure never re-runs it.
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        rendered = render_device_script(Path(script_path), **extras)
+        result = self._mpremote("exec", _ARM_WATCHDOG, "run", str(rendered), timeout_s=timeout_s, allow_recovery=allow_recovery, retry_if_started=False)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/wifi_radio_reinit_recovery.py failed (exit 1):
+E           stdout:
+E           FACT config_read=true
+E           FACT budget_ms=20000
+E           FACT connected_before=true
+E           FACT recover_returned=true
+E           
+E           stderr:
+E           Traceback (most recent call last):
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+E               handler_func(state, args)
+E               ~~~~~~~~~~~~^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+E               _do_execbuffer(state, buf, args.follow)
+E               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+E               ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+E                              ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+E               data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+E               if self.is_pty or self.serial.inWaiting() > 0:
+E                                 ~~~~~~~~~~~~~~~~~~~~~^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+E               return self.in_waiting
+E                      ^^^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+E               s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+E           OSError: [Errno 5] Input/output error
+E           
+E           During handling of the above exception, another exception occurred:
+E           
+E           Traceback (most recent call last):
+E             File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+E               sys.exit(main())
+E                        ~~~~^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 644, in main
+E               do_disconnect(state)
+E               ~~~~~~~~~~~~~^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 89, in do_disconnect
+E               state.transport.close()
+E               ~~~~~~~~~~~~~~~~~~~~~^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 132, in close
+E               raise er
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 125, in close
+E               self.serial.rts = False
+E               ^^^^^^^^^^^^^^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 463, in rts
+E               self._update_rts_state()
+E               ~~~~~~~~~~~~~~~~~~~~~~^^
+E             File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 708, in _update_rts_state
+E               fcntl.ioctl(self.fd, TIOCMBIC, TIOCM_RTS_str)
+E               ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           OSError: [Errno 5] Input/output error
+
+tests_hardware/harness.py:941: HardwareTestFailureError
+=========================== short test summary info ============================
+FAILED tests_hardware/bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes
+FAILED tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry
+FAILED tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load
+FAILED tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load
+FAILED tests_hardware/bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict
+FAILED tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp
+FAILED tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link
+ERROR tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry
+ERROR tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load
+ERROR tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load
+ERROR tests_hardware/bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly
+ERROR tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver
+ERROR tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane
+ERROR tests_hardware/bench/test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held
+ERROR tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_the_dut_accepts_the_toml_hotspot_password
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_an_aaaa_query_gets_an_empty_answer
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_leaves_captive_dns_serving_and_it_recovers
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge
+ERROR tests_hardware/bench/test_hotspot_role_reversal.py::test_the_uart_link_across_the_mode_switch_is_recorded
+ERROR tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot
+ERROR tests_hardware/bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer
+ERROR tests_hardware/bench/test_modlwip_send_stall.py::test_no_send_stall_with_the_override
+ERROR tests_hardware/bench/test_modlwip_send_stall.py::test_send_stall_on_the_unpatched_image
+ERROR tests_hardware/bench/test_network_resilience.py::test_real_wifi_outage_and_recovery_while_in_normal_sta_mode
+ERROR tests_hardware/bench/test_network_resilience.py::test_real_wifi_flaps_repeatedly_without_wedging_the_system
+ERROR tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency
+ERROR tests_hardware/bench/test_network_resilience.py::test_rest_answers_first_try_under_light_realistic_wifi_congestion
+ERROR tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_real_packet_corruption
+ERROR tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_under_duplicated_and_reordered_packets
+ERROR tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage
+ERROR tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response
+ERROR tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response
+ERROR tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source
+ERROR tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly
+ERROR tests_hardware/bench/test_network_resilience.py::test_get_nonsense_path_is_shaped_404_over_the_normal_network
+ERROR tests_hardware/bench/test_network_resilience.py::test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network
+ERROR tests_hardware/bench/test_network_resilience.py::test_put_oversized_body_is_rejected_with_413_over_the_normal_network
+ERROR tests_hardware/bench/test_network_resilience.py::test_put_body_cap_boundary_is_exact_over_the_normal_network
+ERROR tests_hardware/bench/test_network_resilience.py::test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network
+ERROR tests_hardware/bench/test_network_resilience.py::test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap
+ERROR tests_hardware/bench/test_network_resilience.py::test_an_oversized_body_is_refused_before_it_is_read
+ERROR tests_hardware/bench/test_network_resilience.py::test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits
+ERROR tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status
+ERROR tests_hardware/bench/test_network_resilience.py::test_put_nonsense_field_values_are_marked_invalid_not_crashed
+ERROR tests_hardware/bench/test_network_resilience.py::test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout
+ERROR tests_hardware/bench/test_network_resilience.py::test_abrupt_disconnect_mid_response_does_not_hang_the_server
+ERROR tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures
+ERROR tests_hardware/bench/test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body
+ERROR tests_hardware/bench/test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one
+ERROR tests_hardware/bench/test_network_resilience.py::test_openhab_case_two_pollers_and_an_open_website_are_all_served
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_watchdog_without_a_record
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed
+ERROR tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[escalate]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[hold_console]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed
+ERROR tests_hardware/bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown
+ERROR tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base]
+ERROR tests_hardware/bench/test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network
+ERROR tests_hardware/bench/test_rest_endpoints_over_sta.py::test_measurements_endpoint_returns_plausible_values_for_every_real_sensor
+ERROR tests_hardware/bench/test_rest_endpoints_over_sta.py::test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot
+ERROR tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_notification_pause_time_push_counts_down_over_real_rest
+ERROR tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_sgp40_reset_voc_command_push_over_real_rest
+ERROR tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_calibrate_command_push_over_real_rest
+ERROR tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run
+ERROR tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default
+ERROR tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log
+ERROR tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest
+ERROR tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once
+ERROR tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once
+ERROR tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load
+ERROR tests_hardware/bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict
+ERROR tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset
+ERROR tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing
+ERROR tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link
+= 7 failed, 13 passed, 1 skipped, 22 deselected, 95 errors in 1733.44s (0:28:53) =
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Not covered: 17 test(s) deselected by a wear gate; --allow-persistence-write would select them.
+== Summary: run_bench_hardware_suite ==
+Commit: b47fe709
+Levels: L4
+Counts (tests): passed 7 · failed 97 · skipped 1 · deselected 22 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_hardware/bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes: failed in call: AssertionError: the first 200 (12.42s) came after the first RTC set (10.22s) with no sync under way
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry: failed in call: AssertionError: 'SGP40' logged under bus load (of the read paths' load codes: none): {'counter': 2, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 65}, {'type': 'W', 'num': 35}]}
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load: failed in call: harness.HardwareTestFailureError: the board did not leave USB within 60.0s of the command - no reset of its own to kick after
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_dut_accepts_the_toml_hotspot_password: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_an_aaaa_query_gets_an_empty_answer: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_leaves_captive_dns_serving_and_it_recovers: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_uart_link_across_the_mode_switch_is_recorded: error in setup: urllib.error.URLError: <urlopen error [Errno 113] No route to host>
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log: error in teardown: AssertionError: tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest: error in teardown: AssertionError: tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once: error in teardown: AssertionError: tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once: error in teardown: AssertionError: tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load: failed in call: AssertionError: the exerciser's own transfers failed during the echoes: {'Failures': 0, 'Transfers': 15} -> {'Failures': 23, 'Transfers': 15}
+  - tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset: error in teardown: AssertionError: tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset logged FRAM E51 FRAM_COPIES_DIFFER - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp: failed in call: AssertionError: no NTP sync within the 61s window: no 'RTC set to:' line, NTPSynced True, NTPLastSyncAge 98
+  - tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing: error in teardown: AssertionError: tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing logged SGP40 W35 SGP_WRITTEN_NO_TS - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link: failed in call: harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors-bench/tests_hardware/device_scripts/wifi_radio_reinit_recovery.py failed (exit 1):
+Skipped:
+  - tests_hardware/bench/test_uart_link_crc16.py::test_the_link_suite_runs_on_a_crc16_image: flashes a CRC16 image and the round's image back - pass --allow-flash-cycle to deliberately run it (gate --allow-flash-cycle not given)
+Deselected:
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_a_wrong_password_over_the_hotspot_reopens_the_hotspot: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_garbage_ssid_via_rest_config_is_handled_gracefully: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_boot_order_and_triggers.py::test_bus_triggers_keep_their_minimum_spacing: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_memory_stress_bench.py::test_http_soak_stays_live: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_ticks_ms_rollover.py::test_ticks_ms_rollover_is_survived: by runner selection (-m), not covered by this run
+Passed only on retry: none
+Recovery passes: none
+Notes:
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry: NTP resynced 48.4s after the block lifted
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping: NTP quiet 1s after serving: nothing logged
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log: the FRAM erase: serving 32.2 s after the reply; ResetReason 8
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once: raced answers: {'erasefram': 'Valid', 'mempause': 'Failed', 'reboot': 'Failed'}
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once: the raced commands: serving 32.3 s after the reply; ResetReason 8
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once: raced answers: {'bootloader': 'Valid', 'reboot': 'Failed'}
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once: the raced reboot and bootloader: serving 19.3 s after the reply; ResetReason 2
+  - tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing: NTP resynced 38.5s after the block lifted
+  - session (standard_state): vl805_firmware: not read (no VL805 CURRENT line, exit 1)
+  - session (board_image): image: overrides ['modlwip_eagain'], uartCrc {'uart0': 'none', 'uart1': 'none'}, BuildDate '2026-11-06T06:16:55Z'
+Checked nothing: none
+Result: FAIL (pytest exited 1)
+Exit code: 1
+== step 5 end rc=1 2026-11-06 07:32:39 1740s load 0.00 0.05 0.08
+== read-across: GET /status after step 5
+SUM status system={"BootSignature": 1793950350, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 8, "MDay": 6, "Minute": 32, "Month": 11, "Second": 41, "Weekday": 4, "Year": 2026, "Yearday": 310}, "MemFree": 63024, "MemPaused": false, "ResetReason": 21, "SysUptime": 20, "TimeStale": false, "UTCTime": {"Hour": 7, "MDay": 6, "Minute": 32, "Month": 11, "Second": 41, "Weekday": 4, "Year": 2026, "Yearday": 310}, "UnixTime": 1793950361}
+SUM status sensors={"SGP40": {"BackupTS": null, "RestoreTS": 0}, "UARTLINK": {"Failures": 0, "Transfers": 12}, "UART_init": {"Last": null, "Pending": false, "Runs": 0}}
+SUM errcount BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount DNSSRV {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount FRAM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NEOPIXEL {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":33}],"counter":6}
 SUM errcount SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
