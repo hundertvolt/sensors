@@ -7018,9 +7018,10 @@ which sets the watchdog's force trigger and so the REASON register's FORCE bit (
 (`tools/mpremote/mpremote/main.py:406-414`). A starvation, a firmware `machine.reset()` and an
 `mpremote reset` therefore all read `WDT_RESET`, and no test or diagnosis may use `reset_cause()` to
 tell an intended reset from a starvation: the decoded reset record above is the discriminator. A
-harness `hard_reset()` of a running board reads 21 (`RR_INTERRUPTED`); the boot after a flash-tier
-session, whose scripts run with the firmware stopped, read 2 on the bench (2026-11-06); a test that
-needs an intended reset attributed issues it through the REST reboot path (agent, 2026-09-29).
+harness `hard_reset()` of a running board reads 21 (`RR_INTERRUPTED`), and 2 after a device script
+that ran the system's boot: that boot consumed record 21 and the script cleared its phase mark, so the
+reset finds neither (bench, 2026-11-06, with the watchdog's FORCE bit set); a test that needs an
+intended reset attributed issues it through the REST reboot path (agent, 2026-09-29).
 
 **The chip keeps what `reset_cause()` collapses; the firmware does not read it.** On the bench the
 watchdog's REASON register (0x40058008, bits TIMER and FORCE) tells a `machine.reset()` (FORCE)
