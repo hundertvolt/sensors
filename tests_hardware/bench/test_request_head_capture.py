@@ -37,16 +37,14 @@ class _Listener:
         self._sock.listen(8)
         self._sock.settimeout(_ACCEPT_TIMEOUT_S)
         self.heads: list[bytes] = []
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._serve, daemon=True)
-        self._thread.start()
+        self.stop = threading.Event()
 
     def port(self) -> int:
         port: int = self._sock.getsockname()[1]
         return port
 
-    def _serve(self) -> None:
-        while not self._stop.is_set():
+    def serve(self) -> None:
+        while not self.stop.is_set():
             try:
                 conn, _ = self._sock.accept()
             except TimeoutError:
@@ -63,8 +61,6 @@ class _Listener:
                 conn.sendall(_REPLY)
 
     def close(self) -> None:
-        self._stop.set()
-        self._thread.join(_ACCEPT_TIMEOUT_S * 2)
         self._sock.close()
 
 
@@ -84,8 +80,10 @@ def test_real_clients_request_heads_fit_the_devices_head_guard(result_note: "Cal
     max_lines = int(_load.src_number(_SERVE, "_MAX_HEADER_LINES"))
     max_bytes = int(_load.src_number(_SERVE, "_MAX_HEAD_BYTES"))
     listener = _Listener()
+    thread = threading.Thread(target=listener.serve, daemon=True)
     measured: dict[str, tuple[int, int]] = {}
     try:
+        thread.start()
         for name, load in _clients(listener.port()).items():
             start = len(listener.heads)
             load()
@@ -93,6 +91,8 @@ def test_real_clients_request_heads_fit_the_devices_head_guard(result_note: "Cal
             assert heads, f"{name} sent no request the listener saw"
             measured[name] = (max(head.count(b"\r\n") - 2 for head in heads), max(len(head) for head in heads))
     finally:
+        listener.stop.set()
+        thread.join(_ACCEPT_TIMEOUT_S * 2)
         listener.close()
     result_note(", ".join(f"{name}: {lines} header lines, {size} B" for name, (lines, size) in measured.items()) + f" (guard: {max_lines} lines, {max_bytes} B)")
     assert "chromium" in measured, "no browser ran: Playwright's Chromium needs node and the repository's node_modules (toolchain/setup_toolchain.py env)"
