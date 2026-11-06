@@ -41,6 +41,9 @@ _DATA_READY_DRIVERS = ("scd30",)
 _STA_LINE = "WLAN connection established"  # src/asy_wifi_service.py
 _NTP_START_LINE = "NTP sync starting."  # src/asy_ntp_client.py
 _RTC_SET_LINE = "RTC set to:"  # src/asy_ntp_client.py
+# The spacing's window in the standard bench run (owner, 2026-11-06): dozens of the readers' 1-2 s default sample
+# intervals (agent, 2026-11-06); --soak-duration names a longer one.
+_SPACING_WINDOW_S = 60.0
 
 
 def test_webserver_answers_before_the_first_ntp_sync_completes(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
@@ -75,11 +78,9 @@ def test_webserver_answers_before_the_first_ntp_sync_completes(board: Board, ben
     result_note(f"STA connect to the first 200: {first_ok - sta_at:.2f}s (the measured figure behind the conftest's 30 s); reset to the first 200: {first_ok - reset_at:.2f}s")
 
 
-@pytest.mark.soak_duration
 def test_bus_triggers_keep_their_minimum_spacing(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     duration = request.config.getoption("--soak-duration")
-    if duration is None:
-        pytest.skip("a passive observation over one named duration: runs with --soak-duration")
+    window_s = _SPACING_WINDOW_S if duration is None else SOAK_DURATION_SECONDS[duration]
     level = _load.get_object(dut_ip, "/system", _PROBE_TIMEOUT_S).get("DebugLevel")
     assert level == 5, f"the trigger lines are events, printed at DebugLevel 5 (the standard state), not {level!r}"
     buses, slots, slot_ms = _trigger_plan()
@@ -88,7 +89,7 @@ def test_bus_triggers_keep_their_minimum_spacing(board: Board, bench: "BenchBrid
     console = threading.Thread(target=_stamp_console, args=(board.device, stop, log), name="console")
     try:
         console.start()
-        stop.wait(SOAK_DURATION_SECONDS[duration])
+        stop.wait(window_s)
     finally:
         stop.set()
         alive = _load.join([console], _JOIN_TIMEOUT_S)
@@ -105,7 +106,7 @@ def test_bus_triggers_keep_their_minimum_spacing(board: Board, bench: "BenchBrid
         gaps = [min(abs(t - u) for u in stamps[b]) * 1000 for t in stamps[a]]
         report.append(f"{a}/{b} on {buses[a]}: planned {planned_ms:g} ms, min {min(gaps):.0f} ms, median {sorted(gaps)[len(gaps) // 2]:.0f} ms over {len(gaps)}")
         assert min(gaps) >= planned_ms - _STAMP_TOLERANCE_MS, f"{a} and {b} on {buses[a]} triggered {min(gaps):.0f} ms apart, under their planned {planned_ms:g} ms"
-    result_note("trigger spacing: " + ("; ".join(report) or "no two timer-triggered readers share a bus"))
+    result_note(f"trigger spacing over {window_s:g} s: " + ("; ".join(report) or "no two timer-triggered readers share a bus"))
 
 
 def _first(log: "list[tuple[float, str]]", text: str) -> "float | None":
