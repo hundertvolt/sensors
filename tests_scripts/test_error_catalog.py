@@ -724,7 +724,7 @@ def test_the_reset_reason_table_has_one_row_per_recorded_code() -> None:
 
 # ---- (12) the status tables: text, and a tone only where the page colours the code ------------------
 
-# The one table the page colours (agent, 2026-09-30): its text is the cue, the tone repeats it in colour.
+# The one table the page colours (agent, 2026-09-30; owner-reviewed, 2026-11-06): its text is the cue, the tone repeats it in colour.
 _TONED_TABLES = frozenset({"CalLight"})
 _TONES = frozenset({"good", "neutral", "warn"})
 

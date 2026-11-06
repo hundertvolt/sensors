@@ -498,6 +498,7 @@ def test_each_refusal_at_the_ceiling_is_counted_once_in_http_dropped(dut_ip: str
     result_note(f"above-ceiling attempts: {[o[:40] for o in outcomes]}; holders answered {sorted({a[:12] for a in answers})}")
     assert not [o for o in outcomes if o], f"a connection above the {_MAX_CONNECTIONS}-connection ceiling was admitted: {outcomes}"
     assert all(a.startswith(b"HTTP/") for a in answers), f"a holder was dropped rather than answered: {answers}"
+    time.sleep(_SLOT_RELEASE_WAIT_S)  # the holders' slots outlive their answers too: a probe refused here would count once
     wait_until(lambda: _load.serving(dut_ip), timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="webserver serving again after the held ceiling")
     dropped = _http_dropped(dut_ip)
     assert dropped == before + len(outcomes), f"HTTPDropped {before} -> {dropped} after {len(outcomes)} refusal(s): each must count exactly once"

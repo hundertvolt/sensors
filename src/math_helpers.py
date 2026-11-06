@@ -189,8 +189,8 @@ def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> tu
 
 
 def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> tuple[float, float, float] | None:
-    # sRGB/Rec.709 D65 primaries, pinned as literals: a second published rounding differs in the
-    # 6th decimal, and neither corrects the other (agent, 2026-09-12; Part M.1.3). No gamma decode - this sensor is
+    # sRGB/Rec.709 D65 primaries, pinned as literals: a second published rounding differs in the 6th decimal, and neither
+    # corrects the other (agent, 2026-09-12; Part M.1.3; owner-reviewed, 2026-11-06). No gamma decode - this sensor is
     # linear in irradiance. A documented PLACEHOLDER: p13 Eq. 1 says the coefficients are per-setup.
     if red is None or green is None or blue is None:
         return None

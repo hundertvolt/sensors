@@ -2,11 +2,11 @@
 real src/ chain against tests/_fram_chip_fake.py's chip.
 
 A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract
-the 2026-09-18 heap restructure was held to (agent, 2026-09-18); what each protocol element is for is
+the 2026-09-18 heap restructure was held to; what each protocol element is for is
 SPECIFICATION.md A.4 (owner, 2026-09-18).
 
-Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29); each chunk's CRC is seeded by
-its owner (agent, 2026-10-06); the bus runs at 8 MHz (owner, 2026-11-02)."""
+Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29; owner-reviewed, 2026-11-06); each chunk's CRC is seeded by
+its owner (owner, 2026-10-28); the bus runs at 8 MHz (owner, 2026-11-02)."""
 # The recorder decomposes a trace into CS cycles. Every cycle is asserted to be framed by exactly
 # one SPI.init() at the fixed bus config and one CS low/high pair, so the goldens below need hold
 # only the transfers inside each cycle - the envelope is checked, not dropped (see _cycles()).
@@ -496,7 +496,7 @@ def test_timestamped_clear_wire_trace_matches_the_golden() -> None:
 def test_cs_cycle_counts_are_the_measured_figures() -> None:
     # Every one of these cycles stays by design (owner, 2026-09-18; SPECIFICATION.md A.4), so a change here is a
     # protocol change and not an optimisation. A write's read of block 1's status, which picks the block it takes first,
-    # is one such change, made on the owner's behalf for review (agent, 2026-10-22).
+    # is one such change, made on the owner's behalf for review (owner: "Solutions you proposed agreed.").
     traces = run(_collect())
     assert len(traces["blank"][0]) == 55
     assert len(traces["valid"][0]) == 47
@@ -525,7 +525,7 @@ async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore, FRAMTimestampedChu
 def test_status_bytes_outlast_the_parts_endurance_at_the_bus_ceiling() -> None:
     # The chip reads destructively, so every read is a cell operation too. Even if one block took every block
     # operation the bus allows, back to back, its busiest byte would outlast 10**12 operations by about 144
-    # years; 100 years is the stated floor, above any service life (agent, 2026-09-29).
+    # years; 100 years is the stated floor, above any service life (agent, 2026-09-29; owner-reviewed, 2026-11-06).
     async def addresses() -> "tuple[int, int, int, int]":
         _manager, logger, chunk = await _rig()
         assert isinstance(logger.fram, FRAMChunk)

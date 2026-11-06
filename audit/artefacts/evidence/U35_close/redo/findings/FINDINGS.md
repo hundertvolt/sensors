@@ -453,3 +453,38 @@ Of the 19 attention rows: 4 hold (plateau cycles, C-stack window, FRAM hold 25,0
 adjusted: web.serving_demand_budget_b reads ~40,304 B against today's free heap, which puts it in the owner's Q7 heap account. Rows 11 and 18 had their basis and margin folded in via apr.
 Radio re-init (bench, 2 of 2 runs, USB lost after recover_returned=true): the script starves its own 8 s watchdog. Nothing feeds it from arm() through the
 first connect, the 4 s of settles and the second connect poll. Class (b) test defect, no product sign: production's supervisor feeds during these awaits. Fix sent to apf; confirmed by the bench rerun.
+
+## 12.67 Bench 40707982 (runner, 14:14 UTC): step 9 green, FRAM at 8 MHz clean, a refused pre-session read
+Step 9 (crc16 hazards) passed on df8e640c's harness in 123 s, with no teardown error. Step 11 (FRAM at 8 MHz, 13:10-13:20): rdid, read256 and write1
+ran 274,287 operations each with 0 OSErrors and 0 bad reads, worst 7.3 / 7.6 / 9.5 ms. The pre-session /status read was refused 9 s after a 200:
+untraced, and nothing failed on it. It goes to the last round's session-start item. The bench branch now carries the runner's merge of ec5d656e, so the next bench push fast-forwards from 40707982.
+
+## 12.68 Bench soak selection (runner's 14:11 note): W33 at the bench half's opening, ResetReason 2, W22, the stopped slice not serving
+Soak mid: 4 tests passed, 0 of 854 requests failed over 600 s, sgp40 cadence 602 cycles with 0 lost. The bench half now starts after the flash half: proved.
+W33 (SGP_RESTORED_NO_TS) charged to http_soak by no_unprovoked_log_entry: the flash half's sgp40 script writes undated backups (W35) into production's
+chunk (CLAUDE.md's FRAM caveat), and the next boot restores one after the opening read. Class (b) harness race: the opening read must wait for the boot's own logging. It goes to
+the last round's session-start item, with no tolerance added. ResetReason 2 at the boot after a flash-tier session vs 21 after resetting a running board: apf's
+four-place wording corrected to the readings; the bench pins the mechanism after items 4-5. W22 = CFG_FILE_UNREADABLE, 1 each in 7 modules. That fits one
+full-system build in a scratch config folder, which is likely, not traced. The stopped slice left the board not serving until the next reset; the runner's slice should end on the same reset and kick the flash soaks end on.
+
+## 12.69 apr merged into int (28098b4f); the lead's follow-ups f6b7b70c and 7df914d3 (2026-11-06 14:57 UTC)
+Reviewed: the retags follow U14_TAGS.tsv ("(structural, ...)" is the table's own citation for 11 E.6.6 rows). The twin fixes come with self-tests seen red
+first. The two new zero-wear tests, the supervisor scan and the client-head capture, are what Q6 asked for. No self-inflicted growth found. The lead did CLAUDE.md's 11
+rows and the skill's 1, labelled the serving budget attention with its 2026-11-06 measurement, pointed the scenario comment at that row, and stated W65's exception in
+SPEC (missed by both briefs). Deferred to the last round: 5 toolchain rows (any edit rebuilds the Unix port) and twin_record.json's regeneration.
+
+## 12.70 Bench run 11 (runner, 16:19 UTC and correction, 423152f5): FRAM 2 h clean; slice ends starve the script's watchdog
+Run 11, 14:13:59-16:16:45: 13 slices rc=0, rdid/read256/write1 3,429,131 each (with the 13:10 slice 3,703,418), 0 OSErrors, 0 bad, bad_rate<8.1e-07;
+the worst-case latency is bimodal (about 1.3 ms vs 7.3 ms), untraced. The bench's long_fram.py arms an 8 s WDT and feeds only in its loop, so ~8 s after a
+slice the watchdog reboots into main.py with no kick: the AP's stale entry (tests_hardware/README.md "after a reset ... stale station entry")
+gives W38 then W79, an 8 min hotspot, and undated SGP40 W35/W33 (no NTP), which also explains /status 000 and 13:26's "No route to host". This is the same class as
+12.66's radio script. The runner's fram() now ends on reset_and_kick right after the last slice. The reason-2 pin now reads REASON (TIMER vs FORCE) and the seconds
+from script end to reset, which supersedes the lead's a-c. Run 11's data point (21) is withdrawn by the runner.
+
+## 12.71 Bench item 4 reruns (runner, 16:29 UTC): 9 of 10 pass; HTTPDropped +4 for 3 refusals is the test's own probe
+Flash 6/6 (held SDA through both resets, emptied alarm pool, the two running-graph faults, stepped clock). The session-end gains fit the injections:
+E17/E115 come from the graph faults, W34 from the stepped clock, W15 from held SDA, and W22 x7 from a scratch-folder full build. Bench 3/4: zero-think readers, negative
+Content-Length, and the reboot at the first answer (SysUptime 9 s, ResetReason 3). FAILED test_each_refusal_at_the_ceiling_is_counted_once_in_http_dropped (0 -> 4): after
+the holders close, wait_until(_load.serving) probes at once while their slots outlive the responses (Part I.6). Without the _SLOT_RELEASE_WAIT_S the test
+already uses twice, a refused probe counts once. Class (b) test race, read in the source: the fix is that wait before the probe, which goes with the next bench push.
+config_flush_during_link_traffic waits for WEAR.txt's cleared: line (planned after the bound measurements).

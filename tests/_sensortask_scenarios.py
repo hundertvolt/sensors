@@ -2107,7 +2107,7 @@ def _scenario_forty_days_of_uptime(device: str) -> None:
     held = _system_const("_TASK_FAIL_MAX") // _system_const("_TASK_FAIL_INCREMENT")
     pass_ms = _system_const("_TASK_CHECK_TIME") * 1000
     # Six-hour stalls: the claims need the four wraps and the decay's hundred clean passes, and each scheduler round costs
-    # the Unix port a 1 ms system poll while a ThreadSafeFlag waits (extmod/modselect.c:353-370, v1.29.0) (agent, 2026-10-21).
+    # the Unix port a 1 ms system poll while a ThreadSafeFlag waits (extmod/modselect.c:353-370, v1.29.0).
     stall_ms = 6 * _HOUR_MS
     steps = _FORTY_DAYS_MS // stall_ms
     got: dict[str, object] = {}
@@ -2646,8 +2646,8 @@ def _scenario_loggers_set_up_by_the_batch(device: str) -> None:
 _GET_ROUTES = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status")
 
 
-# A device's whole serving demand stays within the heap free after boot (SPECIFICATION.md I.6: about 105,000 B) less
-# the 32,768 B contiguity reserve; estimated (agent, 2026-10-08) - measurement owed: post-boot free heap on dev, phase C.
+# A device's whole serving demand stays within the heap free after boot less the 32,768 B contiguity reserve; the
+# estimate, its measurement and its margin are SPECIFICATION.md Part N's web.serving_demand_budget_b row.
 # @tunable web.serving_demand_budget_b = 72232
 _SERVING_DEMAND_BUDGET_B = 72232
 
@@ -3508,8 +3508,8 @@ def _scenario_status_utc_time_waits_for_ntp_sync(device: str) -> None:
 
 @_register("webserver_status_keeps_utc_time_through_a_stale_sync_and_flags_it")
 def _scenario_status_utc_time_through_a_stale_sync(device: str) -> None:
-    # Once the sync goes stale, UTCTime stays and the VOC backup keeps its stamp, with TimeStale true; an NTP settings
-    # change withdraws both until the next sync, TimeStale still true. Every device backs its SGP40 up to FRAM.
+    # Once the sync goes stale, UTCTime stays and the VOC backup keeps its stamp, with NTPSynced false; an NTP settings
+    # change withdraws both until the next sync, NTPSynced still false. Every device backs its SGP40 up to FRAM.
     module = build(device)
     ntp = module.ntp
     assert _has(module, "sgp40"), f"{device}: no SGP40 VOC backup"
@@ -3518,13 +3518,14 @@ def _scenario_status_utc_time_through_a_stale_sync(device: str) -> None:
     try:
         run(ntp._handle_ntp_sync_success(time.gmtime()))  # the sync's clock set; the RTC itself is the host's clock
         run(ntp._set_synced(value=False))  # what the refresh loop does three NTPInterval after the last sync
-        system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
-        assert isinstance(system["UTCTime"], dict) and system["TimeStale"] is True, (device, system)
+        body = status_body(_dispatch(module, "GET", "/status"))
+        system, synced = _strict(body, "system"), _strict(body, "networking")["NTPSynced"]
+        assert isinstance(system["UTCTime"], dict) and synced is False and "TimeStale" not in system, (device, body)
         written, stamped, stamp = run(backup.write_into(backup.get_buffer(), require_ntp=True))
         assert written is True and stamped is True and type(stamp) is int and stamp > 0, (written, stamped, stamp)
         run(ntp.ntp_force_sync())  # an NTP settings change
-        system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
-        assert system["UTCTime"] is None and system["TimeStale"] is True, (device, system)
+        body = status_body(_dispatch(module, "GET", "/status"))
+        assert _strict(body, "system")["UTCTime"] is None and _strict(body, "networking")["NTPSynced"] is False, (device, body)
         assert run(backup.write_into(backup.get_buffer(), require_ntp=True)) == (False, False, None)
     finally:
         asy_base_classes._utc_valid = False

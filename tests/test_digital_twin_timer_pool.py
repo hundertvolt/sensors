@@ -173,7 +173,7 @@ def _readers() -> "list[tuple[str, SensorReader]]":
 
 async def _run_on_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, None]]") -> None:
     # `scenario` booted and run on one driven clock (tests/_fake_time.py), the modules put back after. A UART-wired plan
-    # too: its link reads wire time off the twin's plain clock, digital_twin/_flash_stall.py's plain_us() (agent, 2026-10-22).
+    # too: its link reads wire time off the twin's plain clock, digital_twin/_flash_stall.py's plain_us() (agent, 2026-10-22; owner-reviewed, 2026-11-06).
     with DrivenTime(*_driven_modules(), sleeps=True) as clock:
         await scenario(clock)
 
@@ -292,7 +292,7 @@ def test_a_full_scheduler_queue_loses_every_soft_callback_for_a_spell_and_every_
 def test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead() -> None:
     # The reboot command with the pool empty: the shutdown runs, its one-shot cannot arm, so feeding stops for good and
     # the record reads 6; nothing calls machine.reset() itself (owner, 2026-09-30, paraphrase). Real time throughout:
-    # `took` measures the run-out against the twin WDT's own clock (agent, 2026-10-22).
+    # `took` measures the run-out against the twin WDT's own clock (agent, 2026-10-22; owner-reviewed, 2026-11-06).
     async def scenario() -> None:
         watchdog = await _boot(_POOL)
         sysfunct = module.sysfunct

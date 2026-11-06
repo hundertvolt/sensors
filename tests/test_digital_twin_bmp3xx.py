@@ -184,7 +184,7 @@ def test_osr_and_config_registers_store_whatever_byte_they_are_given() -> None:
     # Bit-field read-modify-write logic lives in asy_i2c_driver.py's own get_bits()/set_bits() -
     # already tested there. This twin only needs to persist/return the raw byte faithfully.
     chip = BMP3XXChip()
-    assert _read(chip, 0x1C, 1) == b"\x02"  # OSR's default (DS001 register map)
+    assert _read(chip, 0x1C, 1) == b"\x00"  # OSR as the bench's part reads it (fidelity table)
     assert _read(chip, 0x1F, 1) == b"\x00"  # CONFIG's default (DS001 register map)
     _write(chip, 0x1C, [0b00010101])
     assert _read(chip, 0x1C, 1) == b"\x15"
@@ -200,8 +200,37 @@ def test_soft_reset_command_restores_command_ready_status() -> None:
     _write(chip, 0x1F, [0x06])
     _write(chip, 0x7E, [0xB6])  # CMD register, soft reset opcode
     assert _read(chip, 0x03, 1) == b"\x10"  # back to command-ready only
-    assert _read(chip, 0x1C, 1) == b"\x02"  # "overwritten with their default state" (DS001 4.3.22)
+    assert _read(chip, 0x1C, 1) == b"\x00"  # "overwritten with their default state" (DS001 4.3.22): the bench part's 0x00
     assert _read(chip, 0x1F, 1) == b"\x00"
+
+
+def test_a_data_read_clears_the_data_ready_bits_it_covers() -> None:
+    # DS001 Table 27: drdy_press resets when a pressure DATA register is read, drdy_temp when a temperature one is.
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
+    _write(chip, 0x1B, [0x13])
+    assert _read(chip, 0x03, 1) == b"\x70"
+    _read(chip, 0x04, 3)
+    assert _read(chip, 0x03, 1) == b"\x50"
+    _read(chip, 0x07, 3)
+    assert _read(chip, 0x03, 1) == b"\x10"
+
+
+def test_pwr_ctrl_reads_sleep_with_both_enables_after_a_forced_conversion() -> None:
+    # DS001 Table 40: a forced conversion returns the mode to sleep, press_en and temp_en kept (the bench's part: 0x03).
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
+    assert _read(chip, 0x1B, 1) == b"\x00"
+    _write(chip, 0x1B, [0x13])
+    assert _read(chip, 0x1B, 1) == b"\x03"
+    _write(chip, 0x7E, [0xB6])
+    assert _read(chip, 0x1B, 1) == b"\x00"
+
+
+def test_osr_reads_the_bench_parts_0x00_after_power_up_and_a_soft_reset() -> None:
+    chip = BMP3XXChip()
+    assert _read(chip, 0x1C, 1) == b"\x00"
+    _write(chip, 0x1C, [0x0D])
+    _write(chip, 0x7E, [0xB6])
+    assert _read(chip, 0x1C, 1) == b"\x00"
 
 
 def test_err_register_reports_no_error() -> None:
@@ -224,9 +253,9 @@ def test_an_8_byte_read_at_err_reg_returns_err_status_and_the_data_bytes() -> No
     _write(chip, 0x1B, [0x13])
     block = _read(chip, 0x02, 8)
     assert block[0] == 0x00
-    assert block[1] == _read(chip, 0x03, 1)[0]
+    assert block[1] == 0x70  # STATUS as the burst passes it, before the data bytes clear its drdy bits
     assert block[2:] == _read(chip, 0x04, 6)  # ERR_REG, STATUS and the data are one contiguous file
-    assert _read(chip, 0x03, 7) == block[1:]
+    assert _read(chip, 0x03, 7) == b"\x10" + block[2:]
 
 
 def test_unknown_register_returns_zero_bytes_without_raising() -> None:

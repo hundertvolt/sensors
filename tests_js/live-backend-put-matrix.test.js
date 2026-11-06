@@ -26,7 +26,7 @@ const NO_DATA = /** @type {import("../js/definitions.js").MockDeviceData} */ ({
 const CASE_TIMEOUT_MS = 15000;
 // The ResetErrors probe's wait for NTP to sync over a station link: one loopback round trip to the twin's responder.
 const NTP_SYNC_TIMEOUT_MS = 5000;
-// The twin's local NTP responder, read from the module that points every boot at it: no copy to drift (agent, 2026-10-27).
+// The twin's local NTP responder, read from the module that points every boot at it: no copy to drift (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 const RESPONDER_HOST = responderHost(offlineNtpConfigSource);
 
 // The skips a full run takes, each with its reason, keyed by the case's section, the group its device wires and the
@@ -36,7 +36,7 @@ const RESPONDER_HOST = responderHost(offlineNtpConfigSource);
 const EXPECTED_SKIPS = new Map([
     // An empty string has no resubmit gesture (Part H.4): SSID's source default, and the DNSFallback the twin runner
     // plants empty so no run reaches a public DNS host (digital_twin/unixport/_offline_ntp_config.py). Neither is seeded:
-    // an SSID boots the twin in STA, and every case here runs in AP (agent, 2026-10-22).
+    // an SSID boots the twin in STA, and every case here runs in AP (agent, 2026-10-22; owner-reviewed, 2026-11-06).
     ["networking/identity/SSID resubmit", "no current value to resubmit"],
     ["networking/dns/DNSFallback resubmit", "no current value to resubmit"],
     // Each enum field's boot option: selecting it is the resubmit case.

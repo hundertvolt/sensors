@@ -204,7 +204,7 @@ class SGP40_Reader(SensorReaderConfig):
         self._recovery_bus = i2c
         # ResetVOC is command-only (see _VAL_RESET_VOC above) - registered the same way as every
         # other module's real live-push field (agent, 2026-08-04: constant at runtime, no per-call
-        # plumbing), just never persisted.
+        # plumbing; owner-reviewed, 2026-11-06), just never persisted.
         self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc
         self._read_event = asyncio.ThreadSafeFlag()
         self._trigger_timer = Timer()

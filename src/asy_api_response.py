@@ -59,7 +59,7 @@ async def handle_set_cmd(
 ) -> "WriteValidity":
     # Persist and push already ran per field in reader._set_dict_cfg(); a per-field outcome is detail in the endpoint's
     # "result". The post-write hook runs once per call, only after a changed field: one hook per endpoint, not one per
-    # field, as legacy's post_fct/post_asy_fct (agent, 2026-08-03).
+    # field, as legacy's post_fct/post_asy_fct.
     results = await reader._set_dict_cfg(data, cfg_vals)
     if any(status == VALID for status in results.values()):
         try:

@@ -32,7 +32,7 @@ _STEP_BOUND_S = 5
 _CRC_TIMEOUT_FACTOR = 8
 
 
-# Every check runs both with and without a CRC (agent, 2026-09-12) - the dev wiring selects
+# Every check runs both with and without a CRC (agent, 2026-09-12; owner-reviewed, 2026-11-06) - the dev wiring selects
 # CRCPass, but a CRC changes which corruptions are detectable at all
 # (SPECIFICATION.md Part E.8). `crc()` builds a fresh instance per pair: CRCBase carries state.
 CRC_MODES = (("nocrc", None), ("crc16", CRC16))

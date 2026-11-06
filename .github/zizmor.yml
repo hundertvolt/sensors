@@ -13,6 +13,6 @@ rules:
         "*": hash-pin
   self-repository:
     # Disabled, not fixed: it wants `uses: $/.github/...`, which actionlint 1.7.12 rejects, so
-    # both gates cannot pass (agent, 2026-09-10). Re-enable when actionlint accepts the syntax
+    # both gates cannot pass (actionlint 1.7.12; CLAUDE.md's zizmor bullet). Re-enable when actionlint accepts the syntax
     # (checked at each actionlint pin bump).
     disable: true

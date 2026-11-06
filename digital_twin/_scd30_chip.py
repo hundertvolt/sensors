@@ -262,6 +262,8 @@ class SCD30Chip:
             reply = word(self._frc_reference)  # "the most recently used reference ... after repowering ... 400 ppm" (1.4.6)
         elif cmd == _CMD_READ_FIRMWARE_VERSION:
             reply = word(_FIRMWARE_VERSION)
+        elif cmd is None:
+            reply = b"\xdd" * nbytes  # no command since power-up: the bench's part answers 0xDD bytes (fidelity table)
         else:
             reply = bytes(3)
         return (reply + bytes(nbytes))[:nbytes]

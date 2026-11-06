@@ -70,7 +70,7 @@ _OP_TEMP_MIN_C = const(-40.0)
 _OP_TEMP_MAX_C = const(85.0)
 
 # @tunable bmp3xx.cmd_rdy_timeout_ms = 50
-_CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy is set whenever no command is executing (DS001 4.3.3); the datasheet gives no bound, so 50 ms bounds a bus fault (agent, 2026-10-07)
+_CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy is set whenever no command is executing (DS001 4.3.3); the datasheet gives no bound, so 50 ms bounds a bus fault (agent, 2026-10-07; owner-reviewed, 2026-11-06)
 # @tunable bmp3xx.meas_timeout_ms = 300
 _MEAS_TIMEOUT_MS = const(300)  # ~150 ms worst case at x32/x32 (3.9.2 typical + Table 22 max margin); 300 ms bounds a stuck STATUS
 # @tunable bmp3xx.status_poll_ms = 2

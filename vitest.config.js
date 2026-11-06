@@ -23,7 +23,7 @@ import { probeLintRule } from "./tests_js/_lint_command.js";
 import { probePortLock } from "./tests_js/_port_lock.js";
 
 // The lock-pinned Playwright Chromium runs whenever it is installed; a session sandbox that cannot download it
-// pre-installs one here (agent, 2026-08-21). Remove this fallback once the sandbox can run `npx playwright install chromium`.
+// pre-installs one here (agent, 2026-08-21; owner-reviewed, 2026-11-06). Remove this fallback once the sandbox can run `npx playwright install chromium`.
 const sandboxChromium = "/opt/pw-browsers/chromium";
 const launchOptions = !existsSync(chromium.executablePath()) && existsSync(sandboxChromium) ? { executablePath: sandboxChromium } : {};
 

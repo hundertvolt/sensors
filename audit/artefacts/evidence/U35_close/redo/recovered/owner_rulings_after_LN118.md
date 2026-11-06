@@ -1051,3 +1051,61 @@ stall hook needs the board, so after run 11 unless told to stop it.
 
 ## 2026-11-06 14:09:37 UTC - intermediate push (snapshot 43) to secure the knowledge and decisions gathered
 "We gathererd so much knowledge and took so many decisions, I want to have this secured - do an intermediate push now"
+
+## 2026-11-06 14:14:49 UTC - bench relay (runner to lead, 14:14 UTC): step 9 passed; run 11 started 14:13:59 on 40707982
+"Runner to lead, 14:14 UTC.
+
+STEP 9, archive 20261106T141100Z, 14:10:59-14:13:19, rc 0
+- test_comm_hazards_are_serialised_refused_or_recovered[crc16] passed; 1 passed, 113 deselected, 123 s.
+- No session-end teardown error. /status 200 afterwards.
+- Pre-session /status: "Connection refused" at session start, though it answered 200 at 14:10:51, about 9 s before. Not traced. It may be the session stopping main.py before that read; nothing failed on it.
+
+RUN 11 started 14:13:59 on 40707982 (df8e640c plus the runner's hand-back), from zero, FRAM_HOURS 2.
+Your items 4 and 5 follow it. The 14:11 note still stands for the W33 and reason 2 readings."
+
+## 2026-11-06 14:18:29 UTC - bench relay (runner to lead, 14:11 UTC note, pasted on request): soak selection, W33, ResetReason 2, run 11's stopped slice
+"Runner to lead, 14:11 UTC. Merged ec5d656e as df8e640c; image still d3f10239, no reflash.
+
+SOAK SELECTION, --duration mid, archive 20261106T132607Z, 13:26:06-14:09:06, rc 1
+Passed: real_clock_stretch, single_core_timing_headroom, sgp40_sample_cadence, http_soak_stays_live.
+1 error: http_soak_stays_live at teardown (no_unprovoked_log_entry): "logged SGP40 W33 SGP_RESTORED_NO_TS".
+Verdict counts: passed 3, failed 1.
+
+- Bench half now starts after the flash half: proved. http_soak ran about 13:58-14:08, 0 of 854 requests failed over 600 s.
+- sgp40_sample_cadence: cycles=602, lost=0, max_gap_ms=1877, gaps_over_1500=2, backup_period_min=1.
+- The session-end hard reset itself raised no teardown failure. /status 200 afterwards, ResetReason 21.
+
+W33 (inferred, not proven: the fixture's "before" read is not saved)
+- errcount-session-end shows SGP40 counter 0, so nothing was logged after the test's own clear. W33 falls in the segment before that clear.
+- The board booted at 13:58:05 and the test's saves read at +2 s and +3 s (SGP40 counter 38 in both), so the fixture's "before" read fell inside the boot's own logging.
+- That would make it the boot's restore entry racing the first read, not the soak. My reading of the source: sgp40_sample_cadence wrote undated backups (W35), and the boot restored one (W33).
+- Not rerun. Whether the first bench test after a flash half should tolerate this is your call.
+
+Against errcount-session-start.json, gained in the flash half (those logs then cleared by the test):
+- SGP40 24 -> 38, still W35/W33 pairs.
+- CFGMGR_NOTIFY, ISL29125, WIFI, NTP, SYSTEM, SGP40, BMP3XX: W22, 1 each. It was already present at 12:01 (7 each). Which site and which test: not traced.
+- None of E42, E25, E81-new, W65 or W38-new.
+
+ResetReason 2 at the bench half's opening read, boot 13:58:05
+- Not a proven watchdog. In get_reset_reason, 2 is the fallthrough: no valid record, no boot phase, cause not power-on.
+- Inferred: the closing reset of a stopped main.py lands there too. Not separately tested. Tell me if you want it pinned.
+
+Session note: pre-session /status did not answer ("No route to host"). This is the state run 11's stopped slice left, below; the flash half's own reset cleared it.
+
+RUN 11's STOPPED SLICE, 13:10:58-13:20:08, rc 0
+- rdid, read256, write1: n=274,287 each, oserrors 0, bad 0, worst_us 7,307 / 7,631 / 9,500, scratch_restored=1.
+- /status gave no JSON answer afterwards (status 000 at 13:25:49), so the FRAM script leaves the board not serving. Not traced.
+
+NEXT
+Step 9 running now, then run 11 from zero on df8e640c (about 2h05), then your items 4 and 5. config_flush_during_link_traffic waits for a cleared: line in WEAR.txt; there is none yet."
+
+## 2026-11-06 14:34:31 UTC - question: direct communication between this session and the bench session
+"For two days, I copy pasted the communication between you and the hardware session manually. That is annoying and inefficient. You surely both have the skills for direct communication. Do I need to connect you or give permission, or does it work straight away?"
+
+## 2026-11-06 14:38:59 UTC - bench relay (runner's answer to the direct-channel instruction): no sensors-a8 in its list; file channel accepted
+"sensors-a8 isn't in the list, so I sent no test message. I'll keep handing my notes to you in copy-paste blocks. The list shows 95 peer sessions, and none has that name or an a8 ref. The closest is "Project audit planning [eb42f7]" (cloud, idle), but I won't assume that's the lead. If it is, or once sensors-a8 appears, tell me and I'll send a test line. This session is listed as sensors-5c [5eebb7].
+Relays from the lead: I fetched the branch at 14:37 UTC. There's no LEAD_RELAY.md on it yet and nothing new to merge. I'll fetch whenever I wake and before each step, and act on new entries within the campaign plan.
+Merging during run 11: a fetch is safe, but merging waits until run 11 ends, because tracked files can't change during a run. An entry that arrives mid-run gets read straight away; if it needs the run stopped, I'll do that with STOP.
+Needing your check first: a reflash, a wear-gated run or anything outside the plan. That includes config_flush_during_link_traffic: it needs a cleared: line in WEAR.txt and your OK, even if a relay asks for it.
+Hand-backs: I'll keep pushing them as now. The runner's own push during run 11 stays as it is.
+Run 11 is still going and should finish around 16:20 UTC."

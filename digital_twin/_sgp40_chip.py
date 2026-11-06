@@ -49,6 +49,7 @@ class SGP40Chip:
         self._measuring = False  # read by tests only: no reply depends on it
         self.resets = 0  # twin-only test surface: general-call resets the chip took
         self.heater_offs = 0  # twin-only test surface: heater-off commands the chip took
+        self._serial_reply: bytes | None = None  # drawn at the first serial read, then fixed (datasheet 3.4)
         # Initial value: one draw within the walk's [lo,hi] at construction - every value after this
         # one steps from the last instead (see handle_writeto()'s MEASURE_RAW branch below).
         self._raw = self._random.randint(int(raw.lo), int(raw.hi))
@@ -89,9 +90,11 @@ class SGP40Chip:
         if key is not None:
             self._last_cmd = key
         if data == _CMD_SERIAL_NUMBER:
-            word1 = self._random.getrandbits(16)
-            word2 = self._random.getrandbits(16)
-            reply = word(0x0000) + word(word1) + word(word2)
+            if self._serial_reply is None:
+                word1 = self._random.getrandbits(16)
+                word2 = self._random.getrandbits(16)
+                self._serial_reply = word(0x0000) + word(word1) + word(word2)
+            reply = self._serial_reply
         elif data == _CMD_SELF_TEST:
             reply = word(0xD400)  # datasheet Table 13: high byte 0xD4 = all tests passed
         elif len(data) == 8 and data[0:2] == _CMD_MEASURE_RAW:

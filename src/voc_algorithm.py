@@ -54,7 +54,7 @@ _VOC_PARAMS_MEMSIZE = const(256)  # 32 * 8 bytes
 
 
 def _int32(value: int) -> int:
-    # C's fix16_t is int32: every helper takes and returns it wrapped (agent, 2026-09-29).
+    # C's fix16_t is int32: every helper takes and returns it wrapped (Sensirion embedded-sgp's C source).
     if _FIX16_MINIMUM <= value <= _FIX16_MAXIMUM:
         return value
     value &= 0xFFFFFFFF

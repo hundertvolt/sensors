@@ -30,9 +30,9 @@ NETWORK_ATTEMPTS=3
 APT_ACQUIRE_TIMEOUT_S=30
 APT_OPTIONS=(-o "Acquire::Retries=$((NETWORK_ATTEMPTS - 1))" -o "Acquire::http::Timeout=$APT_ACQUIRE_TIMEOUT_S" -o "Acquire::https::Timeout=$APT_ACQUIRE_TIMEOUT_S")
 # Microsoft's package-signing key ("Microsoft (Release signing)"): the fingerprint gpg --show-keys reads from the key
-# served at https://packages.microsoft.com/keys/microsoft.asc (agent, 2026-10-19).
+# served at https://packages.microsoft.com/keys/microsoft.asc.
 EDGE_KEY_FINGERPRINT=BC528686B50D79E339D3721CEB3E94ADBE1229CF
-# micromamba only bootstraps the Firefox env, so it is pinned (agent, 2026-10-19): the SHA-256 is the release's own
+# micromamba only bootstraps the Firefox env, so it is pinned (agent, 2026-10-19; owner-reviewed, 2026-11-06): the SHA-256 is the release's own
 # https://github.com/mamba-org/micromamba-releases/releases/download/2.9.0-0/micromamba-linux-64.sha256, re-hashed here.
 MICROMAMBA_VERSION=2.9.0-0
 MICROMAMBA_SHA256=366cd9cd8be14df1ab8ed50352a82111082a36686b2d389fdb79a92c3fafb3e3
@@ -123,7 +123,7 @@ else
 fi
 
 # --- Firefox + geckodriver: conda-forge via a standalone micromamba binary ---
-# Unpinned (agent, 2026-08-26), unlike toolchain/versions.toml's MicroPython pin (Part H.7). Delete
+# Unpinned (owner, 2026-09-26: the browser floor), unlike toolchain/versions.toml's MicroPython pin (Part H.7). Delete
 # CROSS_BROWSER_DIR below to force a fresh pull.
 CROSS_BROWSER_DIR="${CROSS_BROWSER_TOOLCHAIN_DIR:-$HOME/cross-browser-toolchain}"
 FIREFOX_BIN="$CROSS_BROWSER_DIR/mamba_root/envs/ff/bin/firefox"

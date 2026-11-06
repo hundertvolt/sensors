@@ -178,9 +178,9 @@ def test_make_response_result_can_carry_partial_failures_under_an_overall_ok() -
 
 
 # ---------------------------------------------------------------------------
-# handle_set_cmd - drives SensorReaderConfig._set_dict_cfg and the post-write hook and returns the per-field result;
-# a raising hook turns its group's fields "Failed", caught as defense in depth on top of Microdot's own
-# per-request catch (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly).
+# handle_set_cmd - drives SensorReaderConfig._set_dict_cfg and the post-write hook and returns the per-field result; a
+# raising hook (the Wi-Fi reconnect, the NTP force sync) answers its group's fields "Failed" and logs CALLBACK, instead
+# of Microdot's bare 500 after the values were already saved (agent, 2026-08-03; owner-reviewed, 2026-11-06).
 # ---------------------------------------------------------------------------
 
 

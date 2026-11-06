@@ -48,7 +48,7 @@ class CRCBase:
         return crc
 
     # A register wider than 16 bits runs as two words: rp2 small ints stop at 2**30 - 1, so a 32-bit
-    # register would allocate a heap int on every bit step (agent, 2026-09-29).
+    # register would allocate a heap int on every bit step (CLAUDE.md's memory discipline).
     async def _crc_wide(self, buf: bytearray | memoryview, crc: int, poly: int) -> int:
         hi_bits = self._num_bytes * 8 - 16
         hi_mask = (1 << hi_bits) - 1
