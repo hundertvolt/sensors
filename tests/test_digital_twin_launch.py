@@ -58,7 +58,7 @@ def _config(device: str, seed: int, faults: "list[launch.FaultSpec]", wifi: "lis
 
 async def _driven_main(config: "launch.LaunchConfig", bound_s: float) -> "dict[str, int | None]":
     # main() with the launcher's, the twin machine's and network's sleeps on one driven clock (the chips' Timers and the
-    # watchdog's ticks among them), run until it returns within bound_s of driven time (agent, 2026-10-27).
+    # watchdog's ticks among them), run until it returns within bound_s of driven time (agent, 2026-10-27; owner-reviewed, 2026-11-06).
     with DrivenTime(launch, machine, network, sleeps=True) as clock:
         task = asyncio.get_event_loop().create_task(launch.main(config))
         await clock.run_until(task.done, int(bound_s * 1000))

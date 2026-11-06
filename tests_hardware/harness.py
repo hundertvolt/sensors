@@ -944,8 +944,8 @@ class Board:
 
     def hard_reset(self) -> None:
         # `mpremote reset`: a raw-REPL exec of machine.reset() (tools/mpremote/mpremote/main.py:407-411, v1.29.0), a
-        # real MCU reset that re-runs the frozen main.py; it writes no reset record, so /status reports it as a
-        # watchdog reset without a record.
+        # real MCU reset that re-runs the frozen main.py; on a running board /status then reads 21 (interrupted), after a
+        # flash-tier session whose scripts ran with the firmware stopped 2 (bench, 2026-11-06).
         result = self._mpremote("reset", timeout_s=_MPREMOTE_RESET_TIMEOUT_S)
         if result.returncode != 0:
             raise HardwareTestFailureError(f"mpremote reset failed (exit {result.returncode}):\n{result.stderr}")

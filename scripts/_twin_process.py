@@ -45,7 +45,7 @@ _LOG_TAIL_LINES = 20
 # :560, :688, :768; py/qstr.c:319-321; MICROPY_QSTR_BYTES_IN_LEN 1, py/mpconfig.h:369; v1.29.0).
 _QSTR_MAX_BYTES = 255
 # scripts/test.sh's own address for each of its file jobs (the UDP shim's twin_host). A caller's would bind a host-run
-# twin's servers there, off the 127.0.0.1 every host-side talker queries: no launch passes it on (agent, 2026-10-28).
+# twin's servers there, off the 127.0.0.1 every host-side talker queries: no launch passes it on (agent, 2026-10-28; owner-reviewed, 2026-11-06).
 _TWIN_HOST_ENV = "TEST_TWIN_HOST"
 
 

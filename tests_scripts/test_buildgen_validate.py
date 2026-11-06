@@ -2268,7 +2268,7 @@ def test_the_ceiling_by_device_name_equals_the_path_form(device: str, src_dir: P
 def test_every_shipped_device_states_its_own_ceiling(device: str) -> None:
     # The owner's decision (2026-09-22) is that the recommended setting ships on every device, so
     # each one says what its ceiling is rather than inheriting a default nobody reads; the ceiling
-    # value itself is the agent's sweep result (agent, 2026-09-22).
+    # value itself is the agent's sweep result (2026-09-22).
     table = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))["device"]
     assert "max_connections" in table, f"{device}'s TOML does not state [device].max_connections"
 

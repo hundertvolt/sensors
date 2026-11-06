@@ -24,7 +24,7 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
 ## Open questions (need owner input or further investigation)
 
 - **ISL29125's chip configuration divergence under concurrent API load (found by `679c2b0`'s
-  isolation work (agent, 2026-09-15); the owner rated that work's two defects 'HIGH IMPORTANCE and
+  isolation work; the owner rated that work's two defects 'HIGH IMPORTANCE and
   must-fix' (owner, 2026-09-15, `679c2b0`, paraphrase)) — fixed,
   unit-tested and confirmed on silicon; only the `Overrange` half below still owes a run.** Root cause, traced through
   the real code: `ISL29125_I2C.configure()` mutated the in-memory shadow fields
@@ -101,8 +101,7 @@ gates, traps).
   question "ISL29125's chip configuration divergence" above). Expected: M1, the operator's verdict
   on repeatability and on continuity across the range switch, with the rig geometry written down;
   S3b, no task died, `Overrange` set at full white and the envelope check reporting nothing
-  (`flash/test_sensor_accuracy.py::test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration`)
-  (agent, 2026-10-21). Wear: M1 none; S3b seven flash writes to a scratch config file, removed
+  (`flash/test_sensor_accuracy.py::test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration`). Wear: M1 none; S3b seven flash writes to a scratch config file, removed
   afterwards (the run's other persistence-gated flash tests spend their own,
   `tests_hardware/README.md`'s budget table). Twin row: M1 none (an operator observation); S3b the
   `isl29125` and `isl29125_autorange` scenarios its file names.
@@ -150,7 +149,7 @@ gates, traps).
   `loop_lag_under_combined_load` scenario (Part F.3's `lag.loop`).
 - **The UART hazard run under API load** — on `dev`,
   `bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict`:
-  one `PUT /status {"UartHazards": true}` while 3 readers GET `/status` until the run ends.
+  one `PUT /uart {"UartHazards": true}` while 3 readers GET `/status` until the run ends.
   Expected: every hazard verdict as the twin judges it, the echo's `Failures` unchanged, the echo
   resumed, the WEBSERVER counter at 0 and no task ended; the run's elapsed is recorded against the
   test's estimated 600 s run timeout. Wear: none (the command
@@ -193,7 +192,7 @@ gates, traps).
   (one SCD30 NVM write, `--allow-persistence-write`). Expected: none stated, since Interface
   Description 1.4.1 documents only the measurement status as persisted; both readings and whether
   the boot sends 0x0010 go into SPECIFICATION.md M.2, and the fidelity row moves to measured, or to
-  not relied on when the boot sends 0x0010 (agent, 2026-10-21). Wear: the step none
+  not relied on when the boot sends 0x0010 (SCD30 Interface Description 1.4.1). Wear: the step none
   (`real_fram_persistence_across_power_cycle` writes FRAM only); the owed PUT one SCD30 NVM write.
   Twin row: the fidelity table's SCD30 pressure-persistence assumption (`digital_twin/README.md`).
 - **The modlwip send stall, reproduced and then the override proven (owner, 2026-09-30)** — on
@@ -242,7 +241,7 @@ gates, traps).
 - **Whether the chips other than the SGP40 ACK or NAK a general call** — on `dev`, a device script
   sending the general-call reset (address 0x00, 0x06) on each I2C bus and recording ACK or NAK per
   bus and which chips answer afterwards. Expected: none stated, since no datasheet states it; the
-  answers are recorded, not judged, and the fidelity row follows them (agent, 2026-10-21). Wear:
+  answers are recorded, not judged, and the fidelity row follows them. Wear:
   none (no NVM write). Twin row: the fidelity table's general-call assumption
   (`digital_twin/README.md`). Needs that device script.
 - **A lone BMP3xx under general calls** — on `dev`, the default flash tier's
@@ -252,7 +251,7 @@ gates, traps).
   self-hazard broadcasts of `test_bus_topology_autodetect_address_and_reserved_range_sweep`.
   Expected: every planned broadcast sent, reads completing, and the configuration, chip ID,
   power-control bits and power-on flag unchanged; at least one sweep broadcast on each bus it
-  races, a NAK on `dev`'s i2c0, whose lone BMP3xx takes no general call (agent, 2026-10-21). Wear:
+  races, a NAK on `dev`'s i2c0, whose lone BMP3xx takes no general call (C.8's general-call finding). Wear:
   none (volatile registers only, restored by a soft reset at the end). Twin row: the same test
   under `--twin` (the file's twin record names its silicon-only cases, and this is not one).
 - **The SCD30's reaction to a wrong argument CRC or an out-of-range interval** — on `dev`,
@@ -272,11 +271,11 @@ gates, traps).
   (`isl29125_mock_conformance_probe.py`'s `G01`/`G02` keys,
   `flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake`). Expected: none stated; the
   probe's `G01`/`G02` facts are reported only, and the fidelity row stays an assumption unless they
-  settle it (agent, 2026-10-21).
+  settle it.
 - **The SGP40's reaction to an unknown command** — on `dev`, a device script sending one undefined
   16-bit command and then a measure command, recording whether the measure answers normally; the
   datasheet states no reaction, the twin ignores it. Expected: none stated; the answer is recorded,
-  and the fidelity row follows it (agent, 2026-10-21). Wear: none. Twin row: the fidelity table's
+  and the fidelity row follows it. Wear: none. Twin row: the fidelity table's
   SGP40 unknown-command assumption. Needs that device script.
 - **The BMP3XX's real calibration block** — on `dev`, the 21 calibration bytes from register 0x31
   (`asy_bmp3xx_driver.py`'s `_REGISTER_CAL_DATA`) printed once by a device script, so the twin's
@@ -403,7 +402,7 @@ gates, traps).
   mid-upload of `uart_idle_poll_rate.py` (2026-09-24); later resets overwrote `reset_cause()`, an
   isolated re-run passed, and two later full bench tiers did not reproduce it. Expected: no reset a
   round did not intend, and a hotspot fallback only after a reset with no kick right before it
-  (agent, 2026-10-21). Wear: none (reads only). Twin row: none (the twin fakes Wi-Fi connection
+  (A.4's reset rules). Wear: none (reads only). Twin row: none (the twin fakes Wi-Fi connection
   state only).
 - **Still owed elsewhere in this file**: H1, the owner's two-chroot run (the chroot entry below).
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
@@ -886,7 +885,7 @@ gates, traps).
   - no leg runs it: `vitest.config.js` retries a timed-out test, its `beforeEach`/`afterEach` included, twice on
     vitest's own timeout message, a failed assertion never, the chroot recipe running no `npm` step;
   - CI only: `ci.yml`'s `unit-tests-coverage` time limit 35 → 95 minutes, `web-unit-tests` and `web-coverage` 15 → 20
-    minutes (agent, 2026-10-20).
+    minutes (B.10.1's budget rule over measured runs, Part N's `ci.*` rows).
   **2026-10-20, the C-stack report, the gc policy checker and the Unix-port rig's GC mark stack, by
   the leg that covers each change**:
   - installer leg: `toolchain/micropython_overrides.py`'s generated Unix variant header, which
@@ -967,7 +966,7 @@ gates, traps).
   tiers' own outputs (`tests/_tmp/`, `__pycache__/`, `.pytest_cache/`); a listing that fails is no
   verdict, so the copied tree must be a git checkout with its own `.git` directory - the recipe's
   `cp -r` of a checkout is one, a copied worktree (whose `.git` file points outside the chroot) is not
-  (agent, 2026-10-27). A failed `--coverage` render's input now moves into the run's evidence archive,
+  (agent, 2026-10-27; owner-reviewed, 2026-11-06). A failed `--coverage` render's input now moves into the run's evidence archive,
   named under `Notes:`. `git` is already in the recipe's package list; nothing new to install.
   **2026-11-03, lint config and test orchestration only, no build impact**: `pyproject.toml`'s per-file ignore for
   `src/asy_system_service.py` is RUF006 instead of PLW0603; `scripts/_digital_twin_ci_suite.py`'s fresh-boot check and

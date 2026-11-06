@@ -105,7 +105,7 @@ _SNAPSHOT_READS = {
 _SNAPSHOT_FAULTS = 2  # ISL29125's verify takes at most one per 1 s cycle, so a GET loop always takes the other
 _VERIFY_FAILED = "Config read-back for reconciliation failed"  # asy_isl29125_driver.py's _verify_config(): a fault no GET took
 _UNAVAILABLE = {"error": "unavailable"}  # asy_base_classes.py's UNAVAILABLE marker, sent in place of a module's map
-_LOOP_LAG_LOAD_S = 20.0  # the storm's faults, one per read at the longest read trigger, then one whole LOOP_LAG window (agent, 2026-10-21)
+_LOOP_LAG_LOAD_S = 20.0  # the storm's faults, one per read at the longest read trigger, then one whole LOOP_LAG window (agent, 2026-10-21; owner-reviewed, 2026-11-06)
 _LOOP_LAG_REST_MAX_MS = module_int_const(REPO_ROOT / "buildgen", "codegen.py", "_DNS_TIMEOUT_MS")  # one DNS query (`con.dns_query`), the generated module's
 _LOOP_LAG_RECOVERED_MS = 1000 // module_int_const(SRC_DIR, "asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ")  # one LED frame (`con.led_frame`): once the load is over, the loop drops none
 _LOOP_LAG_PERIOD_MS = 10
@@ -136,9 +136,9 @@ _ZERO_THINK_READERS = 4  # F18's four zero-think-time readers
 _ZERO_THINK_READS = 20  # a fixed count per reader, not a duration
 _ZERO_THINK_FLOOR = 10  # degradation, not starvation: each reader is answered at least this often
 _ZERO_THINK_WRITER_PERIOD_S = 0.5
-# The storm's chunk writes are counted per event by the product's rules, not per second of a run the host sets the
-# length of (agent, 2026-10-22): each failed read cycle persists its failure and _error_check()'s streak entry, and each
-# rung of the episode's recovery ladder one more (asy_base_classes.py, SPECIFICATION.md C.7).
+# The storm's chunk writes are counted per event by the product's rules, not per second of a host-set run (agent,
+# 2026-10-22; owner-reviewed, 2026-11-06): each failed read cycle persists its failure and _error_check()'s streak
+# entry, and each rung of the episode's recovery ladder one more (asy_base_classes.py, SPECIFICATION.md C.7).
 _CHUNK_COPIES = 2  # a persisted entry writes both block copies of its logger's chunk; a fresh chunk's setup() writes it once
 _ENTRIES_PER_FAILED_CYCLE = 2
 _STORM_RUNGS_AT = tuple(module_int_const(SRC_DIR, "asy_base_classes.py", f"_RECOVER_{rung}_AT") for rung in ("DEVICE", "BUS", "CONTROLLER"))
@@ -1250,9 +1250,9 @@ def _load_while_ntp_is_unreachable(ctx: Context, *, writes: bool) -> None:
     _expect(parse_machine_reset_line(read_log(twin.run.log_path)) is None, "the device reset under the load")
 
 def _log_at_error_level(state: Path) -> "tuple[str, ...]":
-    # A boot's loggers at warning level, so a caught allocation failure's line, an error's or a warning's, reaches the
-    # memory gate (agent, 2026-10-20, extending the owner's option 1 for the unit tests, owner, 2026-10-20: "Option 1 is
-    # good"): built so by the runner's flag and kept by a stored DebugLevel, planted unless one is stored.
+    # A boot's loggers at warning level, so a caught allocation failure's, error's or warning's line reaches the memory gate
+    # (agent, 2026-10-20, extending the owner's option 1, owner, 2026-10-20: "Option 1 is good"; owner-reviewed,
+    # 2026-11-06): built so by the runner's flag and kept by a stored DebugLevel, planted unless one is stored.
     level = _src_int("asy_print_log.py", "_LOG_WARN")
     config = state_paths(state).config_dir
     config.mkdir(parents=True, exist_ok=True)
@@ -1301,7 +1301,7 @@ def _loop_lag_under_load(ctx: Context) -> None:
     _expect(worst is not None and worst <= bound_us, f"the loop lagged {worst} us under load, past the {bound_us} us smallest hard consumer: {load}")
     _expect(boot_max is not None and boot_max <= bound_us, f"the loop lagged {boot_max} us in the window open when the load began, past the {bound_us} us smallest hard consumer: {boot}")
     # After the load 99 % of wakes fall within one LED frame and every wake within one DNS query: a single wake also
-    # carries the host's late resumption, the case the host spin-round test's three-round window records (agent, 2026-10-21).
+    # carries the host's late resumption, the case the host spin-round test's three-round window records (agent, 2026-10-21; owner-reviewed, 2026-11-06).
     rest_max_us = min(bound_us, _LOOP_LAG_REST_MAX_MS * 1000)
     _expect(settled_max is not None and settled_max <= rest_max_us, f"the loop lagged {settled_max} us in the window after the load, past the {rest_max_us} us of one DNS query or the smallest hard consumer: {stopped[1:]}")
     _expect(settled_p99 is not None and settled_p99 < _LOOP_LAG_RECOVERED_MS * 1000, f"the lag after the load did not settle under {_LOOP_LAG_RECOVERED_MS} ms, one LED frame, at its p99: {stopped[1:]}")
@@ -2183,7 +2183,7 @@ def _uart_load_round(ctx: Context, hold: int, *, stall_max: bool) -> int:
     floor = module_int_const(REPO_ROOT / _HEADROOM_SCRIPT[0], *_HEADROOM_SCRIPT[1:]) * module_int_const(REPO_ROOT / _WORST_CASE[0], *_WORST_CASE[1:])
     # The floor is a layout claim, which the threshold stage carries (SPECIFICATION.md I.4(f)): at -1 the reactive collect
     # scatters the run's survivors over the twin's whole heap (11,872-30,080 B largest of 870 KB free, 752 KB at 32768), so
-    # that stage prints the block and asserts nothing on it (agent, 2026-10-15).
+    # that stage prints the block and asserts nothing on it (agent, 2026-10-15; owner-reviewed, 2026-11-06).
     print(f"{stall} stall: the largest free block after the load is {line.largest_free_block_bytes} B (floor {floor} B at the threshold stage)")
     _expect(ctx.gc_threshold == -1 or line.largest_free_block_bytes >= floor, f"{stall} stall: the largest free block {line.largest_free_block_bytes} B after the load is below the {floor} B floor")
     return line.flash_stall_longest_ms

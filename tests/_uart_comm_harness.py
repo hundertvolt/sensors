@@ -116,9 +116,9 @@ class Pair:
 
 
 class PollRoundClock:
-    # The UART modules' deadlines on a clock only they advance: by each of their sleeps, and 1 ms per read so a wait
-    # that never yields still expires. On the wall clock a host stall expires a reply budget: a clean run loses a
-    # transaction, and one still recovering when the heap is sampled reads as retention (agent, 2026-10-07).
+    # The UART modules' deadlines on a clock only they advance: by each of their sleeps, and 1 ms per read so a wait that
+    # never yields still expires. On the wall clock a host stall expires a reply budget: a clean run loses a transaction,
+    # and one still recovering when the heap is sampled reads as retention (agent, 2026-10-07; owner-reviewed, 2026-11-06).
     def __init__(self, stall_after: int = 0, stall_ms: int = 0) -> None:
         self._stall = [0, stall_after, stall_ms, 0]  # countdown (0 = idle), its start, the stall, whether it fired
         self._paced = [True]  # False: a sleep only yields (pace())

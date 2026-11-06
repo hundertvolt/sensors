@@ -38,9 +38,9 @@ _PROBE_TIMEOUT_S = 120
 _ARM_LIVE = "collects"
 _ARM_SUPPRESSED = "suppressed"
 
-# Only the largest boot batch separates the arms (agent, 2026-10-07); the next largest one's survivors (1,952-2,368 B)
-# land low in both arms, suppressed median 270,304-484,192 B deep with 7-10 high blocks. So the control arm takes the
-# devices declaring the most [[instance]] tables, the largest batch read from the TOMLs (agent, 2026-10-13).
+# Only the largest boot batch separates the arms; the next one's survivors (1,952-2,368 B) land
+# low in both arms, suppressed median 270,304-484,192 B deep, 7-10 high blocks. So the control arm takes the devices
+# with the most [[instance]] tables, read from the TOMLs (agent, 2026-10-07 and 2026-10-13; owner-reviewed, 2026-11-06).
 _INSTANCE_COUNTS = {d: len(tomllib.loads(device_toml(d).read_text(encoding="utf-8")).get("instance", [])) for d in DEVICE_NAMES}
 _CONTROL_DEVICES = tuple(d for d in DEVICE_NAMES if _INSTANCE_COUNTS[d] == max(_INSTANCE_COUNTS.values()))
 

@@ -131,7 +131,7 @@ _LEFT_OUT = {
 }
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
 # The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
-# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
+# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03; owner-reviewed, 2026-11-06).
 _NTP_UNREACHABLE_FAILURES = 2
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
@@ -199,7 +199,7 @@ _SOAK_WARMUP_CYCLES = 100
 # @tunable l2.soak_plateau_cycles = 20
 _SOAK_PLATEAU_CYCLES = 20
 # The three values below are calibrated against a planted per-request leak, which they turn red at both GC stages while
-# the unplanted tree stays green (agent, 2026-10-26); digital_twin/README.md "Run 11's calibrated numbers" has it.
+# the unplanted tree stays green (owner, 2026-10-23); digital_twin/README.md "Run 11's calibrated numbers" has it.
 # @tunable l2.soak_cycles = 80
 _SOAK_CYCLES = 80
 # /status's MemFree is one poll's reading, not a stream, so --mem-sample-interval-ms prints a MEM_SAMPLE line per
@@ -1123,8 +1123,8 @@ def _run_1_baseline(ctx: RunContext) -> None:
         _check_quiet_boot("Run 1", ctx.runs_dir / "run1_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
-        stale = _status_field("system", "TimeStale")
-        _check(condition=stale is None, msg=f"Run 1: TimeStale is null before the first NTP sync ({stale!r})")
+        synced = _status_field("networking", "NTPSynced")
+        _check(condition=synced is False, msg=f"Run 1: NTPSynced reads false before the first NTP sync ({synced!r})")
 
         status = _put_reset_errors_timed("Run 1")
         _check(condition=status == _HTTP_OK, msg="Run 1: PUT /status ResetErrors accepted")
@@ -1236,7 +1236,7 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     _check(condition=reset is not None and reset.kind == "reset" and reset.reset_count == 1, msg=f"Run 3: the runner's machine reset line names one reset ({reset!r})")
     wdt3 = _would_have_triggered_count(log3, "Run 3")
     _check(condition=wdt3 == 0, msg=f"Run 3: watchdog never starved under the sustained faults (would_have_triggered_count={wdt3!r})")
-    # The ceiling is window / 627 ms x 2: each persisted entry writes both block copies of its chunk (agent, 2026-10-21).
+    # The ceiling is window / 627 ms x 2: each persisted entry writes both block copies of its chunk (A.7's chunk layout).
     # The chip is silent, so its landed count stays 0: the data phases and WRENs issued to it are what the product sent,
     # a write being at most two WRENs (the driver's one latch retry, asy_fram_driver.py _enable_write()).
     ceiling = int(window_ms // _PERSISTED_LOG_CHUNK_WRITE_MS) * 2
@@ -1480,8 +1480,8 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         _check(condition=synced, msg=f"Run 8: NTP synced against the twin's local responder within {_NTP_FIRST_SYNC_WAIT_S:.0f}s of the station link")
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=all(isinstance(t, dict) and len(t) == _TIME_FIELDS for t in times), msg=f"Run 8: UTCTime and LocalTime are both present after the first NTP sync, each the 8-field time ({times!r})")
-        stale = _status_field("system", "TimeStale")
-        _check(condition=stale is False, msg=f"Run 8: TimeStale reads false while the first NTP sync holds ({stale!r})")
+        flag = _status_field("networking", "NTPSynced")
+        _check(condition=flag is True, msg=f"Run 8: NTPSynced reads true while the first NTP sync holds ({flag!r})")
         # RFC 5737 TEST-NET-1: no server answers it, a reproducible "unreachable" host rather than incidental
         # sandbox network policy; whether a route carries the request out decides Run 9's code (_route_leaves_host()).
         status, body = _http("PUT", "/networking", {"NTPHost": _NTP_UNREACHABLE_HOST})

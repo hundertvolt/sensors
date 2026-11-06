@@ -127,7 +127,7 @@ _PASS_YIELD_BOUND = 20000  # loop yields allowed for one wait below; a pass cost
 _HEAP_DRIFT_BYTES = 2048
 # Per death, the median of every pairwise slope over the settled readings (Theil-Sen), each death on the driven clock
 # reading the same heap: 36 healthy runs, six devices at both stages, read 0 B, a planted 32 or 64 B per death exactly
-# that (agent, 2026-10-27).
+# that (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 _DRIFT_SLOPE_BYTES = 32  # one GC block a death on the twin, the least a leak can retain
 _SETTLED_DEATH = 3  # the readings before it still settle: the second and third hold up to 0.8 KB the fourth does not
 _FLOOR_READS = 3
@@ -136,7 +136,7 @@ _SCD30_READING = SCD30(800, 22.0, 45.0, None, None, None, None, None)
 
 _scratch = TmpScratch("dtsi_" + device)  # per device: two devices' jobs of this file may run at once
 _ports = PortAllocator("dtsi", device)  # a fresh port per serving boot avoids any TIME_WAIT reuse flakiness
-_UNSERVED_PORT = _ports.next()  # every boot that never starts the web server: nothing binds it (agent, 2026-10-21)
+_UNSERVED_PORT = _ports.next()  # every boot that never starts the web server: nothing binds it (agent, 2026-10-21; owner-reviewed, 2026-11-06)
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 module = load_device(device)
@@ -711,7 +711,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
         sysfunct: SystemService = module.sysfunct
         sysfunct.pr.set_level(0)
         # A linked station, its link awaited below: with no SSID the hotspot fallback would switch the radio and bind the
-        # captive DNS instead (agent, 2026-10-14).
+        # captive DNS instead (agent, 2026-10-14; owner-reviewed, 2026-11-06).
         persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
         task_starters = module._collect_task_starters()
@@ -985,9 +985,9 @@ def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> No
 
 
 def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
-    # With no DNS traffic for a window, the listener wakes once per udp.poll_idle_ms (its ready(POLLIN) rounds), the twin
-    # half of that rate's basis, then answers a burst back to back (lwIP's drop past its queue shows on the bench). Its
-    # hotspot boot drives the LED and writes WIFI's FRAM chunk (measured): one run per wiring of both (agent, 2026-10-27).
+    # With no DNS traffic for a window, the listener wakes once per udp.poll_idle_ms, the twin half of that rate's basis,
+    # then answers a burst back to back (lwIP's drop past its queue shows on the bench). Its hotspot boot drives the LED and
+    # writes WIFI's FRAM chunk (measured): one run per wiring of both (agent, 2026-10-27; owner-reviewed, 2026-11-06).
     _driver_specific("neopixel", "fram")
 
     async def scenario(clock: DrivenTime) -> None:

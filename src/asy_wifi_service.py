@@ -263,6 +263,7 @@ class WifiService(SensorReaderConfig):
         # _connect_loop()'s own state machine - reset at the top of every _connect_loop() call
         # (i.e. every task (re)start), not meant to be read from outside this class.
         self._conn_phase = _PHASE_STA_SEEKING
+        self._shown_phase: int | None = None  # the connection state the console last announced (_state_changed())
         self._connection_failures = 0
         self._hotspot_started_once = False
         self._reconnect_fresh = False  # set by the settings hook beside _reconn_wifi: that reconnect lands in the fresh-boot state
@@ -401,7 +402,8 @@ class WifiService(SensorReaderConfig):
         await self._apply_initial_led_config()
         while True:
             if self._conn_phase == _PHASE_DEACTIVATED:
-                self.pr.all("WLAN is deactivated.")
+                if self._state_changed(_PHASE_DEACTIVATED):
+                    self.pr.all("WLAN is deactivated.")
                 # Deactivated: a distinct pattern (owner, 2026-09-29), a short blink every 3 s that obeys the Wi-Fi LED setting
                 # like every pattern: silent while it is off, shown once it is turned on (owner, 2026-10-02).
                 self._run_led_pattern(_LED_DEACTIVATED_ON_MS, _LED_DEACTIVATED_OFF_MS)
@@ -502,9 +504,11 @@ class WifiService(SensorReaderConfig):
 
     def _hotspot_client_connected(self) -> None:
         self._hotspot_timer.deinit()  # if client connected, do not stop hotspot
+        stopped = self._hotspot_timer_running  # the line reports the stop, not each pass finding the client (agent, 2026-11-06)
         self._hotspot_timer_running = False
         self._run_led_pattern(_LED_HOTSPOT_CLIENT_ON_MS, _LED_HOTSPOT_CLIENT_OFF_MS)
-        self.pr.evt("Client connected to hotspot, timer stopped")
+        if stopped:
+            self.pr.evt("Client connected to hotspot, timer stopped")
 
     async def _hotspot_timeout_loop(self) -> None:
         while True:
@@ -552,7 +556,8 @@ class WifiService(SensorReaderConfig):
             return self._wlan_status_or_none()
 
     async def _manage_hotspot_stations(self) -> None:
-        self.pr.all("Hotspot mode is active")
+        if self._state_changed(_PHASE_HOTSPOT):
+            self.pr.all("Hotspot mode is active")
         stations = await self._get_hotspot_stations()
         # Unconfirmed is no client (owner, 2026-10-08): a glitch cannot end the window under a client, whose next good check stops it.
         if stations is None:
@@ -574,21 +579,26 @@ class WifiService(SensorReaderConfig):
         self._reconn_wifi = True
 
     def _on_sta_connected(self) -> None:
-        self.pr.one("WLAN connection established")
+        if self._state_changed(_PHASE_STA_ESTABLISHED):
+            self.pr.one("WLAN connection established")
+            self._print_wlan_diagnostics()
         self._conn_phase = _PHASE_STA_ESTABLISHED
         self._connection_failures = 0
         self._led_on()
-        self._print_wlan_diagnostics()
 
     async def _on_sta_disconnected(self) -> bool:  # True: the retry wait is due, which the caller sleeps unlocked
-        self.pr.evt("No WLAN connection")
+        shown = self._state_changed(_PHASE_STA_SEEKING)  # no link, whatever the STA phase
+        if shown:
+            self.pr.evt("No WLAN connection")
         retry_due = self._conn_phase == _PHASE_STA_ESTABLISHED
         if retry_due:
-            self.pr.evt("WLAN connection was previously successful, retrying in 1 minute...")
+            if shown:
+                self.pr.evt("WLAN connection was previously successful, retrying in 1 minute...")
         elif self._conn_phase != _PHASE_SILENT:  # silent: one attempt per period, never a streak
             await self._register_sta_connection_failure()
         self._led_off()
-        self.pr.all("WLAN status:", self._wlan_status_or_none())
+        if shown:
+            self.pr.all("WLAN status:", self._wlan_status_or_none())
         return retry_due
 
     async def _poll_sta_connect_status(self) -> None:
@@ -740,7 +750,7 @@ class WifiService(SensorReaderConfig):
         # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
         if not self._hotspot_timer_running and not await self._arm_hotspot_timer():
             # Persisted and retried next iteration; with no period no attempt is ever due, so the failed arm is this
-            # iteration's hardware failure and feeds the streak, as the uptime tick's does (agent, 2026-10-12).
+            # iteration's hardware failure and feeds the streak, as the uptime tick's does (owner, 2026-10-28, Wi-Fi as built).
             self._hw_op_failed = True
         if not self._silent_attempt_due:
             return False
@@ -772,6 +782,13 @@ class WifiService(SensorReaderConfig):
         await self._select_wifi_mode(network.AP_IF)
         await self._bring_up_hotspot_ap()
         self._hotspot_started_once = True
+
+    def _state_changed(self, phase: int) -> bool:
+        # One console line per change of connection state, never per pass (owner, 2026-11-06: "on any change of connection
+        # state. So a continuous watcher has a clear view on the current state, with the minimum required count on messages").
+        changed = phase != self._shown_phase
+        self._shown_phase = phase
+        return changed
 
     async def _switch_wlan_mode(self, mode: int) -> bool:
         self._ap_selected = False

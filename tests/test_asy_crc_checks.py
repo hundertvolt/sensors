@@ -641,7 +641,7 @@ def test_crc16_matches_the_ccitt_false_check_value() -> None:
 
 def test_crc32_matches_the_mpeg2_check_value() -> None:
     # Independent oracles computed on the host: CPython's binascii.crc_hqx(data, 0xFFFF) for CRC16, and zlib.crc32
-    # over bit-reversed bytes, reflected back and xor-ed, for CRC-32/MPEG-2 (agent, 2026-09-29).
+    # over bit-reversed bytes, reflected back and xor-ed, for CRC-32/MPEG-2 (the CRC catalogue's CRC-32/MPEG-2).
     crc32 = CRC32()
     vectors = [
         (bytearray(b"123456789"), 0x0376E6E7),

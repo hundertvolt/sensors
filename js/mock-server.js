@@ -307,8 +307,8 @@ function dispatchComposite(field, rawValue, context) {
 }
 
 /**
- * One action field, never stored: an enum is Valid for exactly one of its options, a toggle for a boolean, a number
- * in its bounds (then written where its statusPath points); a composite is dispatchComposite()'s.
+ * One action field, never stored: an enum is Valid for exactly one of its options, a toggle for true alone (the device's
+ * request word), a number in its bounds (then written where its statusPath points); a composite is dispatchComposite()'s.
  * @param {import("./definitions.js").FieldDef} field
  * @param {unknown} rawValue
  * @param {PutContext} context
@@ -319,7 +319,7 @@ function dispatchField(field, rawValue, context) {
         return dispatchComposite(field, rawValue, context);
     }
     const { valid, value } = coerceAndValidate(field, rawValue);
-    if (!valid) {
+    if (!valid || (field.kind === "toggle" && value !== true)) {
         return INVALID;
     }
     if (field.statusPath !== undefined) {
@@ -766,8 +766,8 @@ export function installMockFetch(defs, initialData, controls) {
 
     /**
      * {"ResetErrors": true} refills every errcount entry and answers "Valid", as _put_status() does (SPECIFICATION.md A.8);
-     * another dispatch key the section lists (a registered command) answers {key: true} "Valid"; any other value or key is
-     * "Invalid". Stateless, it answers as a running device outside its "Failed" windows (pending command, reboot, mempause).
+     * any other value or key is "Invalid". Stateless, it answers as a running device outside its "Failed" windows (pending
+     * command, reboot, mempause).
      * @param {Record<string, unknown>} body
      * @returns {Record<string, string>}
      */
@@ -776,7 +776,7 @@ export function installMockFetch(defs, initialData, controls) {
         const results = {};
         for (const [key, value] of Object.entries(body)) {
             if (key !== "ResetErrors" || value !== true) {
-                results[key] = key !== "ResetErrors" && value === true && flatFieldDefs.get("status")?.get(key)?.dispatch === true ? VALID : INVALID;
+                results[key] = INVALID;
                 continue;
             }
             for (const entry of Object.values(state.status.errcount)) {
