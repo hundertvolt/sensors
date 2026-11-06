@@ -312,3 +312,28 @@ Yesterday: 5 of 308 failed through the hotspot and 0 of 156 on a direct join, wi
 **Fix (agent, 2026-11-06, decided on the lead's behalf, since the rerun can't run without it; the lead can revert it):** `kick_after_reset()` polls at 62.5 ms, in `tests_hardware/harness.py`. `tests_scripts/test_bench_harness_helpers.py` gets a test with a real gap's timing, which fails at the 500 ms step. Those two test files pass, with ruff and mypy clean on both changed files. The full `tests_scripts` was not run. No image change; the image stays `c8887b35`.
 
 **The rerun:** the 78 test functions that errored in setup, plus `test_fram_erase_under_api_load`, through `PYTEST_K`. Tests that already ran aren't repeated, as a cascade's tests never spent their writes. The selection is in `logs/day2_20261106/rerun_5_k.txt`.
+
+**The rerun, 07:36-08:49 on `c8887b35`, 4,352 s: 46 passed cleanly, 29 failed, 9 passed with a teardown error, 1 skipped.** No memory line. The cascade did not recur. Archive `20261106T073632Z`. Triage sent to the lead at 09:20 UTC, with each cause marked as read in the code, inferred or not traced:
+
+| Group | Tests | Reading | Status |
+|---|---|---|---|
+| Missing kick | 15 in `test_reset_reasons.py` | `run_isolated_expect_reset` has no kick, so the 90 s wait ran into the stale entry | Read in the code and the AP log; fixed by the lead, `1f844c03`; rerun below |
+| Teardown log check | 7 of 9 errors | SGP40 `W65`, with `W35` or `NTP E71` on two of them; fits a boot after an erase with no backup chunk yet | Inferred |
+| Possibly product | Loop lag 967,405 us (bound 925,000); OpenHAB case, 7 cut bodies; sweep at -1, 13 resets; mixed bodies, 2 resets; three packet-fault tests | Not diagnosed. `WEBSERVER` held 23 entries at session end | Open |
+| Likely test-side or downstream | Unknown sensor key (lead's fix `2745af2f`), oversized body's `MemFree`, hotspot `W61`, spoofed capture, `test_ntp_recovers` and the three after it | Not traced | Open |
+
+**A wasted flash (agent, 2026-11-06).** The 08:51 pull failed, as my 08:50 hand-back had diverged from `a0503ca5`, and my command didn't stop on it. So step 3 at 08:52 flashed `92bcc381`, the same firmware as `c8887b35`, and the flash tests at 08:58 ran the old tests; their archive `20261106T085830Z` isn't a result. Corrected by merge `d3f10239` and a third flash. Flash cycles today: 3, where 2 would have done. Later pulls stop on failure, and merge commits carry `[skip ci]` (lead, 2026-11-06).
+
+**On the final image `d3f10239` (heater-off wait in, `dirty: False`, 09:05 UTC):**
+
+- **Flash, the lead's list:** `no_frame_is_lost`, `multi_chunk_train`, `watchdog_starvation`, `held_sda_line_through`: 9 of 9 passed, no memory line, session-end checks ran.
+- **`test_a_damaged_config_file_is_repaired…`: passed, `ConfigFaults ['SYSTEM']`, one owned write and its repair.** Run once at the lead's request, with no `cleared:` line in `WEAR.txt`; not to be repeated. Its session-end wait timed out after 90 s ("DUT serving ... before the session-end GET"), so the session-end checks did not run there. Not traced; a hard reset with no kick would fit it.
+- **Bench, the lead's list (09:18-09:32, 4 failed, 4 passed, 3 teardown errors):**
+  - Passed: `mempause_over_real_rest`, `reset_errors_after_an_accepted_reboot`, `c_stack…[reboot]` (reason 20, teardown error below), `real_ntp_handles_a_genuinely_unreachable_server` (signatures 3287644897 and 1931067590, teardown `W35`/`W33`).
+  - `test_bus_triggers_keep_their_minimum_spacing`: `ISL29125` and `SGP40` on `i2c1` triggered 470 ms apart, against a planned 500 ms.
+  - `test_a_c_stack_exhaustion_is_attributed[entry_held]`: `ResetReason` 11, not 20; watchdog bits 1.
+  - `c_stack…[reboot]` teardown: `FRAM E46 FRAM_STATUS_BYTE`, `FRAM W63 FRAM_BLOCK_INVALID`, `NTP E71`. FRAM errors under the deliberate stack exhaustion; not traced.
+  - `test_webserver_answers_before_the_first_ntp_sync_completes`: first 200 at 12.47 s, RTC set at 10.60 s; 12.42 and 10.22 s on the first run.
+  - `test_real_ntp_sync_succeeds…`: no `RTC set to:` line in 62 s, `NTPSynced` true, age 68 s. So it synced before the watched window; second time.
+
+Not repeated on `d3f10239`: the rest of `run 5`. The firmware differs from `c8887b35` only by `src/asy_sgp40_driver.py`'s 1 ms wait.
