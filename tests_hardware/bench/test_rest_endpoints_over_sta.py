@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortask_integration", "ci_suite._run_1_baseline")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_1_baseline", "scenarios.static_site_is_served_over_real_http", "scenarios.get_measurements_and_sensors_are_reachable_and_shaped_correctly", "scenarios.mempause_over_real_http_reaches_the_real_fram_manager", "scenarios.mempause_then_reboot_unpauses_on_the_relaunch", "scenarios.reset_errors_while_storage_is_paused_is_refused_and_clears_nothing", "scenarios.real_website_root_serves_the_actual_production_index_html", "scenarios.real_website_inlined_definitions_matches_the_booted_devices_own", "scenarios.real_website_static_mount_never_shadows_a_real_api_route")
 
 # ---------------------------------------------------------------------------
 # The website, over the normal STA/bridge network path (not hotspot mode).

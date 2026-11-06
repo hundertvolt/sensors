@@ -23,7 +23,7 @@ from buildgen.validate import build_model
 if TYPE_CHECKING:
     from bench_control import BenchBridge
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction", "sensortask_integration")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction",)
 
 _STATUS_POLL_S = 0.5
 _BOOT_WINDOW_S = 90.0

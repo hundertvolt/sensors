@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from harness import Board
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_reset_reasons", "loop_end")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_reset_reasons", "ci_suite._run_12_stack_exhaustion", "loop_end", "scenarios.an_escalation_entry_that_never_finishes_leaves_code_20_to_the_watchdog")
 
 _SRC = "asy_system_service.py"
 _RR = {name: module_int_const(SRC_DIR, _SRC, f"_RR_{name}") for name in ("UNKNOWN", "WATCHDOG", "TASK_BUDGET", "STACK_EXHAUSTED", "STARVE_ARM_FAILED", "COMMAND_INCOMPLETE", "BOOT_FAILURE", "LOOP_ENDED")}
@@ -71,11 +71,13 @@ def _system_status(dut_ip: str) -> "JSONObject":
     return system
 
 
-def test_a_harness_hard_reset_reads_as_watchdog_without_a_record(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
+def test_a_harness_hard_reset_reads_as_a_console_interrupt(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     try:
         _evidence(board, bench, dut_ip, "reset-reason-hard-reset")
-        kick_then_reset(board, bench)  # mpremote's machine.reset() after the station kick: no record written
-        bits = _attributed(board, dut_ip, _RR["WATCHDOG"], result_note, "harness hard reset")
+        # mpremote's Ctrl-C ends main.py, whose entry records 21; its raw-REPL soft reset runs no main.py, and the
+        # machine.reset() after it keeps both regions, so the boot reads 21 (tools/mpremote/mpremote/transport_serial.py:179-197).
+        kick_then_reset(board, bench)
+        bits = _attributed(board, dut_ip, _RR_INTERRUPTED, result_note, "harness hard reset")
         assert bits & _FORCED_BIT, f"a machine.reset() left the forced bit clear: {bits}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)

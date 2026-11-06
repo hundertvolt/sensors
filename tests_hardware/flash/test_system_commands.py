@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_13_system_commands",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_13_config_reset", "ci_suite._run_13_damaged_config", "ci_suite._run_13_erase_fram", "ci_suite._run_13_near_misses", "ci_suite._run_13_reboot_sequence", "scenarios.a_hung_shutdown_step_is_ended_by_the_watchdog", "scenarios.mempause_then_reboot_unpauses_on_the_relaunch")
 
 _SCRATCH = "hwtest-scratch/"  # every command script's scratch config directory
 # One exec after a scratch build that ended in a reset: the directory's files, then the directory (absent: nothing).
