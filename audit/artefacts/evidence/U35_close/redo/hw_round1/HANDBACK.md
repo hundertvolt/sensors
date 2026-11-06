@@ -1,6 +1,6 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-06 13:24 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-06 14:13 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
@@ -13,7 +13,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-06 13:24 UTC. Each verdict
 | 3 | final_image | rc=0 | 2 | 2026-11-06 09:05:58 | 0h03 | 2.41 | 1/0/0/0 |
 | 4b | flash_tier | rc=4; NOT CLEAN (lower levels skipped: L0 L1 L2) | 21 | 2026-11-06 09:09:50 | 0h05 | 0.21 | 0/0/0/136 |
 | 5 | bench_tier | rc=1; FAIL (pytest exited 1); failed: bench/test_network_resilience.py::test_put_nonsense_field_values_are_marked_invalid_not_crashed, bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed, bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1], bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2], bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3] and 7 more | 21 | 2026-11-06 09:35:22 | 0h19 | 0.19 | 0/0/0/66 |
-| 9 | crc16_hazards | rc=1; FAIL (pytest exited 1); failed: flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16], run |  | 2026-11-06 11:04:12 | 0h03 | 0.12 | 0/0/0/0 |
+| 9 | crc16_hazards | rc=4; NOT CLEAN (lower levels skipped: L0 L1 L2) | 21 | 2026-11-06 14:11:00 | 0h02 | 0.19 | 0/0/0/0 |
 | 10a | soak_short | rc=1; FAIL (pytest exited 1); failed: bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved, bench/test_memory_stress_bench.py::test_http_soak_stays_live, bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline | 21 | 2026-11-06 11:10:21 | 0h14 | 0.18 | 0/0/0/8 |
 | 10m | soak_mid | rc=1; FAIL (pytest exited 1); failed: flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load, bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved, bench/test_memory_stress_bench.py::test_http_soak_stays_live, bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline | 21 | 2026-11-06 11:25:08 | 0h32 | 0.01 | 0/0/0/8 |
 | 11 | fram_8mhz | rc=0 |  | 2026-11-06 13:10:58 | 0h09 | 0.02 | 0/0/0/0 |
@@ -27774,6 +27774,179 @@ Exit code: 1
 == step 9 end rc=1 2026-11-06 11:07:12 180s load 0.12 0.30 0.32
 == read-across: GET /status after step 9
 SUM status not read: no JSON answer
+== step 9 start 2026-11-06 14:11:00 1793974260 load 0.19 0.10 0.05
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+== Marker selection: -m "not soak_duration and not multi_day_rollover"
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors-bench/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors-bench
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 114 items / 113 deselected / 1 selected
+
+tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16] PASSED [100%]
+
+================ 1 passed, 113 deselected in 123.20s (0:02:03) =================
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Not covered: 15 test(s) deselected by a wear gate; --allow-persistence-write would select them.
+== Summary: run_flash_hardware_suite ==
+Commit: df8e640c
+Levels: L3
+Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 113 · retried 0 · recovered 1 · vacuous 0
+Failed: none
+Skipped: none
+Deselected:
+  - tests_hardware/flash/test_bus_concurrency.py::test_scd30_same_device_read_write_concurrency: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_scd30_argument_reaction_is_recorded: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_config_float_round_trip.py::test_config_floats_round_trip_unchanged: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_flash_write_loop_gap_is_recorded: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_reboot_persistence.py::test_config_value_survives_a_genuine_hard_reset: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_damaged_config_file_is_repaired_and_listed_as_a_config_fault: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame[none]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame[crc16]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_link_transactions_during_config_writes_are_recorded[none]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_link_transactions_during_config_writes_are_recorded[crc16]: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_same_device_concurrent_sessions_never_corrupt_each_other: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_cross_device_concurrent_sessions_genuinely_interleave: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot[machine_reset]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot[watchdog]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_every_chip_setup_resets_it_once_after_a_read_identified_it: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_alone_survives_a_general_call: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_same_device_read_write_concurrency: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_concurrency.py::test_reboot_command_shuts_down_then_resets: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_soft_timer_callback_drop_self_heals_under_scheduler_saturation: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_irq_edge_drives_a_real_read: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_single_precision_float_boundary_at_2pow24: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_a_malformed_country_code_reaction_is_recorded: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_scd30_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_sgp40_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_fram_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_fram_chunk_write_read_roundtrips_against_the_real_chip: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[1]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[2]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[3]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[4]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write[5]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_write_protection_actually_gates_a_real_write_and_a_real_read: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_heap_layout.py::test_the_live_arm_keeps_the_boot_survivors_under_the_high_band: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_heap_layout.py::test_the_suppressed_arm_breaks_the_high_band: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_modlwip_listener_close.py::test_closing_a_listener_and_a_failed_listen_leave_the_pcb_pools_as_they_were: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_reboot_persistence.py::test_boot_import_mechanism_actually_boots_the_real_system: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_scd30_real_reading_is_within_datasheet_plausible_bounds: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_scd30_frc_window_sums_hold_in_float32: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_voc_algorithm_produces_plausible_and_stable_results: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_real_reading_is_within_datasheet_plausible_bounds: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_survives_recombined_realistic_lighting_scenarios: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_refused_commands_change_nothing_and_never_stop_the_feed: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[loads]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_an_erase_with_a_write_and_a_bus_session_in_flight_or_a_pause_still_resets_attributed[mempause]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[50]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[150]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[250]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_task_supervisor.py::test_the_supervisor_restarts_a_real_dead_task: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_task_supervisor.py::test_the_running_graph_handles_every_failed_arm_of_an_emptied_alarm_pool_in_place: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_task_supervisor.py::test_a_fault_inside_the_running_graph_stops_every_feed_and_the_watchdog_resets[main_exit]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_task_supervisor.py::test_a_fault_inside_the_running_graph_stops_every_feed_and_the_watchdog_resets[supervisor_raise]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_task_supervisor.py::test_a_stepped_clock_under_the_running_graph_moves_every_wall_clock_consumer_with_it: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_toolchain_flash_boot.py::test_mpremote_connection_is_stable_across_repeated_calls: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_toolchain_flash_boot.py::test_env_tier_flash_recurring_run_is_idempotent: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[crc16]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[cobs]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[none]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_silence_and_desync_recover_within_the_resync_bound_and_a_mismatch_fails_loudly[crc16]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[none]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[none]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_the_link_keeps_transferring_while_every_other_subsystem_is_busy[crc16]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[none]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[crc16]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[none]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_soft_reset_during_traffic_leaves_no_running_ring[crc16]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[none]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_uart_crossover.py::test_a_break_mid_frame_fails_that_transaction_only[crc16]: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_unretrieved_task_exception_handler.py::test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_watchdog_starvation.py::test_watchdog_starvation_triggers_a_real_hardware_reset: by runner selection (-m), not covered by this run
+  - tests_hardware/flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm: by runner selection (-m), not covered by this run
+Passed only on retry: none
+Recovery passes:
+  - mpremote: mpremote attempt 1: 'may be in use by another program' after 0.4s, retried
+Notes:
+  - tests_hardware/flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16]: stalled TX (crc crc16): failed True, logged [81], recovered in 2
+  - session (standard_state): vl805_firmware: not read (no VL805 CURRENT line, exit 1)
+Checked nothing: none
+Result: NOT CLEAN (lower levels skipped: L0 L1 L2)
+Exit code: 4
+== step 9 end rc=4 2026-11-06 14:13:10 130s load 0.19 0.13 0.07
+== read-across: GET /status after step 9
+SUM status system={"BootSignature": 1793974381, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 15, "MDay": 6, "Minute": 13, "Month": 11, "Second": 11, "Weekday": 4, "Year": 2026, "Yearday": 310}, "MemFree": 66304, "MemPaused": false, "ResetReason": 21, "SysUptime": 19, "TimeStale": false, "UTCTime": {"Hour": 14, "MDay": 6, "Minute": 13, "Month": 11, "Second": 11, "Weekday": 4, "Year": 2026, "Yearday": 310}, "UnixTime": 1793974391}
+SUM status sensors={"SGP40": {"BackupTS": null, "RestoreTS": 1793974259}, "UARTLINK": {"Failures": 0, "Transfers": 12}, "UART_init": {"Last": null, "Pending": false, "Runs": 0}}
+SUM errcount BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount DNSSRV {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount FRAM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NEOPIXEL {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 ```
 <!-- end step -->
 
