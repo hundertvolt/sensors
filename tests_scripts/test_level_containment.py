@@ -32,28 +32,25 @@ def _families(repo_root: Path) -> "dict[str, set[str]]":
 
 
 def _ci_suite_ids(repo_root: Path) -> "set[str]":
-    # Every function run_suite() calls, read from its body: one scenario each.
+    # Every _run_<n> function that checks something: one cell each, a run's parts cells of their own.
     tree = ast.parse((repo_root / _CI_SUITE).read_text(encoding="utf-8"))
-    run_suite = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_suite")
-    ids = {f"ci_suite.{node.func.id}" for node in ast.walk(run_suite) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id.startswith("_run_")}
-    assert len(ids) >= 10, f"run_suite() calls only {sorted(ids)} - the scan has stopped seeing its runs"
+    ids = {f"ci_suite.{n.name}" for n in tree.body if isinstance(n, ast.FunctionDef) and re.match(r"_run_\d", n.name) and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "_check" for c in ast.walk(n))}
+    assert len(ids) >= 10, f"{_CI_SUITE} holds only {sorted(ids)} - the scan has stopped seeing its cells"
     return ids
 
 
-def _harness_families(repo_root: Path) -> "set[str]":
-    # The host-side harness's scenarios by the family each declares (its @scenario's family= literal), one id per family
-    # as an in-DUT file was one; a family ported from a retired file keeps that file's name.
+def _harness_scenarios(repo_root: Path) -> "set[str]":
+    # The host-side harness's scenarios, each by its own @scenario name literal as scenarios.<name>, never by its family.
     decorators = [deco for node in ast.walk(ast.parse((repo_root / _HARNESS).read_text(encoding="utf-8"))) if isinstance(node, ast.FunctionDef) for deco in node.decorator_list]
-    calls = [deco for deco in decorators if isinstance(deco, ast.Call) and isinstance(deco.func, ast.Name) and deco.func.id == "scenario"]
-    names = [(ast.unparse(call.args[0]) if call.args else "?", next((kw.value for kw in call.keywords if kw.arg == "family"), None)) for call in calls]
+    names = [deco.args[0] if deco.args else None for deco in decorators if isinstance(deco, ast.Call) and isinstance(deco.func, ast.Name) and deco.func.id == "scenario"]
     assert len(names) >= 40, f"{_HARNESS} holds only {len(names)} scenarios - the scan has stopped seeing them"
-    bare = [name for name, family in names if not (isinstance(family, ast.Constant) and isinstance(family.value, str))]
-    assert not bare, f"harness scenarios naming no family literal: {bare}"
-    return {family.value for _, family in names if isinstance(family, ast.Constant) and isinstance(family.value, str)}
+    bare = [ast.unparse(name) if name else "?" for name in names if not (isinstance(name, ast.Constant) and isinstance(name.value, str))]
+    assert not bare, f"harness scenarios naming no name literal: {bare}"
+    return {f"scenarios.{name.value}" for name in names if isinstance(name, ast.Constant) and isinstance(name.value, str)}
 
 
 def _twin_ids(repo_root: Path) -> "set[str]":
-    return set(_families(repo_root)) | _ci_suite_ids(repo_root) | _harness_families(repo_root)
+    return set(_families(repo_root)) | _ci_suite_ids(repo_root) | _harness_scenarios(repo_root)
 
 
 def _level_modules(repo_root: Path) -> "list[Path]":
@@ -109,7 +106,7 @@ def _row_id(row: "dict[str, str]") -> str:
 def _named_scenarios(row: "dict[str, str]", twin_ids: "set[str]") -> "set[str]":
     # A row names a scenario by a code span holding its ID or its test file's stem.
     spans = set(re.findall(r"`([^`]+)`", row.get("Scenario/behaviour", "")))
-    return {s.removeprefix(_TWIN_PREFIX) for s in spans if s.removeprefix(_TWIN_PREFIX) in twin_ids or s.startswith((_TWIN_PREFIX, "ci_suite."))}
+    return {s.removeprefix(_TWIN_PREFIX) for s in spans if s.removeprefix(_TWIN_PREFIX) in twin_ids or s.startswith((_TWIN_PREFIX, "ci_suite.", "scenarios."))}
 
 
 def test_every_level_module_declares_the_twin_scenarios_it_covers(repo_root: Path) -> None:

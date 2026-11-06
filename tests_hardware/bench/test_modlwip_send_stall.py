@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 
 _STALL_SETTLE_S = 2.0
 _SLOW_CLIENT_BPS = 256

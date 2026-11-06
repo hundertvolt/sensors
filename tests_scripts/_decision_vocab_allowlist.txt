@@ -2,7 +2,6 @@
 # the sentence, then rerun `uv run python tests_scripts/test_decision_vocabulary.py --regenerate`.
 BACKLOG.md	- **The sibling `W12` ("saturated on the high range") finding from the same isol
 BACKLOG.md	Once an item is resolved (bug fixed, decision settled, question answered) it com
-BACKLOG.md	Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structur
 CLAUDE.md	- **Don't touch `sensors/config.json`-equivalent files or commit any real creden
 CLAUDE.md	- **Two suites that both bind real ports must never run at the same time.** `scr
 CLAUDE.md	Installed into `typings/` (gitignored) — **deliberately not** a `pyproject.toml`

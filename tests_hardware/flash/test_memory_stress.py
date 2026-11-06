@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction", "loop_lag")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction", "scenarios.loop_lag_under_combined_load")
 _P = ParamSpec("_P")
 
 _HEADROOM_SCRIPT_TIMEOUT_S = 120.0

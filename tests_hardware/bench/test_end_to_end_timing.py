@@ -15,7 +15,7 @@ from harness import Board, configured_max_connections, kick_after_reset, kick_th
 if TYPE_CHECKING:
     from bench_control import BenchBridge
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "scenarios.connections_beyond_max_connections_are_rejected_cleanly_not_crashed")
 
 # ---------------------------------------------------------------------------
 # A commanded reboot over REST runs the controlled shutdown and resets through the armed timer, never the watchdog, on
