@@ -1,5 +1,22 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 23:15 UTC, 2026-11-06: three skills for bench and lead work (new head, same image); read them at day-3 start
+New code on this branch: 2ef970b2, with this relay's commit on top. No src/ change: the image stays.
+.claude/skills/ now holds bench-routines (read it at every session start: order of work, an index of the harness's
+board-control functions, host configuration, the hand-back format), work-routines (which checks, reading any log)
+and tree-care (setup, readiness, cleanup). Their helpers are in scripts/: _preflight.sh --bench first,
+_log_verdict.py on every log, _errcount_digest.py START.json NOW.json after every run, _failed_tests.py for reruns,
+_tidy.sh for space. What changes for you:
+- The hand-back: append one block per run in bench-routines' format. No raw logs, consoles, FRAM dumps or progress
+  bars in it (HANDBACK.md is 42,781 lines, rewritten 54 times); name the files under logs/, now git-ignored.
+- Rerun selections come from the run record (_failed_tests.py), and the block logs the selection, HEAD and BuildDate.
+- After every run, copy build/archive/<runner>/<UTC>/ to logs/ at once: each runner keeps only its newest three.
+- A reflash: harness.reflash(), then harness.restore_board_to_serving(); one ledger line per real flash cycle.
+- heap_probe's drivers, reset_and_kick.py and round1.sh's flash() redo harness functions: use the index's entries.
+- HANDOVER.md is stale where it differs: the responder ring is 512 B since bd67db94, the runner's later fixes and
+  the relay protocol are missing. Its step plan stays; for everything generic the skills win.
+The 20:38 order for day 3 is unchanged.
+
 ## 20:38 UTC, 2026-11-06: for day 3, when the owner restarts you (nothing today); your trixie note
 Taken: trixie (Node is the whole of noble's 66; ROOT_CAUSES 21), the E51 console not saved (stays inferred), and the
 owner's stop for day 2. Day 3 keeps the owner's 19:15 choice, in this order:
