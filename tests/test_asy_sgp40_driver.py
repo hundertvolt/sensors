@@ -332,7 +332,7 @@ def test_reset_tolerates_nak_at_general_call_address() -> None:
 
 
 def test_turn_heater_off_writes_its_command_to_the_sgp40_alone_then_waits_out_its_maximum() -> None:
-    # Table 8: 0x3615, no reply, 1 ms maximum, waited out once.
+    # Table 8: 0x3615, no reply, 1 ms maximum; the wait is one tick longer, as sleep_ms() may wake early.
     sgp = _make_sgp()
     fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
     waits: list[int] = []
@@ -349,7 +349,7 @@ def test_turn_heater_off_writes_its_command_to_the_sgp40_alone_then_waits_out_it
     finally:
         asyncio.sleep_ms = real_sleep_ms
     assert fake_bus.log == [("writeto", 0x59, b"\x36\x15", True)]
-    assert waits == [1]
+    assert waits == [2]
 
 
 # ---------------------------------------------------------------------------
