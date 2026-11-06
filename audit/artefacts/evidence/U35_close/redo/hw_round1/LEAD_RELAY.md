@@ -1,5 +1,11 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 19:15 UTC, 2026-11-06: the owner's order for the rest of today: the reruns first, the trixie leg stops
+The owner chose at 19:15:43: stop the trixie chroot leg now, then the reflash and the five reruns of the 19:04 entry,
+in its order, with the rest of today's bench time. The reflash still needs the owner's OK asked by you, as before.
+Before stopping it: if any scenario job's first shared boot has already shut down, keep its log and give its
+largest_feed_gap_ms; partial is fine. The trixie leg (and the noble rerun) go to another time; nothing else changes.
+
 ## 19:04 UTC, 2026-11-06: the /status stall fix (new image); your noble note
 New code on this branch: b28a9e2f, with this relay's commit on top. src/ changed: a new image. Reflash only after the
 owner's OK; ask them yourself, as before. Gate green on it (lint, three type passes, both test stages, four twin runs,
