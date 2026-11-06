@@ -50,6 +50,18 @@ def test_get_serial_number_command_replies_with_word0_zero() -> None:
     assert reply[8] == crc8(reply[6:8])
 
 
+def test_the_serial_number_reads_the_same_three_words_on_every_read() -> None:
+    # Hard-coded at production (datasheet 3.4): one serial per chip, kept across a general call and a power cycle.
+    chip = SGP40Chip(random_source=FixedRandom(randint_values=[30000], getrandbits_values=[0x1234, 0x5678]))
+    replies = []
+    for disturb in (None, lambda: chip.handle_general_call(b"\x06"), chip.power_cycle):
+        if disturb is not None:
+            disturb()
+        chip.handle_writeto(b"\x36\x82")
+        replies.append(chip.handle_readfrom_into(9))
+    assert replies == [word(0x0000) + word(0x1234) + word(0x5678)] * 3
+
+
 def test_self_test_command_replies_pass() -> None:
     chip = SGP40Chip()
     chip.handle_writeto(b"\x28\x0e")

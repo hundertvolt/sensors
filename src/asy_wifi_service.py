@@ -740,7 +740,7 @@ class WifiService(SensorReaderConfig):
         # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
         if not self._hotspot_timer_running and not await self._arm_hotspot_timer():
             # Persisted and retried next iteration; with no period no attempt is ever due, so the failed arm is this
-            # iteration's hardware failure and feeds the streak, as the uptime tick's does (agent, 2026-10-12).
+            # iteration's hardware failure and feeds the streak, as the uptime tick's does (owner, 2026-10-28, Wi-Fi as built).
             self._hw_op_failed = True
         if not self._silent_attempt_due:
             return False

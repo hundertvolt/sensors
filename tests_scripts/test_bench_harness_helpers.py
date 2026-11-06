@@ -42,7 +42,7 @@ REPAIR_MODULES = [TESTS_HARDWARE / "bench" / "test_network_resilience.py", PUSH_
 
 _STOP_WAIT_S = 2.0  # how soon a set stop must end the script-server wait
 # The modules that run picotool themselves: the retry's own, and the manual tier's load, which a person at the board
-# watches, kept a single try (agent, 2026-11-05).
+# watches, kept a single try (agent, 2026-11-05; owner-reviewed, 2026-11-06).
 _OWN_PICOTOOL_RUNS = frozenset({"harness.py", "manual_toolchain.py"})
 # The handlers a fetch's failures need: a cut-off answer is an HTTPException, beside OSError's transport errors.
 _CATCH_ALL = frozenset({"Exception", "BaseException"})

@@ -151,7 +151,7 @@ def _flow(stmts: "list[ast.stmt]", awaited: "bool | None") -> "tuple[bool | None
 
 def _starving_loops(source: str) -> "list[int]":
     # Lines of each loop in an async def (outside any nested sync def) with a path looping back unawaited: every while,
-    # and every for that awaits somewhere; a for that never awaits is bounded synchronous work (agent, 2026-10-14).
+    # and every for that awaits somewhere; a for that never awaits is bounded synchronous work (agent, 2026-10-14; owner-reviewed, 2026-11-06).
     found: list[int] = []
     for fn in [n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.AsyncFunctionDef)]:
         pending: list[ast.AST] = list(fn.body)

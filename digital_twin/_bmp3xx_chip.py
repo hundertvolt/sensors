@@ -36,9 +36,12 @@ _REGISTER_CMD = 0x7E
 
 _STATUS_CMD_RDY = 0x10
 _STATUS_DATA_READY = 0x60
+_STATUS_DRDY_PRESS = 0x20  # reset by a read of a pressure DATA register (DS001 Table 27)
+_STATUS_DRDY_TEMP = 0x40  # reset by a read of a temperature DATA register (DS001 Table 27)
 _CONTROL_FORCED_MODE = 0x13
+_CONTROL_ENABLES = 0x03  # press_en and temp_en: a forced conversion ends in sleep mode with both kept (DS001 Table 40)
 _CMD_SOFT_RESET = 0xB6
-_OSR_RESET = 0x02  # OSR's default value (DS001 register map)
+_OSR_RESET = 0x00  # as the bench's part (chip id 0x50) reads it; DS001 and DS003's register map say 0x02 (fidelity table)
 _CONFIG_RESET = 0x00  # CONFIG's default value (DS001 register map)
 _EVENT_POR_DETECTED = 0x01  # EVENT bit 0: set by a power-up or a soft reset, clear-on-read (DS001 4.3.7)
 
@@ -132,6 +135,7 @@ class BMP3XXChip:
     def _soft_reset(self) -> None:
         # 0xB6: "all user configuration settings are overwritten with their default state" (DS001 4.3.22).
         self._status = _STATUS_CMD_RDY
+        self._pwr_ctrl = 0x00  # PWR_CTRL's default value (DS001 register map)
         self._osr = _OSR_RESET
         self._config = _CONFIG_RESET
         self._event |= _EVENT_POR_DETECTED  # por_detected "'1' after device power up or softreset" (DS001 4.3.7)
@@ -170,6 +174,13 @@ class BMP3XXChip:
             # from any of them reads on through the rest, as the driver's 8-byte burst from ERR_REG does.
             block = bytes([0x00, self._status]) + self._burst
             reply = block[reg_addr - _REGISTER_ERR :]
+            last = reg_addr + nbytes - 1
+            if reg_addr <= _REGISTER_PRESSUREDATA + 2 and last >= _REGISTER_PRESSUREDATA:
+                self._status &= ~_STATUS_DRDY_PRESS
+            if reg_addr <= _REGISTER_PRESSUREDATA + 5 and last >= _REGISTER_PRESSUREDATA + 3:
+                self._status &= ~_STATUS_DRDY_TEMP
+        elif reg_addr == _REGISTER_CONTROL:
+            reply = bytes([self._pwr_ctrl])
         elif reg_addr == _REGISTER_EVENT:
             reply = bytes([self._event])
             self._event = 0  # clear-on-read
@@ -192,8 +203,10 @@ class BMP3XXChip:
         self.fault.maybe_hang("writeto_mem")
         self.fault.maybe_raise("writeto_mem", key=reg_addr)
         if reg_addr == _REGISTER_CONTROL:
+            self._pwr_ctrl = data[0]
             if data and data[0] == _CONTROL_FORCED_MODE:
                 self._trigger_measurement()
+                self._pwr_ctrl = data[0] & _CONTROL_ENABLES
         elif reg_addr == _REGISTER_OSR:
             self._osr = data[0]
         elif reg_addr == _REGISTER_CONFIG:

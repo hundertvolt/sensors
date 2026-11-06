@@ -206,7 +206,7 @@ def _wall() -> "_wall_clock.WallClock | ModuleType":
 
 class DrivenWall(DrivenTime):
     # DrivenTime's ticks and sleeps; time(), gmtime() and localtime() as each module read them before it: the twin wall
-    # clock once installed, its steps included, else the built-in (agent, 2026-10-27).
+    # clock once installed, its steps included, else the built-in (agent, 2026-10-27; owner-reviewed, 2026-11-06).
     def gmtime(self, *secs: int) -> "tuple[int, ...]":
         return tuple(_wall().gmtime(*secs))
 

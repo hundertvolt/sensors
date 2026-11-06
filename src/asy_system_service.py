@@ -160,7 +160,7 @@ def begin_boot() -> int:
 
 def record_loop_end() -> None:
     # The boot entry's call when an exception other than Ctrl-C ended the loop: after BOOT_DONE it writes 22 unless a
-    # valid record names the reset already underway, which is kept (agent, 2026-10-26); during boot it writes nothing.
+    # valid record names the reset already underway, which is kept (agent, 2026-10-26; owner-reviewed, 2026-11-06); during boot it writes nothing.
     record = mem_backup(0)
     phase = mem_backup(1)
     done = phase[0] == _BP_MAGIC and phase[1] == BOOT_DONE and phase[2] == BOOT_DONE ^ _RR_CHECK
@@ -384,7 +384,7 @@ class SystemService:
             self._feed_owned = True
             self._reset_decided = True
             # Until _reboot() records the command's own code, a step that hangs ends in a watchdog reset that reads
-            # "command incomplete" at the next boot, never as an unexplained one (agent, 2026-10-08).
+            # "command incomplete" at the next boot, never as an unexplained one (agent, 2026-10-08; owner-reviewed, 2026-11-06).
             write_reset_record(_RR_COMMAND_INCOMPLETE)
             # From acceptance on every store refuses writes, so no config PUT reaches the flash or a chip: no SCD30 write
             # while the sequence runs (owner, 2026-10-02).
@@ -457,7 +457,7 @@ class SystemService:
             if purpose in (_RR_CONFIG_RESET, _RR_FRAM_ERASED):
                 self.pr.evt("Shutdown:", _purpose_name(purpose), "done" if done else "incomplete")
             # A shortfall reads 9 at the next boot: a failed delete or erase, or config the reset loses (a config reset's
-            # deletes discard it anyway). Without FRAM the reset reason is a lost write's one surviving trace (agent, 2026-10-08).
+            # deletes discard it anyway). Without FRAM the reset reason is a lost write's one surviving trace (agent, 2026-10-08; owner-reviewed, 2026-11-06).
             code = purpose if done and (flushed or purpose == _RR_CONFIG_RESET) else _RR_COMMAND_INCOMPLETE
             if purpose == _RR_REBOOT:
                 message = "Reboot triggered"

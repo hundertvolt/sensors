@@ -2107,7 +2107,7 @@ def _scenario_forty_days_of_uptime(device: str) -> None:
     held = _system_const("_TASK_FAIL_MAX") // _system_const("_TASK_FAIL_INCREMENT")
     pass_ms = _system_const("_TASK_CHECK_TIME") * 1000
     # Six-hour stalls: the claims need the four wraps and the decay's hundred clean passes, and each scheduler round costs
-    # the Unix port a 1 ms system poll while a ThreadSafeFlag waits (extmod/modselect.c:353-370, v1.29.0) (agent, 2026-10-21).
+    # the Unix port a 1 ms system poll while a ThreadSafeFlag waits (extmod/modselect.c:353-370, v1.29.0).
     stall_ms = 6 * _HOUR_MS
     steps = _FORTY_DAYS_MS // stall_ms
     got: dict[str, object] = {}

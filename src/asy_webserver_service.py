@@ -253,7 +253,7 @@ def _drained(pieces: list[bytes]) -> "Iterator[bytes]":
 
 def _index_by_name(items: "Iterable[_Named]") -> "dict[str, _Named]":
     # Last-registration-wins, by construction (owner, 2026-08-12; SPEC A.8): the
-    # simplest per-item loop already behaves this way; no dedup/guard code on top (agent, 2026-08-12).
+    # simplest per-item loop already behaves this way; no dedup/guard code on top.
     result: dict[str, _Named] = {}
     for item in items:
         result[item.name] = item

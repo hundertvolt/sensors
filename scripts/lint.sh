@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every non-type lint pass: ruff over the eight scopes plus the generated device modules, shellcheck over scripts/,
 # actionlint + zizmor over the workflows, the method-assign guard and the gc-site checker - all stay fully clean.
-# `ruff format` is unused (agent, 2026-07-13).
+# `ruff format` is unused (agent, 2026-07-13; owner-reviewed, 2026-11-06).
 set -euo pipefail
 
 usage="Usage: scripts/lint.sh - no arguments; needs the project venv active (uv sync && source .venv/bin/activate)"

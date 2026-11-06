@@ -21,7 +21,7 @@ _FAULT_INJECTORS = frozenset({"ap_down", "inject_network_degradation", "block_ud
 _CHECKERS = frozenset({"assert_no_task_ended", "_restore_ssid_over"})
 _EXEMPT: "dict[str, str]" = {}
 # Helpers whose injector call is join mechanics, so reaching them is no fault: the session's stale-credential recovery
-# downs the AP only to scan for and join the DUT's own hotspot (agent, 2026-10-14).
+# downs the AP only to scan for and join the DUT's own hotspot (agent, 2026-10-14; owner-reviewed, 2026-11-06).
 _JOIN_MECHANICS = {"_recover_stale_dut_credentials": "ap_down() frees the single radio to scan for the DUT's hotspot"}
 # The flash tier's fault-making device scripts: a test running one reaches no production SYSTEM log (an isolated
 # script), so the script reports its own SYSTEM logger as a fact (a key naming "system") for the host to assert, unless

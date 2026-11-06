@@ -99,7 +99,7 @@ _FULL_SCALE_COUNTS = const(65535)  # p3: "Full Scale ADC Code, ADC 16 bits"
 _CYCLE_MS_16BIT = const(303)  # 3 x tINT, tINT = 101ms typ at 16 bits (p3)
 _CYCLE_MS_12BIT = const(19)  # 3 x ~6.3ms: p6 makes tINT an n-bit counter on one oscillator, 101 x 2**-4
 
-# Device/maths constants, not config fields (agent, 2026-09-14) - requirement 1 (SPECIFICATION.md
+# Device/maths constants, not config fields - requirement 1 (SPECIFICATION.md
 # Part M.1.1) governs preferences, and none of these is one.
 _DARK_COUNTS = const(1)  # DDark typ 1 / max 5 counts at range 0 (p3, Electrical Specifications)
 # @tunable isl29125.cct_floor_counts = 64
@@ -555,7 +555,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # Requirement 17's silent-failure detector: the periodic evaluation is the safety net, and
         # this is what makes it visible when the net is carrying the load on its own.
         if self._int_held:
-            return  # Parked on purpose (agent, 2026-09-29): a periodic-led decision is by design now, not a dead line.
+            return  # Parked on purpose (agent, 2026-09-29; owner-reviewed, 2026-11-06): a periodic-led decision is by design now, not a dead line.
         if threshold_fired:
             self._periodic_only_switches = 0
             return
@@ -677,7 +677,7 @@ class ISL29125_Reader(SensorReaderConfig):
             elif self._range_auto:
                 # The chip flags green outside its window; the peak of three may hold the range anyway, and in
                 # darkness the low range's 0 threshold matches 'below or equal'. Left armed the flag re-fires every
-                # PRST window, so it is parked until green is back inside (agent, 2026-09-29).
+                # PRST window, so it is parked until green is back inside (agent, 2026-09-29; owner-reviewed, 2026-11-06).
                 if self._int_held:
                     if self._green_in_window(counts[0]):
                         await self._set_int_armed(armed=True)
