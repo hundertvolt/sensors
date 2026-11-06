@@ -94,12 +94,13 @@ _HOTSPOT_WAIT_S = 90.0  # five scripted connect failures, then the hotspot and i
 _UART_LOAD_S = 20.0  # the concurrent-load window
 _UART_LOAD_FAULTS = 3  # SGP40 measure reads failed under the UART load: logged and persisted, below any restart
 _SGP40_MEASURE_RAW = 0x260F  # the command whose following read the fault matches, so setup stays healthy
-# Per sensor driver, the bus op and key of one read its config snapshot (get_config_snapshot()) makes, from src/: once the
-# boot is done, BMP3XX's CONFIG and SCD30's temperature offset are read by nothing else unless a write or recovery runs.
+# Per sensor driver, the bus op and key of one read its config snapshot (get_config_snapshot()) makes, from src/:
+# after the boot nothing else reads BMP3XX's CONFIG or SCD30's ambient pressure unless a write or recovery runs
+# (SCD30's start-up reads its temperature offset after BOOT_DONE, behind the soft reset's fixed 2.5 s wait).
 _SNAPSHOT_READS = {
     "bmp3xx": ("readfrom_mem", module_int_const(SRC_DIR, "asy_bmp3xx_driver.py", "_REGISTER_CONFIG")),
     "isl29125": ("readfrom_mem", module_int_const(SRC_DIR, "asy_isl29125_driver.py", "_REGISTER_CONFIG1")),
-    "scd30": ("readfrom_into", module_int_const(SRC_DIR, "asy_scd30_driver.py", "_CMD_SET_TEMPERATURE_OFFSET")),
+    "scd30": ("readfrom_into", module_int_const(SRC_DIR, "asy_scd30_driver.py", "_CMD_CONTINUOUS_MEASUREMENT")),
 }
 _SNAPSHOT_FAULTS = 2  # ISL29125's verify takes at most one per 1 s cycle, so a GET loop always takes the other
 _VERIFY_FAILED = "Config read-back for reconciliation failed"  # asy_isl29125_driver.py's _verify_config(): a fault no GET took
