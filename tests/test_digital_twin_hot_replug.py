@@ -32,6 +32,8 @@ from _task_names import task_names_of  # noqa: E402 - imported after the prewarm
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
+from asy_base_classes import ValueRef  # noqa: E402 - imported after the prewarm and the UDP shim
+
 try:
     from typing import TYPE_CHECKING, cast
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -192,13 +194,11 @@ async def _run_on_clock(device: str, scenario: "Callable[[ModuleType, DrivenTime
 
 
 async def _supervised(clock: "DrivenTime", module: "ModuleType", reader: "SensorReader", body: "Callable[[], Coroutine[object, object, None]]") -> None:
-    # The reader's own tasks and read trigger under the real supervisor, its value sources (an SGP40's compensation
-    # inputs) running unsupervised beside it.
+    # The reader's own tasks and read trigger under the real supervisor, the source of every ValueRef it holds (an
+    # SGP40's compensation inputs) running unsupervised beside it.
     sysfunct = module.sysfunct
-    sources: list[SensorReader] = []
-    for ref in (getattr(reader, "_temperature", None), getattr(reader, "_humidity", None)):
-        if ref is not None and all(ref.source is not known for known in sources):
-            sources.append(ref.source)
+    found = [ref.source for ref in reader.__dict__.values() if isinstance(ref, ValueRef)]
+    sources = [cast("SensorReader", source) for i, source in enumerate(found) if all(source is not known for known in found[:i])]
     feeding = [starter() for source in sources for starter in source.get_task_starters()]
     for source in sources:
         for starter in source.get_trigger_starters() + source.get_timer_starters():

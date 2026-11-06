@@ -2275,8 +2275,9 @@ regression would be caught.
 
 ### B.14.1 `unix_kbd_intr` (implemented) - safe SIGINT delivery for the Unix port test binary
 
-**The problem**: `scripts/_digital_twin_ci_suite.py`'s shutdown step sends a real `SIGINT` to the
-twin subprocess and expects a clean exit. The Unix port's default SIGINT handling
+**The problem**: `scripts/_digital_twin_ci_suite.py`'s Run 12 ends one twin by a real `SIGINT`
+and expects a clean exit (every other twin ends through its stop file, F.6.1). The Unix port's
+default SIGINT handling
 (`ports/unix/unix_mphal.c`'s `sighandler()`, gated by `ports/unix/variants/mpconfigvariant_common.h`'s
 `MICROPY_ASYNC_KBD_INTR (!MICROPY_PY_THREAD_GIL)`, true for this project's non-threaded "standard"
 variant, `v1.29.0`) calls `nlr_raise()` — an immediate, `longjmp`-based unwind — **directly from the
@@ -3158,7 +3159,8 @@ as both lock layers (C.8) stay genuinely distinct. What differs:
   0.8 × VDD (MB85RS64V p.17; 0.7 × VDD on the MB85RS2MTA, p.18) through power-down (tpd), and a
   reset or brown-out while VDD falls returns CS to the intermediate level above; SCK and SI stay
   pulled down, so no op-code can be clocked in, and whether the part can still disturb a cell is
-  unverified on this board (agent, 2026-10-06).
+  unverified on this board (agent, 2026-10-06). The CS level through power-down is unmeasured, a
+  limitation (owner, 2026-11-06: "I have no oscilloscope at hand").
 - Everything else (scratch buffers, session lock, compensation math, range checks) carries over
   unchanged.
 - **`FRAM_SPI._setup_addr_buffer()` trusts caller-supplied `max_size` for address width (3 vs. 4
@@ -6281,8 +6283,12 @@ every schema's float bounds are checked against 2**24 by `tests_scripts/test_con
 Float constants are folded in double on the host by `mpy-cross` and rounded to single precision
 once, when the frozen C is compiled (`mpy-cross/mpconfigport.h:59, 77`,
 `py/persistentcode.c:626-646`, `tools/mpy-tool.py:790-797`); a threshold that must compare exactly
-on the board is written as a value float32 represents, or as an int. rp2 uses the default object
-representation (`py/mpconfig.h:162-164`), so every float result is heap-allocated:
+on the board is written as a value float32 represents, or as an int. `math.inf` and `math.nan`
+fold to such a constant too (`mpy-cross/mpconfigport.h:57, 98-99`, `py/parse.c:662, 876-899`),
+which the freezer writes as a bare `inf` or `nan` token the C compiler rejects
+(`tools/mpy-tool.py:796`): a frozen use fails the firmware build while every tier that runs from
+source passes; `float("inf")` is a call, never folded (`py/parse.c:880-883`). rp2 uses the
+default object representation (`py/mpconfig.h:162-164`), so every float result is heap-allocated:
 `asyncio.sleep(t)` multiplies `t` by 1000 (`extmod/asyncio/core.py:61-63`) and
 `asyncio.wait_for(aw, t)` sleeps through it (`extmod/asyncio/funcs.py:24-34`), so a float `t`
 allocates on every call, while `sleep_ms()` and `wait_for_ms()` take an int as given (`core.py:53-58`,
@@ -6812,7 +6818,9 @@ Two consequences the wrappers now state accurately:
   `ports/rp2/machine_spi.c:37-41, 196-214`). Re-construction is also
   the only controller re-init rp2 offers — `machine.I2C.init()` raises `OSError`
   (`extmod/machine_i2c.c:320-326`) — and a real one: pico-sdk's `i2c_init()` resets the whole I2C
-  block first (F.2's controller rung, `I2C.recover()`).
+  block first (F.2's controller rung, `I2C.recover()`). What SCL and SDA do through a bus clear and
+  this re-construction is unmeasured, a limitation (owner, 2026-11-06: "I have no oscilloscope at hand");
+  the outcome is checked on silicon by the flash tier's `test_a_held_sda_line_is_cleared_and_every_device_answers`.
 - **`machine.I2C.deinit()` did not exist at all before 1.29** — `machine_i2c_locals_dict_table[]`
   at `v1.28.0` has no `deinit` entry, so the call raises `AttributeError` there. That gives
   `asy_i2c_driver.py` a hard **1.29 floor** on its `deinit()` path (unreachable from a fresh
@@ -7361,6 +7369,24 @@ reaches `main()`'s own `finally` only when it lands while `main()` is running, a
 otherwise. **`src/` needs nothing** — it has no `KeyboardInterrupt` shutdown path, and rp2 has no
 SIGINT.
 
+### F.6.1 A `KeyboardInterrupt` at an `async with` body's end is lost
+
+At an `async with` body's normal end the emitter writes `LOAD_CONST None; ROT_TWO; JUMP`
+(`py/emitbc.c:681-683`, v1.29.0; unchanged on master `a39e77f08`, 2026-10-26), and the `JUMP`'s
+pending-exception check (`py/vm.c:572-575, 1341-1371`) can raise a pending `KeyboardInterrupt` with
+`None` in the context manager's slot: the body's finally handler (`py/compile.c:1893`, `py/vm.c:1464,
+1478-1484`) loads `__aexit__` from `None` (`py/compile.c:1913-1916`) and raises `AttributeError:
+'NoneType' object has no attribute '__aexit__'` instead. The interrupt is lost, `__aexit__` never
+runs (a lock stays held) and only the task that met it dies: a twin serves on past its SIGINT until
+it is killed. A plain `with` is not affected (`py/emitbc.c:666-670`), nor are cancellation and
+timeouts: a `CancelledError` is thrown only where a task resumes at an await
+(`extmod/modasyncio.c:236`, `extmod/asyncio/core.py:193`), and the window holds none; on rp2 the one
+asynchronous exception is a USB console Ctrl-C (`shared/tinyusb/mp_usbd_cdc.c:88`, the UART REPL off,
+`ports/rp2/mpconfigport.h:48`). B.14's overrides cannot carry the source fix, so the twins end
+in-band: `scripts/_twin_process.py`'s `shutdown()` and `tests_js/_twin_process.js`'s `stopTwin()` create
+the runner's `--stop-file` (`_serve_until()`, `digital_twin/run_generic_integration.py`), and only the
+CI suite's Run 12, which tests the SIGINT path, sends one (agent, 2026-11-06).
+
 ## F.7 The Unix-port rig: where it differs from rp2
 
 Every difference below is worked around in test or twin code, never in `src/`, except the one
@@ -7837,9 +7863,10 @@ same skeleton/JS for every device (`render.js`/`nav.js` have zero device-specifi
 coverage of the REST API (owner, 2026-09-26: 'The reference for us is the new API.'); small, lean,
 no external runtime deps; runs on current Chromium, Firefox and Safari (owner, 2026-09-26,
 paraphrase), at the ES2022 library level `tsconfig.json`'s `lib` binds, each engine driven by H.7's
-cross-browser smoke (WebKit through WebKitGTK); light/dark (automatic-only via
-`prefers-color-scheme`); modern hamburger/drawer nav; build = gzip → `freezefs` → frozen bytecode →
-mount on startup → served via Microdot as gzip-compressed HTML (A.9).
+cross-browser smoke (WebKit through WebKitGTK) on Linux only, with no pass on a real Safari or a
+phone, a limitation (owner, 2026-11-06); light/dark (automatic-only via `prefers-color-scheme`);
+modern hamburger/drawer nav; build = gzip → `freezefs` → frozen bytecode → mount on startup →
+served via Microdot as gzip-compressed HTML (A.9).
 
 **Placement** (owner, 2026-09-26, asked whether a placement rule is written into Part H and every
 page checked against it: "2. yes"): every value a route returns or accepts is shown or settable on
@@ -10115,7 +10142,9 @@ API and website design."). **Its record** is the module's owner list, each item 
 "(owner, date)" tag, in the Part section the module owns — Part M for a chip, M.1.1 the shape —
 and the commit message cites it; K.4's tags and C.5's schema implement it. A question the
 discussion leaves open goes to BACKLOG.md's owner-question list, never into a guessed design
-(agent, 2026-11-05).
+(agent, 2026-11-05). A record point that departs from a standing owner rule (C.4.2's staleness
+rule, say: a failed read publishes nothing, the last good sample stands) is put to the owner
+before any code, never followed silently (agent, 2026-11-06).
 
 ## K.1 Before writing any code
 
@@ -10147,8 +10176,9 @@ discussion leaves open goes to BACKLOG.md's owner-question list, never into a gu
 
 *Every module; the shape a sensor driver.* Layered shape (Part C.1–C.10), config schema (C.5),
 error/logging contract (C.7), concurrency model (C.8), the quality bar (Part D in full), and every
-row of 0.4's conventions catalog checked for the new code. Two points easy to miss reading Part C/D
-alone:
+row of 0.4's conventions catalog checked for the new code. Every tuned value takes an `@tunable`
+tag and a Part N row (N.1); a new `src/` file then gets CLAUDE.md's bird's-eye scan over `src/`,
+its discrepancies reported, not fixed. Two points easy to miss reading Part C/D alone:
 
 - **Keyword-only past the required positional leaders.** Ruff's `FBT001`/`FBT002` (boolean-trap,
   live under this project's `select = ["ALL"]`) reject a `bool`-typed parameter that isn't
@@ -10177,15 +10207,18 @@ fixture TOML (or a real `devices/*.toml` with a draft instance added), not by in
    AST or pinned both ways, and `tests_scripts/test_buildgen_source_agreement.py` fails on a
    resolvable driver missing a row of either table, before any TOML uses it. Add rows to
    `REQUIRED_TOML_FIELDS`/`OPTIONAL_TOML_FIELDS` (every constructor parameter with no default is
-   required; every one with a default your device might want to override is optional). If the
-   driver sits on a bus,
+   required; every one with a default your device might want to override is optional). A
+   parameter a `@wiring` or `@value-wiring` tag fills is an `[instance.wiring]` field, never a
+   buildspec row (C.14.2, L.6.3). If the driver sits on a bus,
    add it to `BUS_KIND_BY_DRIVER` too. **Check the datasheet for a real address-select pin before
    deciding `ADDRESS_CAPABLE_DRIVERS` vs. `FIXED_ADDRESS_DRIVERS`** — ISL29125's own datasheet
    states its address is hardwired with no select pin (FN8424 p15), which is why it lands in
    `FIXED_ADDRESS_DRIVERS` like SCD30/SGP40, not `ADDRESS_CAPABLE_DRIVERS` like BMP3xx; guessing
    this wrong lets a device TOML declare a meaningless `address` field that silently does nothing.
    A hard-wired chip gets no TOML `address`, and its protocol class takes no `address` parameter at
-   all, not even for tests; a second part needs another bus (owner, 2026-09-26).
+   all, not even for tests; a second part needs another bus (owner, 2026-09-26). It declares the
+   address as a module-level `_<DRIVER>_ADDR = const(0x..)`, which `buildgen/twin_wiring.py`'s
+   `fixed_address()` reads to place the twin's chip.
 2. **`buildgen/driver_registry.py`** — usually **no change**: `resolve_driver()` AST-scans
    `asy_<name>_driver.py` for a `SensorReader`/`SensorReaderConfig` subclass automatically. Only
    add a `_OVERRIDES` entry if the driver genuinely can't follow that convention (today: `fram`,
@@ -10221,8 +10254,13 @@ H.5.1); it is never hand-maintained. Add `# @web-group`/`# @web <Field> ...` tag
 every field the website should show, in both the `measurements` and `sensors` sections as
 applicable — `src/asy_bmp3xx_driver.py` (simple) and `src/asy_isl29125_driver.py` (uses `special:`
 sentinel labels, `decimals` rounding hints, and `path="A.B"` for a value nested inside the
-measurement body, Part H.5.1 and L.6.4) are the two worked examples to copy from. If a bus prerequisite exists (a minimum I2C
-bus timeout, say), add a `# @requires bus.<field><op><value>` tag too (C.2/SPECIFICATION.md Part L); if
+measurement body, Part H.5.1 and L.6.4) are the two worked examples to copy from. A state code
+takes `codes=<table>`, its table in `buildgen/error_catalog.json`'s `status` section (H.5.1); a
+dimensionless value omits `unit` and a bool or code field `decimals`, as ISL29125's `R` and
+`CalLight` tags do (agent, 2026-11-05). If a bus prerequisite exists (a minimum I2C
+bus timeout, say, or the datasheet's maximum SCL frequency, `bus.frequency<=<Hz>` in
+`asy_scd30_driver.py` and `asy_sgp40_driver.py`), add a `# @requires bus.<field><op><value>` tag
+too (C.2/SPECIFICATION.md Part L); if
 a cross-instance reference exists beyond the generic `fram_target` shape, check whether `@wiring`/
 `@value-wiring` already cover it before inventing a new tag family. Every tag family gets full
 accept/reject grammar test coverage (`tests_scripts/test_buildgen_web_tag.py`,
@@ -10245,11 +10283,17 @@ the fake too, not just the driver — ISL29125's chip fake idles its INT line HI
 conversion timer running through a range switch, each pinned by a digital-twin test. Add
 `Pin.PULL_UP`/whatever other `machine`-fake constant the real driver now references to **both**
 `tests/machine.py` and `digital_twin/machine.py` if it's the first driver needing it (ISL29125 was,
-for `PULL_UP`).
+for `PULL_UP`). The fake's own steps are `digital_twin/README.md`'s "Adding a new chip fake" list.
 
 ## K.6 Tests, every tier — "biting," not just executing
 
-*Every module; the bus-hazard coverage a sensor driver.*
+*Every module; the bus-hazard coverage a sensor driver.* Once a draft wires the module into a
+device, run lint, `tests_scripts/` and the unit tier in full: each red pin or lint finding names a
+hand-kept per-driver row to extend — the twin CI suite's tables
+(`scripts/_digital_twin_ci_suite.py`), the twin tests' driver maps, `digital_twin/launch.py`'s
+vocabularies, the scenario lists, the tag inventories, `_KNOWN_TICKS_USERS`, the persisting
+helpers, the request-body pins, `pyproject.toml`'s per-file-ignores, and this specification's I.2
+section, L.3 key rows, E.6.6 row and Part N sites (agent, 2026-11-05).
 
 **A dedicated unit-test file for the driver itself**
 (`tests/test_asy_<name>_driver.py`, Part D.12's own bar): every parameter individually and in
@@ -10269,7 +10313,10 @@ is a real, checkable number from outside this codebase, not a self-referential a
 the driver has a real state machine worth its own file — ISL29125's autorange logic is the
 precedent, `tests/test_digital_twin_<name>_autorange.py`-shaped). Follow "Driver/DUT process
 separation" (Part E.9) for anything that drives requests against a running twin instance — host-side
-against the real HTTP server, never sharing the twin process's own heap.
+against the real HTTP server, never sharing the twin process's own heap. A bus-facing chip also
+gets C.11.1's conformance probe (a device script that
+`tests_hardware/flash/test_chip_conformance.py` gates), or a BACKLOG.md row while no hardware is at
+hand (agent, 2026-11-05).
 
 **`buildgen`-level tests** (`tests_scripts/`) — this is its own tier, easy to forget since it's
 host-side pytest, not MicroPython:
@@ -10288,6 +10335,8 @@ host-side pytest, not MicroPython:
   driver falls in a reserved I2C range.
 - `tests_scripts/buildgen_fixtures/novel_combo.toml` — extend the synthetic multi-driver fixture so
   the driver is exercised there too, the same way `uart_link`/`isl29125` both were.
+- A host test about the devices carrying the driver takes them from `tests_scripts/_devices.py`'s
+  `devices_with(<driver>)`, never a device name: `test_no_variant_literals.py` fails on one.
 
 **Bus-hazard coverage, all four tiers, standing rule (CLAUDE.md, explicit — full detail in Part
 C.8)** — same-device read/write concurrency, cross-device interleaving with every real neighbour on
@@ -10339,7 +10388,8 @@ missing, and an `errcount` module's missing sample too, naming its group and mod
   settled project-owner rulings specific to this chip (M.1, the ISL29125's, is the shape to follow:
   measured behaviour, reference-layer traps, settled requirements — real evidence, not narrative);
   Part C gains a subsection only for a rule every driver shares. A `C.7.1` errno/wrnno table row if
-  the driver claims a new range. Update C.8's per-device bus-sharing note if this driver changes which devices share a bus.
+  the driver claims a new range. Update C.9.1's stagger example and any list naming a bus's readers
+  for every device the driver joins.
 - **`DEVICE_REFERENCE.md`** — end-user-facing notes only (its own docstring: "not an AI-session or
   architecture doc"), so add an entry only if the new driver introduces a real user-configurable
   behavior worth explaining to someone operating a deployed unit — not a routine promotion step for
@@ -10373,10 +10423,15 @@ files' — nothing is reported as passing unrun.
   memory-safety discipline (Part I.4) — zero `MemoryError`s under either pass is the bar, not just
   "the soak trend stayed in tolerance."
 - If website files changed: the JS suite (`npm test`) clean too.
+- `scripts/build_firmware.py <device>` for every device carrying the module: the only tier that
+  freezes it, so the only one a freezer-side failure (F.1) reaches (agent, 2026-11-05).
 - One targeted fault-planting pass over the new module in a throwaway worktree: each planted fault
   (a flipped comparison, a dropped call or await, a swallowed exception, a removed guard or clamp,
   an off-by-one bound) turns a named test red, and nothing from the worktree is kept (owner,
-  2026-09-25, paraphrase).
+  2026-09-25, paraphrase). The copy holds at least `src/`, `tests/`, `digital_twin/` and
+  `buildgen/` (`tests/microtest.py` imports from `digital_twin/`, `tests/_error_codes.py` reads
+  `buildgen/error_catalog.json`), and a test loading a generated module needs
+  `scripts/_generate_sensortask_modules.py` rerun after each plant (`tests/_generated_tree.py`).
 - **The gate** (owner, 2026-09-26): the specification walked paragraph by paragraph against the
   code; every hardware and runtime claim rechecked at its primary source (A.6, Part F); every new
   test shown to fail against broken code; no knowledge lost against the tree before the change;
@@ -10404,7 +10459,8 @@ note explicitly (not silently) anywhere a step did not apply:
 - [ ] `@web`/`@web-group` (+ `@requires`/`@wiring` as needed) tags, with grammar tests if a tag
       capability was extended
 - [ ] `digital_twin/_<name>_chip.py`, wired into `machine.py`'s dispatch;
-      `tests_scripts/test_twin_fake_catalog.py` green
+      `tests_scripts/test_twin_fake_catalog.py` green; C.11.1's conformance probe, or its
+      BACKLOG.md row
 - [ ] Unit tests: functionality + resilience/error-path + biting boundary/NaN/inf coverage
 - [ ] Any shared/`math_helpers`-style function this driver added has its **own** direct test suite,
       not just incidental coverage through the driver's fixtures
@@ -10419,7 +10475,7 @@ note explicitly (not silently) anywhere a step did not apply:
       driver
 - [ ] generated definitions read for every device carrying the driver; `mockdata/samples.json` has
       its sample
-- [ ] SPECIFICATION.md Part C (+ C.7.1/C.8 if applicable), `DEVICE_REFERENCE.md`,
+- [ ] SPECIFICATION.md Part C (+ C.7.1/C.9.1 if applicable), `DEVICE_REFERENCE.md`,
       `digital_twin/README.md`, `THIRD_PARTY_LICENSES.md` if applicable, BACKLOG.md only for
       genuinely open questions
 - [ ] `scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` clean; all six device TOMLs
