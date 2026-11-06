@@ -1,5 +1,26 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 19:04 UTC, 2026-11-06: the /status stall fix (new image); your noble note
+New code on this branch: b28a9e2f, with this relay's commit on top. src/ changed: a new image. Reflash only after the
+owner's OK; ask them yourself, as before. Gate green on it (lint, three type passes, both test stages, four twin runs,
+npm, collect-only); imageFreeBytes 59,540 (was 59,916).
+The fix: every streamed GET answer (/status and the five dict routes) now yields to the loop after each top-level
+value, so no build holds the loop past its largest value. Small flat values (at most four scalars, no string over four
+characters, keys included) are one json.dumps() instead of a walk: same bytes, about 1.8x fewer cycles on the Unix
+port. Expected on the board: one /status build about 0.45 s of CPU instead of 0.74 s, spread over about 26 slices.
+After the reflash, in this order, with no chroot leg running (the noble leg showed the Pi can pause for seconds):
+  1. the /status timing probe as at 17:08 (per section, and the loop's longest hold during one build)
+  2. test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer
+  3. test_a_hazard_run_under_the_readers_load_reports_every_verdict (the 13 refusals should be gone)
+  4. test_serving_sweep_at_the_reactive_default and test_heap_at_peak_while_a_full_ceiling_is_held: builds now
+     interleave, so peak heap can move; serving_sweep left 368 B free at -1 before. Report both figures.
+Your noble note: taken. 1. Node: right, the recipe as written cannot pass the host tier; its text gets the Node step in
+the last round. 2. The six 7.6 s feed gaps: the six devices boot different object graphs, so a cost in the code would
+not land within 61 ms six times; one pause of the Pi fits better. Your trixie leg settles it. If it shows a gap above
+6,000 ms again, keep that job's twin logs and say which scenario was running. would_have_triggered_count 0 and the
+memory-marker reread: taken.
+Still owed, no new run: the boot console after real_sta_connect's teardown reset, if saved (the FRAM E51).
+
 ## 17:49 UTC, 2026-11-06: your 17:45 note; two test fixes (new head, same image); the stall fix is with the owner
 New code on this branch: 78d2000a, with this relay's commit on top. Tests only, the image stays. No rerun needed for it.
 Reason 2: the wordings say what a harness reset reads; 2 for a real expiry is the code's own meaning (the reset table's
