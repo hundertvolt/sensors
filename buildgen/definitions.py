@@ -17,7 +17,7 @@ from buildgen.jsontypes import JsonDict, JsonValue
 from buildgen.model import MAINTENANCE_NAMES, DeviceModel, InstanceSpec
 from buildgen.schema_ast import FieldSchema, extract_field_schemas
 from buildgen.signals import WARN_SIGNALS, WarnSignal
-from buildgen.validate import build_model
+from buildgen.validate import build_model, module_str_const
 from buildgen.version import WEBSITE_VERSION
 from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, check_ignored_when_set, parse_web_group_tags, parse_web_tags, resolution_decimals
 
@@ -94,15 +94,8 @@ _RESET_ERRORS_GROUP: JsonDict = {
 }
 
 # The UART link exerciser's hazard run (owner, 2026-10-21, asked "Leave the UART hazards under API load untested?": "b -
-# system shall be proven stable unter max load allover"): one dispatch-only key, codegen registering it where a link is wired.
-UART_HAZARDS_KEY = "UartHazards"
-_UART_HAZARDS_GROUP: JsonDict = {
-    "key": "uartHazards", "label": "UART Hazard Run", "submit": True, "submitLabel": "Start Hazard Run",
-    "fields": [{
-        "key": UART_HAZARDS_KEY, "label": "Confirm Run", "kind": "toggle", "onLabel": "Yes, run", "offLabel": "No",
-        "description": "Runs the bench hazard set once across the crossover jumper, then the echo resumes. Bench-only: the request is not stored; the faults the run provokes appear in both UART error logs and can push older entries out.", "dispatch": True, "confirm": True,
-    }],
-}
+# system shall be proven stable unter max load allover"), on the link's own route (owner, 2026-11-06): its key is the module's.
+_UART_LINK = "asy_uart_link_driver.py"
 
 # GET /system's nested "build" entry (codegen's build_info), shown read-only through each field's path.
 _BUILD_GROUP: JsonDict = {
@@ -616,7 +609,7 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         {"key": "RSSI", "label": "Wi-Fi RSSI", "unit": "dBm", "kind": "readonly"},
         {"key": "WifiUptime", "label": "Wi-Fi Uptime", "unit": "s", "kind": "readonly", "description": "Seconds the Wi-Fi link has been up, hotspot included; 0 while it is down."},
         {"key": "WifiTS", "label": "Wi-Fi Status Time", "kind": "readonly", "format": "epoch"},
-        {"key": "NTPSynced", "label": "NTP Synced", "kind": "readonly"},
+        {"key": "NTPSynced", "label": "NTP Synced", "kind": "readonly", "description": "False until the first sync this boot, once the last sync has gone stale, and after an NTP setting changes until the next sync. While it is false, the times shown may have drifted."},
         {"key": "NTPLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly"},
         {"key": "NTPLastSync", "label": "NTP Last Sync Time", "kind": "readonly", "format": "epoch", "description": "Unix timestamp of the last successful sync."},
         {"key": "HTTPDropped", "label": "Dropped Connections", "kind": "readonly", "description": "Web connections dropped in the last 24 hours, hourly resolution."},
@@ -650,10 +643,6 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         {
             "key": "UnixTime", "label": "Device Clock", "unit": "s", "kind": "readonly",
             "description": "Unix time (UTC) when this poll was answered; every age on this site is computed against it.",
-        },
-        {
-            "key": "TimeStale", "label": "Time May Be Stale", "kind": "readonly",
-            "description": "True while NTP Synced is false once the clock has been set this boot: the last sync has gone stale, or an NTP setting has changed since. The times shown may then have drifted. Empty until the first sync this boot.",
         },
     ]
     groups: list[JsonValue] = [
@@ -692,10 +681,22 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
     # Every field group, then the error counts and their reset command; the webserver's row is errcount's last.
     groups.append(_errcount_group(model, _load_catalog(), src_dir))
     groups.append(dict(_RESET_ERRORS_GROUP))
-    if "uart_link" in have:
-        groups.append(dict(_UART_HAZARDS_GROUP))
     section["groups"] = groups
     return section
+
+
+def _uart_section(src_dir: Path) -> JsonDict:
+    # The link's own section, on the device wiring one: a dispatch-only run request PUT to /uart, whose GET reads the report.
+    return {
+        "key": "uart", "label": "UART Link", "rest": {"get": "/uart", "put": "/uart"}, "pollGroup": "settings",
+        "groups": [{
+            "key": "uartHazards", "label": "UART Hazard Run", "submit": True, "submitLabel": "Start Hazard Run",
+            "fields": [{
+                "key": module_str_const(src_dir, _UART_LINK, "_HAZARDS_KEY"), "label": "Confirm Run", "kind": "toggle", "onLabel": "Yes, run", "offLabel": "No",
+                "description": "Runs the bench hazard set once across the crossover jumper, then the echo resumes. Bench-only: the request is not stored; the faults the run provokes appear in both UART error logs and can push older entries out.", "dispatch": True, "confirm": True,
+            }],
+        }],
+    }
 
 
 def _string_field(tag: WebFieldTag, min_v: object, max_v: object, special: object, device: str, path: Path) -> JsonDict:
@@ -823,6 +824,8 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> JsonDict:
     notification = _notification_section(model, cache, have)
     if notification is not None:
         sections.append(notification)
+    if "uart_link" in have:
+        sections.append(_uart_section(src_dir))
 
     return {
         "schemaVersion": SCHEMA_VERSION,

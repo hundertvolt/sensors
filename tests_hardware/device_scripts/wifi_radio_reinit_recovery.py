@@ -35,20 +35,27 @@ _POLL_MS = 250
 _STREAK, _WINDOW_MIN = 1, 1
 
 
-async def _connect(conn: "WifiService", wdt: "WDT") -> bool:
-    # One production connect attempt, then the link polled up to the budget, fed throughout.
+async def _connect(conn: "WifiService") -> bool:
+    # One production connect attempt, then the link polled up to the budget.
     await conn._attempt_sta_connect()
     started = time.ticks_ms()
     while time.ticks_diff(time.ticks_ms(), started) < _CONNECT_BUDGET_MS:
         if conn._wlan_isconnected_or_false():
             return True
-        wdt.feed()
         await asyncio.sleep_ms(_POLL_MS)
     return conn._wlan_isconnected_or_false()
 
 
+async def _feed(wdt: "WDT") -> None:
+    # Fed beside the whole run, as production's supervisor feeds beside these awaits: a connect poll (up to 5 s), the
+    # recovery's settles and firmware reload and a second poll run back to back, far past the 8 s period.
+    while True:
+        wdt.feed()
+        await asyncio.sleep_ms(_POLL_MS)
+
+
 async def _run() -> None:
-    wdt = arm()
+    feeder = asyncio.create_task(_feed(arm()))
     try:
         with open(_PRODUCTION_CFG) as f:
             stored = json.load(f)
@@ -60,13 +67,14 @@ async def _run() -> None:
         conn = WifiService(WifiConfig(str(stored.get("Hostname", "")), str(stored.get("HotspotPW", "")), _STREAK, _WINDOW_MIN), cfg_path=_SCRATCH_CFG_PATH)
         conn.cfgmgr.valid = True  # primed, never set up: no flash file is read or written through it
         conn.cfgmgr._cache = {field[0]: stored.get(field[0], field[2]) for field in conn.get_cfg_schema()}
-        fact("connected_before", await _connect(conn, wdt))
+        fact("connected_before", await _connect(conn))
         started = time.ticks_ms()
         fact("recover_returned", await conn._recover_device())
-        reconnected = await _connect(conn, wdt)
+        reconnected = await _connect(conn)
         fact("elapsed_ms", time.ticks_diff(time.ticks_ms(), started))
         fact("reconnected", reconnected)
         fact("ip", conn._wlan.ifconfig()[0] if reconnected else "")
+    feeder.cancel()
     done()
 
 

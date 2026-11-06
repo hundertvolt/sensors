@@ -24,7 +24,7 @@ from micropython import const
 
 from asy_base_classes import UNAVAILABLE, LockedValue, TickSeconds, arm_tick_timer, utc_now
 from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg, schema_names
-from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -307,6 +307,9 @@ class SystemService:
         except asyncio.CancelledError:
             await self.pr.err_s("Task", name, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
+            report_if_fatal(e)
+            if fatal_reported() and not self._reset_armed:  # an overflow no handler recorded: its code ahead of the entry,
+                write_reset_record(_RR_STACK_EXHAUSTED)  # which a lock the overflow left held can keep from ending (F.1)
             await self.pr.err_s("Task", name, "ended with exception:", e, errno=_ERR_TASK_RAISED)
         else:
             await self.pr.err_s("Task", name, "ended: returned", errno=_ERR_TASK_RETURNED)

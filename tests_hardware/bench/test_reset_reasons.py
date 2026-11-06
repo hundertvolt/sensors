@@ -204,7 +204,7 @@ def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridg
         restore_board_to_serving(board, bench, dut_ip)
 
 
-@pytest.mark.parametrize("mode", ["reboot", "entry_held"])
+@pytest.mark.parametrize("mode", ["reboot", "entry_held", "escape"])
 @pytest.mark.provokes_log(
     "the recursing reader's TASK_RAISED and the supervisor's STACK_EXHAUSTED in SYSTEM",
     ("SYSTEM", "E", "TASK_RAISED"),
@@ -212,17 +212,17 @@ def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridg
     *scratch_config_entries(),
 )
 def test_a_c_stack_exhaustion_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", mode: str) -> None:
-    # The reader dies of the stack check's RuntimeError; the handler that catches it records the overflow, and the
-    # supervisor's next pass reboots with the stack code (SPECIFICATION.md F.1) - or, its entry write held for good, stops
-    # feeding with the code recorded, so the watchdog's reset reads 20 ("Awaited plainly", asy_system_service.py).
+    # The reader dies of the stack check's RuntimeError; a handler records the overflow and the supervisor's next pass
+    # reboots with the stack code (F.1); its entry held, the code recorded, the watchdog's reset reads 20 - in "escape",
+    # recorded by no handler, the dead-task entry writes it (SPECIFICATION.md F.1).
     try:
         _evidence(board, bench, dut_ip, f"reset-reason-stack-exhausted-{mode}")
         facts = _provoked(board, bench, "reset_code_stack_exhausted.py", mode=mode)
         assert "no_reset_after_ms" not in facts and "failure" not in facts, f"{mode}: the board outlived the stack exhaustion: {facts}"
         reset = facts.get("reset")
-        if mode == "entry_held":
+        if mode != "reboot":
             assert facts.get("held") is True and reset is None, f"the held entry write still let the reboot arm: {facts}"
-            bits = _attributed(board, dut_ip, _RR["STACK_EXHAUSTED"], result_note, f"stack exhaustion in {facts.get('reader')}, its entry held")
+            bits = _attributed(board, dut_ip, _RR["STACK_EXHAUSTED"], result_note, f"stack exhaustion in {facts.get('reader')}, its entry held ({mode})")
             assert bits & _TIMER_BIT and not bits & _FORCED_BIT, f"a held entry's reset must be the watchdog's, the timer bit set and never the forced one: {bits}"
         else:
             assert isinstance(reset, dict) and reset.get("code") == _RR["STACK_EXHAUSTED"] and reset.get("deaths"), f"the exhaustion did not end in the stack code's reboot: {facts}"

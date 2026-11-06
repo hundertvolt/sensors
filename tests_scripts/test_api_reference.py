@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from _devices import DEVICE_NAMES, device_toml
+from _devices import DEVICE_NAMES, bench_device, device_toml
 
 from buildgen import api_reference
 from buildgen.api_reference import api_reference_json, generate_api_reference
@@ -25,6 +25,7 @@ from buildgen.web_tag import SELF_GROUP, parse_web_tags
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC = _REPO_ROOT / "src"
 _WEBSERVER = "asy_webserver_service.py"
+_UART_LINK = "asy_uart_link_driver.py"  # the bench link brings its own routes, listed after the webserver's
 # The tagged services every device has, never [[instance]] entries (buildgen/definitions.py scans the same three).
 _MANDATORY_TAGGED = ("asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py")
 # The legacy firmware's API routes (each device module under legacy/firmware/modules/): "none of them needs to
@@ -119,8 +120,8 @@ def _src_literal(filename: str, name: str) -> object:
     raise AssertionError(f"src/{filename} defines no {name}")
 
 
-def _src_routes() -> "list[tuple[str, str]]":
-    rows = _src_literal(_WEBSERVER, "ROUTES")
+def _src_routes(filename: str = _WEBSERVER) -> "list[tuple[str, str]]":
+    rows = _src_literal(filename, "ROUTES")
     assert isinstance(rows, tuple)
     return [(method, path) for method, path, _handler in rows]
 
@@ -160,7 +161,7 @@ def test_two_generations_are_byte_identical(generations: "tuple[dict[str, str], 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_routes_are_exactly_the_route_table_and_no_legacy_path(references: "dict[str, dict[str, object]]", device: str) -> None:
     listed = [(route["method"], route["path"]) for route in _routes(references[device])]
-    assert listed == _src_routes()
+    assert listed == _src_routes() + (_src_routes(_UART_LINK) if device == bench_device() else [])
     assert not set(listed) & set(_LEGACY_ROUTES)
 
 

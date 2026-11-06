@@ -899,7 +899,7 @@ def test_hammering_the_link_beside_the_graph_holds() -> None:
 
 
 def test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict() -> None:
-    # The run started by PUT /status on the device's own webserver while readers GET /status, its verdicts read back
+    # The run started by PUT /uart, the link's own route, while readers GET /status, its verdicts read back
     # through the API, the echo resumed, no webserver error and no reboot. The link runs on the driven clock (agent,
     # 2026-10-21): in one interpreter the readers' work is never charged to a reply budget (J.7), and dev's timeout stands.
     link = build_linked_system()
@@ -914,7 +914,7 @@ def test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_
         try:
             await clock.run_until(lambda: initiator._transfers == 1, _EXERCISE_PERIOD_MS)
             start = clock.now
-            put = await _api("PUT", "/status", {"UartHazards": True})
+            put = await _api("PUT", "/uart", {"UartHazards": True})
             elapsed = await clock.run_until(lambda: initiator._hazard_runs == 1 and not initiator._hazard_pending, _HAZARD_RUN_VIRTUAL_MS)
             await clock.run_until(lambda: initiator._transfers == 2, _EXERCISE_PERIOD_MS)
             final = await _api("GET", "/status")
@@ -933,7 +933,7 @@ def test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_
             del link._now_us  # the class's own wire clock again
     during = len([at for at in readers.starts if start <= at <= start + elapsed])
     print(f"hazard run: {elapsed} virtual ms, {during} reads started during it, {readers.served} served in all, {readers.saw_pending} saw it pending")
-    assert put[0] == 200 and put[1]["result"] == {"UartHazards": VALID}, f"PUT /status did not start the run: {put}"
+    assert put[0] == 200 and put[1]["result"] == {"UartHazards": VALID}, f"PUT /uart did not start the run: {put}"
     assert readers.not_ok == [], f"a reader was answered {readers.not_ok} under the hazard run"
     periods = (start + elapsed) // _HAZARD_READ_PERIOD_MS - (start - 1) // _HAZARD_READ_PERIOD_MS
     assert during == _HAZARD_READERS * periods, f"{during} reads started during the run, not one per reader at each of its {periods} period starts"

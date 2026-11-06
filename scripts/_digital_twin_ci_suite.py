@@ -1123,8 +1123,8 @@ def _run_1_baseline(ctx: RunContext) -> None:
         _check_quiet_boot("Run 1", ctx.runs_dir / "run1_errcount.json", fresh_config=True, blank_backups=_blank_backups(ctx))
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
-        stale = _status_field("system", "TimeStale")
-        _check(condition=stale is None, msg=f"Run 1: TimeStale is null before the first NTP sync ({stale!r})")
+        synced = _status_field("networking", "NTPSynced")
+        _check(condition=synced is False, msg=f"Run 1: NTPSynced reads false before the first NTP sync ({synced!r})")
 
         status = _put_reset_errors_timed("Run 1")
         _check(condition=status == _HTTP_OK, msg="Run 1: PUT /status ResetErrors accepted")
@@ -1480,8 +1480,8 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         _check(condition=synced, msg=f"Run 8: NTP synced against the twin's local responder within {_NTP_FIRST_SYNC_WAIT_S:.0f}s of the station link")
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=all(isinstance(t, dict) and len(t) == _TIME_FIELDS for t in times), msg=f"Run 8: UTCTime and LocalTime are both present after the first NTP sync, each the 8-field time ({times!r})")
-        stale = _status_field("system", "TimeStale")
-        _check(condition=stale is False, msg=f"Run 8: TimeStale reads false while the first NTP sync holds ({stale!r})")
+        flag = _status_field("networking", "NTPSynced")
+        _check(condition=flag is True, msg=f"Run 8: NTPSynced reads true while the first NTP sync holds ({flag!r})")
         # RFC 5737 TEST-NET-1: no server answers it, a reproducible "unreachable" host rather than incidental
         # sandbox network policy; whether a route carries the request out decides Run 9's code (_route_leaves_host()).
         status, body = _http("PUT", "/networking", {"NTPHost": _NTP_UNREACHABLE_HOST})

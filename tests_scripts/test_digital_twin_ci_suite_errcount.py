@@ -919,7 +919,7 @@ def _run_1_server(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, table: 
         if method == "PUT":
             return 200, {"result": {k: (dict.fromkeys(v, "Valid") if isinstance(v, dict) else "Valid") for k, v in (body or {}).items()}}
         if path == "/status":
-            return 200, {"errcount": table, "system": {"UTCTime": None, "LocalTime": None, "TimeStale": None}}
+            return 200, {"errcount": table, "system": {"UTCTime": None, "LocalTime": None}, "networking": {"NTPSynced": False}}
         return 200, {"DebugLevel": ci_suite._TEST_DEBUG_LEVEL}
 
     monkeypatch.setattr(ci_suite, "_http", http)

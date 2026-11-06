@@ -112,7 +112,7 @@ describe("definitions and mockdata agree", () => {
     });
 
     // G.3's mirror of _put_status(): every dispatch key the status section lists answers {key: true} "Valid" and any
-    // other value "Invalid", as the device answers ResetErrors and each registered command outside its "Failed" windows.
+    // other value "Invalid", as the device answers ResetErrors outside its "Failed" windows.
     it.each(DEVICE_IDS)("answers every status command %s's definitions list as the device does", async (device) => {
         const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
         const status = defs.sections.find((section) => section.key === "status");
@@ -131,11 +131,19 @@ describe("definitions and mockdata agree", () => {
         }
     });
 
-    it("gives the mock's stale-time flag the value its NTP sync implies once the clock is set", () => {
-        // The generated module publishes TimeStale as NTPSynced inverted while UnixTime is set.
-        const { networking, system } = samples.status;
-        expect(typeof system.UnixTime).toBe("number");
-        expect(system.TimeStale).toBe(!networking.NTPSynced);
+    // The device's put_uart() (src/asy_uart_link_driver.py): {"UartHazards": true} "Valid" outside a pending run, any other value "Invalid".
+    it.each(DEVICE_IDS.filter((device) => GENERATED_DEFINITIONS.get(device)?.sections.some((section) => section.key === "uart")))("answers %s's UART run request as the device does", async (device) => {
+        const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+        const put = defs.sections.find((section) => section.key === "uart")?.rest.put ?? "";
+        const uninstall = installMockFetch(defs, composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples)));
+        /** @type {(body: Record<string, unknown>) => Promise<unknown>} */
+        const answer = async (body) => (await (await fetch(put, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json()).result;
+        try {
+            expect(await Promise.all([true, false, 1].map((value) => answer({ UartHazards: value })))).toEqual(["Valid", "Invalid", "Invalid"].map((word) => ({ UartHazards: word })));
+            expect(await answer({ Unlisted: true })).toEqual({ Unlisted: "Invalid" });
+        } finally {
+            uninstall();
+        }
     });
 
     // Guards the check itself: a resolver that silently returned a value for everything would make

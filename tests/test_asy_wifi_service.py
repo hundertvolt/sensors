@@ -2453,6 +2453,70 @@ def test_on_sta_connected_updates_state_and_turns_led_on() -> None:
     assert led.on_calls == 1
 
 
+def _counted_lines(lines: "list[tuple[object, ...]]") -> "dict[object, int]":
+    # How often each WIFI console line's leading text was printed.
+    counts: dict[object, int] = {}
+    for line in lines:
+        if line[0] == "WIFI" and len(line) > 1:
+            counts[line[1]] = counts.get(line[1], 0) + 1
+    return counts
+
+
+def test_each_connection_state_prints_its_lines_once_per_change_never_per_pass() -> None:
+    # Three passes in each state, linked, lost, linked again, then the hotspot: each state's lines print on entering it
+    # (owner, 2026-11-06: "on any change of connection state ... the minimum required count on messages").
+    client = _make_client()
+    client.pr.set_level(5)
+    _wlan(client)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", "8.8.8.8")
+
+    async def one_station() -> "list[tuple[bytes]]":
+        return [(b"station",)]
+
+    def no_flash(on_ms: int, off_ms: int) -> None:
+        assert on_ms > 0 and off_ms > 0  # a pattern was asked for; no flash task runs it
+
+    client._get_hotspot_stations = one_station  # type: ignore[method-assign]  # the AP's answer is not under test
+    client._run_led_pattern = no_flash  # type: ignore[method-assign]
+
+    async def passes() -> None:
+        for connected in (True, False, True):
+            _wlan(client)._connected = connected
+            for _ in range(3):
+                await client._handle_sta_connection_result()
+        client._conn_phase = _PHASE_HOTSPOT
+        client._hotspot_timer_running = True  # the window ran with no client until this one joined
+        for _ in range(3):
+            await client._manage_hotspot_stations()
+
+    with record_prints() as recorder:
+        run(passes())
+    counts = _counted_lines(recorder.lines)
+    wanted = {
+        "WLAN connection established": 2, "IPv4 address:": 2, "No WLAN connection": 1,
+        "WLAN connection was previously successful, retrying in 1 minute...": 1, "WLAN status:": 3, "Hotspot mode is active": 1,
+        "Client connected to hotspot, timer stopped": 1,
+    }
+    assert {text: counts.get(text, 0) for text in wanted} == wanted, counts
+
+
+def test_a_deactivated_radio_says_so_once_across_its_passes() -> None:
+    client, _led = _deactivated_client(led_on=False)
+    client.pr.set_level(5)
+    fast = FastAsyncSleep()
+
+    async def scenario() -> int:
+        task = asyncio.create_task(client._connect_loop())
+        await _until(lambda: len([s for owner, s, _ms in fast.slept if owner is task]) >= 3)  # three passes ended
+        passes = len([s for owner, s, _ms in fast.slept if owner is task])
+        await cancel(task)
+        await _stop_flash(client)
+        return passes
+
+    with record_prints() as recorder, fast:
+        passes = run(scenario())
+    assert passes >= 3 and _counted_lines(recorder.lines).get("WLAN is deactivated.") == 1, (passes, recorder.lines)
+
+
 def test_register_sta_connection_failure_increments_below_threshold() -> None:
     client = _make_client(conn_fail_to_hotspot=3)
     run(client._register_sta_connection_failure())

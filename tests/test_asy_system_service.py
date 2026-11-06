@@ -3548,6 +3548,37 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
+def test_a_task_ended_by_an_unrecorded_overflow_records_20_before_its_entry_write_that_never_ends() -> None:
+    # An overflow no handler recorded ends a task: code 20 is written before the dead-task entry, so a write held for good
+    # (a lock the overflow left held) still lets the watchdog's reset read 20 (owner, 2026-11-06: "Option A").
+    machine.power_on()
+    begin_boot()
+    svc = _make_service(watchdog=machine.WDT())
+    reached = asyncio.Event()
+
+    async def held_err_s(*_args: object, **_kwargs: object) -> None:
+        reached.set()
+        await asyncio.Event().wait()  # the logger blocked: never released
+
+    svc.pr.err_s = held_err_s  # type: ignore[method-assign]
+
+    async def overflows() -> None:
+        raise _stack_error()
+
+    async def scenario() -> "tuple[bool, int]":
+        await svc.start_tasks([lambda: asyncio.create_task(overflows())], task_names=["T"])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        await _until_reached(reached)
+        record = machine.mem_backup(0)[1]
+        await cancel(sup)
+        return asy_print_log.fatal_reported(), record
+
+    with FastAsyncSleep():
+        seen = run(scenario())
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+    assert seen == (True, _const("_RR_STACK_EXHAUSTED")), seen
+
+
 def test_a_command_during_the_stack_escalations_entry_write_is_refused_and_the_record_keeps_20() -> None:
     # The C-stack escalation commits to the reset before its E25 write: a command then is refused, the record reads 20
     # throughout, and the escalation's own reset arms once the entry is written.

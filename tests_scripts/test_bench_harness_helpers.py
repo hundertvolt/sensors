@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 import tomllib
-from _devices import DEVICE_NAMES, device_toml
+from _devices import DEVICE_NAMES, bench_device, device_toml
 from _script_loader import load_script_module
 
 from buildgen.schema_ast import extract_field_schemas
@@ -1028,9 +1028,12 @@ def test_bench_facts_build_for_every_device_as_a_literal_the_board_reads_back(de
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_bench_route_set_is_the_rest_references_get_routes(monkeypatch: pytest.MonkeyPatch, repo_root: Path, device: str) -> None:
-    reference = json.loads((repo_root / "build" / "generated_src" / "api" / f"{device}.json").read_text(encoding="utf-8"))
+    # The bench answers its own device's routes: dev's UART link adds GET /uart to the routes every device serves.
+    api_dir = repo_root / "build" / "generated_src" / "api"
+    reference = json.loads((api_dir / f"{device}.json").read_text(encoding="utf-8"))
     expected = [route["path"] for route in reference["routes"] if route["method"] == "GET"]
-    assert list(_bench_routes()) == expected and "/notification" in expected
+    bench = json.loads((api_dir / f"{bench_device()}.json").read_text(encoding="utf-8"))
+    assert list(_bench_routes()) == [route["path"] for route in bench["routes"] if route["method"] == "GET"] and "/notification" in expected
     monkeypatch.setattr(harness, "_api_reference", lambda _device: reference)
     assert harness.get_routes() == expected
 

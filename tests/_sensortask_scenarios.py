@@ -3508,8 +3508,8 @@ def _scenario_status_utc_time_waits_for_ntp_sync(device: str) -> None:
 
 @_register("webserver_status_keeps_utc_time_through_a_stale_sync_and_flags_it")
 def _scenario_status_utc_time_through_a_stale_sync(device: str) -> None:
-    # Once the sync goes stale, UTCTime stays and the VOC backup keeps its stamp, with TimeStale true; an NTP settings
-    # change withdraws both until the next sync, TimeStale still true. Every device backs its SGP40 up to FRAM.
+    # Once the sync goes stale, UTCTime stays and the VOC backup keeps its stamp, with NTPSynced false; an NTP settings
+    # change withdraws both until the next sync, NTPSynced still false. Every device backs its SGP40 up to FRAM.
     module = build(device)
     ntp = module.ntp
     assert _has(module, "sgp40"), f"{device}: no SGP40 VOC backup"
@@ -3518,13 +3518,14 @@ def _scenario_status_utc_time_through_a_stale_sync(device: str) -> None:
     try:
         run(ntp._handle_ntp_sync_success(time.gmtime()))  # the sync's clock set; the RTC itself is the host's clock
         run(ntp._set_synced(value=False))  # what the refresh loop does three NTPInterval after the last sync
-        system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
-        assert isinstance(system["UTCTime"], dict) and system["TimeStale"] is True, (device, system)
+        body = status_body(_dispatch(module, "GET", "/status"))
+        system, synced = _strict(body, "system"), _strict(body, "networking")["NTPSynced"]
+        assert isinstance(system["UTCTime"], dict) and synced is False and "TimeStale" not in system, (device, body)
         written, stamped, stamp = run(backup.write_into(backup.get_buffer(), require_ntp=True))
         assert written is True and stamped is True and type(stamp) is int and stamp > 0, (written, stamped, stamp)
         run(ntp.ntp_force_sync())  # an NTP settings change
-        system = _strict(status_body(_dispatch(module, "GET", "/status")), "system")
-        assert system["UTCTime"] is None and system["TimeStale"] is True, (device, system)
+        body = status_body(_dispatch(module, "GET", "/status"))
+        assert _strict(body, "system")["UTCTime"] is None and _strict(body, "networking")["NTPSynced"] is False, (device, body)
         assert run(backup.write_into(backup.get_buffer(), require_ntp=True)) == (False, False, None)
     finally:
         asy_base_classes._utc_valid = False
