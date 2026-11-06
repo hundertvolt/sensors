@@ -266,3 +266,39 @@ In these two runs the other stage and the other devices read 2,002-2,077 ms, exc
 **Kept in** `logs/final_4a_20261105/` (git-ignored): the stage output, the first 4a log and the two `arzi` run logs, since a rerun overwrites `digital_twin_ci_logs/`.
 
 **Where the bench stopped (owner, 2026-11-05: "When that current run has finished, pause for today.").** The board still runs `b7533307`, idle; `/status` answered 200 at 20:26 UTC. `bd67db94`, `a4ed871a` and `db6442b5` are pulled, and no image with them is built or flashed. Nothing was cleared. Day 2, per `bd67db94`: the new image, step 3, 4b, the `/status` load check, then `run 5`. Then `schlafzi` and the `arzi` rerun.
+
+## 16. Day 2: the 512 B ring's image, step 3, 4b and the `/status` load check (2026-11-06, 06:11-07:03 UTC)
+
+The owner, 2026-11-06: "You can run for 15 hours now". Image `c8887b35`, which carries `bd67db94`; record `dirty: False`. The logs the lead asked for are in `logs_final_4a/` (`c8887b35`). The Pi and the board rebooted at 06:07, before this session started; I did not cause it.
+
+**Step 3: pass.** Flashed and checked in 260 s, `board_BuildDate` matching the record. `a4ed871a`'s kick and 720 s wait held.
+
+**The `/status` load check: no failure in 331 reads.** `repro_status_load.py base 3 60 /status`, no flash write, nothing cleared.
+
+| Boot path | Runs | 200 | 500 | Lowest `MemFree` | `UARTLINK` `Failures` at the end |
+|---|---|---|---|---|---|
+| Direct join after 4b, uptime 97 s on | 3 | 165 | 0 | 22,320 B | 1, 1, 2 |
+| Through the 8-minute hotspot, uptime 560 s on | 3 | 166 | 0 | 21,280 B | 3, 3, 3 |
+
+Yesterday: 5 of 308 failed through the hotspot and 0 of 156 on a direct join, with `MemFree` as low as 4,544 B. The console logged no memory line in any of the six runs, and `WEBSERVER`'s counter stayed 0. Six runs are a small sample against a 1.6 % failure rate, so `run 5` is the larger check. The hotspot boot came from `machine.reset()` with no kick (reason 21); the board rejoined after 8 min 17 s.
+
+**4b: 11 failed, 75 passed, 4 skipped, 17 deselected, 1 teardown error, no memory line (1,393 s).**
+
+| Tests | Day 1 | Day 2 | Reading | Status |
+|---|---|---|---|---|
+| Held SDA, BMP3xx alone, FRAM erase (3 tests) | failed | pass | `db6442b5`'s test-side fixes work | Measured |
+| 4 twin conformance | failed | failed, same divergences | Round 2 (lead, 2026-11-05) | Unchanged |
+| `test_real_gc_heap_headroom…` | 128,576 B used, 59,568 B free | 113,216 B used, 74,928 B free | 15,360 B back, as the ring predicts. Free is now above Part N's 68,790 B demand and 72,232 B budget. Still over the test's 100,000 B bound | Measured |
+| `test_routine_no_yield…`, `test_c_stack_peak…` | 41,345 us, 4,020 B | 41,356 us, 4,020 B | Unchanged | Measured |
+| `test_the_link_keeps…[crc16]` | 9 transfers | 9 transfers | Item 10 | Unchanged |
+| `test_reboot_falls_back…` teardown | error | error | See below | Cause read in the code |
+| **New:** `test_get_and_set…[none]`, `[cobs]` | pass | largest block 111,568 to 112,336 and 108,624 to 109,504 | See below | Inferred |
+| **New:** `test_no_frame_is_lost…[crc16]` | pass | 2 of 22 frames intact in the 3 ms window, 1 overrun, `uartrsr_oe` false | See below | Inferred |
+
+- **`test_no_frame_is_lost…[crc16]`: the 512 B ring against a continuous sender at CRC16's cost; no sign of a lost frame on the real link.** The script's own comment puts CRC16 at about 21 ms per frame on silicon, and a 55 B frame takes 4.8 ms on the wire. So `_drain` empties about 2.6 B/ms while the stream adds 11.5 B/ms, and 512 B fills in about 57 ms, at the start of the 3 ms window (stream margin 50 ms). The window isn't the cause. `[none]` passes all windows on the same ring, and every frame after the resync arrives intact. Computed, not measured. It's the same case `bd67db94` ruled out of sizing (a continuous sender, not the stop-and-wait peer), which the 8,192 B ring hid. The test needs a slower stream or an unchecked read under CRC16; that's the lead's to choose.
+- **`test_get_and_set…[none]`, `[cobs]`: the check reads for exact equality and the block grew.** The refused train allocated nothing that stayed: the block grew by 768 and 880 B. `largest_block()` is a search by allocation, so a collection inside it can free garbage next to the largest block, and that this now matters fits the new layout. Inferred; `[crc16]` passes. Either `after >= before`, or a collected baseline before both reads, would fit the test's "nothing allocated".
+- **The teardown error is the test order.** `closing_reset` hard-resets and waits only for USB, then the session's teardown (`tests_hardware/conftest.py:494`) makes one strict `GET /status` while the board is still booting. The exception also skips what follows it: the SCD30 snapshot at the end, the board-state check and the session-end FRAM dump. So **4b's session-end checks have not run on either day**. Read in the code; fails the same way on both days.
+
+**FRAM.** 4b's erase tests blanked the chip again, so yesterday's history is gone from it, as a test-owned erase. The `/status` read before the flash is in `logs/day2_20261106/status_before_new_image.json` (git-ignored). Nothing was cleared by hand.
+
+**Next (agent, 2026-11-06):** `run 5` on this image, then twins `arzi`, `schlafzi`, `dev`.
