@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from buildgen.buildspec import UART_CRC_MODES
 from buildgen.defaults import default_class_name
-from buildgen.definitions import UART_HAZARDS_KEY, uart_initiator_name
+from buildgen.definitions import uart_initiator_name
 from buildgen.driver_registry import DriverInfo, class_has_read_triggers
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.model import MAINTENANCE_NAMES, DeviceModel, InstanceSpec, TomlDoc, TomlValue, instance_label, resolve_instance_key
@@ -232,9 +232,10 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         # semantics" means the responder side has nothing of its own to report here).
         maintenance_entries.append(f'("{MAINTENANCE_NAMES["uart_link"]}", {uart_initiator_var}.get_link_status)')
         maintenance_entries.append(f'("{uart_initiator_name(model)}", {uart_initiator_var}.get_hazard_report)')
+    lines.append("    app = Microdot()")
+    if uart_initiator_var is not None:  # the link's own routes, ahead of the webserver's static catch-all
+        lines.append(f"    {uart_initiator_var}.add_routes(app)")
     _emit_webserver(lines, ctx, have, sensor_vars, maintenance_entries, _device_log_arg(model, ctx, "webserver"), device_table)
-    if uart_initiator_var is not None:  # dispatch-only, never persisted: no boot starts a hazard run
-        lines.append(f'    webserver.add_status_command("{UART_HAZARDS_KEY}", {uart_initiator_var}.request_hazard_run)')
     lines.append("")
 
 
@@ -284,7 +285,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     lines.append("")
     lines.append('async def _system_status() -> "JsonDict":')
     # UTCTime waits for the first NTP sync (rp2's RTC starts at its reset epoch) and stays through a stale one until a
-    # settings change; TimeStale, null until that first sync as UnixTime is, then says whether the sync still holds.
+    # settings change; networking's NTPSynced says whether the sync still holds.
     lines.extend(("    local_time = await ntp.cettime()", "    utc = time.gmtime() if await ntp.ntp_clock_valid() else None"))
     lines.append("    return {")
     lines.append('        "SysUptime": await sysfunct.get_uptime(), "BootSignature": await sysfunct.get_boot_signature(),')
@@ -295,7 +296,6 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     lines.append('        "ConfigFaults": list(sysfunct.get_config_faults()),')
     lines.append('        "LastTaskEnd": sysfunct.get_last_task_end(),')
     lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UTCTime": _gmtimestruct_to_dict(utc), "UnixTime": utc_now(),')
-    lines.append('        "TimeStale": None if utc_now() is None else not await ntp.ntp_issynced(),')
     lines.append("    }")
     lines.append("")
     if "notification" in have:
@@ -590,7 +590,6 @@ def _emit_webserver(lines: "list[str]", ctx: _Ctx, have: "set[str]", sensor_vars
     ws = "asy_webserver_service.py"
     src_dir = ctx.src_dir
     max_connections = device_table["max_connections"] if "max_connections" in device_table else module_int_const(src_dir, ws, "_DEFAULT_MAX_CONNECTIONS")
-    lines.append("    app = Microdot()")
     lines.append("    webserver = WebserverService(")
     lines.append("        app,")
     lines.append("        routes=RouteSources(")

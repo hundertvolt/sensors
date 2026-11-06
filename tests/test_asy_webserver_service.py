@@ -1214,45 +1214,6 @@ def test_status_put_answers_unknown_keys() -> None:
     assert mod.pr.reset_calls == 1
 
 
-def test_status_put_answers_a_registered_command_and_writes_nothing() -> None:
-    # A dispatch-only key: {key: true} answers by the command's own word; any other value, or an unregistered key, is
-    # Invalid and runs nothing; no answer reaches the flash.
-    outcomes = [True, False]
-    calls: list[bool] = []
-
-    def command() -> bool:
-        calls.append(True)
-        return outcomes.pop(0)
-
-    service, app = _make_service()
-    service.add_status_command("Go", command)
-    answers = []
-    with WriteCountingOpen(cm) as cfg, WriteCountingOpen(asy_webserver_service) as web:
-        for body_in in ({"Go": True}, {"Go": True}, {"Go": False}, {"Go": 1}, {"Go": "true"}, {"Other": True}):
-            res = run(app.dispatch_request(_make_request(app, "PUT", "/status", body_in)))
-            answers.append((res.status_code, _at(_json(res.body), "result")))
-    expected = [(200, {"Go": "Valid"}), (200, {"Go": "Failed"})] + [(200, {k: "Invalid"}) for k in ("Go", "Go", "Go", "Other")]
-    assert answers == expected, answers
-    assert len(calls) == 2, calls
-    assert (cfg.writes, web.writes) == (0, 0), (cfg.writes, web.writes)
-
-
-def test_status_put_a_raising_registered_command_answers_failed_and_is_persisted() -> None:
-    # A caller-supplied callback, guarded as _run_system_cmd() guards its own (Part G.2): a raise is the key's
-    # "Failed" with a persisted errno, never a 500 out of the route handler.
-    def command() -> bool:
-        raise RuntimeError("injected for the command")
-
-    service, app = _make_service()
-    service.add_status_command("Go", command)
-    res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"Go": True, "ResetErrors": False})))
-    assert res.status_code == 200, res.status_code
-    assert _at(_json(res.body), "result") == {"Go": "Failed", "ResetErrors": "Invalid"}
-    log = run(service.get_error_counter())["WEBSERVER"]
-    assert log["ErrCount"] == 1, log
-    assert log["ErrNum"].count(code("E", "CALLBACK")) == 1, log
-
-
 def test_status_put_reset_errors_true_resets_every_module_counter_and_history() -> None:
     mod = _FakeModule("SGP40")
     run(mod.pr.err_s("boom", errno=1))

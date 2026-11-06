@@ -1085,17 +1085,16 @@ settings.
   from an NTP settings change (`ntp_force_sync()`) until the next sync; a sync gone stale keeps it
   shown, since it reads the NTP client's `ntp_clock_valid()` (F.1). `UnixTime` — the device's Unix
   seconds (an int) when the poll was answered, `null` until the first NTP sync; every age on the
-  website is computed against it. `TimeStale` — `null` until the clock is first set this boot, as
-  `UnixTime` is, then `true` while `NTPSynced` is false (the last sync gone stale, or an NTP settings
-  change since it) and `false` while synced; while it is `true` the times shown may have drifted. The
-  status page shows it as the readonly row "Time May Be Stale", with that description (owner,
+  website is computed against it. The flag that the times shown may have drifted is `networking`'s
+  `NTPSynced`, false until the first sync this boot, once the last sync has gone stale and after an
+  NTP settings change until the next sync; the status page's "NTP Synced" row says so (owner,
   2026-10-21, asked "Keep timestamping once the NTP sync goes stale?": "Clock time: Option b, but with
   a flag in /status showing it might be stale. Should be visible on the website as well - probably the
   current time actually is already showing on the status page? Then this would be easy to add.";
   option (b): `UTCTime` and the VOC backups keep the clock set this boot through a stale sync, the
   backups their timestamp and their age test, and after an NTP settings change both still wait for
-  the next sync). The flag's form, `null` before the clock is set and true while `NTPSynced` is
-  false, was decided on the owner's behalf for review (agent, 2026-10-21). Every device alike: all
+  the next sync; owner, 2026-11-06, of `NTPSynced` as that flag: "Option B, that is fully
+  sufficient."). Every device alike: all
   six run the NTP client and the generated module, every mode takes the same path, and no bus traffic
   or wiring changes. `networking`'s
   link fields (`Mode`, `Connected`, `IPv4`, `Subnet`, `Gateway`, `DNS`, `RSSI`) — one snapshot,
@@ -1124,7 +1123,7 @@ settings.
 |---|---|
 | 0 | unknown (the record's magic or check word is wrong) |
 | 1 | power-on (also the RUN pin, RP2040 datasheet §4.7.4) |
-| 2 | watchdog without a record (a starvation, machine.reset() from outside the firmware, mpremote reset) |
+| 2 | watchdog without a record (a starvation, machine.reset() from outside the firmware with no run to interrupt) |
 | 3 | reboot command |
 | 5 | supervisor escalation (task-error budget) |
 | 6 | watchdog starve after the reset timer could not be armed |
@@ -1137,7 +1136,7 @@ settings.
 | 14 | boot failure in phase 4 (timer starts), the watchdog reset or the boot entry's reset followed |
 | 15 | boot failure in phase 5 (first NTP sync), the watchdog reset or the boot entry's reset followed |
 | 20 | supervisor escalation (a handler recorded a C-stack overflow) |
-| 21 | interrupted: Ctrl-C on the console ended the run, the watchdog reset or a console soft reset followed |
+| 21 | interrupted: Ctrl-C on the console ended the run (an mpremote reset of a running board reads 21), the watchdog reset, a console soft reset or machine.reset() followed |
 | 22 | the event loop ended with an exception after boot, and the boot entry reset the chip |
 
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
@@ -1165,8 +1164,7 @@ settings.
   `"SystemCmd": "reboot"|"bootloader"|"mempause"|"resetconfig"|"erasefram"`: a command runs only on
   its exact word, matched as
   a whole string — no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
-  300 s lives in the command callback. `/status` — `{"ResetErrors": true}` (and on `dev`
-  `{"UartHazards": true}`, below): every registered
+  300 s lives in the command callback. `/status` — `{"ResetErrors": true}`: every registered
   error source and the webserver's own log reset concurrently, `HTTPDropped`'s window included;
   `result.ResetErrors` answers `"Failed"` when any reset returned false, else `"Valid"`; a reset that
   raises (a defect's path) reaches the catch-all, which answers 500 and persists it (errno 23);
@@ -1187,12 +1185,17 @@ settings.
   manager's own `get_pause()`, the second entry of `reset_refusals` on a device with a FRAM manager
   (owner, 2026-10-13, asked "Clear nothing when ResetErrors answers Failed in mempause?": "1 b"); a
   pause that begins while a reset runs is met by each FRAM-backed log's own refusal (C.7).
-  On `dev` only, the one device wiring `uart_link`, `/status` also takes `{"UartHazards": true}`:
-  dispatch-only and never persisted, so no boot starts a hazard run and the flash-wear gate is
-  untouched. It answers `"Valid"` when the initiator takes the run, and `"Failed"` on the responder,
-  before its `setup()`, while a run is pending, or when the command raises (then one WEBSERVER entry,
-  errno 14 `CALLBACK`, "status command failed: UartHazards <exception>"); any other value is
-  `"Invalid"`. The exercise loop runs it in place of its next echo round (J.7), then the echo resumes.
+  On `dev` only, the one device wiring `uart_link`, the link brings its own route: `PUT /uart` takes
+  `{"UartHazards": true}`, and `GET /uart` reads the run's report below; the generated module
+  registers both from the initiator's `ROUTES` ahead of the static catch-all, and the website gets
+  its own "UART Link" section posting there, so a build without the link carries no trace of it
+  (owner, 2026-11-06: "If it is selected, in brings in everything it needs, the only switch for that
+  being its inclusion in the toml file."; the `GET`, which the shared page needs for every section,
+  agent, 2026-11-06). The key is dispatch-only and never persisted, so no boot starts a hazard run
+  and the flash-wear gate is untouched. It answers `"Valid"` when the initiator takes the run, and
+  `"Failed"` before its `setup()` or while a run is pending; any other value or key is `"Invalid"`,
+  a body that is no JSON object code `1`. The exercise loop runs it in place of its next echo round
+  (J.7), then the echo resumes.
   The run's report is the initiator's `sensors` entry under its resolved name: `Runs`, `Pending`
   (from the request to the run's end) and `Last` (`TwoInitiations`; `Crossed`: wrote, crossed,
   attempts, recovered; `FieldSweep`: per field its name, the ACK per value and recovered), where a
@@ -1419,7 +1422,7 @@ again; **Off** no readable Wi-Fi configuration: the radio stays unused until a r
 | # | Exposure | Modes | Disposition | Source |
 |---|---|---|---|---|
 | 1 | HTTP server on TCP 80, IPv4, every interface (`0.0.0.0`) | STA, AP | accepted limitation (owner, 2026-09-26): no authentication, no TLS; every GET and PUT of A.8 is open to any client that reaches it | `buildgen/codegen.py` `_BOOT_KEYWORDS` (`web_host` `"0.0.0.0"`, `web_port` 80, every generated `main()`'s defaults), passed through `ServingLimits` to `asyncio.start_server()` in `src/asy_webserver_service.py`; IPv4 only: `start_server()` binds what `getaddrinfo()` returns (`extmod/asyncio/stream.py:183-187`, v1.29.0), the bind parses `"0.0.0.0"` to an IPv4 any address (`extmod/modlwip.c:427-439, 1027-1037`; lwIP `lib/lwip/src/core/ip.c:122-146`) and a listening pcb matches only its own IP version (`lib/lwip/src/core/tcp_in.c:326-335`, lwIP 2.2.1) |
-| 2 | Unauthenticated writes | STA, AP | accepted limitation (owner, 2026-09-26): every config PUT (`/sensors`, `/networking`, `/system`, `/notification`), including the Wi-Fi credentials — a wrong SSID or password takes the unit off the LAN: it falls back to its hotspot and, after a second failed streak, to the silent mode, from which only a reboot reopens the hotspot (A.4) — the hotspot password, and the SCD30's NVM-backed fields; the sensor actions `ResetVOC` (the SGP40's VOC algorithm restarts and its FRAM backup is deleted) and `Calibrate` (the ISL29125's gain-ratio measurement; it changes no setting on its own); the notification LED commands `LightCmdLED` (a colour signal of up to 60 s) and `PauseTime` (the automatic LED paused up to 3600 s); `SystemCmd` `reboot`; `bootloader` (the unit stays in the RP2040's USB bootloader until power-cycled or reflashed); `mempause` (FRAM writes paused for 300 s); `resetconfig` ("Reset to defaults": every config file deleted, Wi-Fi and identity included, so the unit returns as its hotspot with its TOML hostname and hotspot password until set up again); `erasefram` ("Erase FRAM": every FRAM error log and the SGP40 backup destroyed, irreversibly); `/status` `ResetErrors` (every error history cleared, irreversibly); on `dev` only, `/status` `UartHazards` (one bounded hazard run across the board's UART link, then the echo resumes; dispatch-only and never persisted, so no boot starts one; a mode decided on the owner's behalf for review (agent, 2026-10-21) to prove the hazards under API load, as E.6.6's `uart-hazards-under-api-load` row records; listed under this limitation (agent, 2026-10-22)). Every system command except `mempause` runs the controlled shutdown (A.8, owner, 2026-09-30): the reply goes out first, pending config writes are flushed and FRAM drained before the supervised tasks stop, then the unit resets or enters the bootloader — so an unauthenticated command costs availability, never an accepted write; from its acceptance every config PUT, `mempause` and `ResetErrors` answer "Failed", and a command of another purpose is refused ("Failed") while its shutdown runs. A system command runs only when the request carries its exact action word (owner, 2026-09-30) — a guard against a bare or mistyped call, not access control. No write-rate limit (owner, 2026-09-26): the project's own clients write only on an explicit user action and never repeat a PUT; a third-party client that loops PUTs can wear the flash filesystem and the SCD30's NVM — a write that changes nothing is skipped (compare-before-write, G.2) | `src/asy_webserver_service.py` (`ROUTES`, `_SYSTEM_CMDS`, `_put_status()`); `src/asy_system_service.py`'s `machine.bootloader()` → `reset_usb_boot()` (`ports/rp2/modmachine.c:91-97`, v1.29.0; RP2040 datasheet 2.8.3.1.5, Table 168, `_reset_to_usb_boot`: "re-start in BOOTSEL mode") |
+| 2 | Unauthenticated writes | STA, AP | accepted limitation (owner, 2026-09-26): every config PUT (`/sensors`, `/networking`, `/system`, `/notification`), including the Wi-Fi credentials — a wrong SSID or password takes the unit off the LAN: it falls back to its hotspot and, after a second failed streak, to the silent mode, from which only a reboot reopens the hotspot (A.4) — the hotspot password, and the SCD30's NVM-backed fields; the sensor actions `ResetVOC` (the SGP40's VOC algorithm restarts and its FRAM backup is deleted) and `Calibrate` (the ISL29125's gain-ratio measurement; it changes no setting on its own); the notification LED commands `LightCmdLED` (a colour signal of up to 60 s) and `PauseTime` (the automatic LED paused up to 3600 s); `SystemCmd` `reboot`; `bootloader` (the unit stays in the RP2040's USB bootloader until power-cycled or reflashed); `mempause` (FRAM writes paused for 300 s); `resetconfig` ("Reset to defaults": every config file deleted, Wi-Fi and identity included, so the unit returns as its hotspot with its TOML hostname and hotspot password until set up again); `erasefram` ("Erase FRAM": every FRAM error log and the SGP40 backup destroyed, irreversibly); `/status` `ResetErrors` (every error history cleared, irreversibly); on `dev` only, `/uart` `UartHazards` (one bounded hazard run across the board's UART link, then the echo resumes; dispatch-only and never persisted, so no boot starts one; a mode decided on the owner's behalf for review (agent, 2026-10-21) to prove the hazards under API load, as E.6.6's `uart-hazards-under-api-load` row records; listed under this limitation (agent, 2026-10-22)). Every system command except `mempause` runs the controlled shutdown (A.8, owner, 2026-09-30): the reply goes out first, pending config writes are flushed and FRAM drained before the supervised tasks stop, then the unit resets or enters the bootloader — so an unauthenticated command costs availability, never an accepted write; from its acceptance every config PUT, `mempause` and `ResetErrors` answer "Failed", and a command of another purpose is refused ("Failed") while its shutdown runs. A system command runs only when the request carries its exact action word (owner, 2026-09-30) — a guard against a bare or mistyped call, not access control. No write-rate limit (owner, 2026-09-26): the project's own clients write only on an explicit user action and never repeat a PUT; a third-party client that loops PUTs can wear the flash filesystem and the SCD30's NVM — a write that changes nothing is skipped (compare-before-write, G.2) | `src/asy_webserver_service.py` (`ROUTES`, `_SYSTEM_CMDS`, `_put_status()`); `src/asy_system_service.py`'s `machine.bootloader()` → `reset_usb_boot()` (`ports/rp2/modmachine.c:91-97`, v1.29.0; RP2040 datasheet 2.8.3.1.5, Table 168, `_reset_to_usb_boot`: "re-start in BOOTSEL mode") |
 | 3 | Information any client can read | STA, AP | accepted (owner, 2026-09-26): every GET of A.8 — measurements and settings, the SSID, hostname, country, IP configuration, uptime and reset reason, firmware and website versions and build info, every module's error history; the Wi-Fi and hotspot passwords are always masked (`********`) | A.8; `src/asy_wifi_service.py` `_cfg_overlay()` |
 | 4 | mDNS responder on UDP 5353 | STA, AP | accepted (agent, 2026-10-20; owner-reviewed, 2026-11-06): answers for and announces the hostname | compiled into the rp2 build (`extmod/lwip-include/lwipopts_common.h:60`, included by `ports/rp2/lwip_inc/lwipopts.h:15`, v1.29.0) and attached to every interface (`extmod/cyw43_config_common.h:110-115`) |
 | 5 | ICMP echo; an IPv6 link-local address with stateless autoconfiguration, and ICMPv6 | ICMP: STA, AP; IPv6: STA | accepted (agent, 2026-10-20; owner-reviewed, 2026-11-06): lwIP's ICMP default and the rp2 port's IPv6 setting | `lib/lwip/src/include/lwip/opt.h:875` (`LWIP_ICMP` 1), `ports/rp2/lwip_inc/lwipopts.h:8` (`LWIP_IPV6` 1), `lib/cyw43-driver/src/cyw43_lwip.c:229-234` (STA interface only; cyw43-driver `055d642`) |
@@ -4287,7 +4290,7 @@ logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM 
 | Supervisor | `SystemService.supervise_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; a system command's shutdown sequence cancels it once it parked and awaits it (A.8); cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` or `STACK_EXHAUSTED` at the escalation, its code recorded before that write, a `MemoryError` there still arming the reset and a write that never ends leaving the watchdog's reset to read the code; its own fault persists one `SUPERVISOR_RAISED` entry, then it ends unfed and the watchdog resets (`ResetReason` 2, A.8) |
 | Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | `_shutdown_sequence()`: a step's own failure is logged where it happens (a flush's `CALLBACK` entry), any other persists `UNEXPECTED`; past the quiesce FRAM is paused, so an entry from there on reaches the console and the RAM log only; no reset is armed and nothing feeds, so the watchdog resets with the record the sequence left, and the next boot's `ResetReason` carries the outcome |
 | Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush logs a failing store's `CALLBACK` entry, any other failure `UNEXPECTED`; FRAM is paused by then, so either reaches the console and the RAM log only; nothing feeds after it, so the watchdog resets |
-| Hazard initiations | `UARTLinkDriver._two_initiations()` (`asy_uart_link_driver.py`), in each hazard run of dev's initiator | two initiations at once on one instance are the hazard under test (J.2), so each runs as its own task beside the other; on demand from `PUT /status`'s `UartHazards`, never at boot (agent, 2026-10-22) | two per hazard run, each one `UARTComm.uart_set()`; the run awaits both, and its `finally` cancels one not yet done when the run itself is cancelled | `UARTLinkDriver._initiate()`: `except Exception` → `err_s` with `UNEXPECTED`, and that initiation's verdict reads None |
+| Hazard initiations | `UARTLinkDriver._two_initiations()` (`asy_uart_link_driver.py`), in each hazard run of dev's initiator | two initiations at once on one instance are the hazard under test (J.2), so each runs as its own task beside the other; on demand from `PUT /uart`'s `UartHazards`, never at boot (agent, 2026-10-22) | two per hazard run, each one `UARTComm.uart_set()`; the run awaits both, and its `finally` cancels one not yet done when the run itself is cancelled | `UARTLinkDriver._initiate()`: `except Exception` → `err_s` with `UNEXPECTED`, and that initiation's verdict reads None |
 <!-- tasks:end -->
 
 A task that ends raising with nobody awaiting it, a row's or a starter's that dies between two
@@ -5821,7 +5824,7 @@ and `scd30_extra_write`.
 | `hot-replug-manual` | `test_digital_twin_hot_replug` | automated L3, L4 (manual mode only) | an unplug and replug of a live chip needs a human or a switching rig; its manual L4 steps are `manual/manual_bus_electrical.py`'s I2C and FRAM unplug-replug (F.2) | (structural: manual mode, 2026-10-14) | — |
 | `timer-pool-under-graph` | `scenarios.a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog` | L3, L4 | the product's failed-arm paths run at L3 beside the running graph on an emptied alarm pool (`flash/test_task_supervisor.py`, `timer_pool_empty_beside_the_graph.py`; the platform's `ENOMEM` alone: `timer_alarm_pool_exhaustion.py`, F.2); the dropped boot stagger fire is the twin runner's `--test-drop-timer-fire`, and silicon proves each half apart: a soft-Timer fire dropped by a saturated scheduler (`flash/test_bus_electrical_timing.py`, `scheduler_saturation_drop.py`) and a timer start that never ends, left to the watchdog (`bench/test_reset_reasons.py`'s boot phase 4 hang, code 14) | (agent, 2026-10-14; owner-reviewed, 2026-11-06); the dropped stagger fire and the failed arms beside the graph (agent, 2026-11-06) | — |
 | `ntp-responder-modes` | `test_digital_twin_ntp`, and the clock-jump family's first sync from rp2's boot-default clock and next sync after an `NTPOffset` change | L3, L4 | each needs a scriptable NTP server on the unit's network, which the bench lacks: the failing replies, an outage from boot, a returning server and those two syncs (the clock-jump family's other cases run at L3 under a stepped RTC, `flash/test_task_supervisor.py`); the responder's own checks test the twin's instrument | (agent, 2026-10-14); an accepted limitation (owner, 2026-11-06: "almost no added value at a very high cost"); the clock-jump syncs, by that ruling (agent, 2026-11-06) | — |
-| `uart-hazards-under-api-load` | the UART comm hazards and the field sweep under API load, through `PUT /status`'s `UartHazards` on dev: two initiations on one instance, both ends transmitting and the first-chunk field sweep, while readers GET `/status` | L4's silicon run (owed); L2 and L4 for the two hazards outside the mode | written at L2 (`tests/test_digital_twin_uart_link.py`'s `test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict`: three readers on the driven clock, every verdict read back through `GET /status`, no late feed, no reset) and at L4 (`bench/test_uart_link_under_api_load.py`'s `test_a_hazard_run_under_the_readers_load_reports_every_verdict`: three readers until the run ends, every verdict judged as the twin judges it, the echo resumed, no task ended), the bench test collected only and its silicon run owed; both ends transmitting runs from the initiator alone, a raw GET with a SET right behind it, since the live listen loop holds the responder's transmit; the stalled transmit stays outside the mode, since a UART re-init takes the port and pins anew (`asy_uart_driver.py`'s `init()`) and the driver keeps neither, and so does `clear()` racing a transaction, both at L3 with `main.py` stopped (`flash/test_uart_crossover.py`) | the hazards proven under API load (owner, 2026-10-21, asked "Leave the UART hazards under API load untested?": "b - system shall be proven stable unter max load allover"); the hazard mode as their form and the two hazards left out, decided on the owner's behalf for review (agent, 2026-10-21) | — |
+| `uart-hazards-under-api-load` | the UART comm hazards and the field sweep under API load, through `PUT /uart`'s `UartHazards` on dev: two initiations on one instance, both ends transmitting and the first-chunk field sweep, while readers GET `/status` | L4's silicon run (owed); L2 and L4 for the two hazards outside the mode | written at L2 (`tests/test_digital_twin_uart_link.py`'s `test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict`: three readers on the driven clock, every verdict read back through `GET /status`, no late feed, no reset) and at L4 (`bench/test_uart_link_under_api_load.py`'s `test_a_hazard_run_under_the_readers_load_reports_every_verdict`: three readers until the run ends, every verdict judged as the twin judges it, the echo resumed, no task ended), the bench test collected only and its silicon run owed; both ends transmitting runs from the initiator alone, a raw GET with a SET right behind it, since the live listen loop holds the responder's transmit; the stalled transmit stays outside the mode, since a UART re-init takes the port and pins anew (`asy_uart_driver.py`'s `init()`) and the driver keeps neither, and so does `clear()` racing a transaction, both at L3 with `main.py` stopped (`flash/test_uart_crossover.py`) | the hazards proven under API load (owner, 2026-10-21, asked "Leave the UART hazards under API load untested?": "b - system shall be proven stable unter max load allover"); the hazard mode as their form and the two hazards left out, decided on the owner's behalf for review (agent, 2026-10-21) | — |
 | `webserver-concurrency-bench` | `scenarios.above_max_connections_all_flaky_survives`, `scenarios.all_flaky_connections_dont_wedge_the_server`, `scenarios.above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds`, `scenarios.mixed_healthy_and_flaky_connections_dont_wedge_the_server`, `scenarios.connection_count_fluctuating_in_real_time_server_stays_healthy`, `scenarios.existing_connections_survive_an_overflow_burst_untouched`, `scenarios.a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection`, `scenarios.realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully`, `scenarios.high_concurrency_burst_at_historical_segfault_repro_scale_survives`, `scenarios.the_accept_queue_is_never_shallower_than_the_admission_ceiling` and `scenarios.a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response`: flaky connections at and past the ceiling, arrivals fluctuating over time, slow connections through an overflow burst, a ceiling of silent connections reclaimed, a tab past the ceiling beside polling, bursts at three times the ceiling, a stalled loop's backlog, a held close | L3, L4 | L3 has no network; the client shapes reach the bench's HTTP and their counterparts are gaps until written (the bench's nearest: twice the ceiling once, `bench/test_end_to_end_timing.py`; one trickled request reclaimed and a misbehaving-client load beside a held console port, `bench/test_network_resilience.py`); the stalled loop and the held close are the twin runner's `--test-stall-loop-ms` and `--test-hold-closing-slot`, which the shipped firmware lacks | (agent, 2026-11-06) | — |
 | `webserver-requests-bench` | `scenarios.client_gone_mid_response_is_counted`: a client gone mid-response counted | L3, L4 | a client gone mid-response needs the twin runner's `--test-pin-send-buffer` to hold the write open, and on silicon the abrupt close races the write, so the bench's `test_abrupt_disconnect_mid_response_does_not_hang_the_server` judges no count; the negative Content-Length and each refusal at the ceiling counted once run at L4 (`bench/test_network_resilience.py`) | (agent, 2026-10-14; owner-reviewed, 2026-11-06); by scenario (owner, 2026-11-06, asked per-scenario or per-family ids: "Option A"); the client gone mid-response (agent, 2026-11-06) | — |
 | `rest-and-site-bench` | `scenarios.refused_config_write_is_logged_and_the_next_one_lands`, `scenarios.real_website_production_js_entry_is_served_not_the_prototype`, `scenarios.a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website` and `scenarios.real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live`: a config write the flash refuses, the served app bundle, a ceiling of page-and-bundle loads, one live server's redirect across a hotspot, station and hotspot again | L3, L4 | the refusal is a read-only mode the twin sets on its host's config file and directory, which rp2's littlefs does not have; the bench reads the page (`website_identity`) and loads it under a full ceiling (`bench/test_network_resilience.py`), but never compares `/js/app.js`, alone or under load, a gap until written; the bench's wrong-password streak reopens the hotspot on a live server (`bench/test_hotspot_role_reversal.py`) but reads no redirect across the switch, a gap until written | (agent, 2026-11-06) | — |
@@ -6357,7 +6360,7 @@ clock reads 2021-01-01 (`ports/rp2/main.c:141-145`), so every `src/` and publish
 waits for a sync: `src/`'s go through `utc_now()` (`None` until the first sync, G.2), `/status`'s
 `UTCTime` and the SGP40's VOC backup stamp read the NTP client's `ntp_clock_valid()` — true from each
 successful sync until an NTP settings change (`ntp_force_sync()`), so a sync gone stale, which clears
-only `Synced`, keeps both (owner, 2026-10-21, quoted in A.8 with `TimeStale`, the flag that shows
+only `Synced`, keeps both (owner, 2026-10-21, quoted in A.8 with `NTPSynced`, the flag that shows
 it) — while the boot signature keeps `ntp_issynced()`, read once at boot, where the two agree, and the
 NTP client's `cettime()` answers `None` until the clock was first set this boot; a persisted
 timestamp is 64-bit (`_TS_FMT = "<Q"`,
@@ -6399,7 +6402,10 @@ coroutine or an asyncio awaitable counts the deeper. The board's peak is
 stack-check error is recorded by the logger call of the handler that catches it, or by that handler's
 own `report_if_fatal()` where no logger sees it (C.7, G.2), and the supervisor reboots (reset code 20,
 A.8); a handler too deep to log raises afresh and the first outer handler that logs records it
-(measured on the pinned Unix port, sync and inside a task, 2026-11-02). A fault of the supervisor's own loop persists one SYSTEM
+(measured on the pinned Unix port, sync and inside a task, 2026-11-02). One that no handler records
+ends its task, and the supervisor's dead-task entry writes code 20 before its awaited log write, so a
+write that never ends (a lock the overflow left held) still resets reading 20 (owner, 2026-11-06).
+A fault of the supervisor's own loop persists one SYSTEM
 `SUPERVISOR_RAISED` entry (E115), refuses `ResetErrors` from then on and ends it unfed, so the
 watchdog resets with no record (reset code 2), or with the escalation's code once one was recorded.
 
@@ -7012,9 +7018,9 @@ which sets the watchdog's force trigger and so the REASON register's FORCE bit (
 (`tools/mpremote/mpremote/main.py:406-414`). A starvation, a firmware `machine.reset()` and an
 `mpremote reset` therefore all read `WDT_RESET`, and no test or diagnosis may use `reset_cause()` to
 tell an intended reset from a starvation: the decoded reset record above is the discriminator. A
-harness `hard_reset()` writes no record: it decodes as "watchdog without a record" (2) after a
-completed boot and as a boot failure in phase p when it interrupted one; a test that needs an
-intended reset attributed issues it through the REST reboot path (agent, 2026-09-29).
+harness `hard_reset()` of a running board reads 21 (`RR_INTERRUPTED`); the boot after a flash-tier
+session, whose scripts run with the firmware stopped, read 2 on the bench (2026-11-06); a test that
+needs an intended reset attributed issues it through the REST reboot path (agent, 2026-09-29).
 
 **The chip keeps what `reset_cause()` collapses; the firmware does not read it.** On the bench the
 watchdog's REASON register (0x40058008, bits TIMER and FORCE) tells a `machine.reset()` (FORCE)
@@ -7575,8 +7581,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
   which never narrows a validated value at runtime. `bool` is not an `int` here (F.1). Never
   hand-roll a cast or range comparison.
 - **Caller-supplied callback dispatch guarding** — the `_dispatch_system_cmd()` (through
-  `_run_system_cmd()`)/`_run_status_cmd()` (`add_status_command()`'s callbacks, A.8)/
-  `_dispatch_notification_led()`/`_dispatch_notification_pause()` shape:
+  `_run_system_cmd()`)/`_dispatch_notification_led()`/`_dispatch_notification_pause()` shape:
   validate payload (`"Invalid"`), `try/await` the callback, `except Exception` → `err_s(...)` →
   `"Failed"`; a callback answering `False` is `"Failed"` too.
 - **REST response envelope construction** — `asy_api_response.py`'s `make_response()` only, never a
@@ -7925,7 +7930,7 @@ mirrored from `src/`, G.2, imported by the mock and the production modules), `fi
 formatting, no DOM dependency), `render.js` (controller, delegates DOM to `templates.js`),
 `templates.js` (DOM/markup layer, H.3), `nav.js` (drawer wiring), `poll-manager.js`
 (single-flight queue + shared fetch-timeout), `mock-server.js` (prototype-only fake backend
-answering the six REST paths, A.8, from data composed out of `mockdata/samples.json`).
+answering the REST paths the definitions declare, A.8, from data composed out of `mockdata/samples.json`).
 `tests_js/_expected_display.js` is the expected-display helper the Node-context and browser tests
 share (H.7, H.8.1).
 
@@ -8022,7 +8027,7 @@ call evades it.
 | Page model | Single-page shell, JS-driven view switching | One HTML skeleton; menu swaps sections via JS, no reload — makes the poll-manager's single-active-poll rule trivial. Each menu selection is a `#<key>` history entry, so Back and Forward walk the sections and a `#<key>` URL opens its section (owner, 2026-10-01, asked about "The website meets an accessibility baseline": 'I want "back" to move backwards through the sensor subpages openend through the menu as well (actually the most intuitive way)'). |
 | Definitions file | One JSON per device, fetched once | Covers nav, labels, units, ranges, special values (H.5). |
 | REST target | `asy_webserver_service.py` (A.8) | Six endpoints, sparse-body PUT, no `cmd` envelope, no `Led` prefix. |
-| Nav grouping | Mirrors the 6 REST endpoints 1:1 | The placement rule, H.1. |
+| Nav grouping | Mirrors the REST endpoints 1:1 (6; dev's UART link adds `/uart`, A.8) | The placement rule, H.1. |
 | History depth | Counts always visible; full history on demand; no pagination | Each logger holds `history_length` = 10 entries (C.7), well under the 20 a realistic history stays below, and the whole history rides along in `/status`. |
 | Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently, a page only ever needing one or the other; every request, the definitions fetch at startup included, goes through the one queue (`pollManager.request(url, init, timeoutMs, signal, queueSignal)`), and its shared `AbortController` timeout covers the whole request, the body read included — `DEFAULT_TIMEOUT_MS = 15000`, see the row below for why that exact value. A section that is left drops its queued GETs; its GET on the wire runs to its end, discarded, when the next section is rendered (a switch), and is aborted when the page itself stops (before a reload), with any GET a switch handed it (agent, 2026-10-13, decided on the owner's behalf; owner-reviewed, 2026-11-06): an aborted GET would reset a connection the device is still answering, which the device logs as a peer reset (`wrnno` 48), on ordinary navigation. The cost: the next section's first GET waits for the left one, measured on the twin (2026-10-13) at a median 216.6 ms after the click against 6.6 ms when it was aborted, at most the 15 s request cap. Polling pauses while the tab is hidden. The poll interval is Part N `web.poll_interval_ms`; a page load opens `web.connections_per_page_load` connections. |
 | Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0 s, Part N `web.outer_cap_s`) | The client never waits longer than the longest request the server serves (`outer_cap_s`, applied through `asyncio.wait_for_ms()`). Equality leaves no margin in the server's favour: the client's timer starts before connect and covers the whole request, the server's cap starts after accept, so the client gives up first, by the connect-and-accept time, and the page reports a timeout, never the server's abort. The heaviest real request is `PUT /status {"ResetErrors": true}`, which resets every error source concurrently (its measured cost: C.7) — this ceiling is a product constraint for its operators, not a test-harness number. The mirror is enforced structurally by `tests_scripts/test_request_timeout_ceiling.py`, which parses `outer_cap_s` out of `src/` with `ast` and pins this constant and both test tiers' own `ResetErrors` client timeouts against it. |
@@ -8215,7 +8220,7 @@ one beside their description (agent, 2026-10-07; owner-reviewed, 2026-11-06).
 
 **What stays generator-owned rather than tag-derived**, since none of it is a per-driver fact any
 one source file owns: the six-REST-endpoint section skeleton itself (pure routing architecture,
-H.4's "mirrors the 6 REST endpoints 1:1"); the dispatch-only, webserver-level fields with no natural
+H.4's "mirrors the REST endpoints 1:1", dev's UART link section aside, A.8); the dispatch-only, webserver-level fields with no natural
 owning file (`SystemCmd`, `PauseTime`, `LightCmdLED`, `ResetErrors`, the Status section's own
 live-readonly field lists — among them the Device Clock row (`UnixTime`, which every age on the site
 is computed against), the System Status group's
@@ -8966,7 +8971,7 @@ through its user's logger (owner, 2026-10-27); `read_until_complete()` is bounde
 **`asy_uart_link_driver.py`** — construction, long-lived, fixed: the role's `UARTComm`, its callbacks
 and the bench payload buffer. Per GET served: no copy — the stored echo is answered from its own
 pieces (J.8; agent, 2026-10-27).
-Run phase, on demand (dev's initiator, `PUT /status`'s `UartHazards`): per hazard run its two
+Run phase, on demand (dev's initiator, `PUT /uart`'s `UartHazards`): per hazard run its two
 initiation tasks and its raw frame and ACK buffers, transient; `_run_hazards()` stores
 `_hazard_facts`, one small dict of three lists (the two initiations' verdicts, the crossed exchange's
 four values, one entry per swept field), replacing the last run's: long-lived, bounded by

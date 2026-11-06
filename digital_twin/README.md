@@ -720,7 +720,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    warning entry from any module but each config store's one `CFG_FILE_UNREADABLE`, its file not
    found, and each SGP40's `SGP_NO_BACKUP`, waited for, its first restore finding the backup chunk
    blank — then clear them (`ResetErrors`); with no station link the clock
-   has never synced, so `UTCTime`, `LocalTime` and `TimeStale` read null. Shut down cleanly through
+   has never synced, so `UTCTime` and `LocalTime` read null and `NTPSynced` false. Shut down cleanly through
    the stop file (`main()`'s clean path, which flushes the FRAM/SCD30 state as the `SIGINT` handler
    does; never `SIGTERM`) and confirm the state files landed on disk. Then
    relaunch on an emptied config directory beside the kept FRAM state, as a reformatted filesystem

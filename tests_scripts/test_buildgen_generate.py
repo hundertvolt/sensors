@@ -345,7 +345,7 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
     result = _real(device)
     entries = _status_entries(result.module_source, "_system_status")
     has_fram = any(k[0] == "fram" for k in result.model.instances)
-    expected = ["SysUptime", "BootSignature", "ResetReason", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale"]
+    expected = ["SysUptime", "BootSignature", "ResetReason", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime"]
     assert list(entries) == expected
     assert entries["LastTaskEnd"] == "sysfunct.get_last_task_end()"  # None until a supervised task ends this boot
     assert entries["UnixTime"] == "utc_now()"  # None until the first NTP sync, as UTCTime
@@ -356,12 +356,13 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_shows_utc_time_through_a_stale_sync_and_flags_it(device: str) -> None:
-    # UTCTime reads the clock a sync set this boot, unset only by a settings change; TimeStale is null until
-    # that first sync (as UnixTime), then NTPSynced inverted. The boot signature still reads the sync itself.
+    # UTCTime reads the clock a sync set this boot, unset only by a settings change; NTPSynced is the flag that it may
+    # have drifted. The boot signature still reads the sync itself.
     source = _real(device).module_source
     gates = [ast.unparse(n.value) for n in ast.walk(_function(source, "_system_status")) if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == "utc"]
     assert gates == ["time.gmtime() if await ntp.ntp_clock_valid() else None"]
-    assert _status_entries(source, "_system_status")["TimeStale"] == "None if utc_now() is None else not await ntp.ntp_issynced()"
+    assert "TimeStale" not in _status_entries(source, "_system_status")
+    assert _status_entries(source, "_networking_status")["NTPSynced"] == "ntp_data.Synced"
     assert "    sysfunct = SystemService(ntp.ntp_issynced, " in source
 
 

@@ -638,9 +638,10 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
   (CLAUDE.md) before anything flashes, resets or clears the board; `journalctl -k` times the USB
   disconnect. `machine.reset_cause()` reads `WDT_RESET` after a starvation, `machine.reset()` and
   `mpremote reset` alike (SPECIFICATION.md Part F.5.4), so it only separates power-on from the rest.
-  A harness `hard_reset()` or `mpremote reset` writes no record and reads as "watchdog without a
-  record"; an attach or device script that stopped the boot before it finished reads as a boot
-  failure in that phase (SPECIFICATION.md Part A.8).
+  A harness `hard_reset()` or `mpremote reset` of a running board reads 21 (interrupted); the boot
+  after a flash-tier session, whose scripts run with the firmware stopped, read 2 on the bench
+  (2026-11-06); a device script whose own build stopped before it finished reads as a boot failure
+  in that phase (SPECIFICATION.md Part A.8).
 - An `mpremote` `exec`/`run` stops `main.py`, and nothing feeds the watchdog after it, so the board
   resets about 8 s later unless the session resets it first: a device script that never feeds it
   dies ~8 s after it attaches (bench, 2026-09-25), and every raw-REPL session ends in a hard reset.
@@ -954,7 +955,7 @@ board itself and asserts the half each reset kind sets.
 | 8 | `flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty`; `bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log` | L3, L4 | not yet run |
 | 9 | `bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed`; `flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset` | L4, L3 | not yet run |
 | 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5; 11 after a power-on, a Ctrl-D soft reset with phase 1 marked and no record (`reset_code_invalid_record.py`'s STATE `boot_phase` calls `begin_boot()`): `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
-| 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code; with SYSTEM's FRAM chunk lock held, its entry write never ends and the watchdog's reset, timer bit, reads the recorded 20) | L4 | not yet run |
+| 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code; with SYSTEM's FRAM chunk lock held, its entry write never ends and the watchdog's reset, timer bit, reads the recorded 20; mode `escape`: no handler records it, the dead-task entry writes 20 before its held write) | L4 | not yet run |
 | 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed`; a harness hard reset of the serving board, whose `mpremote` Ctrl-C ends `main.py` before its `machine.reset()`: `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_a_console_interrupt`; after a power-on, a Ctrl-D soft reset inside the watchdog window: `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
 | 22 | `bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed`, an `OSError` and a `SystemExit` from the loop core (`reset_code_loop_end.py`: the frozen entry imported again after `mpremote`'s Ctrl-C, under the board's own config, no flash write) | L4 | not yet run |
 
@@ -1167,7 +1168,7 @@ assumption, not at a product bug.
   - The bench tier carries a multi-chunk SET under serving load (`uart_link_echo_under_serving_load.py`
     driving the initiator's public `uart_set()`), with no `src/` change, besides the link's
     transfer/failure count in `/status`'s `UARTLINK`, asserted advancing while the API is hammered.
-    The comm hazards run under API load through `/status`'s dispatch-only `UartHazards` on `dev`
+    The comm hazards run under API load through `PUT /uart`'s dispatch-only `UartHazards` on `dev`
     (SPECIFICATION.md A.8 and E.6.6): the bench tier's
     `test_a_hazard_run_under_the_readers_load_reports_every_verdict` starts one hazard run while 3
     readers GET `/status` until it ends, judges every verdict as the twin does, and checks the echo's

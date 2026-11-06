@@ -605,17 +605,17 @@ describe.each(DEVICE_IDS)("%s's generated code fields", (device) => {
     });
 });
 
-describe.each(DEVICE_IDS)("%s's generated stale-time flag", (device) => {
+describe.each(DEVICE_IDS)("%s's generated NTP sync flag", (device) => {
     const fields = (GENERATED_DEFINITIONS.get(device)?.sections ?? []).flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])));
-    const field = fields.find((candidate) => candidate.key === "TimeStale");
+    const field = fields.find((candidate) => candidate.key === "NTPSynced");
 
-    it("shows true or false read-only under its label, says what it means, and a dash until the clock is set", () => {
+    it("shows true or false read-only under its label, says the times may have drifted, and a dash when absent", () => {
         if (field === undefined) {
-            throw new Error("no TimeStale field in the generated definitions");
+            throw new Error("no NTPSynced field in the generated definitions");
         }
-        expect([field.label, field.kind]).toEqual(["Time May Be Stale", "readonly"]);
-        expect(hintText(fieldCard(field, true))).toContain("The times shown may then have drifted.");
-        expect([true, false, null].map((value) => mustQuery(fieldCard(field, value), '[data-field-key="TimeStale"]').textContent)).toEqual(["true", "false", "—"]);
+        expect([field.label, field.kind]).toEqual(["NTP Synced", "readonly"]);
+        expect(hintText(fieldCard(field, false))).toContain("the times shown may have drifted.");
+        expect([true, false, null].map((value) => mustQuery(fieldCard(field, value), '[data-field-key="NTPSynced"]').textContent)).toEqual(["true", "false", "—"]);
     });
 });
 

@@ -48,7 +48,8 @@ function groupValues(sectionKey, group, data) {
         }
         return /** @type {Record<string, unknown>} */ (data.status[/** @type {"networking" | "system" | "notification"} */ (group.key)] ?? {});
     }
-    return /** @type {Record<string, unknown>} */ (data[/** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${sectionKey}Config`)]);
+    // A section the composed data keeps no config for (dev's UART link: a command only) reads as empty, as the mock serves it.
+    return /** @type {Record<string, unknown>} */ (data[/** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${sectionKey}Config`)] ?? {});
 }
 
 /**

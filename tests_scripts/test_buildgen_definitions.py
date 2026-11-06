@@ -230,8 +230,10 @@ def test_isl29125_group_presence_matches_device_instance_set(repo_root: Path, sr
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_real_device_has_all_six_sections(repo_root: Path, src_dir: Path, device: str) -> None:
+    # Plus the UART link's own section on the one device wiring a link (owner, 2026-11-06), and on no other.
     generated = _generate(repo_root, src_dir, device)
-    assert {_str(s["key"]) for s in _sections(generated)} == {"measurements", "sensors", "networking", "system", "status", "notification"}
+    link = {"uart"} if device in devices_with("uart_link") else set()
+    assert {_str(s["key"]) for s in _sections(generated)} == {"measurements", "sensors", "networking", "system", "status", "notification"} | link
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -297,7 +299,7 @@ def test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time(repo
 
 
 # GET /status's system keys in the order the generated _system_status() publishes them; MemPaused only with FRAM.
-_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "MemFree", "MemPaused", "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime", "TimeStale")
+_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "MemFree", "MemPaused", "ConfigFaults", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime")
 
 
 def _objs(value: "JsonValue") -> "list[JsonDict]":
@@ -380,13 +382,14 @@ def test_the_device_clock_follows_utc_time(repo_root: Path, src_dir: Path, devic
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_the_stale_time_flag_follows_the_device_clock(repo_root: Path, src_dir: Path, device: str) -> None:
+def test_the_ntp_synced_row_says_the_times_may_have_drifted(repo_root: Path, src_dir: Path, device: str) -> None:
+    # The flag the owner asked for (2026-10-21, "a flag in /status showing it might be stale") is NTPSynced (2026-11-06).
     keys = [f["key"] for f in _system_status_fields(repo_root, src_dir, device)]
-    fields = {f["key"]: f for f in _system_status_fields(repo_root, src_dir, device)}
-    assert keys[-2:] == ["UnixTime", "TimeStale"]
-    assert fields["TimeStale"] == {
-        "key": "TimeStale", "label": "Time May Be Stale", "kind": "readonly",
-        "description": "True while NTP Synced is false once the clock has been set this boot: the last sync has gone stale, or an NTP setting has changed since. The times shown may then have drifted. Empty until the first sync this boot.",
+    fields = {_str(f["key"]): f for f in _fields(_group(_section(_generate(repo_root, src_dir, device), "status"), "networking"))}
+    assert keys[-1] == "UnixTime"
+    assert fields["NTPSynced"] == {
+        "key": "NTPSynced", "label": "NTP Synced", "kind": "readonly",
+        "description": "False until the first sync this boot, once the last sync has gone stale, and after an NTP setting changes until the next sync. While it is false, the times shown may have drifted.",
     }
 
 
@@ -394,7 +397,7 @@ def test_the_stale_time_flag_follows_the_device_clock(repo_root: Path, src_dir: 
 def test_every_command_and_the_error_reset_ask_before_they_are_sent(repo_root: Path, src_dir: Path, device: str) -> None:
     # The page asks before either, the API stays one command (owner, 2026-10-01: 'The API stays single command.').
     asking = [(section, group["key"], f["key"]) for section, group in _field_groups(_generate(repo_root, src_dir, device)) for f in _fields(group) if "confirm" in f]
-    hazards = [("status", "uartHazards", "UartHazards")] if any(s.driver == "uart_link" for s in build_model(device_toml(device), src_dir).instances.values()) else []
+    hazards = [("uart", "uartHazards", "UartHazards")] if any(s.driver == "uart_link" for s in build_model(device_toml(device), src_dir).instances.values()) else []
     assert asking == [("system", "command", "SystemCmd"), ("status", "resetErrors", "ResetErrors"), *hazards]
     assert all(f["confirm"] is True for _s, g in _field_groups(_generate(repo_root, src_dir, device)) for f in _fields(g) if "confirm" in f)
 

@@ -20,6 +20,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SPEC = _REPO_ROOT / "SPECIFICATION.md"
 _SRC = _REPO_ROOT / "src"
 _WEBSERVER = _SRC / "asy_webserver_service.py"
+_UART_LINK = _SRC / "asy_uart_link_driver.py"  # the bench link's own routes, served where a device wires one
 _HEADING = "## A.11 "
 # The floors: a derivation that broke and found nothing fails here instead of passing every check vacuously.
 _MIN_PUT_ROUTES = 5
@@ -62,21 +63,24 @@ def _missing(text: str, names: "Iterable[str]") -> "list[str]":
     return sorted(name for name in set(names) if f"`{name}`" not in text)
 
 
-def _module_literal(name: str) -> object:
+def _module_literal(name: str, source: Path = _WEBSERVER) -> object:
     # A module-level `name = ...` or `name = const(...)` of the webserver, read from source as buildgen reads ROUTES.
-    for node in ast.parse(_WEBSERVER.read_text(encoding="utf-8")).body:
+    for node in ast.parse(source.read_text(encoding="utf-8")).body:
         if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == [name]:
             value = node.value
             if isinstance(value, ast.Call) and ast.unparse(value.func) == "const" and len(value.args) == 1:
                 value = value.args[0]
             return ast.literal_eval(value)
-    pytest.fail(f"{_WEBSERVER.name} assigns no module-level {name}")
+    pytest.fail(f"{source.name} assigns no module-level {name}")
 
 
 def _put_paths() -> "list[str]":
-    # The paths of ROUTES' PUT rows, each row (method, path, handler name).
+    # The paths of ROUTES' PUT rows, each row (method, path, handler name): the webserver's, then the UART link's own.
     rows = _module_literal("ROUTES")
     assert isinstance(rows, tuple), f"ROUTES in {_WEBSERVER.name} is a {type(rows).__name__}, not a tuple of rows"
+    link_rows = _module_literal("ROUTES", _UART_LINK)
+    assert isinstance(link_rows, tuple), f"ROUTES in {_UART_LINK.name} is a {type(link_rows).__name__}, not a tuple of rows"
+    rows += link_rows
     paths: list[str] = []
     for row in rows:
         match row:

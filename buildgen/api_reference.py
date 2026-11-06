@@ -1,6 +1,6 @@
-"""Generates a device's REST API reference (SPECIFICATION.md Part A.8): every `asy_webserver_service.ROUTES` route, with
-its fields from the device's website definitions, plus the four result words, the envelope's code texts and the two
-failure shapes, each read from `src/` by AST (buildgen never imports it). Written per device by the generator."""
+"""Generates a device's REST API reference (SPECIFICATION.md Part A.8): every `asy_webserver_service.ROUTES` route and a
+wired UART link's own, with its fields from the device's website definitions, plus the four result words, the envelope's
+code texts and the two failure shapes, each read from `src/` by AST (buildgen never imports it). Written per device."""
 
 import ast
 import json
@@ -13,6 +13,7 @@ from buildgen.model import DeviceModel
 from buildgen.source_ast import parse_source
 
 _WEBSERVER = "asy_webserver_service.py"
+_UART_LINK = "asy_uart_link_driver.py"  # a device wiring a uart_link also serves the link's own ROUTES
 _CONFIG_MANAGER = "asy_config_manager.py"
 _API_RESPONSE = "asy_api_response.py"
 _BASE_CLASSES = "asy_base_classes.py"
@@ -117,24 +118,24 @@ def _read_wire_text(src_dir: Path, filename: str, name: str, device: str) -> str
     return text
 
 
-def _read_routes(src_dir: Path, device: str) -> "list[tuple[str, str]]":
-    # ROUTES' (method, path) pairs in registration order; a row of any other shape, or a repeat, fails here.
-    rows = _module_literal(src_dir, _WEBSERVER, "ROUTES", device)
+def _read_routes(src_dir: Path, device: str, filename: str = _WEBSERVER, routes: "list[tuple[str, str]] | None" = None) -> "list[tuple[str, str]]":
+    # ROUTES' (method, path) pairs in registration order, after `routes`; a row of any other shape, or a repeat, fails here.
+    rows = _module_literal(src_dir, filename, "ROUTES", device)
     if not isinstance(rows, tuple):
         raise BuildError(
-            device, f"{src_dir / _WEBSERVER}: ROUTES is a {type(rows).__name__}, not a tuple of rows", field="ROUTES",
+            device, f"{src_dir / filename}: ROUTES is a {type(rows).__name__}, not a tuple of rows", field="ROUTES",
             rule="api.routes-not-tuple", fix="write ROUTES as a tuple of (method, path, handler name) rows",
         )
-    routes: list[tuple[str, str]] = []
+    routes = list(routes or [])
     for row in rows:
         if not (isinstance(row, tuple) and len(row) == _ROUTE_ROW_LEN and all(isinstance(part, str) for part in row) and row[0] in _METHODS and row[1].startswith("/")):
             raise BuildError(
-                device, f"{src_dir / _WEBSERVER}: ROUTES row {row!r} is not (a method of {_METHODS}, '/<path>', a handler name)", field="ROUTES",
+                device, f"{src_dir / filename}: ROUTES row {row!r} is not (a method of {_METHODS}, '/<path>', a handler name)", field="ROUTES",
                 rule="api.routes-row-malformed", fix='write the row as ("GET" or "PUT", "/<path>", "<handler name>")',
             )
         if (row[0], row[1]) in routes:
             raise BuildError(
-                device, f"{src_dir / _WEBSERVER}: ROUTES lists {row[0]} {row[1]} twice", field="ROUTES",
+                device, f"{src_dir / filename}: ROUTES lists {row[0]} {row[1]} twice", field="ROUTES",
                 rule="api.routes-duplicate", fix=f"list {row[0]} {row[1]} once in ROUTES",
             )
         routes.append((row[0], row[1]))
@@ -178,6 +179,8 @@ def generate_api_reference(model: DeviceModel, src_dir: Path) -> JsonDict:
     # `model` validated and in construction order, as for generate_definitions(). A definitions section naming a
     # route the table does not register fails the build: the page would call an API the device lacks.
     routes = _read_routes(src_dir, model.device)
+    if any(spec.driver == "uart_link" for spec in model.instances.values()):
+        routes = _read_routes(src_dir, model.device, _UART_LINK, routes)
     by_route: dict[tuple[str, str], JsonDict] = {}
     errcount_groups: list[tuple[JsonValue, list[JsonDict]]] = []
     for section in _items(generate_definitions(model, src_dir)["sections"], "sections", model.device):

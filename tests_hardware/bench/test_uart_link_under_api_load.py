@@ -299,7 +299,7 @@ def _uart_modules() -> "list[str]":
 
 
 def check_hazard_run_under_load(dut_ip: str, reason: str) -> None:
-    # PUT /status's dispatch-only UartHazards starts one run while readers GET /status until it ends: every verdict as
+    # PUT /uart's dispatch-only UartHazards starts one run while readers GET /status until it ends: every verdict as
     # the twin judges it, every read answered, the echo resumed with no failure counted, no webserver error and no task ended.
     _require_uart_modules(dut_ip)
     reset_all_error_logs(dut_ip, reason)
@@ -312,8 +312,8 @@ def check_hazard_run_under_load(dut_ip: str, reason: str) -> None:
     try:
         for thread in threads:
             thread.start()
-        put = http_client.fetch(dut_ip, 80, "PUT", "/status", {"UartHazards": True}, timeout_s=_REQUEST_BUDGET_S)
-        assert put.status_code == 200 and put.json().get("result") == {"UartHazards": "Valid"}, f"PUT /status did not start the hazard run: {put.status_code} {put.body[:120]!r}"
+        put = http_client.fetch(dut_ip, 80, "PUT", "/uart", {"UartHazards": True}, timeout_s=_REQUEST_BUDGET_S)
+        assert put.status_code == 200 and put.json().get("result") == {"UartHazards": "Valid"}, f"PUT /uart did not start the hazard run: {put.status_code} {put.body[:120]!r}"
         wait_until(lambda: _hazard_run_ended(dut_ip, runs), timeout_s=_HAZARD_RUN_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="the hazard run's end under the readers' load")
     finally:
         stop.set()
