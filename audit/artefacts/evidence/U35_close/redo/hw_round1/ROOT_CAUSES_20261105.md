@@ -468,3 +468,51 @@ So the stall is the `/status` build's CPU time, mostly `errcount`, held without 
 **Owed archive fact, `SGP40 W35,W33` after the DNS and NTP tests (`20261106T162825Z`):** yes, the board booted inside each. DNS: uptime 100 s to 93 s, `UTCTime` null at both reads. `connected_socket_rejects`: uptime 130 s to 70 s. A boot with no NTP writes and restores undated backups.
 
 **`SGP40 W65` read at 17:12:** already in item 5's session-end read at 17:02 (counter 2), so before the reflash. That session's `erase_reboot_and_mempause` erased FRAM. The flash log between 17:08 and 17:12 shows no FRAM step.
+
+## 21. The clean-chroot legs (2026-11-06, 17:47-20:25 UTC; written 20:32)
+
+Neither leg passes. Both ran a clean clone of `bc2b92c7`, so neither carries the `/status` stall fix `b28a9e2f`. No board contact. Logs: `logs/day2_20261106/chroot_evidence/{noble,trixie}/` (git-ignored).
+
+| | noble | trixie |
+|---|---|---|
+| OS, compiler | Ubuntu 24.04, gcc 13.3.0 | Debian 13, gcc 14.2.0 |
+| Ran (UTC) | 17:47-18:57 | 18:59:55-20:24:58 |
+| `uv sync`, lint, typecheck | 0, 0, 0 | 0, 0, 0 |
+| `env --tier generic` | not run | 0, Node v24.22.2 |
+| `scripts/test.sh` | **1** | **1** |
+| `tests_scripts` | 6,865 passed, 66 failed | 6,931 passed, 0 failed |
+| MicroPython tests and scenarios | 5,837 passed, 6 failed | 5,827 passed, 16 failed |
+| Memory markers | 1 line, a test's fixture text | 0 lines |
+
+Both: ruff 0.16.10, mypy 2.4.0, uv 0.8.17, parallelism 16 (4 cores x 4).
+
+**Node.** All 66 noble failures read "node is not on PATH". CLAUDE.md's recipe never installs Node. With `env --tier generic` and Node on PATH, trixie's whole tier passes. The noble leg has not yet run these 66 with Node.
+
+**Trixie's 16 failures.** 15 are scenarios:
+- `static_site_is_served_over_real_http` on arzi, grkizi, klkizi, schlafzi, wozi (feed gap only)
+- `a_real_bus_fault_degrades_to_a_clean_response_not_a_crash` on arzi, grkizi, klkizi, schlafzi (feed gap only: 15,309, 11,688, 11,668, 11,465 ms)
+- on dev: `above_max_connections_all_flaky_survives`, `a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website`, `failed_config_snapshot_is_sent_as_unavailable` (8,691 ms), `loop_lag_under_combined_load` (1,399,067 us against 925,000 us)
+- `mempause_over_real_http_reaches_the_real_fram_manager` on schlafzi (9,924 ms); `a_bounded_fault_storm_persists_only_what_its_events_allow` on wozi
+
+The 16th is `test_digital_twin_bus_hazard_concurrency`, `test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call`: TimeoutError.
+
+**Feed gaps above 6,000 ms, per job** (the 9,014-9,035 ms entry in each is another boot, one per job in both legs, not traced here):
+
+| Device | noble | trixie |
+|---|---|---|
+| arzi | 9,020, 7,599 | 15,309, 9,015, 7,230 |
+| dev | 9,030, 7,605 | 9,029, 8,691, 7,432 |
+| grkizi | 9,025, 7,620 | 11,688, 9,026, 7,154 |
+| klkizi | 9,029, 7,567 | 11,668, 9,014, 7,115 |
+| schlafzi | 9,015, 7,628 | 11,465, 9,924, 9,014, 6,854 |
+| wozi | 9,027, 7,596 | 12,687, 9,035, 7,980 |
+
+The median boot reads 1,313-1,796 ms in both legs.
+
+**What this says about the first shared boot.** Its gap came back on all six devices (noble 7,567-7,628 ms, trixie 6,854-7,980 ms). So it is not a chance one-off pause. Trixie's spread of 1,126 ms, against noble's 61 ms, is no longer the signature of one shared event. Cause not established. Inferred: CPU contention at the jobs' common start, with 16 jobs on 4 cores. Not excluded: a cost in the boot or its first scenario that needs the load to show.
+
+**Which scenario.** The gap is reported only at shutdown and no line carries a time, so a log cannot place it. One bound: trixie's dev boot 1 held only `above_max_connections_all_flaky_survives` (17.5 s) and read 7,432 ms, so there the gap fell in that boot's start or that one scenario. Kernel log: "Possible SYN flooding" on loopback twin ports at 19:56:23-19:56:46, about a minute after trixie's `test.sh` began (noble: 18:26:54 and 18:27:13). No I/O or hung-task line. These lines say a listener's queue overflowed, not why.
+
+**Owed: the boot console after `real_sta_connect`'s teardown reset (`20261106T172040Z`).** Not saved. `boot-log.txt` there has no "Both blocks valid but different data" line, and it was last written at 17:23:20, so it cannot name the chunk. The torn-write reading stays inferred.
+
+**Process.** The 19:04 and 19:15 relays were on the branch when the owner asked me about timing at 20:05. I read the leg's log and did not fetch, so trixie ran on past the owner's 19:15:43 order to stop it. The owner, after that exchange: "okay, but don't start anything after this for today". So the reflash, the five reruns and the noble rerun did not start. The board stays on the 17:08:25Z image.
