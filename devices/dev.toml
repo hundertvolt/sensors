@@ -167,7 +167,7 @@ name_ext = "init"
 bus = "uart0"
 role = "initiator"
 # The receive cap: the protocol's own default, its largest train at the default payload size
-# (254 x 48 B), so the generated limits equal DEFAULT_LIMITS (agent, 2026-10-08; Part J.8).
+# (254 x 48 B), so the generated limits equal DEFAULT_LIMITS (Part J.8).
 max_transfer_bytes = 12192
 
 [instance.wiring]

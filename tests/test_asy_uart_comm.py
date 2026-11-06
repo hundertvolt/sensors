@@ -128,7 +128,7 @@ _HAMMER_RUN_BOUND_S = 120
 _FLUSH_RECOVERY_TRIES = 5
 _HOLD_OFF_LOOK_MS = 30
 # The drain of a listener whose stall is permanent, no frame ever reaching its next round: the verdict does not depend
-# on it, so it only has to outlast a listener that does finish (agent, 2026-10-27).
+# on it, so it only has to outlast a listener that does finish (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 _STALL_DRAIN_S = 1
 
 
@@ -3362,9 +3362,9 @@ def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
 
 
 def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
-    # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears J.6's
-    # 27-byte whole-frame floor but not its 80-byte per-poll floor. Kept rather than relaxed (agent, 2026-09-13), a
-    # drain must survive a peer that does not stop (SPECIFICATION.md Part J.1).
+    # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears J.6's 27-byte whole-frame floor
+    # but not its 80-byte per-poll floor. Kept rather than relaxed (agent, 2026-09-13; owner-reviewed, 2026-11-06), a drain
+    # must survive a peer that does not stop (SPECIFICATION.md Part J.1).
     def deployed(rxbuf: int) -> UARTComm:
         bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, rxbuf=rxbuf, poll_wait_ms=2, poll_idle_ms=50, crc=CRC16())
         bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]

@@ -170,7 +170,7 @@
     "ResetReason": {
       "0": {"text": "unknown (the record's magic or check word is wrong)"},
       "1": {"text": "power-on (also the RUN pin, RP2040 datasheet §4.7.4)"},
-      "2": {"text": "watchdog without a record (a starvation, machine.reset() from outside the firmware, mpremote reset)"},
+      "2": {"text": "watchdog without a record (a starvation, machine.reset() from outside the firmware with no run to interrupt)"},
       "3": {"text": "reboot command"},
       "5": {"text": "supervisor escalation (task-error budget)"},
       "6": {"text": "watchdog starve after the reset timer could not be armed"},
@@ -183,7 +183,7 @@
       "14": {"text": "boot failure in phase 4 (timer starts), the watchdog reset or the boot entry's reset followed"},
       "15": {"text": "boot failure in phase 5 (first NTP sync), the watchdog reset or the boot entry's reset followed"},
       "20": {"text": "supervisor escalation (a handler recorded a C-stack overflow)"},
-      "21": {"text": "interrupted: Ctrl-C on the console ended the run, the watchdog reset or a console soft reset followed"},
+      "21": {"text": "interrupted: Ctrl-C on the console ended the run (an mpremote reset of a running board reads 21), the watchdog reset, a console soft reset or machine.reset() followed"},
       "22": {"text": "the event loop ended with an exception after boot, and the boot entry reset the chip"}
     },
     "VOCState": {

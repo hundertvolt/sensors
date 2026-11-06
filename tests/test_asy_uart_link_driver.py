@@ -18,13 +18,14 @@ from _fake_time import DrivenTime
 from _fast_sleep import FastAsyncSleep
 from _generated_tree import devices, require_fresh
 from _src_const import src_bytes, src_int
+from _strict_json import strict_loads
 from _twin_devices import bus_keywords, device_with, wiring_plan
 from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, PollRoundClock, awaited_with_listener, copied_out, transfer_limits
 from _uart_comm_hazard_common import register_both_crc_modes
 from _write_counters import WriteCountingOpen
 from machine import UART as FakeUART
 from machine import LinkPoller, UARTLink
-from microdot import Microdot
+from microdot import Microdot, Request
 from rp2 import DMA
 
 import asy_config_manager
@@ -39,7 +40,7 @@ from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make
 from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER
 from asy_uart_driver import UART
 from asy_uart_link_driver import UARTLinkDriver
-from asy_webserver_service import RouteSources, ServingLimits, WebserverService
+from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
 
 try:
     from typing import TYPE_CHECKING
@@ -658,10 +659,10 @@ def _shipped_rates() -> "tuple[PollRates, PollRates]":
     return found[0], found[1]
 
 
-# The hazard runs poll as the firmware wiring the link ships, never at a rate no device uses (agent, 2026-10-27).
+# The hazard runs poll as the firmware wiring the link ships, never at a rate no device uses (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 _SHIPPED_RATES = _shipped_rates()
 # From the request to the run's end on the driven clock, exact on any host: the measured figure in both CRC modes at
-# _SHIPPED_RATES, with no margin (agent, 2026-10-27).
+# _SHIPPED_RATES, with no margin (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 _HAZARD_RUN_VIRTUAL_MS = 22440
 
 
@@ -776,12 +777,6 @@ def _refused_link(role: str) -> UARTLinkDriver:
     return UARTLinkDriver(bus, role, limits=transfer_limits(payload_size=0), name_ext="refused")
 
 
-class _Body:
-    # A request carrying a JSON body, all _put_status() reads of one.
-    def __init__(self, body: "JsonDict") -> None:
-        self.json = body
-
-
 async def _rounds_until_done(driver: UARTLinkDriver) -> "list[bool]":
     # Starts every task the driver's starters return and counts poll rounds on the shared clock until all
     # are done; any still running after the bound is cancelled and reported as not done.
@@ -802,30 +797,45 @@ async def _rounds_until_done(driver: UARTLinkDriver) -> "list[bool]":
     return done
 
 
-def _status_service(link: "UARTLinkDriver | None") -> WebserverService:
-    # The webserver as a generated module wires it on dev, the hazard command registered on /status's PUT.
+class _Body:
+    # A request carrying a JSON body, all put_uart() reads of one.
+    def __init__(self, body: "JsonDict") -> None:
+        self.json = body
+
+
+def _dev_app(link: UARTLinkDriver) -> Microdot:
+    # The app as dev's generated module builds it: the link's own routes first, then the webserver and its static catch-all.
+    app = Microdot()
+    link.add_routes(app)
     routes = RouteSources([], {}, None, None, (), None, None, None, (), ())
-    service = WebserverService(Microdot(), routes, ServingLimits(2048, 256, 2, None, 5.0, 15.0, "127.0.0.1", 0), _uptime_s)
-    if link is not None:
-        service.add_status_command("UartHazards", link.request_hazard_run)
-    return service
+    WebserverService(app, routes, ServingLimits(2048, 256, 2, None, 5.0, 15.0, "127.0.0.1", 0), _uptime_s, static=StaticSite("/html", "index.html", lambda: False))
+    return app
 
 
-def test_a_status_put_starts_one_hazard_run_answers_each_outcome_and_writes_nothing() -> None:
-    # Dispatch-only: Valid when the run is taken, Failed while one is pending, Invalid for anything but true or on a device
-    # wiring no link; no write reaches the flash, so the persistence-write gate stays untouched.
+async def _answer(app: Microdot, method: str, body: object = None) -> "tuple[int, object]":
+    raw = b"" if body is None else json.dumps(body).encode()
+    request = Request(app, ("127.0.0.1", 12345), method, "/uart", "1.1", {"Content-Length": str(len(raw)), "Content-Type": "application/json"}, body=raw)
+    response = await app.dispatch_request(request)
+    return response.status_code, strict_loads(response.body)
+
+
+def test_a_put_to_the_links_own_route_starts_one_hazard_run_answers_each_outcome_and_writes_nothing() -> None:
+    # PUT /uart: Valid when the run is taken, Failed while one is pending and on the responder, Invalid for anything but
+    # true and for another key, code 1 for a body that is no object; GET /uart reads the report; nothing reaches the flash.
     async def go() -> None:
         pair = Pair()
         assert await pair.setup()
-        service = _status_service(pair.initiator)
-        bare = _status_service(None)
+        app = _dev_app(pair.initiator)
         with WriteCountingOpen(asy_config_manager) as cfg, WriteCountingOpen(asy_webserver_service) as web, WriteCountingOpen(asy_uart_link_driver) as own:
             answers = []
-            for svc, value in ((service, False), (service, True), (service, True), (bare, True)):
-                answers.append((await svc._put_status(_Body({"UartHazards": value})))["result"])  # type: ignore[arg-type]  # the body alone is read: no socket behind it
-            report = await pair.initiator.get_hazard_report()
-        assert answers == [{"UartHazards": INVALID}, {"UartHazards": VALID}, {"UartHazards": FAILED}, {"UartHazards": INVALID}], answers
-        assert report == {"Runs": 0, "Pending": True, "Last": None}, report
+            for body in ({"UartHazards": False}, {"UartHazards": True}, {"UartHazards": True}, {"Other": True}, [True]):
+                answers.append(await _answer(app, "PUT", body))  # one at a time: MicroPython has no await in a comprehension
+            report = await _answer(app, "GET")
+            responder = await pair.responder.put_uart(_Body({"UartHazards": True}))  # type: ignore[arg-type]  # the body alone is read
+        words = [(status, body["result"] if isinstance(body, dict) and body["code"] == 0 else body["code"]) for status, body in answers]  # type: ignore[index]
+        assert words == [(200, {"UartHazards": INVALID}), (200, {"UartHazards": VALID}), (200, {"UartHazards": FAILED}), (200, {"Other": INVALID}), (200, 1)], words
+        assert report == (200, {"Runs": 0, "Pending": True, "Last": None}), report
+        assert responder["result"] == {"UartHazards": FAILED}, responder
         assert (cfg.writes, web.writes, own.writes) == (0, 0, 0), f"the hazard command wrote to the flash: {(cfg.writes, web.writes, own.writes)}"
 
     run(go(), RUN_LIMIT_S)

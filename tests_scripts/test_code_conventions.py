@@ -20,13 +20,13 @@ _LITERAL_PORT = "src/voc_algorithm.py"
 _COLLECTOR_NAMES = {
     "get_task_starters": re.compile(r"start_asy_\w+"),
     "get_timer_starters": re.compile(r"start_timer|start_\w+_timer"),
-    # Trigger starters arm a timer, so they take the timer starters' names (agent, 2026-10-07).
+    # Trigger starters arm a timer, so they take the timer starters' names (agent, 2026-10-07; owner-reviewed, 2026-11-06).
     "get_trigger_starters": re.compile(r"start_timer|start_\w+_timer"),
 }
 _TASK_COROUTINE = re.compile(r"_\w+_loop")
 _NUMBER_NAME = re.compile(r"_?(?:ERR|WRN)_\w+")
 _CONFIG_NAME_HOME = "src/asy_config_manager.py"  # config_filename() there builds every config file name
-# The no-autostart boot entry's one module-level print(): its REPL start line (agent, 2026-09-28).
+# The no-autostart boot entry's one module-level print(): its REPL start line (owner, 2026-11-03).
 _START_LINE_ENTRY = "_main_noautostart.py"
 
 

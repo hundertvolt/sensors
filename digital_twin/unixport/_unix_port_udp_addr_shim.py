@@ -36,7 +36,7 @@ _ALLOWED_HOSTS = ("0.0.0.0",)  # the wildcard a server binds
 # claim its other interfaces, and fails beside any resolver holding one loopback address without SO_REUSEADDR.
 _WILDCARD = "0.0.0.0"
 # One loopback address per process, the runner's TEST_TWIN_HOST: two SO_REUSEADDR sockets sharing an address and port
-# hand every datagram to the one bound last, another process's included (agent, 2026-10-27). Unset, it is 127.0.0.1.
+# hand every datagram to the one bound last, another process's included (agent, 2026-10-27; owner-reviewed, 2026-11-06). Unset, it is 127.0.0.1.
 _TWIN_HOST_ENV = "TEST_TWIN_HOST"
 _DEFAULT_TWIN_HOST = "127.0.0.1"  # where every host-side talker (the CI suite, the scenario harness) reaches a twin
 # A 4-byte AF_INET sockaddr: the host kernel's connect()/bind()/sendto() reject it with EINVAL inside src/'s own try,

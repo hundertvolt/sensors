@@ -24,7 +24,7 @@ from micropython import const
 
 from asy_base_classes import UNAVAILABLE, LockedValue, TickSeconds, arm_tick_timer, utc_now
 from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg, schema_names
-from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -160,7 +160,7 @@ def begin_boot() -> int:
 
 def record_loop_end() -> None:
     # The boot entry's call when an exception other than Ctrl-C ended the loop: after BOOT_DONE it writes 22 unless a
-    # valid record names the reset already underway, which is kept (agent, 2026-10-26); during boot it writes nothing.
+    # valid record names the reset already underway, which is kept (agent, 2026-10-26; owner-reviewed, 2026-11-06); during boot it writes nothing.
     record = mem_backup(0)
     phase = mem_backup(1)
     done = phase[0] == _BP_MAGIC and phase[1] == BOOT_DONE and phase[2] == BOOT_DONE ^ _RR_CHECK
@@ -307,6 +307,9 @@ class SystemService:
         except asyncio.CancelledError:
             await self.pr.err_s("Task", name, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
+            report_if_fatal(e)
+            if fatal_reported() and not self._reset_armed:  # an overflow no handler recorded: its code ahead of the entry,
+                write_reset_record(_RR_STACK_EXHAUSTED)  # which a lock the overflow left held can keep from ending (F.1)
             await self.pr.err_s("Task", name, "ended with exception:", e, errno=_ERR_TASK_RAISED)
         else:
             await self.pr.err_s("Task", name, "ended: returned", errno=_ERR_TASK_RETURNED)
@@ -384,7 +387,7 @@ class SystemService:
             self._feed_owned = True
             self._reset_decided = True
             # Until _reboot() records the command's own code, a step that hangs ends in a watchdog reset that reads
-            # "command incomplete" at the next boot, never as an unexplained one (agent, 2026-10-08).
+            # "command incomplete" at the next boot, never as an unexplained one (agent, 2026-10-08; owner-reviewed, 2026-11-06).
             write_reset_record(_RR_COMMAND_INCOMPLETE)
             # From acceptance on every store refuses writes, so no config PUT reaches the flash or a chip: no SCD30 write
             # while the sequence runs (owner, 2026-10-02).
@@ -457,7 +460,7 @@ class SystemService:
             if purpose in (_RR_CONFIG_RESET, _RR_FRAM_ERASED):
                 self.pr.evt("Shutdown:", _purpose_name(purpose), "done" if done else "incomplete")
             # A shortfall reads 9 at the next boot: a failed delete or erase, or config the reset loses (a config reset's
-            # deletes discard it anyway). Without FRAM the reset reason is a lost write's one surviving trace (agent, 2026-10-08).
+            # deletes discard it anyway). Without FRAM the reset reason is a lost write's one surviving trace (agent, 2026-10-08; owner-reviewed, 2026-11-06).
             code = purpose if done and (flushed or purpose == _RR_CONFIG_RESET) else _RR_COMMAND_INCOMPLETE
             if purpose == _RR_REBOOT:
                 message = "Reboot triggered"

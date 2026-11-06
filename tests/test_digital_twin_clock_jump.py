@@ -83,7 +83,7 @@ async def _set_clock(module: "ModuleType") -> None:
 
 def _backup_after_a_backward_step_on(device: str) -> None:
     # The test above on one device, each boot on one driven clock: the SGP40's 1 s reset and datasheet waits pass in
-    # driven time, as the backup's age reads only the wall clock (agent, 2026-10-27).
+    # driven time, as the backup's age reads only the wall clock (agent, 2026-10-27; owner-reviewed, 2026-11-06).
     cfg_path = _scratch.dir()
     machine.configure_fram_state_path(cfg_path + "fram_state.json")
     load_device(device)  # the modules the clock drives, loaded
@@ -168,9 +168,9 @@ async def _boot(device: str, cfg_path: "str | None" = None) -> "ModuleType":
 
 
 def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleType, DrivenTime], Coroutine[object, object, T]]") -> "T":
-    # The device's real main() beside the responder (tests/test_digital_twin_ntp.py's shape): the responder's config, a
-    # station to join, the product's port 123 mapped to the responder's and the wall clock installed; the product's
-    # waits and the responder's rounds pass on one driven clock, which `scenario` drives (agent, 2026-10-27).
+    # The device's real main() beside the responder (test_digital_twin_ntp.py's shape): the responder's config, a station to
+    # join, the product's port 123 mapped to the responder's and the wall clock installed; the product's waits and the
+    # responder's rounds pass on one driven clock, driven by `scenario` (agent, 2026-10-27; owner-reviewed, 2026-11-06).
     cfg_path = _scratch.dir()
     machine.reset_peripherals()
     network.reset_test_state()

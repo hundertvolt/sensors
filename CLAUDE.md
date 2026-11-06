@@ -34,7 +34,7 @@ Three standing practices:
   MicroPython developer-forum/issue-tracker findings** — not just "is this still correct," but
   specifically "is there now a newer/better/more-complete way to do this that a stale construct is
   missing out on" (a newly widened set of types accepted by `micropython.const()`, say, or real
-  `asyncio`-level timeout support where there was none). The practice (agent, 2026-08-06, `f3f25fe`)
+  `asyncio`-level timeout support where there was none). The practice (owner, 2026-10-05)
   repeats every time `toolchain/versions.toml`'s MicroPython `ref` moves and covers every Part F fact
   and upstream file:line citation, the stub release, every item ruled out last time, and
   `toolchain/micropython_overrides.py`'s anchor checks (SPECIFICATION.md Part B.14) — each
@@ -102,7 +102,7 @@ Three standing practices:
 - **`legacy/firmware/python/CommonDrivers/microdot.py` is vendored third-party code.** Part of
   the reference-only legacy tree: never edited (legacy rule below). It is upstream commit `482ab6d`
   (#251), byte-identical to it: an untagged snapshot four commits after `v2.0.6`, before `v2.0.7` —
-  unmodified, just old (agent, 2026-09-30, compared against the upstream repository). A legacy unit
+  unmodified, just old (compared against upstream commit 482ab6d, 2026-09-30). A legacy unit
   moves forward only by the owner's reflash with fresh setup, following the reflash runbook, never
   by editing this copy. **`ext/microdot.py` is the same policy applied to the refactor
   target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.7.0` and
@@ -264,7 +264,7 @@ Three standing practices:
   *worse*, because `ready()` returns `True` with no `await` and the block simply moves into a Python
   loop. The yield lives in `ready()` itself, which every read loop goes through, so the invariant is
   one guarantee in one place rather than a per-call-site obligation. **The mirror-image failure is
-  just as forbidden** (agent, 2026-09-11, extending the owner's rule): `ready()` polls, so a
+  just as forbidden** (agent, 2026-09-11, extending the owner's rule; owner-reviewed, 2026-11-06): `ready()` polls, so a
   listener waiting on traffic that may never come must not idle at the transaction rate — an
   instance takes a second, slower `poll_idle_ms` for a wait with no deadline (Part F.5.9). Full
   account and the measured before/after: SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states
@@ -356,7 +356,7 @@ Three standing practices:
   verify, disarm pattern: SPECIFICATION.md Part B.13.
 - **The bench Pi4's `br0` bridge must always present `eth0`'s own real hardware MAC, never a
   NetworkManager-synthesized one — pin it via `bridge.mac-address`, always, on every bridge
-  creation.** (agent, 2026-09-04, `28c5d8e`: MAC drift observed on the bench) A synthesized bridge
+  creation.** (observed on the bench, 2026-09-04, `28c5d8e`; B.13) A synthesized bridge
   MAC can drift across the bridge's own lifetime, silently orphaning the router's static DHCP
   reservation. `ensure_bench_bridge()` and `tests_hardware/README.md`'s manual recipe both pin it
   (SPECIFICATION.md Part B.13).
@@ -586,7 +586,7 @@ Three standing practices:
 - **Every runner ends with the same summary block** — one PASS/FAIL line, its counts, the failures
   named and the exit code (owner, 2026-09-25; SPECIFICATION.md E.10) — and a gate's verdict is read
   from its exit status or that block, never from a truncated view of its output such as `| tail`; a
-  missing or empty verdict is a failure (agent, 2026-09-24).
+  missing or empty verdict is a failure (agent, 2026-09-24; owner-reviewed, 2026-11-06).
 - **Closing a piece of work** (owner, 2026-09-26, on the pre-merge instructions: "The examples
   contain general project style and quality requirements, so they should be treated as one essential
   part of the big picture - and of course live on in the project docs, but depending on which scope,
@@ -598,7 +598,7 @@ Three standing practices:
   in and done. The quality bar and the test standard it closes against are SPECIFICATION.md Part D
   (D.12 for unit tests) and Part E; an owner question takes the decision-records rule's form (4).
 - **Work split across subagents: small blocks, fresh agents** (owner, 2026-10-20). The question
-  (agent, 2026-10-20): a week's measured cost was about 81 % agents re-reading their own long
+  (owner, 2026-10-20): a week's measured cost was about 81 % agents re-reading their own long
   conversations, mostly from single assignments of 100-320 turns; proposed smaller blocks, each a
   fresh agent. The owner's answers: '81% of re-reading really is much, try to improve here as you
   suggested. But don't cut back on quality or depth ever.'; 'Generally, only (if at all) reuse
@@ -661,7 +661,7 @@ Three standing practices:
   `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
   is host-side pytest code that goes through `host_typecheck.ini`'s dedicated pass below instead
   (see that file's own docstring). A new file in a scope joins ruff and mypy (and, if
-  MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22), and so does
+  MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22; owner-reviewed, 2026-11-06), and so does
   every new generator, validator or host module (owner, 2026-09-10, `fc6afbe`: 'add all build
   scripts to the full CI'). `buildgen/` follows the same split as `digital_twin/`: ruff
   checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since
@@ -763,7 +763,7 @@ Three standing practices:
   (SPECIFICATION.md E.3.1's timeout retry rule). **The `needs:` edge is for
   SEQUENCING only — `unit-tests`, `unit-tests-gc-threshold`, `firmware-build-verify` and
   `web-unit-tests` carry `if: ${{ !cancelled() }}` so they still run when the job they follow
-  fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also
+  fails.** (agent, 2026-09-10, `6564ccd`; owner-reviewed, 2026-11-06) `needs:` alone also
   implies success-gating, which was never chosen here (that job's own comment says the sequencing
   "isn't required" for the hang) and would let a red `lint-and-typecheck` silently skip every Python
   test lane, hiding that the tests never ran. Keep the sequencing; never restore the gating.
@@ -837,7 +837,7 @@ Three standing practices:
   2MB default. SPECIFICATION.md Part E.3.1 holds the value's reason and Part N's `l1.unix_heapsize`
   row the value. Don't re-diagnose a flaky `MemoryError` in a
   heavy test file as a new code bug before checking the flag is still in place — and don't raise it
-  as a fix (agent, 2026-09-17); a per-file heap override hiding a symptom is never used (owner,
+  as a fix (owner, 2026-09-17); a per-file heap override hiding a symptom is never used (owner,
   2026-09-17, `1e2c001`, paraphrase).
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
@@ -872,7 +872,7 @@ Three standing practices:
   boot (`asy_udp_socket.py`), so the two tiers overlap safely.
 - **Tuned values carry `@tunable` and a Part N row, both changed in the same change** (owner,
   2026-09-25: 'updated on changing parameters or whenever such parameter is added').
-- **`ruff format` is not used anywhere** (agent, 2026-07-13) — line breaks are hand-chosen throughout this
+- **`ruff format` is not used anywhere** (agent, 2026-07-13; owner-reviewed, 2026-11-06) — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection is `select = ["ALL"]` — every non-preview
   rule ruff ships, narrowed only by an explicitly justified `ignore` list (`pyproject.toml`'s
@@ -999,7 +999,7 @@ and what counts as passing: README.md, "Build-environment verification".
   2026-07-13, `dddaafa`); don't re-ask.
 - **Always create a pull request with a meaningful description** when finishing work on a branch —
   summarize what changed and why, not just a file list.
-- **A branch counts green only when CI ran on its head commit** (agent, 2026-09-18): read the run of
+- **A branch counts green only when CI ran on its head commit** (agent, 2026-09-18; owner-reviewed, 2026-11-06): read the run of
   the head commit, not the latest finished one — a run cancelled by a later push says nothing, and
   the web filter re-compares from the last commit CI passed.
 - **Automatically subscribe to the pull request's activity** (review comments, CI results) right

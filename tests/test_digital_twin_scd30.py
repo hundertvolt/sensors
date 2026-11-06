@@ -329,6 +329,11 @@ def test_read_firmware_version_reports_the_fixed_plausible_value() -> None:
     assert _get(chip, 0xD1, 0x00) == word(0x0342)
 
 
+def test_a_read_with_no_command_pending_returns_0xdd_bytes() -> None:
+    # The bench's part answers a read before any command with 0xDD bytes (`scd30_conformance_probe.py`'s `C03_read_before_a_command`).
+    assert SCD30Chip().handle_readfrom_into(3) == b"\xdd\xdd\xdd"
+
+
 def test_readfrom_into_with_an_unrecognized_last_command_returns_zero_bytes() -> None:
     chip = SCD30Chip()
     chip.handle_writeto(bytes([0xFF, 0xFF]))  # not a command this chip recognizes

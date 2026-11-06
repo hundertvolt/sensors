@@ -366,7 +366,7 @@ graph (the script's own code costs heap production does not pay).
 
 ## M7. Remedy directions already ruled out
 
-Measured, not argued (agent, 2026-09-24, `17b4354`); each reopens with a new mechanism. Evidence:
+Measured, not argued (`17b4354`); each reopens with a new mechanism. Evidence:
 archive §6, §6A, §7.
 
 - **Cutting churn volume alone** — the outcome does not track volume; removing the *large*,

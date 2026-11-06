@@ -1376,7 +1376,7 @@ def raw_frame(
 
 # A clean SET and its listener on the driven clock: the bytes land at once, every UART wait is a driven sleep, so the
 # duration is exact on any host. J.7 states no figure; the bound is the measured 4 ms in both CRC modes with no margin
-# (agent, 2026-10-21); a delay planted in the frame write exceeds it (20 ms measured 44 ms, 100 ms 204 and 279 ms).
+# (measured 2026-10-21); a delay planted in the frame write exceeds it (20 ms measured 44 ms, 100 ms 204 and 279 ms).
 _CLEAN_TRANSACTION_VIRTUAL_MS = 4
 
 

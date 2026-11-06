@@ -1,17 +1,19 @@
 """Bench-only UART crossover-link exerciser: wraps one role's `UARTComm` over an already-built
 `asy_uart_driver.UART` bus, plus the banner/echo application logic and transfer/failure counters
 that have no home in the standalone protocol module itself. See SPECIFICATION.md Part J.7/A.7."""
-# Not a SensorReader/SensorReaderConfig subclass, like UARTComm (agent, 2026-09-11; Part J.9) -
+# Not a SensorReader/SensorReaderConfig subclass, like UARTComm (agent, 2026-09-11; Part J.9; owner-reviewed, 2026-11-06) -
 # resolved via buildgen.driver_registry._OVERRIDES.
 
 import asyncio
 
 from micropython import const
 
+from asy_api_response import make_response
 from asy_base_classes import COUNTER_CAP
-from asy_config_manager import instance_name
+from asy_config_manager import FAILED, INVALID, VALID, instance_name
 from asy_print_log import DEFAULT_LOG
 from asy_uart_comm import CMD_SET, DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm
+from asy_webserver_service import _body_as_dict  # the API's one body reading (Part G.1: reuse, never reimplement)
 
 try:
     from typing import TYPE_CHECKING
@@ -19,10 +21,12 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from asy_api_response import ResponseEnvelope, _RequestLike
     from asy_base_classes import ErrorSource, JsonDict, JsonValue, PieceBuffer, TaskStarter, TimerStarter
     from asy_print_log import ErrorLog, LogConfig, PrintLogHistory
     from asy_uart_comm import TransferLimits
     from asy_uart_driver import UART
+    from asy_webserver_service import _MicrodotApp
 
 _NAME = const("UART")
 _ERR_UNEXPECTED = const(23)  # the catalog's shared code: an exception reached a task's top
@@ -51,6 +55,13 @@ _HEADER_BYTES = const(5)  # uid, cmd, size, chunks, cur_chunk (J.3)
 _QUIET_TIMEOUTS = const(3)
 _WINDOW_TIMEOUTS = const(8)
 _HAZARD_RECOVERY_ATTEMPTS = const(2)  # after a hazard, a clean exchange within this many tries
+_HAZARDS_KEY = const("UartHazards")  # PUT /uart's one key; buildgen reads it for the website's form
+# The link's own API on dev, registered by the generated module ahead of the static catch-all (owner, 2026-11-06: "If it is
+# selected, in brings in everything it needs"); buildgen reads it for the REST reference, as the webserver's ROUTES.
+ROUTES = (
+    ("GET", "/uart", "get_hazard_report"),
+    ("PUT", "/uart", "put_uart"),
+)
 # Each field of a legal first-chunk SET and the boundary values it is swept over: the bench hazard script's set.
 _HAZARD_FIELDS = (
     ("cmd", 1, (0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0xFF)),
@@ -255,7 +266,7 @@ class UARTLinkDriver:
         # holds no error state of its own.
         return [self._comm]
 
-    async def get_hazard_report(self) -> "JsonDict":
+    async def get_hazard_report(self, _request: "_RequestLike | None" = None) -> "JsonDict":
         # The last run's facts (None before any), for a reader to judge; Pending holds from the request to the run's end.
         return {"Runs": self._hazard_runs, "Pending": self._hazard_pending, "Last": self._hazard_facts}
 
@@ -269,6 +280,17 @@ class UARTLinkDriver:
         return [self._comm.pr]
 
     # -- others ------------------------------------------------------------
+
+    def add_routes(self, app: "_MicrodotApp") -> None:
+        for method, path, handler in ROUTES:
+            (app.get if method == "GET" else app.put)(path)(getattr(self, handler))
+
+    async def put_uart(self, request: "_RequestLike") -> "ResponseEnvelope":
+        # {"UartHazards": true} answers Valid when the run is taken, else Failed; any other value or key Invalid (A.8).
+        body = _body_as_dict(request)
+        if body is None:
+            return make_response(1)
+        return make_response(0, result={key: (VALID if self.request_hazard_run() else FAILED) if key == _HAZARDS_KEY and value is True else INVALID for key, value in body.items()})
 
     def request_hazard_run(self) -> bool:
         # The dispatch-only command: refused on the responder, before setup() and while a run is pending. The exercise

@@ -58,7 +58,7 @@ def test_hostname_is_sensorstation_plus_name(devices_dir: Path, device: str) -> 
 
 
 def test_devices_of_one_hardware_family_differ_only_in_identity(devices_dir: Path) -> None:
-    # Devices naming one [device] hardware_family share their hardware (agent, 2026-09-14): every table but
+    # Devices naming one [device] hardware_family share their hardware (owner, 2026-10-23): every table but
     # name and hostname is equal; diverging hardware removes the key from that one file.
     families: dict[str, list[tuple[str, dict[str, object]]]] = {}
     for device in DEVICE_NAMES:

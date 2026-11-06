@@ -92,7 +92,6 @@ if TYPE_CHECKING:
     StatusSourceFct = Callable[[], Awaitable[JsonDict]]
     SystemCmdFct = Callable[[str], Awaitable[bool]]
     ResetRefusalFct = Callable[[], bool]
-    StatusCommandFct = Callable[[], bool]
     NotificationLedFct = Callable[[int, int, int, float], Awaitable[bool]]
     NotificationPauseFct = Callable[[int], Awaitable[bool]]
     HotspotActiveFct = Callable[[], bool]
@@ -165,7 +164,7 @@ _EPIPE = const(32)  # a refused head's errno: Microdot mutes 32 (ext/microdot.py
 
 _ERROR_STATUSES = const((400, 404, 405, 413, 500))  # the five shaped statuses SPECIFICATION.md A.5 names; each is its own envelope code (C.5.3)
 
-# The one route table: registered in this order; buildgen reads it for the REST reference (SPECIFICATION.md A.8).
+# The webserver's route table: registered in this order; buildgen reads it for the REST reference (SPECIFICATION.md A.8).
 ROUTES = (
     ("GET", "/measurements", "_get_measurements"),
     ("GET", "/sensors", "_get_sensors"),
@@ -253,7 +252,7 @@ def _drained(pieces: list[bytes]) -> "Iterator[bytes]":
 
 def _index_by_name(items: "Iterable[_Named]") -> "dict[str, _Named]":
     # Last-registration-wins, by construction (owner, 2026-08-12; SPEC A.8): the
-    # simplest per-item loop already behaves this way; no dedup/guard code on top (agent, 2026-08-12).
+    # simplest per-item loop already behaves this way; no dedup/guard code on top.
     result: dict[str, _Named] = {}
     for item in items:
         result[item.name] = item
@@ -519,7 +518,6 @@ class WebserverService:
         self._build_info = routes.build_info
         self._system_cmd = routes.system_cmd
         self._reset_refusals = tuple(routes.reset_refusals or ())
-        self._status_commands: dict[str, StatusCommandFct] = {}  # add_status_command()'s dispatch-only keys
         self._notification_led = routes.notification_led
         self._notification_pause = routes.notification_pause
         self._status_sources: dict[str, StatusSourceFct] = dict(routes.status_sources or {})
@@ -793,10 +791,6 @@ class WebserverService:
             return ar.make_response(1)
         result: dict[str, str] = {}
         for key, value in body.items():
-            command = self._status_commands.get(key)
-            if command is not None and value is True:
-                result[key] = await self._run_status_cmd(key, command)  # dispatch-only: nothing is persisted
-                continue
             if key != "ResetErrors" or value is not True:
                 result[key] = INVALID  # {"ResetErrors": true} is the one request (SPECIFICATION.md A.8)
                 continue
@@ -821,14 +815,6 @@ class WebserverService:
         if "SystemCmd" in body:
             results["SystemCmd"] = await self._dispatch_system_cmd(body["SystemCmd"])
         return ar.make_response(0, result=results)
-
-    async def _run_status_cmd(self, key: str, command: "StatusCommandFct") -> str:
-        try:  # caller-supplied callback, guarded as _run_system_cmd() guards its own (Part G.2)
-            ok = command()
-        except Exception as e:
-            await self.pr.err_s("status command failed:", key, e, errno=_ERR_CALLBACK)
-            return FAILED
-        return VALID if ok is True else FAILED
 
     async def _run_system_cmd(self, name: str) -> str:
         if self._system_cmd is None:
@@ -965,11 +951,6 @@ class WebserverService:
         return [self.pr]
 
     # -- others ------------------------------------------------------------
-
-    def add_status_command(self, key: str, command: "StatusCommandFct") -> None:
-        # A dispatch-only PUT /status key beside ResetErrors, which the generated module registers where its driver is
-        # wired: {key: true} answers Valid when command() takes it, else Failed. A RouteSources field would change its arity.
-        self._status_commands[key] = command
 
     async def reset_error_counter(self) -> bool:
         self._dropped.reset()  # ResetErrors clears the drop window too (owner, 2026-10-01)

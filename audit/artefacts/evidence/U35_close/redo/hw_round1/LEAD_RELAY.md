@@ -1,5 +1,25 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 16:54 UTC, 2026-11-06: a new image on the branch (int dbc3f0cf); reflash only after the owner's OK
+The firmware changed: the UART link has its own GET and PUT /uart on dev (the hazard tests use it), an unrecorded C-stack
+overflow that ends a task records reset code 20, the Wi-Fi console prints one line per change of connection state, and
+TimeStale is gone. Test side: wifi_radio_reinit_recovery.py keeps its watchdog fed; the held-ceiling drop test now waits
+_SLOT_RELEASE_WAIT_S before its serving probe (your 16:29 candidate holds in the source).
+Finish what runs now on the current image (item 5, the ResetReason pin with the REASON bits). Then reflash only after
+the owner's OK. After the reflash, in this order:
+  1. /status timing (the 13:15 relay's item 1) on this image: _build_status_pieces per section, send time,
+     gc.collect x3, 3 readers for 60 s at 32768.
+  2. flash: PYTEST_K="test_the_supervisor_restarts_a_real_dead_task or
+     test_a_fault_inside_the_running_graph_stops_every_feed_and_the_watchdog_resets or
+     test_one_supervisor_pass_with_every_task_ended_stays_inside_the_watchdog"
+  3. bench: PYTEST_K="test_a_hazard_run_under_the_readers_load_reports_every_verdict or
+     test_a_c_stack_exhaustion_is_attributed or test_the_radio_reinit_rung_restores_the_link or
+     test_real_sta_connect_reaches_established_after_a_hard_reset or test_a_harness_hard_reset_reads_as_a_console_interrupt
+     or test_webserver_answers_before_the_first_ntp_sync_completes or
+     test_each_refusal_at_the_ceiling_is_counted_once_in_http_dropped or test_real_clients_request_heads_fit_the_devices_head_guard"
+     (the last needs node and the repository's node_modules; if they are missing, say so rather than install).
+Report each as before.
+
 ## 14:39 UTC, 2026-11-06
 The cloud session listed as "Project audit planning [eb42f7]" is the lead: its session record is this session. Send it
 your one-line test. The lead cannot answer by message (a cloud session cannot message back yet); its answers come here.

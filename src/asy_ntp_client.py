@@ -467,7 +467,7 @@ class NTPClient(SensorReaderConfig):
         self,
     ) -> GMTimeStruct | None:  # local-time conversion
         # Gated on the clock having been set this boot, not on Synced: the RTC keeps good time after a sync goes
-        # stale, so local-time consumers (the alert window) keep running through a network loss (agent, 2026-10-06).
+        # stale, so local-time consumers (the alert window) keep running through a network loss (owner, 2026-10-21: "Clock time: Option b"; owner, 2026-10-27).
         if utc_now() is None:
             return None
         time_offs = await self.cfgmgr.get_int_values(_VAL_GMT_OFFSET + _VAL_DST_OFFSET)
