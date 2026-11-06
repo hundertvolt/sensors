@@ -130,6 +130,7 @@ class _Sender:
         self.dr = _UART_BASES[bus["id"]]
         self.dreq = _DREQ_UART_TX[bus["id"]]
         self.byte_us = 10 * 1000000 // bus["baudrate"] + 1
+        self.gap_ms = self.frame_bytes * self.byte_us // 1000 + 1  # build() adds the receiver's check of one frame
         self.deadline = time.ticks_ms()
         self.dma = rp2.DMA()
 
@@ -146,6 +147,10 @@ class _Sender:
             framed = frame if crc is None else await crc.add(frame)
             if framed is not None:
                 self.buf[i * self.frame_bytes : (i + 1) * self.frame_bytes] = framed
+            if i == 0 and crc is not None:  # the receiver's per-frame check, the driver's own call, timed for paced()
+                t0 = time.ticks_us()
+                await crc.check_from(self.buf, self.frame_bytes)
+                self.gap_ms += time.ticks_diff(time.ticks_us(), t0) // 1000 + 1
 
     async def finished(self, wdt: "machine.WDT") -> bool:
         # The stream's own wire time bounds the wait: a channel still busy past it is a fact, never a hang.
@@ -153,6 +158,13 @@ class _Sender:
             wdt.feed()
             await asyncio.sleep_ms(1)
         return not self.dma.active()
+
+    async def paced(self, wdt: "machine.WDT", count: int) -> None:
+        # The first frame, count times, one per gap_ms: no faster than the receiver checks frames in this CRC mode.
+        for _ in range(count):
+            wdt.feed()
+            self.start(0, 1)
+            await asyncio.sleep_ms(self.gap_ms)
 
     def start(self, first: int, count: int) -> None:
         view = memoryview(self.buf)[first * self.frame_bytes : (first + count) * self.frame_bytes]
@@ -227,13 +239,15 @@ def _crc() -> "CRC16 | None":
 
 
 async def _drain(driver: "asy_uart_driver.UART") -> "list[int]":
-    # Every frame read whole until the line is quiet: the sequence numbers of the intact ones.
+    # Every frame read whole until the line is quiet: the sequence numbers of the intact ones. An overrun's drop
+    # empties the ring at once, which is not quiet while a paced sender has frames still to come.
     buf = bytearray(FRAME + driver.crc.length())
     intact: list[int] = []
     async with driver:
         while True:
+            laps = driver.rx_overruns
             got = await driver.readinto_until_complete(buf, FRAME, start_timeout_ms=_QUIET_MS, timeout_ms=_QUIET_MS)
-            if got is None and not driver._rx_level():
+            if got is None and not driver._rx_level() and driver.rx_overruns == laps:
                 break
             if got == FRAME and all(buf[j] == (buf[0] + j) & 0xFF for j in range(1, FRAME)):
                 intact.append(buf[0])
@@ -357,7 +371,7 @@ async def _sweep(wdt: "machine.WDT") -> None:
     windows = _FLASH_WINDOWS_US + ((bound_us // _OVER_BOUND_STEP_US + 1) * _OVER_BOUND_STEP_US,)
     fact("ring_bound_us", bound_us)
     writer = _raw_uart(send_bus)
-    sender = _Sender(send_bus, max(windows) + 2 * _STREAM_MARGIN_US, _AFTER_FRAMES)
+    sender = _Sender(send_bus, max(windows), _AFTER_FRAMES)
     await sender.build(wdt)
     gc.collect()
     heap_before, largest_before = gc.mem_free(), largest_block()
@@ -386,25 +400,28 @@ async def _transfer(wdt: "machine.WDT", initiator: UARTComm, responder: UARTComm
 
 
 async def _window(wdt: "machine.WDT", sender: _Sender, driver: "asy_uart_driver.UART", bus: "BusFacts", window_us: int) -> "dict[str, object]":
-    frames = _frames_for(window_us + 2 * _STREAM_MARGIN_US, bus, sender.frame_bytes)
+    paced = _STREAM_MARGIN_US // 1000 // sender.gap_ms + 1
+    burst = _frames_for(window_us, bus, sender.frame_bytes)
     laps = driver.rx_overruns
     gc.collect()  # before the window: no collection inside the record
     wdt.feed()
-    # The reader drains while the stream runs, as the shipped listener does: only the window itself stops it, so the
-    # ring has to hold the window's bytes alone (a reader started after the stream overran the ring at every window).
+    # The reader drains while the stream runs, as the shipped listener does (one started after it overran the ring at
+    # every window), and keeps up outside the window, paced; across the window the sender runs at line rate, so the
+    # ring holds the window's bytes alone.
     reader = asyncio.create_task(_drain(driver))
-    sender.start(0, frames)
-    await asyncio.sleep_ms(_STREAM_MARGIN_US // 1000)
+    await sender.paced(wdt, paced)
+    sender.start(0, burst)
     _hold_irqs_off(window_us)
     oe = _oe(bus)
     wdt.feed()
     streamed = await sender.finished(wdt)
+    await sender.paced(wdt, paced)
     intact = await reader
-    sender.start(frames, _AFTER_FRAMES)
+    sender.start(burst, _AFTER_FRAMES)
     streamed = await sender.finished(wdt) and streamed
     after = await _drain(driver)
     return {
-        "window_us": window_us, "streamed": streamed, "frames_sent": frames, "frames_intact": len(intact),
+        "window_us": window_us, "pace_ms": sender.gap_ms, "streamed": streamed, "frames_sent": 2 * paced + burst, "frames_intact": len(intact),
         "overrun_detected": driver.rx_overruns - laps, "uartrsr_oe": oe, "after_sent": _AFTER_FRAMES, "after_intact": len(after),
     }
 

@@ -3,24 +3,28 @@ unavailable on flash tier) - load over WiFi, tail_log()-watched for a MemoryErro
 loop-lag script's event-loop lag under the same load on every route (SPECIFICATION.md Part F.3)."""
 
 import threading
+import time
 from typing import TYPE_CHECKING
 
 import _load
 import http_client
 import pytest
 from error_log_helpers import assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs, save_errcount
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, bench_device, boot_lines, configured_max_connections, crash_lines, device_toml, fram_backed_logger_names, get_routes, parse_facts, restore_board_to_serving, wait_for_script_server, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, bench_device, boot_lines, configured_max_connections, crash_lines, device_toml, fram_backed_logger_names, get_routes, parse_facts, reset_reason, restore_board_to_serving, wait_for_script_server, wait_until
 from soak_durations import SOAK_DURATION_SECONDS
 
 from buildgen.model import load_device
-from buildgen.validate import smallest_hard_consumer
+from buildgen.validate import module_float_const, smallest_hard_consumer
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from bench_control import BenchBridge
     from error_log_helpers import ErrcountEntry
     from harness import Board
+    from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm", "ci_suite._run_11_soak", "loop_lag")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "ci_suite._run_11_soak", "scenarios.loop_lag_under_combined_load", "scenarios.zero_think_time_readers_saturate_then_recover")
 
 # max_connections GET threads at true max speed (unlike the modest soak below) plus 1 thread PUTting SGP40.ResetVOC
 # every 3s - the request density that originally found real MemoryErrors within 45s; 120s needs no soak flag.
@@ -42,6 +46,10 @@ _RECOVERY_TIMEOUT_S = 30.0
 _RECOVERY_POLL_S = 1.0
 # The lag script's own 30 s window plus the shipped boot on the board's own config, its WiFi connect included.
 _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
+# The twin's zero-think-time scenario as it runs (source: scripts/_digital_twin_scenarios.py _ZERO_THINK_READERS,
+# _ZERO_THINK_READS, _ZERO_THINK_FLOOR, _ZERO_THINK_WRITER_PERIOD_S); the cap is each answer's after the load.
+_ZERO_THINK_READERS, _ZERO_THINK_READS, _ZERO_THINK_FLOOR, _ZERO_THINK_WRITER_PERIOD_S = 4, 20, 10, 0.5
+_OUTER_CAP_S = module_float_const(SRC_DIR, "asy_webserver_service.py", "_DEFAULT_OUTER_CAP_S")
 
 
 class _Hammer:
@@ -65,7 +73,7 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
     save_errcount(dut_ip, request.node.name)  # what the board logged before this test is evidence (CLAUDE.md)
     reset_all_error_logs(dut_ip, request.node.name)
     lines, record = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
-    _assert_no_crash_or_reboot(lines, "max-speed hammer load")
+    _assert_no_crash_or_reboot(lines, "max-speed hammer load", dut_ip)
     # Answered means processed and answered with a 200 under load, which a wedged server cannot fake.
     assert record.answered >= _MIN_ANSWERED, f"too few reads answered during the hammer load ({record.answered} ok, {len(record.errors)} rejected/errored) - server may have wedged"
     wait_until(lambda: _load.serving(dut_ip), timeout_s=_RECOVERY_TIMEOUT_S, poll_interval_s=_RECOVERY_POLL_S, description="GET /status serving again after the hammer")
@@ -92,13 +100,60 @@ def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnos
     counts = get_errcount(dut_ip)
     logged = {name: entry for name in fram_backed_logger_names(bench_device()) if _beyond_the_ceiling(name, entry := errcount_entry(counts, name))}
     try:
-        _assert_no_crash_or_reboot(lines, "the extended max-speed hammer load")
+        _assert_no_crash_or_reboot(lines, "the extended max-speed hammer load", dut_ip)
         assert_no_task_ended(dut_ip, "extended max-speed hammer load")
         assert not logged, f"a FRAM-backed module logged a real error during the hammer load, beyond WEBSERVER's ceiling refusals - real diagnostic evidence, captured before any cleanup: {logged!r}"
         assert record.answered >= _MIN_ANSWERED, f"too few reads answered during the hammer load ({record.answered} ok, {len(record.errors)} rejected/errored) - server may have wedged"
         result_note(f"{record.answered} reads answered, {record.accepted} ResetVOC writes accepted over {SOAK_DURATION_SECONDS[duration]:g}s; MemFree floor {min(record.mem_free, default=-1)} B")
     finally:
         reset_all_error_logs(dut_ip, request.node.name)  # only after the assertions above reported any FRAM-backed history
+
+
+@pytest.mark.provokes_log(
+    "four zero-think-time readers beside a writer, past the ceiling: its reject-when-full",
+    ("WEBSERVER", "W", "HTTP_REFUSED"),
+    ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+)
+def test_zero_think_time_readers_degrade_the_service_and_it_answers_within_the_cap_after(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # Four readers re-requesting /status the moment each answer lands, beside an unchanged DebugLevel PUT: each reader
+    # answered at least the twin's floor, then a GET and a PUT each within the per-call cap; no task ended, no reset.
+    reset_all_error_logs(dut_ip, request.node.name)
+    level = _load.get_object(dut_ip, "/system").get("DebugLevel")
+    assert isinstance(level, int), f"GET /system holds no DebugLevel: {level!r}"
+    before = _load.get_object(dut_ip, "/status").get("system")
+    readers: list[tuple[int, int, list[str]]] = []
+    words: dict[str, int] = {}
+    stop = threading.Event()
+    # The current DebugLevel at a fixed cadence: answered "Unchanged", write_config() returns before staging anything
+    # (asy_config_manager.py), so no flash write; any other answer is a failure the verdict names.
+    put_level = (stop, _ZERO_THINK_WRITER_PERIOD_S, lambda: _word(http_client.fetch(dut_ip, 80, "PUT", "/system", {"DebugLevel": level}, timeout_s=_OUTER_CAP_S).json(), "DebugLevel"), words)
+    threads = [threading.Thread(target=_zero_think_reader, args=(dut_ip, readers), name=f"zero-think-{n}") for n in range(_ZERO_THINK_READERS)]
+    writer = threading.Thread(target=_repeat_until, args=put_level, name="zero-think-writer")
+    try:
+        for thread in [*threads, writer]:
+            thread.start()
+    finally:
+        alive = _load.join(threads, _ZERO_THINK_READS * _OUTER_CAP_S)
+        stop.set()
+        alive += _load.join([writer], 2 * _OUTER_CAP_S)
+    assert not alive, f"{alive} never finished - the load would reach every test that follows"
+    began = time.monotonic()
+    recovered = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_OUTER_CAP_S)
+    get_s, began = time.monotonic() - began, time.monotonic()
+    word = _word(http_client.fetch(dut_ip, 80, "PUT", "/system", {"DebugLevel": level}, timeout_s=_OUTER_CAP_S).json(), "DebugLevel")
+    put_s = time.monotonic() - began
+    result_note(f"each reader's (answered, refused) {[r[:2] for r in readers]}; the writer's answers {words}; after: GET {get_s:.1f} s, PUT {put_s:.1f} s")
+    assert len(readers) == _ZERO_THINK_READERS, f"a reader raised or never ended: {readers}"
+    assert min(r[0] for r in readers) >= _ZERO_THINK_FLOOR, f"a reader was answered under the floor of {_ZERO_THINK_FLOOR} of {_ZERO_THINK_READS}: {[r[:2] for r in readers]}"
+    bad = [b for r in readers for b in r[2]]
+    assert not bad, f"answers incomplete, unparseable or failed other than by a clean refusal under the load: {bad[:3]}"
+    assert set(words) <= {"Unchanged", "refused"}, f"the unchanged DebugLevel PUT answered {words}: anything but Unchanged is a flash write"
+    assert recovered.status_code == 200 and get_s <= _OUTER_CAP_S, f"after the load GET /status answered {recovered.status_code} in {get_s:.1f} s (cap {_OUTER_CAP_S:g} s)"
+    assert word == "Unchanged" and put_s <= _OUTER_CAP_S, f"after the load the PUT answered {word!r} in {put_s:.1f} s (cap {_OUTER_CAP_S:g} s)"
+    after = _load.get_object(dut_ip, "/status").get("system")
+    up_before, up_after = (system.get("SysUptime") if isinstance(system, dict) else None for system in (before, after))
+    assert isinstance(up_before, int) and isinstance(up_after, int) and up_after > up_before, f"the uptime did not keep rising (a reset under the load?): {up_before} -> {up_after}"
+    assert_no_task_ended(dut_ip, "zero-think-time readers")
 
 
 @pytest.mark.soak_duration
@@ -134,7 +189,7 @@ def test_http_soak_stays_live(board: "Board", dut_ip: str, request: pytest.Fixtu
         stop.set()
         alive = _load.join([reader], _JOIN_TIMEOUT_S)
     assert not alive, "the soak reader never finished"
-    _assert_no_crash_or_reboot(lines, "the HTTP soak")
+    _assert_no_crash_or_reboot(lines, "the HTTP soak", dut_ip)
     assert_no_task_ended(dut_ip, "the HTTP soak")
     result_note(f"{len(request_errors)} of {len(sent)} soak requests failed over {SOAK_DURATION_SECONDS[duration]:g}s")
     assert len(request_errors) <= _SOAK_REQUEST_FAILURE_RATE * len(sent), f"too many failed/non-200 requests during the soak ({len(request_errors)} of {len(sent)}): {request_errors[:10]}"
@@ -166,7 +221,7 @@ def test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_c
     facts = parse_facts(output)
     bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the flash test's and the twin scenario's one source
     lag_max, lag_p99, samples = facts.get("lag_max_us"), facts.get("lag_p99_us"), facts.get("samples")
-    result_note(f"loop lag under HTTP load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); {record.answered} reads answered, per route {record.served}")
+    result_note(f"loop lag under HTTP load: max {lag_max} us, ended {facts.get('lag_max_at_ms')} ms after main() started, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); {record.answered} reads answered, per route {record.served}")
     unserved = [route for route in _HAMMER_PATHS if not record.served.get(route)]
     assert _HAMMER_PATHS and not unserved, f"GET routes never served under the load: {unserved} of {len(_HAMMER_PATHS)} routes; {record.errors[:5]}"
     assert facts.get("main_running") is True, f"the shipped main() ended inside the window: {facts}"
@@ -176,13 +231,14 @@ def test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_c
     assert isinstance(lag_max, int) and lag_max <= bound_us, f"the loop lagged {lag_max} us, past the {bound_us} us smallest hard consumer: {facts}"
 
 
-def _assert_no_crash_or_reboot(lines: "list[str]", what: str) -> None:
+def _assert_no_crash_or_reboot(lines: "list[str]", what: str, dut_ip: str) -> None:
     # The soak gate: either allocation marker covers a load that allocated, failed, logged it and carried on (the board
-    # never prints the class name for a caught one); a crash line adds a traceback, a boot line a reboot mid-load.
+    # never prints the class name for a caught one); a crash line adds a traceback, a boot line a reboot mid-load, whose
+    # ResetReason the failure reads at once.
     allocation = [line for line in lines if any(marker in line for marker in MEMORY_ERROR_MARKERS)]
     assert not allocation, f"observed an allocation failure during {what}, caught or not:\n" + "\n".join(allocation)
     assert not crash_lines(lines), f"observed a crash during {what}:\n" + "\n".join(crash_lines(lines))
-    assert not boot_lines(lines), f"observed an unexpected reboot during {what} (real memory exhaustion -> WDT reset?):\n" + "\n".join(boot_lines(lines))
+    assert not boot_lines(lines), f"observed an unexpected reboot during {what} (real memory exhaustion -> WDT reset?), ResetReason {reset_reason(dut_ip)!r}:\n" + "\n".join(boot_lines(lines))
 
 
 def _beyond_the_ceiling(name: str, entry: "ErrcountEntry") -> bool:
@@ -209,6 +265,43 @@ def _lag_load(dut_ip: str, stop: threading.Event, record: _Hammer, stuck: "list[
         stop.wait(_LOOP_LAG_SCRIPT_TIMEOUT_S)
     finally:
         stuck.extend(_load.join(threads, _JOIN_TIMEOUT_S))
+
+
+def _repeat_until(stop: threading.Event, period_s: float, call: "Callable[[], str]", words: "dict[str, int]") -> None:
+    # `call()` at a fixed cadence until `stop`, each answer's word counted: a clean refusal is one word, a failure another.
+    while not stop.wait(period_s):
+        try:
+            word = call()
+        except http_client.CeilingRefusedError:
+            word = "refused"
+        except (OSError, http_client.HTTP_ERROR, ValueError) as exc:
+            word = f"failed: {exc!r}"
+        words[word] = words.get(word, 0) + 1
+
+
+def _word(answer: "JSONObject", key: str) -> str:
+    result = answer.get("result")
+    return str(result.get(key)) if isinstance(result, dict) else f"no result: {answer}"
+
+
+def _zero_think_reader(dut_ip: str, readers: "list[tuple[int, int, list[str]]]") -> None:
+    # Re-requests the moment each answer lands: a clean refusal at the ceiling is no answer, any other failure is kept.
+    answered, refused, bad = 0, 0, []
+    for _n in range(_ZERO_THINK_READS):
+        try:
+            res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_OUTER_CAP_S)
+            body = res.json() if res.status_code == 200 else None
+        except http_client.CeilingRefusedError:
+            refused += 1
+            continue
+        except (OSError, http_client.HTTP_ERROR, ValueError) as exc:
+            bad.append(repr(exc))
+            continue
+        if isinstance(body, dict):
+            answered += 1
+        else:
+            bad.append(f"{res.status_code}, {len(res.body)} B")
+    readers.append((answered, refused, bad))
 
 
 def _readers(dut_ip: str, stop: threading.Event, record: _Hammer) -> "list[threading.Thread]":

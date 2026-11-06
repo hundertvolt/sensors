@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING, Protocol
 
 import pytest
 import scd30_prerequisite
-from harness import wait_for_boot, wait_until
+from harness import reset_board, wait_for_boot, wait_until
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from bench_control import BenchBridge
     from harness import Board
 
 
@@ -34,12 +35,13 @@ def scd30_measuring(board: "Board", session_note: _SessionNote) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def leave_board_serving(board: "Board", request: pytest.FixtureRequest) -> "Iterator[None]":
-    # A device script leaves main.py stopped (an exec ends it), so the run ends with one hard reset and a passive
-    # wait for the boot line; a board that does not come back fails the teardown, which the verdict counts.
+def leave_board_serving(board: "Board", bench_if_configured: "BenchBridge | None", request: pytest.FixtureRequest) -> "Iterator[None]":
+    # A device script leaves main.py stopped (an exec ends it), so the run ends with one hard reset (kicked with a
+    # bench) and a passive wait for the boot line; a board that does not come back fails the teardown, which the
+    # verdict counts.
     yield
     if request.config.getoption("--twin"):
         return
-    board.hard_reset()
+    reset_board(board, bench_if_configured)
     wait_until(board.is_device_present, timeout_s=_PRESENT_TIMEOUT_S, description="board back on USB after the flash run's final hard reset")
     wait_for_boot(board, _BOOT_TIMEOUT_S)

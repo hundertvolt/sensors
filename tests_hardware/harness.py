@@ -118,6 +118,7 @@ _MAX_DEVICE_REBINDS = 2
 _MPREMOTE_DEFAULT_TIMEOUT_S = 60.0
 _USB_GRACE_S = 10.0
 _USB_GRACE_POLL_S = 0.5
+_USB_GONE_POLL_S = 0.0625  # a reset's USB gap is about 320 ms (bench, 2026-11-06): the grace poll misses about 1 in 3
 _MPREMOTE_SHORT_TIMEOUT_S = 10.0
 _PRESENCE_PROBE_TIMEOUT_S = 0.2
 _MPREMOTE_RESET_TIMEOUT_S = 15.0
@@ -257,13 +258,13 @@ def _page_routes() -> "list[str]":
     ]
 
 
-def _poll(check: "Callable[[], bool]", bound_s: float) -> bool:
+def _poll(check: "Callable[[], bool]", bound_s: float, step_s: float = _USB_GRACE_POLL_S) -> bool:
     # A bounded poll on a state, never a fixed sleep: True as soon as `check` holds, False at the bound.
     deadline = time.monotonic() + bound_s
     while not check():
         if time.monotonic() >= deadline:
             return False
-        time.sleep(_USB_GRACE_POLL_S)
+        time.sleep(step_s)
     return True
 
 
@@ -525,7 +526,7 @@ def kick_after_reset(board: "Board", bench: "BenchBridge", timeout_s: float) -> 
     # kick_all_stations()'s workaround for a reset the board's own command arms, sent once the board has left USB (when
     # it was seen gone is returned), as a DUT still shutting down rejoins after an earlier kick. Its node is watched,
     # never opened, so a held log tail reads on.
-    if not _poll(lambda: not Path(board.device).exists(), timeout_s):
+    if not _poll(lambda: not Path(board.device).exists(), timeout_s, _USB_GONE_POLL_S):
         raise HardwareTestFailureError(f"the board did not leave USB within {timeout_s}s of the command - no reset of its own to kick after")
     gone = time.monotonic()
     bench.kick_all_stations()
@@ -663,6 +664,26 @@ def render_device_script(path: Path, **extras: object) -> Path:
     target = RENDERED_SCRIPTS_DIR / path.name
     target.write_text(rendered, encoding="utf-8")
     return target
+
+
+def reset_board(board: "Board", bench: "BenchBridge | None") -> None:
+    # A reset leaving the board for later tests or a session-end check: kick_then_reset() with the session's bench, as
+    # the AP keeps a reset board's stale entry for about 60 s and the board falls back to its hotspot (bench,
+    # 2026-11-06); a flash-only rig or --twin resets plainly.
+    if bench is None:
+        board.hard_reset()
+    else:
+        kick_then_reset(board, bench)
+
+
+def reset_reason(dut_ip: str) -> object:
+    # GET /status's system.ResetReason, read the moment a soak sees a reboot (its next reset overwrites it); a read
+    # that fails returns what kept it from answering, so the reboot's own failure still reports.
+    try:
+        system = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_SERVING_PROBE_TIMEOUT_S).json().get("system")
+    except (OSError, http_client.HTTP_ERROR, ValueError, TypeError) as exc:
+        return f"not read: {exc!r}"
+    return system.get("ResetReason") if isinstance(system, dict) else f"not read: GET /status system is {system!r}"
 
 
 def resolve_board_device(

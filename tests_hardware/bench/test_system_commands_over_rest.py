@@ -10,7 +10,7 @@ import _load
 import evidence
 import http_client
 import pytest
-from error_log_helpers import code, get_errcount, save_errcount
+from error_log_helpers import code, errcount_entry, get_errcount, save_errcount
 from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, SRC_DIR, HardwareTestFailureError, crash_lines, dut_hostname_candidates, fram_backed_logger_names, hotspot_password, kick_after_reset, observe_during, parse_facts, picotool, restore_board_to_serving, save_fram_raw, wait_until
 
 from buildgen.validate import module_int_const
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from harness import Board, _Note
     from http_client import JSONObject, JSONValue
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_1_reformat_relaunch", "ci_suite._run_13_config_reset", "ci_suite._run_13_erase_fram", "ci_suite._run_13_near_misses", "scenarios.a_command_right_after_the_first_answer_resets_cleanly", "scenarios.erasefram_concurrent_with_a_reboot_accepts_exactly_one", "scenarios.reboot_and_bootloader_at_once_accept_exactly_one", "scenarios.reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing")
 
 _SRC = "asy_system_service.py"
 _RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(SRC_DIR, _SRC, name) for name in ("_RR_WATCHDOG", "_RR_REBOOT", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED"))
@@ -36,12 +36,32 @@ _SERVING_TIMEOUT_S = 120.0
 _SERVING_POLL_S = 2.0
 _HOTSPOT_UP_S = 60.0
 _PICOTOOL_TIMEOUT_S = 30.0
+# The shutdown closes the listener once the supervisor parks, 0-2 s after the acceptance: a ResetErrors arriving later
+# meets a closed socket, and the test reboots once more for it (agent, 2026-11-06).
+_WINDOW_TRIES = 3
+# A fresh boot's first answer, polled often with short probes so the command lands as early as the host can reach it.
+_FIRST_ANSWER_POLL_S = 0.2
+_FIRST_ANSWER_PROBE_S = 2.0
 
 
 def _command(dut_ip: str, word: "JSONValue") -> str:
     answer = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": word}, timeout_s=_PUT_TIMEOUT_S).json()
     result = answer.get("result")
     return str(result.get("SystemCmd")) if isinstance(result, dict) else f"no result: {answer}"
+
+
+def _first_answer(dut_ip: str) -> "JSONObject":
+    # The system block of the first /status answered after the board left USB: only a boot after the reset answers.
+    found: list[JSONObject] = []
+
+    def answered() -> bool:
+        system = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_FIRST_ANSWER_PROBE_S).json().get("system")
+        if isinstance(system, dict):
+            found.append(system)
+        return bool(found)
+
+    wait_until(answered, timeout_s=_SERVING_TIMEOUT_S, poll_interval_s=_FIRST_ANSWER_POLL_S, description="a fresh boot's first answer")
+    return found[0]
 
 
 def _get(dut_ip: str, path: str) -> "JSONObject":
@@ -164,6 +184,12 @@ def test_config_reset_over_rest_brings_back_the_defaults(board: "Board", bench: 
     assert (back.get("SSID"), back.get("Hostname")) == (networking.get("SSID"), networking.get("Hostname")), f"the restored board serves {back}, not {networking}"
 
 
+@pytest.mark.provokes_log(
+    "the erase blanks the SGP40 backup chunk, which each boot reads and warns of once (owner, 2026-11-06) until the"
+    " first backup the test waits for, undated while NTP is unsynced",
+    ("SGP40", "W", "SGP_NO_BACKUP"),
+    ("SGP40", "W", "SGP_WRITTEN_NO_TS"),
+)
 def test_fram_erase_over_rest_blanks_every_error_log(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     save_errcount(dut_ip, "erase-over-rest")
     try:
@@ -179,6 +205,52 @@ def test_fram_erase_over_rest_blanks_every_error_log(board: "Board", bench: "Ben
         counts, owed = get_errcount(dut_ip), {name: (1, [("W", code("W", "SGP_NO_BACKUP"))]) for name in _load.instance_loggers("sgp40")}
         kept = {name: counts[name] for name in fram_backed_logger_names() if (counts[name]["counter"], [(h.get("type"), h.get("num")) for h in counts[name]["history"] if h.get("type") != "N"]) not in ((0, []), owed.get(name))}
         assert not kept, f"FRAM-backed logs not blank after the erase, each SGP40's W SGP_NO_BACKUP for its blank backup chunk aside: {kept}"
+    finally:
+        restore_board_to_serving(board, bench, dut_ip)
+        _load.wait_for_sgp40_backup(dut_ip)
+
+
+def test_reset_errors_after_an_accepted_reboot_is_refused_and_clears_nothing(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "_Note") -> None:
+    # Saved before any ResetErrors (CLAUDE.md); one is sent only once the reboot answered Valid, inside its shutdown.
+    before = get_errcount(dut_ip)
+    save_errcount(dut_ip, "reset-errors-after-reboot")
+    answer = ""
+    try:
+        for attempt in range(1, _WINDOW_TRIES + 1):
+            boot = _system(dut_ip).get("BootSignature")
+            assert _command(dut_ip, "reboot") == "Valid", "the reboot was not accepted, so no ResetErrors followed it"
+            try:
+                result = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=_PUT_TIMEOUT_S).json().get("result")
+                answer = str(result.get("ResetErrors")) if isinstance(result, dict) else f"no result: {result}"
+            except (OSError, http_client.HTTP_ERROR) as exc:
+                result_note(f"try {attempt}: the ResetErrors reached a closed listener ({exc!r})", recovery=True)
+            _answers, replied = _kicked(board, bench, {"reboot": "Valid"})
+            system = _serving_status(dut_ip, replied, result_note, f"the reboot under a ResetErrors, try {attempt}", boot)
+            assert system.get("ResetReason") == _RR_REBOOT, f"the reboot read {system.get('ResetReason')}, not {_RR_REBOOT}"
+            if answer:
+                break
+        assert answer == "Failed", f"a ResetErrors after the accepted reboot answered {answer!r} (empty: none of {_WINDOW_TRIES} tries reached the listener), not 'Failed'"
+        after = get_errcount(dut_ip)
+        cleared = [name for name in fram_backed_logger_names() if errcount_entry(after, name)["counter"] < errcount_entry(before, name)["counter"]]
+        assert not cleared, f"FRAM-backed logs the refused ResetErrors cleared across the reboot: {cleared}"
+    finally:
+        restore_board_to_serving(board, bench, dut_ip)
+
+
+def test_a_reboot_at_a_boots_first_answer_resets_cleanly(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
+    # A command in the boot window: a reboot sent at a fresh boot's first answer ends in its own reset, ResetReason 3,
+    # never the watchdog's 2. Reboot alone: every command runs the one shutdown (A.8), and it writes nothing (agent, 2026-11-06).
+    save_errcount(dut_ip, "reboot-at-first-answer")
+    try:
+        assert _command(dut_ip, "reboot") == "Valid", "the reboot that starts a fresh boot was not accepted"
+        _kicked(board, bench, {"reboot": "Valid"})
+        first = _first_answer(dut_ip)
+        (answers, _replied), lines = observe_during(board, lambda: _kicked(board, bench, {"reboot": _command(dut_ip, "reboot")}))
+        _marked(lines, "the reboot at the first answer")
+        result_note(f"first answer: SysUptime {first.get('SysUptime')} s, BootSignature {first.get('BootSignature')}, ResetReason {first.get('ResetReason')}")
+        assert answers["reboot"] == "Valid", f"a reboot at the boot's first answer was answered {answers['reboot']}"
+        reason = _first_answer(dut_ip).get("ResetReason")
+        assert reason == _RR_REBOOT, f"the reboot sent at the first answer read ResetReason {reason}, not {_RR_REBOOT}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
 
@@ -198,6 +270,12 @@ def test_near_miss_action_words_do_nothing_over_rest(board: "Board", bench: "Ben
         restore_board_to_serving(board, bench, dut_ip)
 
 
+@pytest.mark.provokes_log(
+    "an erase that wins the race blanks the SGP40 backup chunk, which each boot reads and warns of once (owner, 2026-11-06) until the"
+    " first backup the test waits for, undated while NTP is unsynced",
+    ("SGP40", "W", "SGP_NO_BACKUP"),
+    ("SGP40", "W", "SGP_WRITTEN_NO_TS"),
+)
 def test_erase_reboot_and_mempause_at_once(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     save_errcount(dut_ip, "erase-reboot-mempause")
     try:
@@ -214,6 +292,7 @@ def test_erase_reboot_and_mempause_at_once(board: "Board", bench: "BenchBridge",
         assert system.get("ResetReason") == expected, f"one reset, attributed to the winner: read {system.get('ResetReason')}, expected {expected} ({answers})"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
+        _load.wait_for_sgp40_backup(dut_ip)
 
 
 def test_reboot_and_bootloader_at_once(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:

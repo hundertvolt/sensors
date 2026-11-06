@@ -8,12 +8,6 @@ facts to SPECIFICATION.md, its rules to CLAUDE.md, orientation to README.md.
 **Everything that needs the dev bench is gathered in "Real-hardware work still owed" below**, so a
 go-ahead session can work it in one pass; `tests_hardware/README.md` stays the reference for how.
 
-**The numbered list below has gaps, and its numbers are never reused or renumbered.** Code comments
-and `SPECIFICATION.md` cite items by number, so a resolved item whose number is cited stays as a
-short closed stub saying what the answer was (none today); one whose number nothing
-cites is deleted outright, its permanent content migrated per the policy above. A gap therefore means
-"resolved and removed", never "lost".
-
 ## Refactor targets not yet done
 
 - **Mypy shall be configured to disallow `Any` types** (owner-specified). Configured: all three
@@ -26,22 +20,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   audit"). Most of what is left
   is test code: monkeypatch and wrapper classes duck-typing a real MicroPython object, which need a
   typing strategy (e.g. `Protocol` classes and `__getattr__` delegation) rather than a flag flip.
-- **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
-  (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no priority in
-  terms of order now, it's only highly important to be applied.') has now run once, beyond
-  bus-hazard's own corner** — UART, WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and
-  webserver/notification/config-push were all swept, real call chains traced end-to-end rather than
-  grep-counted. Full account, including what was fixed, what's a confirmed structural exception, and
-  what's named-but-not-fixed (needing either a dedicated real-hardware session or a project-owner
-  design decision): `tests_hardware/README.md`'s "Tier parity beyond the bus hazards". No second instance of the
-  SGP40-shaped bug (a real hardware trigger silently substituted with a software-only one) turned
-  up, but several real tier-parity gaps did, most now closed. Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structural
-  exception until injection hardware exists (2026-09-22, SPECIFICATION.md E.6.6 row
-  `uart-fault-catalog`); the
-  shipped-driver F.5.8 test exists (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test
-  are scratched, each needing a `src/` change for the test alone (owner, 2026-09-25). Re-running
-  this sweep against other domains (it did not touch e.g. sensortask/asy_system_service integration
-  beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 ## Open questions (need owner input or further investigation)
 
@@ -90,12 +68,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   real-hardware re-run). The field reaches the website from its `@web` tag, and
   `mockdata/samples.json`'s ISL29125 sample carries it.
 
-2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
-   `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
-   missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
-   values. No legacy config migration: legacy units get fresh setup at reflash (owner, 2026-09-26);
-   from the release on, a renamed key or file needs a migration, pinned by a golden stored-config
-   fixture (owner, 2026-09-26).
+- **Config-schema migration is a real data-loss risk on the *current deployed* codebase** —
+  `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
+  missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
+  values. No legacy config migration: legacy units get fresh setup at reflash (owner, 2026-09-26);
+  from the release on, a renamed key or file needs a migration, pinned by a golden stored-config
+  fixture (owner, 2026-09-26).
 
 ## Real-hardware work still owed
 
@@ -128,15 +106,6 @@ gates, traps).
   afterwards (the run's other persistence-gated flash tests spend their own,
   `tests_hardware/README.md`'s budget table). Twin row: M1 none (an operator observation); S3b the
   `isl29125` and `isl29125_autorange` scenarios its file names.
-- **R13 + N3, UART `wrnno` 54 (`UART_DRAIN_BOUND`) against a real babbling peer** — needs hardware
-  the bench does not have (owner, 2026-09-25): the live firmware owns both UARTs, so nothing on the
-  board can play the peer. N3 also owes a check that `UART_C_PORT_CHANGELOG.md` records the
-  reclassification (receiver-side only, no emitted bytes change). Low urgency. Expected:
-  `GET /status` shows `W54` for `UART_init`/`UART_resp` once the drain hits its bound, and a boot
-  drain against the same peer persists nothing (SPECIFICATION.md C.7.1). Wear: none (FRAM log
-  entries only; FRAM writes are not wear). Twin row: none; the mock tier covers the logic
-  (`tests/test_asy_uart_comm.py`'s `test_a_drain_that_hits_its_bound_persists_the_drain_warning` and
-  `test_a_boot_drain_that_hits_its_bound_persists_nothing`).
 - **T4, the FRAM command hold on silicon** — on `dev`, `scripts/run_flash_hardware_suite.sh` runs
   `flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor` (device
   script `tests_hardware/device_scripts/fram_command_hold_timing.py`, which writes only in its
@@ -160,6 +129,8 @@ gates, traps).
   the twin's boots assert the watchdog would never have fired
   (`tests/test_digital_twin_sensortask_integration.py`, `would_have_triggered_count` 0); that proves
   the sequence, not rp2 timing, so the figures are silicon-only.
+- **The supervisor's scan budget, measured** — one pass with every supervised task ended at once,
+  timed on `dev` with SYSTEM's entries on FRAM (Part N `system.scan_budget`); no script yet, zero wear.
 - **The on-target no-yield stretches and a flash write's loop gap** — on `dev`,
   `flash/test_memory_stress.py`'s `test_routine_no_yield_stretches_stay_under_the_gc_term` (the
   default flash tier, zero wear) and `test_flash_write_loop_gap_is_recorded` (one scratch flash
@@ -195,19 +166,6 @@ gates, traps).
   after the last reset and no task ended. Wear: 2 flash writes (the `BackupPeriod` change and its
   restore); FRAM writes are not wear. Twin row: none (its twin record: the module needs the bench
   bridge).
-- **What SCL and SDA do on silicon during an I2C bus recovery** — on `dev`, with a slave holding SDA
-  low mid-byte: the line levels through `I2C.recover()`'s clear and its re-construction (pico-sdk's
-  `i2c_init()` resets the whole block, SPECIFICATION.md F.5.1), and through the constructor's boot
-  clear. Expected: the held slave releases SDA within the nine pulses, the STOP is on the wire, and
-  no sibling sees a stray START while the controller is rebuilt. Then, with SDA held the same way, a
-  `machine.reset()` and a watchdog reset: whether the bus comes back and whether the next boot's
-  clear frees it (constructing `machine.I2C` clocks nothing itself). Zero wear. Twin row: the
-  bus-recovery case of `tests/test_digital_twin_bus_hazard_concurrency.py` for the sequence; none
-  for the line levels, since the twin models no electrical bus state. The held SDA itself is made by
-  `i2c_held_sda_recovery.py`
-  (`flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers`), which
-  checks SDA high and every device answering after both clears; the line levels need a scope, and
-  the two resets with SDA held a script of their own.
 - **The free alarm count on silicon** —
   `tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py` on `dev`: record its
   `constructed=N` (the alarms free at that moment, not the pool size) with the image's other
@@ -457,6 +415,15 @@ gates, traps).
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the
   BME688/BSEC material with its licensing. Nothing here tracks work on it.
+- **R13 + N3, UART `wrnno` 54 (`UART_DRAIN_BOUND`) against a real babbling peer — deferred** (owner,
+  2026-11-06: "Defer, that can be done once the UART C implementation is done and can go into both
+  directions. But this is out of the audit scope."). N3 also owes a check that
+  `UART_C_PORT_CHANGELOG.md` records the reclassification (receiver-side only, no emitted bytes change).
+  Expected: `GET /status` shows `W54` for `UART_init`/`UART_resp` once the drain hits its bound, and a
+  boot drain against the same peer persists nothing (SPECIFICATION.md C.7.1). Wear: none (FRAM log
+  entries only; FRAM writes are not wear). Twin row: none; the mock tier covers the logic
+  (`tests/test_asy_uart_comm.py`'s `test_a_drain_that_hits_its_bound_persists_the_drain_warning` and
+  `test_a_boot_drain_that_hits_its_bound_persists_nothing`).
 - **Build-environment changes since the clean-chroot legs were last satisfied** (2026-09-12: trixie
   on the bench Pi4, GCC 14.2.0 — lint and typecheck clean, then `env --tier generic` end to end,
   installing the `.nvmrc`-pinned Node from nothing (v22.23.2), 203 npm packages and the Playwright
@@ -1014,11 +981,6 @@ gates, traps).
   exclusive-port-53 scenarios in one job per device and GC stage (`scripts/run_digital_twin_ci.sh`, `ci.yml`), the
   launcher stop file is gone, and `@tunable` lines outside Part N's scope left `scripts/`. Nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
-- **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
-  Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
-  exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and
-  good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
-  real Safari and a real mobile device, which no automation here can substitute for.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
   fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
   `sensortask-*.py` built as part of the real rewrite needs a full Unix-port equivalent, runnable on

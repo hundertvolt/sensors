@@ -8,12 +8,13 @@ import _load
 import http_client
 import pytest
 import website_identity
+from error_log_helpers import errcount_entry, get_errcount, save_errcount
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortask_integration", "ci_suite._run_1_baseline")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_1_baseline", "scenarios.static_site_is_served_over_real_http", "scenarios.get_measurements_and_sensors_are_reachable_and_shaped_correctly", "scenarios.mempause_over_real_http_reaches_the_real_fram_manager", "scenarios.mempause_then_reboot_unpauses_on_the_relaunch", "scenarios.reset_errors_while_storage_is_paused_is_refused_and_clears_nothing", "scenarios.real_website_root_serves_the_actual_production_index_html", "scenarios.real_website_inlined_definitions_matches_the_booted_devices_own", "scenarios.real_website_static_mount_never_shadows_a_real_api_route")
 
 # ---------------------------------------------------------------------------
 # The website, over the normal STA/bridge network path (not hotspot mode).
@@ -57,6 +58,14 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "mempause"}, timeout_s=_PROBE_TIMEOUT_S)
     assert _load.as_object(put_res.json().get("result"), "result").get("SystemCmd") == "Valid", f"PUT /system mempause failed: {put_res.status_code} {put_res.body!r}"
     assert _mem_paused(dut_ip) is True, "MemPaused did not become True after a real PUT /system mempause"
+    # A ResetErrors under the pause clears nothing, RAM-held logs included (A.8); saved first all the same (CLAUDE.md).
+    before = get_errcount(dut_ip)
+    save_errcount(dut_ip, "reset-errors-under-mempause")
+    refused = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=_PROBE_TIMEOUT_S).json().get("result")
+    assert refused == {"ResetErrors": "Failed"}, f"a ResetErrors under mempause answered {refused}, not Failed"
+    after = get_errcount(dut_ip)
+    cleared = sorted(name for name, entry in before.items() if errcount_entry(after, name)["counter"] < entry["counter"])
+    assert not cleared, f"the refused ResetErrors under mempause cleared {cleared}"
     # Recovery is a reboot, not a second REST call: the window is a fixed 300s and the duration
     # is never client-suppliable, so no REST unpause exists. That is also the assertion - the
     # pause is RAM-only, so a reset must clear it, which also leaves the bench usable.

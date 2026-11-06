@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_13_system_commands",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_13_config_reset", "ci_suite._run_13_damaged_config", "ci_suite._run_13_erase_fram", "ci_suite._run_13_near_misses", "ci_suite._run_13_reboot_sequence", "scenarios.a_hung_shutdown_step_is_ended_by_the_watchdog", "scenarios.mempause_then_reboot_unpauses_on_the_relaunch")
 
 _SCRATCH = "hwtest-scratch/"  # every command script's scratch config directory
 # One exec after a scratch build that ended in a reset: the directory's files, then the directory (absent: nothing).
@@ -130,6 +130,16 @@ def test_config_reset_deletes_every_config_file_and_reboots(board: "Board", requ
     finally:
         board.exec(_REMOVE_SCRATCH)
         _restart(board)
+
+
+@pytest.mark.persistence_write
+def test_a_damaged_config_file_is_repaired_and_listed_as_a_config_fault(board: "Board", result_note: "Callable[[str], None]") -> None:
+    # Owns two scratch writes, the damage and the setup's repair; the other stores' defaults are the scratch build's.
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "config_fault_listed_at_setup.py", timeout_s=_SCRIPT_TIMEOUT_S))
+    assert "failure" not in facts and "leftover_errno" not in facts, f"the scratch build over the damaged file failed: {facts}"
+    result_note(f"damaged {facts.get('damaged')}: ConfigFaults {facts.get('config_faults')}")
+    assert isinstance(facts.get("damaged"), str) and facts.get("config_faults") == [facts["damaged"]], f"ConfigFaults lists {facts.get('config_faults')}, not the damaged store alone: {facts}"
+    assert facts.get("repaired") is True, f"the setup left the damaged file unrepaired: {facts}"
 
 
 def test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]") -> None:

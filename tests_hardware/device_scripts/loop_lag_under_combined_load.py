@@ -81,7 +81,7 @@ async def _main() -> None:
                 fact("leftover_errno", e.errno)
         os.mkdir(_SCRATCH_CFG_PATH)
     buckets = [0] * _BUCKETS
-    lag_max = [0]
+    lag_max = [0, 0]  # the worst lag in us, and when it ended in ms after main() started: in its boot or under the load
     fram_writes = [0, 0]
 
     async def probe() -> None:
@@ -90,10 +90,12 @@ async def _main() -> None:
             due = time.ticks_add(time.ticks_us(), _PROBE_MS * 1000)
             await asyncio.sleep_ms(_PROBE_MS)
             lag = max(time.ticks_diff(time.ticks_us(), due), 0)
-            lag_max[0] = max(lag_max[0], lag)
+            if lag > lag_max[0]:
+                lag_max[0], lag_max[1] = lag, time.ticks_diff(time.ticks_ms(), started)
             buckets[min(lag // 1000, _BUCKETS - 1)] += 1
 
     boot = device.main(watchdog=wdt) if _PRODUCTION else device.main(watchdog=wdt, cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)
+    started = time.ticks_ms()
     shipped = asyncio.create_task(boot)
     loads = [asyncio.create_task(probe()), asyncio.create_task(_churn()), asyncio.create_task(_fram_writes(fram_writes))]
     try:
@@ -124,6 +126,7 @@ async def _main() -> None:
             break
     fact("samples", samples)
     fact("lag_max_us", lag_max[0])
+    fact("lag_max_at_ms", lag_max[1])
     fact("lag_p99_us", (p99 + 1) * 1000)  # the upper edge of the bucket holding the 99th percentile
     fact("fram_writes", fram_writes[0])
     fact("fram_write_failures", fram_writes[1])

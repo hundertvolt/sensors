@@ -16,6 +16,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
 _SYSTEM_TIMEOUT_S = 10.0
+# The image check's wait for an answer: the session's own serving bound after a reset, conftest.py's dut_ip (agent,
+# 2026-11-06), since the bench half can follow a flash half's last reset.
+_SERVING_TIMEOUT_S = 90.0
 _REFLASH = "manual step: reflash the round's standard image (scripts/build_firmware.py), or rebuild from this tree"
 _TICK_OFFSET = "the board runs the tick-offset test image"
 _BENCH_DIR = Path(__file__).resolve().parent
@@ -81,6 +84,12 @@ def image_deviations(record: "dict[str, object]", build: object, bench_device: s
     return found
 
 
+def _answers(dut_ip: str) -> bool:
+    # Any answer to GET /system: no route or a refusal raises, as while the board reboots or rejoins.
+    http_client.fetch(dut_ip, 80, "GET", "/system", timeout_s=_SYSTEM_TIMEOUT_S)
+    return True
+
+
 def check_image(dut_ip: str, record: "dict[str, object]", *, allow_rollover: bool = False) -> "list[tuple[str, str, str, str]]":
     # The board's GET /system build against the record, strict: anything but a 200 object is itself a deviation.
     res = http_client.fetch(dut_ip, 80, "GET", "/system", timeout_s=_SYSTEM_TIMEOUT_S)
@@ -96,6 +105,7 @@ def check_image(dut_ip: str, record: "dict[str, object]", *, allow_rollover: boo
 def board_image(dut_ip: str, bench_device_name: str, request: pytest.FixtureRequest, standard_state_exit: _StandardStateExit, session_note: _SessionNote) -> "dict[str, object]":
     path = record_path(request.config.getoption("--image-record"), bench_device_name)
     record = load_record(path)
+    harness.wait_until(lambda: _answers(dut_ip), timeout_s=_SERVING_TIMEOUT_S, description=f"the DUT at {dut_ip} answering GET /system before the image check")
     deviations = check_image(dut_ip, record, allow_rollover=request.config.getoption("--allow-multi-day-rollover"))
     if deviations:
         standard_state_exit(deviations)

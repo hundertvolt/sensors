@@ -831,3 +831,223 @@ dev twin or the GC stage reruns on the 512 B ring tree.
 - 2026-11-06 06:58 UTC, topic: R5 question 7 (BACKLOG numbering paragraph: A drop it, item 2 a plain bullet, B keep): "Option A"
 - 2026-11-06 06:59 UTC, topic: R5 sweep question 1 (read-trigger spacing on silicon: A a short fixed window in the standard bench run, B accept soak-only in E.6.6): "Option A"
 - 2026-11-06 07:01 UTC, topic: R5 sweep question 2 (level-containment granularity: A per-scenario and per-cell ids, B keep families and state the limit in E.6.1): "Option A"
+- 2026-11-06 07:51 UTC, topic: bench day 2 status relayed by the owner (the bench session's message of 07:05 UTC, pasted whole; key points verbatim): "day 2 is running on the owner's 15 h go-ahead (ends 21:11 UTC)"; "Image c8887b35 (carries bd67db94, dirty False). Step 3 passed."; "/status load check, base 3 60: 0 of 331 failed."; "4b: 11 failed, 75 passed, 1 teardown error, no memory line."; "Three new failures for you, all from the code and numbers, none measured on the board: 1. test_no_frame_is_lost[crc16], 2 of 22 intact in the 3 ms window. ... The test needs a slower stream or an unchecked read under CRC16. 2. test_get_and_set[none] and [cobs]: largest block grew by 768 and 880 B, against an exact-equality check. ... after >= before, or a collected baseline before both reads, would fit "nothing allocated". Also: test_reboot_falls_back's teardown error is the test order. closing_reset hard-resets and waits only for USB, then conftest.py:494 makes one strict GET /status while the board boots. It skips the SCD30 end snapshot, board-state check and session-end FRAM dump, so 4b's session-end checks have not run on either day."; "These are test files, so I have changed nothing. If you push fixes, I can rerun those tests with PYTEST_K between steps; pull won't touch the image. Order stays: run 5, arzi, schlafzi, dev."
+- 2026-11-06 07:58 UTC, topic: R5 decision review (the 11 U14 questions): "lets go through the questions one by one"
+- 2026-11-06 08:06 UTC, topic: R5 decision review Q1 (project rules P7-P11, "proven good", uncovered cases, input checks at entry): "Option A, and about what "proven good" means: a behaviour, pattern, feature or fix which is profitable for the product and is actually required for it. So anything I required or requested, anything we put effort into and developed it to a good shape is a candidate for rather being on the "the product actively profits from it, keep it" side. But this is no extremely hard gate. Example: if one of the excursions added overkill, the overkill had a gap, and that gap was rigidly and elegantly closed, this fixing work may look like a candidate for keeping because it's a good result of much effort. But as soon as the overkill is removed, the only reason for the good fix is gone, and the fix itself becomes obsolete and can for sure be removed. Still, the "keep good work" rule applies in such cases, but with a different meaning - the obsolete fix can go, but the knowledge shall be preserved (that I already told you on another day, so it's consistent with it)."
+
+## 2026-11-06 08:35:25 UTC - U14 decision review Q2 (failure handling): two questions, no ruling yet
+"The "Code 9" scheme is consistent, proven working and does not misfire, the question about this is rather if to use the scheme at all?
+What does "ResetErrors is also refused after a fault of the supervisor itself" mean? Only that if the supervisor already is in error, I can't reset the error logs during that time?"
+
+## 2026-11-06 08:39:45 UTC - U14 decision review Q2 (code 9): a question, no ruling yet
+"I like the idea about the code 9, i only want to understand. if i for example give it a reset command and it fails, I read code 9. Good. How does the prewritten code 9 go out of the records if the reset succeeds, so I don't read a false positive code 9?"
+
+## 2026-11-06 08:43:35 UTC - U14 decision review Q2 (code 9): a question, no ruling yet
+""The shutdown runs: the supervisor stops, the config is flushed, storage is quiesced, the tasks stop, and the files are deleted" Which files are deleted?"
+
+## 2026-11-06 08:47:35 UTC - U14 decision review Q2 (failure handling, code 9): ruling A
+"I only wanted  to be sure that a plain reboot does not write anything into the tinyfs. The way you described - only the reset config command does that - is fine. Keep as is, Option A."
+
+## 2026-11-06 08:58:27 UTC - U14 decision review Q3 (UART hazards): a question, no ruling yet
+"For my understanding, and we discussed about this before: that test related hazard code lives inside the UART crossover module alone, right?"
+
+## 2026-11-06 09:01:23 UTC - U14 decision review Q3 (UART hazards): a question, no ruling yet
+"the hook, the lines in the dev build and the website form are being built into the firmware exactly when and only when the crossover module is selected to be included?"
+
+## 2026-11-06 09:08:46 UTC - U14 decision review Q3 (UART hazards): direction on the crossover module
+"The specialty about this crossover module is that it is the only place where test code is allowed inside an includable module, due to the fact that it is a real hardware test fixture driver, only existing on the dev board. I explained that in detail before, so it must be on your records. So my expectation and interpretation here would be: all hazard code goes into that module. If the module is not imported, as in all non-dev builds, there is not a single trace of anything about it, no hook, no website, no endpoint, no lines. If it is selected, in brings in everything it needs, the only switch for that being its inclusion in the toml file."
+
+## 2026-11-06 09:14:02 UTC - U14 decision review Q3 (UART hazards): ruling A for the rest
+"The rest of the Q3 topics stay as they are (A)"
+
+## 2026-11-06 09:19:58 UTC - U14 decision review Q4 (board gaps): a question, no ruling yet
+"what would implementing all of the tests (except the long wall clock soak) mean?"
+
+## 2026-11-06 09:23:41 UTC - bench relay (bench session text of 09:20 UTC, relayed by the owner), no ruling
+Owner's own line: none beyond the relay. Bench text, verbatim head: "From the bench session (2026-11-06, 09:20 UTC).
+Please put item 1 in your next push if you can." Content: image d3f10239 (heater-off in); flash reruns 9 of 9
+passed, no memory line; session-end checks ran; 3 flash cycles today (an 08:52 flash of unchanged firmware after a
+failed pull); 549fe55a offered for review; run 5 rerun on c8887b35: 46 passed, 29 failed, 9 teardown errors, 1
+skipped. Item 1: test_reset_reasons 15 failures, run_isolated_expect_reset has no kick (AP drops the stale entry
+~60 s after the reset, "No route to host" to the 90 s timeout). Item 2: teardown log check, SGP40 W65 (with W35 or
+NTP E71), W35 alone, WIFI W81. Item 3: loop lag 967,405 us vs 925,000 us; openhab IncompleteRead x7; serving sweep
+ConnectionResetError 13 (and 2); packet-fault REST not back; WEBSERVER 23 entries incl. W60. Item 4:
+put_nonsense_field expects ignore, product answers Invalid ("Which is right?"); oversized body MemFree 10,624 B;
+hotspot malformed request W61 counter 0; spoofed off-subnet tcpdump never started; ntp_recovers mpremote reset
+failed (raw REPL), three after it maybe downstream.
+
+## 2026-11-06 10:11:34 UTC - U14 decision review Q4 (gap #9, NTP failure modes): a question, no ruling yet
+"#9 would exercise the identical code against a software level ntp mockup, and the only difference being that it either runs on the rp2 instead of the twin, but the lines of code executed are the same?"
+
+## 2026-11-06 10:20:31 UTC - U14 decision review Q4 (board gaps): ruling, all but #9
+"I would like all of the tests, except #9 for the reason it's almost no added value at a very high cost."
+
+## 2026-11-06 10:22:55 UTC - bench items 2-4 diagnosis unit (past the 80 % stop estimate): go
+"go for the diagnosis"
+
+## 2026-11-06 10:36:40 UTC - bench status: a question, no ruling
+"Is it intended that the bench is idle at the moment?"
+
+## 2026-11-06 10:47:37 UTC - bench 09:18/09:35 reds b-f into the running diagnosis unit (past the 80 % stop): ruling A
+"A"
+
+## 2026-11-06 10:48:06 UTC - U14 decision review Q5 (twin fidelity): a question, no ruling yet
+"Question 5: The additional costs of C instead of A seem not too big, though? Probably just some few lines (no extra test required) which might matter in the future?"
+
+## 2026-11-06 10:50:06 UTC - bench relay (bench session text of 10:41 UTC, relayed by the owner), no ruling
+Owner's own line: none beyond the relay. Bench text, verbatim head: "From the bench session (2026-11-06, 10:41 UTC;
+note the Pi's clock said 10:39 when your 10:45 note arrived)." Content: twins started 09:55 after the 09:54
+hand-back; arzi rc=0 and schlafzi rc=0, Result: PASS, load ~0.2, largest feed gaps ~2.2 s of 8 s; dev started
+10:37, ends ~10:59. Then run 9 10m (~1h55, ends ~13:00) on d3f10239, no pull needed (2745af2f, b969964f in HEAD
+c1f8076b). Then the new tests; between 13:00 and the push run 11 (fram_8mhz FRAM_HOURS=2, 2h05, ends ~15:05) "Tell
+me if you'd rather keep the board free for them." Wear question: "Do the eight new tests stay within that? ... If
+they'd go over, I need your line before running them." Not rerunning items a-f until a fix comes.
+
+## 2026-11-06 10:50:12 UTC - U14 decision review Q5 (twin fidelity): ruling C
+"Question 5: Option C"
+
+## 2026-11-06 10:59:41 UTC - U14 decision review Q6 (estimates, not measurements): direction asked, no ruling yet
+"If they are really useful, I would agree measuring all of them. But with a clear distinction which of them are pointers to a real issue with "firmware changing potential" and which of them rather have an "attention" meaning - if they trigger, this means "look closer" and not "error". What do you think?"
+
+## 2026-11-06 11:03:01 UTC - U14 decision review Q6 (estimates, not measurements): ruling, the lead's split
+"fine like this"
+(The split it accepts: 9 bound rows measured on the bench before the wear steps are cleared, 12a/12b/10c/the
+loop-stretch script plus two new small scripts (supervisor scan, request-head capture); 19 attention rows set from
+existing bench logs and CI history by one read-only unit; 4 choices relabelled; every row tagged bound/attention.)
+
+## 2026-11-06 11:03:59 UTC - bench relay (bench session text of ~10:56 UTC by the Pi, relayed by the owner), no ruling
+Owner's own line: none beyond the relay. Bench text, verbatim head: "From the bench session (2026-11-06, about 10:56
+UTC by the Pi)." Content: lag probe first ~13:00, then run 11; wear understood, config-write-during-traffic once
+behind the flag; lag probe: a scratch copy with one print per lag >= 925 ms (value, ticks_ms), tracked file
+unchanged, host line stamper ("Tell me if you'd rather have only the original."); NTP E71 in test_heap_at_peak not
+answerable from its logs (script output kept in a local variable, no console saved), needs the output saved; raw-REPL
+EIO: ResetReason first; clock: Pi synchronized (offset +1.6 ms, stratum 2), "Your clock or your stamps look about 4-5
+min ahead (your 10:57 note reached me before 10:54 here)". dev twin still running, then run 9 10m.
+
+## 2026-11-06 11:05:17 UTC - test-fix unit for the diagnosis's test-side findings (past the 80 % stop): ruling A
+"Test fix now (A). Does that change the reply to the benchh?"
+
+## 2026-11-06 11:07:45 UTC - the diagnosis's three owner decisions: go through them, no ruling yet
+"lets go through them"
+
+## 2026-11-06 11:09:13 UTC - bench relay (bench text stamped "11:14 UTC by date -u", relayed by the owner), no ruling
+Owner's own line: none beyond the relay. Bench text, verbatim head: "From the bench session (2026-11-06, 11:14 UTC by
+date -u). Read of build/archive/run_bench_hardware_suite/20261106T091822Z/boot-log.txt, no board." Content: item 7:
+no webserver start line; 8.823 WLAN connecting, 9.181 All timers running, 9.183 All tasks running, 9.185 NTP sync
+starting, 10.331 WLAN connection established, 10.602 RTC set, 12.47 first 200; STA-to-RTC 0.27 s vs a 0.5 s poller:
+"points to the test's poll timing", not proved. Item (e): "WIFI WLAN connection established" is periodic (15 times in
+90 s, ~5.55 s, from _on_sta_connected() via _handle_sta_connection_result()); a 5.0 s tail meets it ~90 %; real
+reconnect prints "WLAN reconnect triggered!" (asy_wifi_service.py:479); same trap at conftest.py:566,
+test_wifi_networking.py:46/53, test_boot_order_and_triggers.py:41 (first match, fine). Question: the block re-prints
+every 5.55 s at this DebugLevel; intended? W65 note: "Backup counter: 1 Trigger: 60" 10.243, "FRAM read data
+timestamp not valid" 10.991, "Backup loaded without timestamp", "Retrying initialization..." 11.079-11.081.
+Clock check by the lead: container date -u 11:09:47 equals pypi.org's HTTPS Date header 11:09:47; the bench's
+"11:14 by date -u" arrived at 11:09 real, so the Pi's clock (or that stamp) runs ~5 min ahead.
+
+## 2026-11-06 11:12:17 UTC - diagnosis decision 1 (SGP40 W65 after an FRAM erase / first boot): ruling, keep it (A)
+"actually, i think there even are more places where bluntly erasing FRAM would trigger one time errors. and if we are special-casing the erase, we would also need to special-case an initial boot where FRAM could hold arbitrary values. So just keeping it allowed to record an error once looks legitimate to me"
+
+## 2026-11-06 11:16:57 UTC - diagnosis decision 2 (the 413 body cut by a reset in test_concurrent_mixed_body_sizes): ruling A, test fix
+"A"
+
+## 2026-11-06 11:17:54 UTC - bench relay (bench text of 11:12:24 UTC, a real date -u reading), no ruling
+Owner's own line: none. Bench text, verbatim head: "From the bench session (2026-11-06, 11:12:24 UTC, read from date
+-u in the check below). The Pi's clock is right. My stamp was wrong." Content: "11:14 by date -u", "10:56 by the Pi"
+and "11:06 by the Pi" were estimates; check: date -u 11:12:23/11:12:24, pypi.org Date 11:12:24, github.com Date
+11:12:16; timesync server 0.debian.pool.ntp.org, offset +1.623 ms; real readings: run start 11:04:12, twins' times,
+10:53:44 timedatectl, boot-log offsets. Notes 1-3 taken; run 9 10m running (started 11:04:12).
+
+## 2026-11-06 11:21:09 UTC - diagnosis decision 3 (stack overflow record): a question, no ruling yet
+"I actually did not know yet that there was an additional "log dead task" function, what is special about it that it cannot be handled by the normal print log functions?"
+
+## 2026-11-06 11:23:38 UTC - diagnosis decision 3 (stack overflow record): a question, no ruling yet
+"so it's a lean code reuse style helper, already exploiting as much existing code (not duplicating) as possible with a real added value?"
+
+## 2026-11-06 11:30:32 UTC - diagnosis decision 3 (overflow escaping while SYSTEM's FRAM lock is held): ruling A
+"Option A"
+(Code 20 written in `_log_dead_task()` before the awaited entry when the ended task's exception is the C-stack
+overflow; ~3 lines in src/asy_system_service.py, one unit test with the logger blocked, one sentence in Part F.1;
+rides on the image question 3's change already needs.)
+
+## 2026-11-06 11:31:23 UTC - bench relay of 11:12:24 received a second time (identical text, recorded at 11:17:54), no ruling
+
+## 2026-11-06 12:07:47 UTC - bench relay (bench text, last date -u reading 12:00:52), no ruling
+Owner's own line: none. Bench text, verbatim head: "From the bench session (last date -u reading 12:00:52). Image
+d3f10239, tests at c1f8076b plus hand-back commits. Run 9 10m, 11:04:12-11:57:59, rc 1 in all three steps." Content:
+step 9 test passed, teardown session-end wait timed out 90 s ("No route to host"), twice now; 10a/10m bench half never
+ran: 3 tests ERROR in setup (bench/conftest.py:86 check_image, one fetch), inferred cause flash tests' hard_reset with
+no kick -> stale AP entry -> hotspot (FRAM WIFI W38/W79 pairs 2->4->6); rerunning the three alone (short then mid,
+~35 min, from ~12:01); flash half 10a 3/3 passed; 10m test_single_core_timing_headroom... failed "an unexpected
+mid-soak reboot" ~30 s after the test's hard_reset, cause not traced, reason overwritten (21 now), no new SYSTEM entry;
+that window spent most of its 600 s in hotspot ("Does it matter for what it claims?"); rerun once after the lag probe.
+Order: bench half to ~12:40, lag probe, single-core once, run 11 (~2h05, ends ~15:10). Fix suggestion: kick and wait
+between flash and bench (soak runner or board_image), leave_board_serving's last reset via kick_then_reset; not editing.
+
+## 2026-11-06 12:09:55 UTC - item 4 (the WLAN connection lines repeated every 5 s pass): ruling A, widened
+"WLAN printouts: Option A, but not only on "transition into a connection", but on any change of connection state. So a continuous watcher has a clear view on the current state, with the minimum required count on messages."
+
+## 2026-11-06 12:10:44 UTC - harness unit for the missing reset kicks (past the 80 % stop): ruling A
+"Harness: Option A"
+
+## 2026-11-06 12:20:58 UTC - U14 decision review Q7 (memory and stored data): no owner choice seen
+"Question 7: I do not really understand my choice there, the topics you listed seem to be technically qualified and required, and you call them proven, inherently. There is no such thing if that is critical in certain situations, or what that actually *means* for operation, so I do not see any choices here."
+
+## 2026-11-06 12:24:10 UTC - U14 decision review Q7: a question, no ruling
+"I would actually like to know if the Q7 topics are in some way close to critical margins, or what the current state actually means to operation."
+
+## 2026-11-06 12:31:01 UTC - U14 decision review Q7: direction, a free-heap wrap-up at the end
+"Q7: You actually should do a wrap-up of free heap at the end. 60k left from105k must have some solid explanation."
+
+## 2026-11-06 12:34:24 UTC - U14 decision review Q7 (heap wrap-up): a correction from the owner, no ruling
+"Larger imports and larger built system should not have a significant impact, as they are all directly running from flash as frozen modules. Only their actual RAM usage in-operation counts, and that should be significatly lower than the numbers you named."
+
+## 2026-11-06 12:40:23 UTC - U14 decision review Q8 (ISL29125 config check): a question, no ruling
+"About the ISL: Every read cycle reads the full config allover again? how often does that happen, and how large is the config size compared to the actual payload?"
+
+## 2026-11-06 12:45:47 UTC - U14 decision review Q8 (ISL29125 config check): ruling, keep as is
+"ISL sensor: keep as is."
+
+## 2026-11-06 12:47:13 UTC - bench relay (bench text, date -u 12:38:03), no ruling
+Owner's own line: none. Bench text, verbatim head: "From the bench session (date -u 12:38:03 read after the rerun). Soak's
+bench half, run alone, image d3f10239." Content: short 12:01:01-12:06:01 (archive 20261106T120101Z) 3 passed rc 0; mid
+12:06:01-12:37:57 (archive 20261106T120602Z) 2 passed, 1 failed + teardown error, rc 1: http_soak 0 of 860 failed over
+600 s; scd30_frc_readiness_baseline 257 samples at 2 s, 0 missed; extended max-speed hammer FAILED on UART_init E81 and
+UART_resp E81 UART_NO_ACK, counter 2 each, no reboot, no task end, no answered count or MemFree floor (stopped before),
+WEBSERVER 1077 W48/W60 allowed; inferred: ACK wait 1000 ms (asy_uart_comm.py:109, :977-978) vs the 967 ms lag; short's
+60 s hammer no E81; not rerunning until the lead says. FRAM cleared by the tests' own reset_all_error_logs (first run
+today); saved first: logs/day2_20261106/errcount_before_first_soak_clear_20261106T1201.json: WIFI 21 (W38/W79), SGP40 81
+(W35/W33), NTP 1 (E71), SYSTEM 2 (E42, E25), seven CFGMGR_* 7 each (W22); counters count from ~12:37. Heap probe note
+taken: BASELINE at idle twice at gc.threshold(32768), asks whether -1 too (~2.5 min each); caveat mpremote run wrappers.
+
+## 2026-11-06 12:57:09 UTC - U14 decision review Q9 (network services): ruling A, rest accepted, one question on TimeStale
+"Option A, keep. Remaining topics: all good, except one question: why does the flag describe staleness, so a "false" means "good"? Wouldn't it be more intuitive to give it a "synced" meaning, where "true" means good, "false" means stale, and "null" keeps its meaning? Also better, as many languages read "false" and "null" as falsy values, so automatic evaluation of the API value is eased"
+
+## 2026-11-06 13:01:01 UTC - U14 decision review Q9 (TimeStale flag): ruling B, drop TimeStale, NTPSynced is the flag
+"I did not even know that, I thought it is that old field, only evolved. Then it even was overkill / bloat added without my explicit understanding. Option B, that is fully sufficient."
+
+## 2026-11-06 13:06:07 UTC - U14 decision review Q9 (TimeStale flag): a question, no ruling
+"Is the time stale also doubled internally, inside the firmware, so do we also have the same information in two variables there?"
+
+## 2026-11-06 13:11:42 UTC - U14 decision review Q10 (web server): a question, no ruling
+""The catch around each web request: kept from field experience" Explain to me, standing alone this says nothing"
+
+## 2026-11-06 13:14:11 UTC - bench relay (bench text, read 13:04:48), no ruling
+Owner's own line: none. Bench text, verbatim head: "From the bench session (read 13:04:48)." Content: single-core soak
+at mid alone 12:50:06-13:03:11 (archive 20261106T125007Z) PASSED, no reboot in 600 s; the 10m reboot is 1 of 2, cause
+unknown; teardown error rc 1, session-end wait 90 s "No route to host", third session so (crc16, damaged config, this),
+board on its hotspot after; pushed 017f5f5d [skip ci]: ROOT_CAUSES section 18 (5d, twins, run 9 10m, bench half alone,
+single-core, lag table, baseline), section 8's heapmap correction, heapmap.py fixed; run 11 waits for /status 200
+(bounded 11 min), starts by itself ~13:13, ~2h05, ends ~15:20, no merge until it ends; FRAM_HOURS stays 2; a /status
+stall hook needs the board, so after run 11 unless told to stop it.
+
+## 2026-11-06 13:17:14 UTC - U14 decision review Q10 (web server and website): ruling, keep all
+"Question 10: Keep all of it"
+
+## 2026-11-06 13:19:17 UTC - U14 decision review Q11: the owner asks to see it (the lead had recorded it unasked)
+"I still want to see Q11"
+
+## 2026-11-06 13:27:49 UTC - U14 Q11 ruling, and the go for the apply units (past the 80 % stop): A, all now
+"Q11: All accepted. Last message: A, all now"
+
+## 2026-11-06 14:09:37 UTC - intermediate push (snapshot 43) to secure the knowledge and decisions gathered
+"We gathererd so much knowledge and took so many decisions, I want to have this secured - do an intermediate push now"

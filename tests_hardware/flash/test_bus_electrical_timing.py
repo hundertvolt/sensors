@@ -2,11 +2,14 @@
 clock-stretch soak needs --soak-duration."""
 
 import errno
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
-from harness import DEVICE_SCRIPTS_DIR, Board, crash_lines, parse_facts
+from harness import DEVICE_SCRIPTS_DIR, Board, crash_lines, parse_facts, reset_board, wait_until
 from soak_durations import SOAK_DURATION_SECONDS
+
+if TYPE_CHECKING:
+    from bench_control import BenchBridge
 
 
 class _ResultNote(Protocol):
@@ -21,6 +24,7 @@ _IRQ_SCRIPT_TIMEOUT_S = 30.0
 _ARMING_SPAN_MAX_US = 1500
 # Three scans and two radio re-inits per value, three values.
 _COUNTRY_SCRIPT_TIMEOUT_S = 120.0
+_PRESENCE_TIMEOUT_S = 30.0  # the board back on USB after the soak's closing reset, as the headroom soak waits
 
 
 # The soft-Timer callback drop under a forced scheduler saturation.
@@ -69,11 +73,13 @@ def test_a_malformed_country_code_reaction_is_recorded(board: Board, result_note
 
 # The SCD30's real clock stretch under bus load: about once a day (Interface Description p.2), only watched for.
 @pytest.mark.soak_duration
-def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: Board, request: pytest.FixtureRequest) -> None:
+def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: Board, bench_if_configured: "BenchBridge | None", request: pytest.FixtureRequest) -> None:
     duration = request.config.getoption("--soak-duration")
     if duration is None:
         pytest.skip("real SCD30 clock stretches come about once a day - run scripts/run_bench_soak_tests.sh --duration {short,mid,long} to watch for one")
     # Proves only the absence of a failure over the window, never that a stretch happened inside it.
     lines = board.tail_log(duration_s=SOAK_DURATION_SECONDS[duration])
+    reset_board(board, bench_if_configured)  # the soak runner's bench half follows in this session: main.py serving again
+    wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")
     suspicious = crash_lines(lines) + [line for line in lines if "ETIMEDOUT" in line or ("SCD30" in line and "OSError" in line)]
     assert not suspicious, "a crash or an SCD30/I2C error during the soak window:\n" + "\n".join(suspicious)

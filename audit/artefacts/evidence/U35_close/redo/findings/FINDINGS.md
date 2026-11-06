@@ -254,3 +254,202 @@ done-criteria, observations. Each with its evidence, for the owner.
   197 records (each with its replacing citation); 15 realms in 11 questions. Lead check: counts match the TSV; Q4's
   "held SDA during the full system's boot" is already decided (owner 06:43, option A; unit r5c builds it), so Q4 asks
   only the other three scripts; Q6's scan-budget line matches the sweep's finding 7. Asked one at a time from 07:3x.
+- 12.36 (lead, 07:23) Unit stop merged (e53ca758 + lead 21853aa7, the build-environment list's twin entry; merge
+  2a1deb42); snapshot 42 3e1259ee pushed on ba581e5c (next PARENT). Diff read: net -55 code/test lines, no SIGINT
+  fallback, SIGINT only in Run 12. Left for r5d: tests_js/_twin_process.js still stops live-tier twins by SIGINT (a
+  lost interrupt there costs the SIGKILL bound and the flush, never a red test).
+- 12.37 (lead, 07:5x) Bench day 2 (07:05 relay): /status load 0 of 331 failed, lowest MemFree 21,280 B; 4b 11 failed,
+  75 passed, 1 teardown error. Three test faults read from code (crc16 frame-loss stream outside the 512 B ring's
+  sizing; largest-block exact equality; closing_reset leaving the board booting, so 4b's session-end checks never ran):
+  unit bfix (S/u35r/r5/BRIEF_BFIX.md). r5d merged (8ea29293). The three logs (c8887b35): dev's 32768 failure is 12.24's
+  config-snapshot scenario, not the SIGINT defect; arzi's feed gaps 6795 ms (run 4, at boot) and 6290 ms (run 11):
+  unit dx4a (S/u35r/r5/BRIEF_DX4A.md).
+- 12.38 (lead, 07:5x) Snapshot 42 3e1259ee: CI green, run 42180510001, 34 of 34 jobs success, "Unit tests (shipped
+  gc.threshold)" included (the push run 42180502365 cancelled itself by concurrency, as before). R4 closed. Next
+  PARENT 3e1259ee.
+- 12.39 (lead, 08:0x) r5c (ba671e7a) merged into int 54a769e1. Diff read: +376/-89 over 15 files; the held-SDA hold
+  code shared (_shared/held_sda.py); the ResetErrors bench test re-tries the reboot only when its ResetErrors reached a
+  closed listener (a window the server closes 0-2 s after Valid), any answer but Failed fails at once, the retries noted
+  as recoveries: a precondition, not a re-run of a check. Class (c) from r5c: the harness hard-reset test expects 2,
+  the product records RR_INTERRUPTED 21 after mpremote's Ctrl-C: to r5b, item 7. r5b launched (S/u35r/r5/BRIEF_R5B.md).
+- 12.40 (lead, 08:1x) bfix (227b4ad8) merged into int ee162e86. Diff read: +36/-11 over 3 files. Frame loss: the
+  stream is paced outside the interrupts-off window from the mode's own timed check_from() (about 27 ms a frame under
+  CRC16, 5 ms with none) and runs at line rate across the window only; _drain ends only on a quiet line, not on the
+  empty ring an overrun leaves. Over-cap: after >= before (largest_block() collects first). Session end: the wait went
+  before the strict read in conftest.py, not into closing_reset, because flash/conftest.py's leave_board_serving
+  hard-resets again between the two (agent's decision, sound). The dut_ip probe is now written twice in conftest.py;
+  left as is (two copies). Latent, not run on either bench day (wear gate): the config_write state streams 400 ms at
+  line rate (about 4.6 KB) with no reader into the 512 B ring, so it should fail by the same arithmetic. Whether a
+  continuous stream across a real flush still belongs beside config_write_link under the 512 B sizing: last round.
+- 12.41 (lead, 08:1x) dx4a (S/u35r/r5/DX4A.md). 12.24 root-caused: SCD30's start-up reads 0x5403 3.8-4.1 s after
+  BOOT_TASKS (after BOOT_DONE), behind the soft reset's fixed 2.5 s wait, so on a loaded host its read task took the
+  second armed fault before the second GET; product correct. Fixed by lead commit 4e7e8cab: the fault aims at 0x0010,
+  which only the snapshot reads after boot (dx4a probe: 10 of 10 under 0-9 busy loops). arzi's 6795/6290 ms gaps:
+  whole-process stalls of the loaded Pi (heap unchanged across a 5.2 s hole; 38 local logs peak at 2.0-2.1 s; silicon
+  longest unyielded stretch 41 ms); the 6,000 ms check worked; no fix; rerun on an idle host. Gate bfixG running.
+- 12.42 (lead, 08:3x) Gate bfixG on int (after bfix + the scenario fix): rebuild, lint, mypy x3 clean; tests_scripts
+  6894 passed, 1 failed (my own comment block: 4 lines at the 120-col count), fixed and amended (8f758b6f), cap test
+  657 passed; dev harness both stages PASS, but on this host the changed scenario is on the shared-port-53 side
+  (scripts/test.sh runs it), so it ran alone with --only: pass at 32768 and -1. Bench head 549fe55a carries the
+  bench's own harness fix (62.5 ms USB-gone poll in kick_after_reset) that int lacked (db6442b5 and bd67db94 were
+  already in int): taken into int as b2524fd0, so the bench push does not revert it. Check harnC queued behind r5b's
+  heavy run.
+- 12.43 (lead, 08:41) harnC on int b2524fd0: lint, host mypy clean, the 4 files calling the changed harness code 745
+  passed. Bench push a0503ca5 (fast-forward on 549fe55a, [skip ci]; audit/ unchanged, harness.py kept). Relay
+  S/u35/lead/relay_bench_d2b.txt sent to the owner.
+- 12.44 (lead, 09:1x) r5b (96d7d003) merged into int c1a84764 (clean). Diff read: +59/-84 over 23 files; the
+  containment test shorter (+11/-14), ids 59 -> 122 (33 files, 22 cells, 67 scenarios; 72 covered, 50 excused);
+  declarations narrowed to what each test does; harness hard reset now expects RR_INTERRUPTED 21 (renamed). Left (c):
+  four places still say a harness hard reset reads 2 (harness.py:924-927, SPEC :1124 and :7015-7016,
+  error_catalog.json:173): to the U14 apply unit. Owner Q3 direction (09:08): the webserver's add_status_command hook
+  goes; the link module brings its own route (U14_ANSWERS.md). Gate r5bG running.
+- 12.45 (lead, 09:1x) PR #111 (bench branch): the bench's own merge commit d3f10239 (no [skip ci]) ran CI, run
+  42192434611; "Unit tests (shipped gc.threshold)" failed in setup_toolchain's apt download (azure.archive.ubuntu.com
+  stalled, 3 x 150 s), before any test body: an install failure. Outside audit/ the branch equals a0503ca5; head
+  4a2176ba is [skip ci]. One rerun of the failed job owed once the run completes (refused while it runs, 403).
+- 12.46 (lead, 09:2x) Gate r5bG on int c1a84764: rebuild, lint, mypy x3 clean, tests_scripts 6896 passed. Bench push 2
+  b969964f (fast-forward on 4a2176ba, [skip ci], audit/ and harness.py unchanged). Owner Q4 asked what "all tests"
+  means: answered (8 writable at about 2 % of the week vs 0.8 % for A; #5 waits on the ring question; recommended B).
+- 12.47 (lead, 09:3x) Bench relay 09:20 (owner_rulings 09:23:41). Flash reruns on d3f10239: 9/9 passed, session-end
+  checks ran. 3 flash cycles today (bench's own 08:52 flash after a failed pull). 549fe55a already in int (12.42).
+  Item 1 (test_reset_reasons, 15 failures, no kick after a provoked reset): lead commit dcb289b1, one helper that
+  runs, kicks, parses; checks lint, host mypy, 26 guard files 904 passed, text guards 744; bench push 3 1f844c03.
+  Item 4's question: an unknown sensor answers "Invalid" (SPEC A.8 :1144-1147), the test was stale: lead commit
+  (test_network_resilience.py, 1 line), checked, for the next push. Open: items 2 (teardown W65/W35/W81), 3 (loop
+  lag 967 ms vs 925 ms, IncompleteRead x7, ConnectionResetError, packet-fault REST, WEBSERVER W60) and the rest of 4:
+  need a diagnosis unit; the week near the 80 % stop (estimate): put to the owner.
+- 12.48 (lead, 10:2x) Owner Q4 (10:20:31): all board gap tests but #9. Unit gtest launched (S/u35r/r5/BRIEF_GTEST.md,
+  int c4f56186, due 13:30 so the bench runs them today, about 1.5 %). Correction to my 09:19 answer: #5 does not wait
+  on the ring question - on the bench tier the link runs its normal transactions, which the 512 B ring is sized for.
+- 12.49 (lead, 10:2x) Owner go for the diagnosis (10:22:55). Unit dx5 launched (S/u35r/r5/BRIEF_DX5.md, read-only,
+  due 12:30, about 0.8 %): bench items 2-4 from HANDBACK.md at 2745af2f; item 3 first.
+
+## 12.50 Bench idle from 09:54 to 10:45 UTC (lead's miss), and the 09:18/09:35 bench results
+The bench's 09:54 hand-back (c1f8076b) ended its reruns; no relay followed, so day 2's remaining range (9, 10a, 10m)
+did not start. Owner asked at 10:36:40. Relay `S/u35/lead/relay_bench_d2f.txt`: run 9 10m, then the twin suites, the
+gap tests at ~14:30-15:00, then run 11 16b. The 09:35 rerun: kick fix works; new reds a-f listed in the relay, to the
+diagnosis (owner's budget call for adding them to the running unit).
+
+## 12.51 Bench 10:41 relay answered (relay d2g); Q5 ruled C; dx5 items 2-4 in
+Bench: twins arzi/schlafzi PASS (feed gaps ~2.2 s), dev ends ~10:59, then run 9 10m (~13:00), run 11 to ~15:05,
+then the gap tests. Wear line given: the 420/422 is sheet maxima per started step; the gap tests may pass 422, run
+them (owner chose them; prerequisite writes ungated). Lag probe (/status vs /measurements) asked at 13:00. Pi clock
+looks ~5 min behind. dx5 hand-back 1 (S/u35r/r5/DX5.md): item 3 is two mechanisms (RST on unread close; W49 reclaim
+from multi-second loop stalls, cause (d)); SGP40 W65 after an FRAM erase vs the owner's expected-situation rule: an
+owner decision; mixed-body 413 RST: (b) or a bounded drain in `_serve()` (owner's call). dx5 resumed on b-f.
+
+## 12.52 Correction to 12.51: the Pi's clock is right; the lead's relay stamps ran ahead
+The bench's timedatectl: synchronized, offset +1.6 ms. The lead stamped relays d2f ("10:45") and d2g ("10:57") with
+expected times, not `date -u`; both were ahead of the real send. From now on a relay's stamp is a `date -u` reading.
+Bench's NTP E71 question (dx5 item 2) needs test_heap_at_peak to save its script output: goes to the test-fix unit.
+
+## 12.53 dx5 complete (DX5.md, 35 lines); test-fix unit tfix launched (owner "A", 11:05:17)
+tfix (BRIEF_TFIX.md, due 13:45): every (b) item, the (c) redirect, three (d) instrumentation changes (loop-lag time,
+probe failure reasons, test_heap_at_peak's script output kept). Out, for the owner one at a time: SGP40 W65 after an
+erase vs the expected-situation rule; the 413 body cut (test fix or server drain); the product finding (overflow
+escaping while SYSTEM's FRAM lock is held reads as reset 2; proposed record in `_log_dead_task()`). "First 200 after
+the RTC was set": the bench checks boot-log.txt's line order first.
+
+## 12.54 Bench boot-log read (relay stamped 11:14 by the Pi): items e and 7 to tfix; a product question; the clock
+Item e: "WLAN connection established" is `pr.one` (level 3, "once") in `_on_sta_connected()`
+(src/asy_wifi_service.py:576-577), called on every 5 s `_connect_loop()` pass while connected (:487-489), with the
+diagnostics block: printed ~every 5.55 s. Test side: tfix detects a real reconnect instead. Product question for the
+owner (console only, no FRAM): print only on the transition into STA_ESTABLISHED. Item 7 (first 200 vs RTC set) to
+tfix: the test races a 0.27 s gap with a 0.5 s poller; make it race-free or leave it, stated.
+Clock: the container's date -u matched pypi.org's HTTPS Date header to the second (11:09:47); the bench's "11:14 by
+date -u" arrived at 11:09 real. 12.52's "the Pi is right" is withdrawn: the lead's two stamps did run ahead (estimates),
+and the Pi's latest stamp runs ~5 min ahead of real UTC. Bench to compare its date -u with an HTTPS Date header.
+
+## 12.55 Diagnosis decision 1 ruled (owner 11:12:17): W65 stays for every invalid backup read, erase and first boot included
+Code check: `_run_restore()` sets `_voc_init = 0` on an invalid read (src/asy_sgp40_driver.py:511-514) and returns
+False, so the "Retrying initialization" path (:381-384) does not re-arm it: one W65 per boot or task start, matching
+the owner's "record an error once". Apply unit: SPECIFICATION.md :444-445 / :3664 state the exception with the ruling.
+Tests declare W65 where they provoke an erase or an early reset (tfix already does).
+
+## 12.56 Diagnosis decision 2 ruled (owner 11:16:57): A, test fix; no drain in `_serve()`
+A reset after the 413 status line counts as answered 413 (test_network_resilience.py ~1246-1250). Sent to tfix.
+
+## 12.57 Clock settled: both clocks agree with pypi.org's Date header within 1 s; every disputed stamp was an estimate
+The lead's d2f/d2g stamps and the bench's "10:56", "11:06" and "11:14" stamps were estimates labelled as readings.
+Both sides now stamp from an actual `date -u`. 12.51, 12.52 and 12.54's clock lines are superseded by this entry.
+Bench run 9 10m started 11:04:12 (real reading).
+
+## 12.58 gtest reviewed and merged into int (b75928a6, merge of 63a0e4cf; +827/-32, 13 files); gate after tfix
+Read: the flash tests (items 2-4, 8), items 1, 5, 7 in full, item 6 and SPEC E.6.6 rows by diff; no audit IDs outside
+audit/. Accepted as stated: item 4 (stepped clock) cannot run under --twin (run_device_script.py installs no wall clock;
+twin counterpart tests/test_digital_twin_clock_jump.py); not in any gate (the twin record's reasons file takes it).
+Item 5 toggles GMTOffset default <-> default+60 s, one write a run, never restored: outside the standard state's fields
+(DebugLevel, FRAM WP, scratch files, SCD30), so no check trips; local time may read 1 min off between runs. Item 7's
+floor (10 of 20 per reader) is the twin's, untried on silicon. Two lines outside the write list (marker exemption,
+stub), both guard-required. One gate for gtest + tfix together after tfix's merge; then the bench push.
+
+## 12.59 tfix handed back (f9e62683, +178/-77, 14 files under tests_hardware/); reviewed; one follow-up sent
+Read the network-resilience and boot-order diffs and every "not weaker" line. One check reshaped, flagged to the
+owner: bus trigger spacing now needs median >= planned - 20 ms and min >= planned - 20 - 90 ms (one wake's loop lag;
+host-side stamps), was min >= planned - 20 ms; board-side stamps need src/. Follow-up (lead's choice): each erasing
+test (three erase tests, the incomplete-command test) waits for the SGP40's first backup before it ends, so no later
+test meets W65 it does not provoke; due 12:45. Apply unit note: the stack test no longer exercises an overflow that
+escapes its task unrecorded; once decision 3 (A) is in src/, add an escape mode that expects 20 on silicon.
+
+## 12.60 Gate on int 03793ef9 (gtest + tfix) green; flash-reset harness gap put to the owner
+rebuild 0, lint 0, mypy 282/312/59 clean, tests_scripts 6899 passed 6 skipped (9:04), collect-only 215/248 (33 wear-
+deselected) and 244/248 with --allow-persistence-write. heavy.lock released. Bench relay 12:00:52: flash-tier and
+session resets do no kick, so the board falls to hotspot (step 9 and damaged-config teardown timeouts; soak bench half
+never ran in 10a/10m; the 10m headroom soak ran mostly in hotspot; one reset ~30 s after boot, reason overwritten).
+Asked the owner for a small harness unit (A) before today's push.
+
+## 12.61 Q7's serving memory is at a real margin; Q6's split corrected (serving demand is "bound")
+Owner asked (12:24:10) whether Q7 sits near critical margins. From 12.15/12.18 and HANDBACK_MEMDX.md (silicon, images
+with the 8 KB responder ring): idle free heap ~59.5-60.1 KB, largest free run ~2 KB; Part N's web.serving_demand_budget_b
+(72,232 B) derives from a September 105 KB reading without setups, stale; dev's demand at 6 connections 68,790 B
+(Oct; /status has grown since, 7,318 B on the bench today vs 6,993 B). Less the 32 KB reserve ~27 KB = ~2.4
+connections; silicon: 3 /status readers -> 8-14/46 answered 500, no reset. The ring revert (owner A, 11-05; dev.toml
+rx_ring 512 at int) adds back ~15.4 KB in d3f10239: ~3.7 connections, unmeasured. Q6 split: serving demand moves from
+attention to bound (a shortfall is a caught MemoryError under ordinary load, a defect by CLAUDE.md's rule). Bench:
+heap probe baseline on d3f10239 after the lag probe (the bound measurement already ruled at Q6).
+
+## 12.62 Correction: U14 Q8's "ISL29125 config compared every read cycle" is wrong
+src/asy_isl29125_driver.py: each cycle (SampleInterval default 1 s) reads STATUS (1 B) then the data burst (6 B,
+_DATA_BURST_LEN :87); BOUTF in STATUS catches a brownout every cycle and re-applies the config. The 3-byte CONFIG1-3
+snapshot (_CONFIG_BURST_LEN :88, get_config_snapshot :1194) is read only after a failed write
+(_verify_after_failed_write :877, a no-op while the write-failure count is unchanged) and on each REST config read
+(_read_sensor_dict :736). A corrupted config byte with no failed write and no brownout stays until the next REST read.
+Addendum (lead, 12:5x): the question text came from SPECIFICATION.md:11543-11545 ("The shadow-vs-chip comparison runs
+every read cycle ... (agent, 2026-10-06)"), which the code does not do (`_verify_after_failed_write` :881-883 returns
+while the write-failure count is unchanged). Owner 12:45:47 "ISL sensor: keep as is." keeps the code; the apply unit
+rewrites that paragraph to the code (and U14_TAGS.tsv:237's wording).
+
+## 12.63 Bench soak mid (12:06-12:37, d3f10239): hammer's UART_init/UART_resp E81 UART_NO_ACK, 2 each
+`test_real_hardware_survives_extended_max_speed_hammer_load...` (tests_hardware/bench/test_memory_stress_bench.py:91)
+hammers every JSON GET route, /status included (:33), at the connection ceiling; both link ends logged E81 inside the
+600 s, no reboot, no task end; short's 60 s hammer none. Same load class as day 1's 3-reader /status probe, which saw
+stalls to 2,625 ms with UART "no ACK" lines (DX5.md:5; ROOT_CAUSES_20261105.md §14); the ACK wait is 1,000 ms. Reading:
+the open loop-stall question, not a second defect. Held: no hammer rerun until the lag probe (DX5.md:6) names the stall's
+source. Margins: watchdog 8.4 s vs worst stall seen 2.6 s; UART ACK 1 s crossed (dev's bench link only). FRAM counters
+now count from ~12:37 (the tests clear them; saved file named in the 12:47:13 relay record).
+
+## 12.64 hfix review (e08e76bc + dec0e314, merged into int as 964ee399)
+Lead's review: the brief's "reset, then kick" had made a second kick order beside kick_then_reset() (~20 callers, the
+CLI); follow-up: reset_board() delegates to it. The lead's second premise was wrong: standard_state already resolves
+dut_ip at session start (conftest.py:485), so the stopped main.py after the flash half's sgp40 cadence soak predates
+hfix, and is the likelier cause of day 2's "bench half never ran" (3 ERRORs in board_image) than the stale AP entry.
+Fixed: every flash soak_duration test ends on reset_board(). The SCD30 clock-stretch soak only tails the log (main.py
+keeps running), so its closing reset is redundant; kept as the uniform rule the new check pins (one reset, ~30 s).
+The lead told the owner at 12:5x that hfix "would have broken" the combined run; corrected in the next message.
+
+## 12.65 Bench 017f5f5d (ROOT_CAUSES_20261105.md section 18): the stall is in serving /status; the idle baseline
+Lag probe, 3 readers 60 s, 32768: /status max 2,481 ms (16 lags >= 925 ms), a ~2.4 s stall about every 3.5 s, UART
+"no ACK" pairs inside it; /measurements max 318 ms. Three CFGMGR_NTP "Reading config data into list" lines 0.7-0.85 s
+apart in each stall (a dict lookup, asy_config_manager.py:363-366, so the time goes elsewhere): about 0.8 s of blocked
+loop per /status request, serialized. Class (a), source not traced. Extrapolated, unmeasured: 6 concurrent /status
+readers (max_connections 6) ~4.8 s, over half the 8.4 s watchdog. 12.63's E81 is this. Lead reads the path next.
+Baseline idle, STA up, after gc.collect(), 32768, under mpremote run wrappers: free 72,288 / 73,072 B, used 115,616 /
+114,832 B (heap ~187.9 KB), max free block 50,592 / 52,416 B. The "largest free run ~2 KB" fact was heapmap.py's
+undercount (fixed by the bench). SYSTEM E42/E25 in the saved file: provoked by test_a_c_stack_exhaustion_is_attributed.
+The 10m reboot: 1 of 2, ResetReason lost to the harness's own read (21); hfix now reads it at once.
+
+## 12.66 Attention values (apa, ATTN.md) and the radio re-init drop (lead, 2026-11-06 13:48 UTC)
+Of the 19 attention rows: 4 hold (plateau cycles, C-stack window, FRAM hold 25,000 us, scenarios timeout), 14 have no record, and 1 is
+adjusted: web.serving_demand_budget_b reads ~40,304 B against today's free heap, which puts it in the owner's Q7 heap account. Rows 11 and 18 had their basis and margin folded in via apr.
+Radio re-init (bench, 2 of 2 runs, USB lost after recover_returned=true): the script starves its own 8 s watchdog. Nothing feeds it from arm() through the
+first connect, the 4 s of settles and the second connect poll. Class (b) test defect, no product sign: production's supervisor feeds during these awaits. Fix sent to apf; confirmed by the bench rerun.

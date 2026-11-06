@@ -1,6 +1,6 @@
 """Isolated-driver device script: one supervised reader's read coroutine rebound, over the bench build's scratch config,
-to recurse until MicroPython's stack check raises; the recorded overflow makes the supervisor reboot the board with
-the stack code, whose attribution the host reads after the boot. FRAM only beyond the scratch setups, facts first."""
+to recurse until MicroPython's stack check raises; the recorded overflow makes the supervisor reboot with its code,
+or, mode "entry_held", SYSTEM's FRAM chunk lock held for good leaves that code to the watchdog. Facts first."""
 
 import asyncio
 import errno
@@ -8,6 +8,8 @@ import os
 
 import _bench_device as device  # rendered: the bench device's generated module
 import machine
+
+from asy_print_log import report_if_fatal
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _SCRATCH_CFG_PATH = "hwtest-scratch/"
+_MODES = ("reboot", "entry_held")
 _WAIT_STEP_MS = 100
 _RESET_WAIT_MS = 4 * _WDT_TIMEOUT_MS  # the death, the supervisor's next pass, then the reset delay
 
@@ -39,13 +42,15 @@ def _deep(depth: "list[int]", n: int) -> int:
 
 
 def _exhaust(reader: object, deaths: "list[int]") -> None:
-    # From outside: the reader's read loop becomes a recursion that ends only in the stack check's RuntimeError.
+    # From outside: the reader's read loop becomes a recursion that ends only in the stack check's RuntimeError, which
+    # its handler records before the raise, as a reader's broad handler does (src/asy_print_log.py report_if_fatal()).
     async def read_loop() -> None:
         depth = [0]
         try:
             _deep(depth, 0)
-        except RuntimeError:
+        except RuntimeError as e:
             deaths.append(depth[0])
+            report_if_fatal(e)
             raise
 
     reader._read_loop = read_loop  # type: ignore[attr-defined]
@@ -53,6 +58,8 @@ def _exhaust(reader: object, deaths: "list[int]") -> None:
 
 async def _main() -> None:
     wdt = arm()
+    mode = BENCH.get("mode", "reboot")
+    fact("mode", mode)
     try:  # an aborted run's leftover first (none: ENOENT)
         for name in os.listdir(_SCRATCH_CFG_PATH):
             os.remove(_SCRATCH_CFG_PATH + name)
@@ -64,11 +71,19 @@ async def _main() -> None:
     running: list[asyncio.Task[None]] = []  # stopped on any exit without the reset
     deaths: list[int] = []
     try:
+        if mode not in _MODES:
+            raise ValueError("unknown mode " + mode)
         await device.build_system(watchdog=wdt, cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)
         sysfunct = device.sysfunct
         if sysfunct is None:
             raise RuntimeError("the generated build constructed no SystemService")
         await sysfunct.run_setups(device._collect_setups())
+        if mode == "entry_held":
+            chunk = getattr(sysfunct.pr, "fram", None)
+            if chunk is None:
+                raise RuntimeError("SYSTEM's logger has no FRAM chunk, so no entry write of its can be held")
+            await chunk._op_lock.acquire()  # never released: the escalation's entry write waits on it for good
+            fact("held", True)
         label = next(name for name in BENCH["instances"] if hasattr(getattr(device, name, None), "_read_loop"))
         fact("reader", label)
         _exhaust(getattr(device, label), deaths)

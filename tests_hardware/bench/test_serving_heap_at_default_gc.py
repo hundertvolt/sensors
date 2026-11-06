@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scenarios.connections_at_each_count_from_one_to_max_connections_all_succeed", "scenarios.connections_beyond_max_connections_are_rejected_cleanly_not_crashed")
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 # Every registered JSON GET route, plus the page and the largest static file it fetches next (a static mount, not a
@@ -144,10 +144,10 @@ def _one_request(dut_ip: str, path: str, barrier: threading.Barrier, outcomes: l
         outcomes[index] = f"connect:{type(e).__name__}"
         barrier.abort()
         return
+    received = b""
     try:
         barrier.wait()
         sock.sendall(f"GET {path} HTTP/1.0\r\nHost: dut\r\nConnection: close\r\n\r\n".encode())
-        received = b""
         while b"\r\n\r\n" not in received and (chunk := sock.recv(256)):
             received += chunk
         if not received.startswith(b"HTTP/"):
@@ -163,7 +163,8 @@ def _one_request(dut_ip: str, path: str, barrier: threading.Barrier, outcomes: l
         status = head.split(b" ")
         outcomes[index] = (status[1].decode(errors="replace") if len(status) > 1 else "malformed") + verdict
     except (OSError, threading.BrokenBarrierError) as e:
-        outcomes[index] = "refused" if http_client.is_ceiling_close(e) else f"io:{type(e).__name__}"
+        # A ceiling close before any response byte, a FIN above or a reset here (http_client.CEILING_CLOSE).
+        outcomes[index] = "refused" if isinstance(e, http_client.CEILING_CLOSE) and not received else f"io:{type(e).__name__}"
     finally:
         sock.close()
 

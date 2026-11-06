@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from harness import Board
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link", "uart_load")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link", "scenarios.uart_ring_under_concurrent_load")
 
 # GET only: every worker below hits a read-only endpoint, so nothing here can persist to flash in a
 # loop. A PUT belongs in this tier only where it is documented command-only and never persisted.
@@ -45,6 +45,11 @@ _ECHO_SCRIPT_TIMEOUT_S = 240.0
 # proven stable unter max load allover"): 208 s at dev's 1000 ms reply budget on the twin's driven clock; the bound
 # leaves silicon's own load room (agent, 2026-10-21).
 _HAZARD_RUN_TIMEOUT_S = 600.0
+# One owned flash write a run: GMTOffset (local time only) toggled between its default and the default plus a minute,
+# so no run spends a restore (agent, 2026-11-06).
+_GMT_OFFSET_DEFAULT = int(str(_load.field_schema("asy_ntp_client.py", "GMTOffset")[1]))
+_GMT_OFFSET_STEP_S = 60
+_TRANSFERS_AFTER_WRITE = 2
 _TOML_HINT = "check the bench device's TOML still declares its uart_link instances and this build used it"
 
 
@@ -88,6 +93,44 @@ def test_a_multi_chunk_set_echoes_intact_under_serving_load(board: "Board", benc
     assert isinstance(before, dict) and isinstance(after, dict) and after.get("Failures") == before.get("Failures"), f"the exerciser's own transfers failed during the echoes: {before!r} -> {after!r}"
     assert len(load.answered) >= _ECHO_MIN_ANSWERED, f"only {len(load.answered)} reads answered during the echoes, below {_ECHO_MIN_ANSWERED}: {load.failures[:5]}"
     assert not load.findings, f"torn reads during the echoes: {load.findings[:10]}"
+
+
+@pytest.mark.persistence_write
+def test_fram_log_writes_and_a_config_flush_during_link_traffic_under_api_load(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # The link's own transactions under the readers' load with FRAM log writes (ResetErrors blanks every chunk) and one
+    # config write in their midst, whose flush task starts in the PUT's own handling: every read answered, no link
+    # failure or entry, the config store logging nothing, the value read back.
+    _require_uart_modules(dut_ip)
+    reset_all_error_logs(dut_ip, request.node.name)
+    stored = _load.get_object(dut_ip, "/system").get("GMTOffset")
+    target = _GMT_OFFSET_DEFAULT if stored != _GMT_OFFSET_DEFAULT else _GMT_OFFSET_DEFAULT + _GMT_OFFSET_STEP_S
+    before = _link_counters(dut_ip)
+    load = _load.Load()
+    stop = threading.Event()
+    threads = [threading.Thread(target=_gets_until, args=(dut_ip, "/status", n, stop, load), name=f"flush-get-{n}") for n in range(_ECHO_READERS)]
+    answer: object = None
+    try:
+        for thread in threads:
+            thread.start()
+        wait_until(lambda: _link_counters(dut_ip)["Transfers"] > before["Transfers"], timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="a link transfer under the readers' load")
+        reset_all_error_logs(dut_ip, request.node.name)
+        answer = http_client.fetch(dut_ip, 80, "PUT", "/system", {"GMTOffset": target}, timeout_s=_REQUEST_BUDGET_S).json().get("result")
+        mark = _link_counters(dut_ip)["Transfers"]
+        wait_until(lambda: _link_counters(dut_ip)["Transfers"] >= mark + _TRANSFERS_AFTER_WRITE, timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="link transfers after the config write")
+    finally:
+        stop.set()
+        alive = _load.join(threads, _JOIN_TIMEOUT_S)
+    after = _link_counters(dut_ip)
+    result_note(f"GMTOffset {stored} -> {target}: {answer}; link {before} -> {after}; {len(load.answered)} reads answered")
+    assert not alive, f"{alive} never finished within {_JOIN_TIMEOUT_S:g}s - possible real deadlock under load"
+    assert answer == {"GMTOffset": "Valid"}, f"the config write was answered {answer}, so no flush ran"
+    assert not load.failures, f"{len(load.failures)} API issue(s) during the writes: {'; '.join(load.failures[:10])}"
+    assert after["Failures"] == before["Failures"], f"link transfers failed during the writes: {before!r} -> {after!r}"
+    _assert_link_logs_empty(dut_ip, "during the FRAM log writes and the config flush")
+    store = errcount_entry(get_errcount(dut_ip), "CFGMGR_NTP")
+    assert store["counter"] == 0, f"the config store logged its flush under the traffic: {store!r}"
+    assert _load.get_object(dut_ip, "/system").get("GMTOffset") == target, "the config write did not land"
+    assert_no_task_ended(dut_ip, "a config flush during link traffic under API load")
 
 
 @pytest.mark.provokes_log(
