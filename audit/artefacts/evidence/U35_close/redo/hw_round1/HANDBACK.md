@@ -1,6 +1,6 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-06 14:13 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-06 16:14 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
@@ -16,7 +16,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-06 14:13 UTC. Each verdict
 | 9 | crc16_hazards | rc=4; NOT CLEAN (lower levels skipped: L0 L1 L2) | 21 | 2026-11-06 14:11:00 | 0h02 | 0.19 | 0/0/0/0 |
 | 10a | soak_short | rc=1; FAIL (pytest exited 1); failed: bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved, bench/test_memory_stress_bench.py::test_http_soak_stays_live, bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline | 21 | 2026-11-06 11:10:21 | 0h14 | 0.18 | 0/0/0/8 |
 | 10m | soak_mid | rc=1; FAIL (pytest exited 1); failed: flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load, bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved, bench/test_memory_stress_bench.py::test_http_soak_stays_live, bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline | 21 | 2026-11-06 11:25:08 | 0h32 | 0.01 | 0/0/0/8 |
-| 11 | fram_8mhz | rc=0 |  | 2026-11-06 13:10:58 | 0h09 | 0.02 | 0/0/0/0 |
+| 11 | fram_8mhz | rc=0 |  | 2026-11-06 14:14:00 | 1h57 | 0.02 | 0/0/0/0 |
 | 12a | boot_stretch | not run |  |  |  |  | 0/0/0/0 |
 | 12b | ring_peak | not run |  |  |  |  | 0/0/0/0 |
 | 12c | dns_idle_poll | not run |  |  |  |  | 0/0/0/0 |
@@ -43,10 +43,10 @@ Wear started (the sheet's maxima per started step): FC 2 of 9, FS owned 0 of 126
 ## Long runs summed (October's aggregate)
 
 ```
-fram runs=1 scratch_restored=1
-fram op=rdid runs=1 n=274287 oserrors=0 bad=0 worst_us=7307 bad_rate<1.1e-05 oserrors_rate<1.1e-05
-fram op=read256 runs=1 n=274287 oserrors=0 bad=0 worst_us=7631 bad_rate<1.1e-05 oserrors_rate<1.1e-05
-fram op=write1 runs=1 n=274287 oserrors=0 bad=0 worst_us=9500 bad_rate<1.1e-05 oserrors_rate<1.1e-05
+fram runs=14 scratch_restored=14
+fram op=rdid runs=14 n=3703418 oserrors=0 bad=0 worst_us=7387 bad_rate<8.1e-07 oserrors_rate<8.1e-07
+fram op=read256 runs=14 n=3703418 oserrors=0 bad=0 worst_us=7728 bad_rate<8.1e-07 oserrors_rate<8.1e-07
+fram op=write1 runs=14 n=3703418 oserrors=0 bad=0 worst_us=11029 bad_rate<8.1e-07 oserrors_rate<8.1e-07
 ```
 
 ## Logs
@@ -39562,6 +39562,127 @@ SUM L fram scratch_restored=1
 DONE=1
 rc=0 13:20:00
 == step 11 end rc=0 2026-11-06 13:20:08 550s load 0.02 0.07 0.08
+== read-across: GET /status after step 11
+SUM status not read: no JSON answer
+== step 11 start 2026-11-06 14:14:00 1793974440 load 0.38 0.20 0.10
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=261437 oserrors=0 bad=0 worst_us=1305
+SUM L fram op=read256 n=261437 oserrors=0 bad=0 worst_us=1800
+SUM L fram op=write1 n=261437 oserrors=0 bad=0 worst_us=10220
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 14:23:02
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=254225 oserrors=0 bad=0 worst_us=1335
+SUM L fram op=read256 n=254225 oserrors=0 bad=0 worst_us=1921
+SUM L fram op=write1 n=254225 oserrors=0 bad=0 worst_us=10233
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 14:32:04
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=263520 oserrors=0 bad=0 worst_us=7315
+SUM L fram op=read256 n=263520 oserrors=0 bad=0 worst_us=7655
+SUM L fram op=write1 n=263520 oserrors=0 bad=0 worst_us=11029
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 14:41:05
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.68ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=265723 oserrors=0 bad=0 worst_us=7316
+SUM L fram op=read256 n=265723 oserrors=0 bad=0 worst_us=7612
+SUM L fram op=write1 n=265723 oserrors=0 bad=0 worst_us=10172
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 14:50:07
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=262232 oserrors=0 bad=0 worst_us=7387
+SUM L fram op=read256 n=262232 oserrors=0 bad=0 worst_us=7614
+SUM L fram op=write1 n=262232 oserrors=0 bad=0 worst_us=10856
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 14:59:08
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.66ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=271544 oserrors=0 bad=0 worst_us=7320
+SUM L fram op=read256 n=271544 oserrors=0 bad=0 worst_us=7628
+SUM L fram op=write1 n=271544 oserrors=0 bad=0 worst_us=9442
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 15:08:10
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=268146 oserrors=0 bad=0 worst_us=1304
+SUM L fram op=read256 n=268146 oserrors=0 bad=0 worst_us=7728
+SUM L fram op=write1 n=268146 oserrors=0 bad=0 worst_us=9856
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 15:17:11
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.66ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=271464 oserrors=0 bad=0 worst_us=7314
+SUM L fram op=read256 n=271464 oserrors=0 bad=0 worst_us=7624
+SUM L fram op=write1 n=271464 oserrors=0 bad=0 worst_us=9573
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 15:26:13
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=254167 oserrors=0 bad=0 worst_us=7380
+SUM L fram op=read256 n=254167 oserrors=0 bad=0 worst_us=7677
+SUM L fram op=write1 n=254167 oserrors=0 bad=0 worst_us=9151
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 15:35:15
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=275640 oserrors=0 bad=0 worst_us=1298
+SUM L fram op=read256 n=275640 oserrors=0 bad=0 worst_us=7612
+SUM L fram op=write1 n=275640 oserrors=0 bad=0 worst_us=10763
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 15:44:16
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.64ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=268262 oserrors=0 bad=0 worst_us=1320
+SUM L fram op=read256 n=268262 oserrors=0 bad=0 worst_us=1614
+SUM L fram op=write1 n=268262 oserrors=0 bad=0 worst_us=10182
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 15:53:18
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.60ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=259626 oserrors=0 bad=0 worst_us=1304
+SUM L fram op=read256 n=259626 oserrors=0 bad=0 worst_us=1627
+SUM L fram op=write1 n=259626 oserrors=0 bad=0 worst_us=9871
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 16:02:19
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=253145 oserrors=0 bad=0 worst_us=7371
+SUM L fram op=read256 n=253145 oserrors=0 bad=0 worst_us=7692
+SUM L fram op=write1 n=253145 oserrors=0 bad=0 worst_us=10792
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 16:11:21
+== step 11 end rc=0 2026-11-06 16:11:23 7043s load 0.02 0.01 0.00
 == read-across: GET /status after step 11
 SUM status not read: no JSON answer
 ```
