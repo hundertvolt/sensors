@@ -168,6 +168,7 @@ fram() {  # row 11's 10 h at 8 MHz as SLICE_S slices for FRAM_HOURS (whole hours
   while [ $(($(date +%s) + SLICE_S + 120)) -le "$end" ] && ! stopping; do
     mp "$L/long_fram.py" $((SLICE_S + 120)) || up 120 || return 1
   done
+  uv run --no-sync python "$H/reset_and_kick.py"  # its script leaves main.py stopped (lead, 14:21)
 }
 
 dns_idle() {  # row 12c: the board's half, then the host's queries once it prints READY (October's net())

@@ -382,3 +382,26 @@ Logs: `logs/day2_20261106/` (git-ignored). All read from those logs; causes mark
 Under `mpremote run` with the probe's wrappers, so a little below a plain boot; how much was not measured. Section 8's `heapmap.py` undercount is fixed.
 
 **Next:** run 11, then the lead's push.
+
+## 19. Day 2 on `ec5d656e`'s harness: the soak selection, step 9 and run 11 (2026-11-06, 13:10-16:18 UTC)
+
+Image still `d3f10239`, no reflash. Merge `df8e640c`.
+
+**Soak selection, `--duration mid`, 13:26-14:09, archive `20261106T132607Z`, rc 1:**
+- Passed: `real_clock_stretch`, `single_core_timing_headroom`, `sgp40_sample_cadence` (602 cycles, 0 lost, max gap 1,877 ms, 2 gaps over 1,500 ms), `http_soak_stays_live` (0 of 854 failed over 600 s). The bench half now runs after the flash half.
+- One teardown error on `http_soak_stays_live`: `SGP40 W33 SGP_RESTORED_NO_TS`. Lead, 14:21: a harness race. The sgp40 script writes undated backups (`W35`) into production's chunk, the next boot restores one (`W33`) after the fixture's opening read. To be fixed in the harness; no tolerance added.
+- `ResetReason` at the bench half's opening read was 2. The pin is owed after items 4 and 5.
+
+**Step 9, `crc16` hazards, 14:10:59-14:13:19, archive `20261106T141100Z`:** passed, no session-end teardown error.
+
+**Run 11, `FRAM_HOURS=2`, 14:13:59-16:16:45:** 13 slices, all `rc=0`, `scratch_restored=1`.
+
+| Op | n | OSErrors | Bad | Worst |
+|---|---|---|---|---|
+| `rdid` | 3,429,131 | 0 | 0 | 7,387 us |
+| `read256` | 3,429,131 | 0 | 0 | 7,728 us |
+| `write1` | 3,429,131 | 0 | 0 | 11,029 us |
+
+- With the stopped slice of 13:10-13:20 the runner's summary sums 14 runs, n=3,703,418 each, upper bound `bad_rate<8.1e-07`.
+- Worst `rdid` is bimodal by slice: 1,298-1,335 us in 6 of 13 slices, 7,314-7,387 us in the other 7. Cause not traced.
+- The script leaves `main.py` stopped (`/status` 000 at 16:16:52). `fram()` now ends on `reset_and_kick.py` (harness `reset_board`, lead 14:21); run by hand after this run: `/status` 200 after 11.7 s, Mode STA, `ResetReason` 21.
