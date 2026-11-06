@@ -638,10 +638,10 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
   (CLAUDE.md) before anything flashes, resets or clears the board; `journalctl -k` times the USB
   disconnect. `machine.reset_cause()` reads `WDT_RESET` after a starvation, `machine.reset()` and
   `mpremote reset` alike (SPECIFICATION.md Part F.5.4), so it only separates power-on from the rest.
-  A harness `hard_reset()` or `mpremote reset` of a running board reads 21 (interrupted); the boot
-  after a flash-tier session, whose scripts run with the firmware stopped, read 2 on the bench
-  (2026-11-06); a device script whose own build stopped before it finished reads as a boot failure
-  in that phase (SPECIFICATION.md Part A.8).
+  A harness `hard_reset()` or `mpremote reset` of a running board reads 21 (interrupted), and 2 after
+  a device script that ran the system's boot: that boot consumed record 21 and the script cleared its
+  phase mark, so the reset finds neither (2026-11-06); a device script whose own build stopped before
+  it finished reads as a boot failure in that phase (SPECIFICATION.md Part A.8).
 - An `mpremote` `exec`/`run` stops `main.py`, and nothing feeds the watchdog after it, so the board
   resets about 8 s later unless the session resets it first: a device script that never feeds it
   dies ~8 s after it attaches (bench, 2026-09-25), and every raw-REPL session ends in a hard reset.
