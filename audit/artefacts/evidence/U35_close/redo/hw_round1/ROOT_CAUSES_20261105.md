@@ -406,3 +406,30 @@ Image still `d3f10239`, no reflash. Merge `df8e640c`.
 - Worst `rdid` is bimodal by slice: 1,298-1,335 us in 6 of 13 slices, 7,314-7,387 us in the other 7. Cause not traced.
 - `/status` 000 at 16:16:52. `long_fram.py` arms `WDT(timeout=8000)` and feeds it only inside its loop. Inferred, not proven: the watchdog resets the board about 8 s after the last slice, unkicked, and the AP's stale entry sends it to the hotspot, which fits `WIFI W38,W79` and `SGP40 W35,W33` at 16:17. The boot's `ResetReason` was not read before the next reset.
 - `fram()` now ends on `reset_and_kick.py` (harness `reset_board`, lead 14:21), straight after the last slice. Run by hand after this run: `/status` 200 after 11.7 s, Mode STA, `ResetReason` 21 (an interrupted running `main.py`, on the reading above).
+
+**Item 4, the new board tests, zero wear:**
+- Flash, 16:18-16:22 (`20261106T161838Z`): 6 passed (`held_sda_line_through` x2, `emptied_alarm_pool`, `fault_inside_the_running_graph` x2, `stepped_clock_under_the_running_graph`).
+- Bench, 16:23-16:27 (`20261106T162301Z`): 3 passed; `counted_once_in_http_dropped` failed, `HTTPDropped 0 -> 4 after 3 refusal(s)`. Lead, 16:54: the serving probe's race, fixed in the test on the new tree.
+- `config_flush_during_link_traffic` not run: no `cleared:` line in `WEAR.txt`.
+
+**Item 5, the test-side fixes, bench only, 16:28-17:02 (`20261106T162825Z`), 22 passed, 2 failed, 4 errors:**
+
+| Test | Result | Reading |
+|---|---|---|
+| `loop_lag_under_http_load` | Failed: 1,006,799 us against 925,000 us, at 16,583 ms after `main()` started, p99 64,000 us, 1,028 samples, 183 FRAM writes, 0 failures | A measurement until the stall is fixed. Teardown also `WEBSERVER W51 HTTP_SOCKET_ERROR` |
+| `concurrent_mixed_body_sizes` | Failed: `HTTPDropped` 11, 24 refusals seen | Not traced |
+| `dns_server_sends_garbage`, `connected_socket_rejects` | Passed, teardown error `SGP40 W35, W33` each | Not traced |
+| `serving_sweep` | Passed, 0 allocation failures, `N=8` 72 answered, 24 refused; lowest load sample free 368 B, largest run 320 B. Next test's setup error: `UART_init`, `UART_resp` `E81` | `E81` matches the `/status` stall's window (section 18), not proven here |
+| `fram_erase_over_rest` | Did not run: that setup error | Owed |
+| `heap_at_peak` | Passed: 102 of 146 samples at the ceiling of 6; after boot free 40,784 B, largest run 28,992 B; at peak largest run 21,552 B, 10 slots | Script console: `EHOSTUNREACH` reclaim twice |
+
+**`ResetReason` 2, pinned on `d3f10239`, 17:03-17:06 (`logs/day2_20261106/rr_pin.out`), no config writes:**
+
+| Case | `ResetReason` | Watchdog REASON bits |
+|---|---|---|
+| a. Running board, harness hard reset | 21 | FORCE |
+| b. One `exec "pass"`, then the hard reset | 21 | FORCE |
+| c. One read-only script (`fram_raw_dump.py`), then the hard reset | 21 | FORCE |
+| d. `begin_boot()` once, phase mark cleared, then the hard reset | 2 | FORCE |
+
+`main.py`'s Ctrl-C writes record 21, and it survives a stop and a soft reset. `build_system()` calls `begin_boot()`, which consumes the record, and those scripts clear the phase mark, so the next `machine.reset()` finds neither and falls through to `_RR_WATCHDOG`. So 2 after such a script is a harness reset, not an expired watchdog. The boot at 13:58 itself was not read for its bits. Case d stands in for a `build_system()` script, as those write scratch config.
