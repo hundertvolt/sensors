@@ -455,3 +455,16 @@ Timed `gc.collect()`: idle 19.3 ms x3, free 71,328 B; after load 21.0 ms x3, fre
 **Loop lag of 200 ms or more, same run: 27 events, 39.4 s of the 58.3 s between the first and last, against 37.7 s of builds.** They fall in three groups: 747-852 ms, 1,507-1,610 ms and 2,267-2,313 ms, one, two and three builds. 24 of the 27 match the builds ending inside them to within 16-134 ms; the other 3 only count a neighbouring build at the window's edge. A lag task sleeping 10 ms cannot run while they last, so the builds do not yield to it (inferred from that, not traced in the scheduler), and up to three readers' builds run back to back.
 
 So the stall is the `/status` build's CPU time, mostly `errcount`, held without a yield and multiplied by concurrent readers. 2.3 s exceeds the 1,000 ms UART ACK wait and the 925 ms hard consumer, which fits `E81` and `loop_lag_under_http_load`. A fix is not this runner's to choose.
+
+**Lead's reruns on the new image:**
+- Flash, 17:17-17:20 (`20261106T171720Z`): 4 passed. `one_supervisor_pass`: 2,316 ms between feeds, reset 4,002 ms after the last feed. `fault_inside_the_running_graph`: `ResetReason` 2, REASON bits TIMER, both arms, so 2 also covers a real expiry; the bits tell the two apart.
+- Bench, 17:20-17:36 (`20261106T172040Z`, on `b7c5dea8`, before the lead's `318ba804`, which arrived during it; Node v24.22.2): 8 passed, 2 failed, 2 errors.
+  - Passed: `counted_once_in_http_dropped`, head guard (Chromium 13 lines, 632 B, against 32 lines, 2,048 B), harness hard reset (21, FORCE), `c_stack` x3 (20; FORCE, TIMER, TIMER), radio re-init (link back in 8,216 ms), `real_sta_connect` (call).
+  - `answers_before_the_first_ntp_sync` failed on `SYSTEM E115`, the flash line's own injection still in the log at session start. Passed on rerun.
+  - `hazard_run_under_the_readers_load` failed: 13 API issues, `GET /status` reset before any response byte, 3 readers; teardown `WEBSERVER W60 HTTP_REFUSED`. Fits refusals at the ceiling while builds stall (inferred).
+  - `real_sta_connect` teardown: `FRAM E51 FRAM_COPIES_DIFFER`. The source's comment names a write torn between blocks; a hard reset can do that, and the next write heals it. Inferred.
+- Bench rerun, 17:37-17:43 (`20261106T173735Z`, on `4d90a869`): 3 passed. `answers_before_first_ntp`; `concurrent_mixed_body_sizes` (28 answered, 20 refused, 10 of them over the cap, 0 wrong); `fram_erase_over_rest` (serving 32.9 s after the reply, `ResetReason` 8).
+
+**Owed archive fact, `SGP40 W35,W33` after the DNS and NTP tests (`20261106T162825Z`):** yes, the board booted inside each. DNS: uptime 100 s to 93 s, `UTCTime` null at both reads. `connected_socket_rejects`: uptime 130 s to 70 s. A boot with no NTP writes and restores undated backups.
+
+**`SGP40 W65` read at 17:12:** already in item 5's session-end read at 17:02 (counter 2), so before the reflash. That session's `erase_reboot_and_mempause` erased FRAM. The flash log between 17:08 and 17:12 shows no FRAM step.
