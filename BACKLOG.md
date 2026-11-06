@@ -149,7 +149,7 @@ gates, traps).
   `loop_lag_under_combined_load` scenario (Part F.3's `lag.loop`).
 - **The UART hazard run under API load** — on `dev`,
   `bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict`:
-  one `PUT /status {"UartHazards": true}` while 3 readers GET `/status` until the run ends.
+  one `PUT /uart {"UartHazards": true}` while 3 readers GET `/status` until the run ends.
   Expected: every hazard verdict as the twin judges it, the echo's `Failures` unchanged, the echo
   resumed, the WEBSERVER counter at 0 and no task ended; the run's elapsed is recorded against the
   test's estimated 600 s run timeout. Wear: none (the command
