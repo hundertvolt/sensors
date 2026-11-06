@@ -109,8 +109,9 @@ WEBSERVER Unhandled exception in route handler: memory allocation failed, alloca
 | 32768, pieces of 128 B | 36 answered 200, 1 answered 500 | 1 | 57,936 B / 121 / 144 blocks | 12,784 B | 7 blocks (112 B) |
 | 32768, pieces of 256 B, overlapping requests share one built response (2 s) | 117 answered 200, none 500 | 0 | 58,000 B / 127 / 87 blocks | no failure | no failure |
 
-- **Answer to the question asked at 13:45: placement, driven by load, on both GC settings.** The allocation fails with 12-23 KB free because no run of 16 blocks (16 B each) is left. The threshold does not help: it cuts the idle runs from 384 to 142, but leaves about the same room in runs that can hold a piece: 996 blocks (15.9 KB) at -1, 903 blocks (14.4 KB) at 32768.
-- **Mechanism (measured sizes, the sum is my arithmetic).** A `/status` piece of 256 B takes 17 blocks of data plus the 1-block `bytes` object. 7,369 B is about 30 pieces, so about 8.6 KB per held response. Objects of 16-63 blocks grow from 858 blocks at baseline to about 2,040 at failure (-1), and 2,270 (32768): 2.2 to 2.6 responses. So 15 KB of usable runs holds fewer than 2 responses, which fits 1 reader 0 of 42, 2 readers 1 of 46, 3 readers 8-14 of about 46.
+- **Corrected 2026-11-06: the "largest" column above and the room figures here came from a `heapmap.py` that dropped the `(N lines all free)` lines, so they understate idle.** Rebuilt from the map addresses, matching `mem_info`'s `max free sz`: largest idle run 489 blocks at -1 (not 153) and 2,338 at 32768 (not 122). The 128 B and share rows' 144 and 87 are wrong the same way, and those maps were not kept. At-failure figures stand.
+- **Answer to the question asked at 13:45: placement, driven by load, on both GC settings.** The allocation fails with 12-23 KB free because no run of 16 blocks (16 B each) is left: `max free sz` 15 and 0 blocks in usable runs, at both settings. At idle the threshold helps (corrected): runs 385 to 142, largest run 489 to 2,338 blocks, room in runs of 16 blocks or more 2,664 blocks (42.6 KB) to 3,207 (51.3 KB). That gain does not survive to the failure.
+- **Mechanism (measured sizes, the sum is my arithmetic).** A `/status` piece of 256 B takes 17 blocks of data plus the 1-block `bytes` object. 7,369 B is about 30 pieces, so about 8.6 KB per held response. Objects of 16-63 blocks grow from 858 blocks at baseline to about 2,040 at failure (-1), and 2,270 (32768): 2.2 to 2.6 responses. The "15 KB of usable runs" this line first compared them with was the `heapmap.py` undercount (corrected above); real idle room is 42.6-51.3 KB, so that arithmetic does not explain the rates: 1 reader 0 of 42, 2 readers 1 of 46, 3 readers 8-14 of about 46.
 - **Six readers, the configured ceiling (13:50-13:55 UTC, 32768, 60 s, one run each):** plain: 22 answered 200, 24 answered 500, 5 timeouts, 25 connection resets. With the share hook: 98 answered 200, 3 answered 500, 39 connection resets, largest free run 15 blocks at its failure. So the 2 s share does not hold at the ceiling. I did not look into the connection resets or into what filled the runs in the 3 failures; the hook rebuilds every 2 s while a slow send can still hold the previous list, which may be part of it.
 - **Reachable in ordinary use:** `/status` is by far the largest body: 7,375 B, against 614 B (`/sensors`), 576 B (`/measurements`), 220 B or less (`/networking`, `/system`, `/notification`). `test_openhab_case_two_pollers_and_an_open_website_are_all_served` (`tests_hardware/bench/test_network_resilience.py:835`) has one client polling `/status`, and the website fetches it too (`js/shell.js:96`, `js/render.js:630`). That test has not run on this image; it was in 5g's cascade.
 - **The intervention supports it:** sharing one built response among overlapping requests is the only change between the 8-of-45 run and the 0-of-117 run. The share is a test hook with a 2 s window, not a proposed fix: it serves data up to 2 s old.
@@ -337,3 +338,47 @@ Yesterday: 5 of 308 failed through the hotspot and 0 of 156 on a direct join, wi
   - `test_real_ntp_sync_succeeds…`: no `RTC set to:` line in 62 s, `NTPSynced` true, age 68 s. So it synced before the watched window; second time.
 
 Not repeated on `d3f10239`: the rest of `run 5`. The firmware differs from `c8887b35` only by `src/asy_sgp40_driver.py`'s 1 ms wait.
+
+## 18. Day 2 on `d3f10239`: the rest of `run 5`, twins, runs 9 and 10, the lag and the baseline (2026-11-06, to 13:03 UTC)
+
+Logs: `logs/day2_20261106/` (git-ignored). All read from those logs; causes marked inferred are not traced.
+
+**`5d`, the rest of `run 5` (`5d_day2.log`): 4 failed, 14 passed, 11 errors.** Failed: `test_put_nonsense_field_values…`, `test_an_incomplete_command…`, `c_stack…[entry_held]`, `test_a_console_interrupt…`. The errors I read are teardowns on `SGP40 W65 SGP_NO_BACKUP`, an entry not in those tests' `provokes_log`; with the lead as test fixes.
+
+**Twins on `c1f8076b`, Pi quiet:** `arzi` 574 OK, 0 FAIL, feed gap 2,241 ms. `schlafzi` 574, 0, 2,126 ms. `dev` 688, 0, 2,183 ms. All PASS.
+
+**Run `9 10m`, 11:04-11:58, rc 1 in all three steps; no memory line in any summary.**
+- `9`: `crc16_hazards` passed; teardown error, the session-end wait timed out at 90 s, "No route to host".
+- `10a`, `10m`: the 3 bench tests errored at setup, `URLError timed out` at `bench/conftest.py:86` `check_image`. So the soak's bench half did not run. Inferred: flash runs first in that session, its no-kick resets send the board to its hotspot, and `check_image` fetches once.
+- Flash half: `10a` 3 of 3 passed. `10m`: 2 passed; `test_single_core_timing_headroom…` failed, one reboot right at its window's start, about 30 s after its own `hard_reset`. Reason not recorded (the later read shows 21). Most of that 600 s window was in hotspot mode.
+
+**Bench half alone, with `soak()` bypassed (`PYTEST_K` does not reach it):**
+- Short, 12:01-12:06 (archive `20261106T120101Z`): 3 passed.
+- Mid, 12:06-12:38 (`20261106T120602Z`): `test_http_soak_stays_live` 0 of 860 failed. `test_scd30_frc_readiness_baseline` 257 samples, 0 missed. `test_real_hardware_survives_extended…` failed with `UART_init` and `UART_resp` `E81 UART_NO_ACK`, counter 2 each, and no reboot or task end. Lead's reading (2026-11-06): the `/status` stall below crossing the 1,000 ms ACK wait, not a new defect. Not rerun until the stall's source is known.
+
+**FRAM cleared by those tests.** The short run was the first today to reach their `reset_all_error_logs`. Saved first: `errcount_before_first_soak_clear_20261106T1201.json`. `SYSTEM` `E42` and `E25` in it come from `test_a_c_stack_exhaustion_is_attributed`, whose `provokes_log` names both. No unprovoked one in any snapshot of 11-05 or 11-06. Compare against each archive's own `errcount-session-start.json` from here on.
+
+**Single-core soak, mid, alone, 12:50-13:03 (`20261106T125007Z`):** the test passed, no reboot. So the `10m` reboot is 1 of 2. Teardown error: the same 90 s session-end wait. Board on its hotspot afterwards.
+
+**Loop lag, `lag_two.sh`, 3 readers for 60 s, `gc.threshold(32768)`, Pi quiet, no flash write (`lag_3readers_{status,measurements}.console`):**
+
+| Window | `/status` (51 answered 200) | `/measurements` (307 answered 200) |
+|---|---|---|
+| Boot | max 77 ms | max 76 ms |
+| Idle | max 78 ms | max 93 ms |
+| Load | max 2,481 ms, 16 at 925 ms or more, 6 at 500-925 | max 318 ms, 0 at 500 or more |
+| After | max 54 ms | max 85 ms |
+
+- Under `/status`, a stall about every 3.5 s, about 2.4 s long. In it the console shows three `CFGMGR_NTP … Reading config data into list` lines 0.7-0.85 s apart and no other module's lines. The read that prints that line is a dict lookup (`asy_config_manager.py:363-366`), so the time goes elsewhere. Source not traced.
+- Same window: `UART_init` and `UART_resp` `no ACK for frame 1`, two pairs (12:40:49/50, 12:41:26), with resyncs. None under `/measurements`.
+
+**Post-boot free heap, 32768, idle, no readers, after `gc.collect()` (`baseline_idle_{1,2}.console`), STA up:**
+
+| Sample | Free | Used | Max free block (`mem_info`) | Runs |
+|---|---|---|---|---|
+| 1 | 72,288 B | 115,616 B | 3,162 blocks, 50,592 B | 134 |
+| 2 | 73,072 B | 114,832 B | 3,276 blocks, 52,416 B | 133 |
+
+Under `mpremote run` with the probe's wrappers, so a little below a plain boot; how much was not measured. Section 8's `heapmap.py` undercount is fixed.
+
+**Next:** run 11, then the lead's push.

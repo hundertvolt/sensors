@@ -16,7 +16,7 @@ while i < len(lines):
         for l in lines[i:j]:
             k = re.match(r"([0-9a-f]{5,8}): (.*)$", l)
             if k: text += k.group(2).replace(" ", "")
-            f = re.match(r"\((\d+) lines all free\)", l)
+            f = re.match(r"\s*\((\d+) lines all free\)", l)  # mem_info(1) indents these
             if f: text += "." * (int(f.group(1)) * 64)
         runs = [len(x) for x in re.findall(r"\.+", text)] or [0]
         hist = collections.Counter(min(r, 99) if r < 16 else (16 if r < 32 else 32 if r < 64 else 64 if r < 256 else 256) for r in runs)
