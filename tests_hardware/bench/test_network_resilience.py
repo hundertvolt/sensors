@@ -262,7 +262,7 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
 _GARBAGE_PAYLOAD = b"\xff" + b"not an NTP or DNS wire-format packet, on purpose"[:47]
 
 
-@pytest.mark.provokes_log("every garbage reply is rejected as unsynchronised (leap indicator 3)", ("NTP", "W", "NTP_UNSYNC_REPLY"))
+@pytest.mark.provokes_log("every garbage reply is rejected as unsynchronised (leap indicator 3); its boot with no sync leaves SGP40's backup undated", ("NTP", "W", "NTP_UNSYNC_REPLY"), ("SGP40", "W", "SGP_WRITTEN_NO_TS"), ("SGP40", "W", "SGP_RESTORED_NO_TS"))
 def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     lines, answered = _garbage_window(board, bench, dut_ip, 123)
@@ -276,7 +276,7 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     reset_all_error_logs(dut_ip, request.node.name)
 
 
-@pytest.mark.provokes_log("a garbage DNS reply fails the lookup as silence would, which NTP logs as NTP_DNS", ("NTP", "E", "NTP_DNS"))
+@pytest.mark.provokes_log("a garbage DNS reply fails the lookup as silence would, which NTP logs as NTP_DNS; its boot with no sync leaves SGP40's backup undated", ("NTP", "E", "NTP_DNS"), ("SGP40", "W", "SGP_WRITTEN_NO_TS"), ("SGP40", "W", "SGP_RESTORED_NO_TS"))
 def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     lines, answered = _garbage_window(board, bench, dut_ip, 53)
@@ -303,7 +303,7 @@ _NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - inside _par
 _SPOOF_YEAR = time.gmtime(_NTP_SPOOF_INJECTED_UNIX_TIME).tm_year
 
 
-@pytest.mark.provokes_log("the real reply is held back and the spoof refused, so the attempt ends without a reply", ("NTP", "E", "NTP_NO_REPLY"))
+@pytest.mark.provokes_log("the real reply is held back and the spoof refused, so the attempt ends without a reply; its capture reset boots with no sync and leaves SGP40's backup undated", ("NTP", "E", "NTP_NO_REPLY"), ("SGP40", "W", "SGP_WRITTEN_NO_TS"), ("SGP40", "W", "SGP_RESTORED_NO_TS"))
 def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A connect()'d client socket takes datagrams from its true peer only: a spoof it took would set the RTC to its
     # Transmit Timestamp (2050-01-01), readable as GET /status's UTCTime. An earlier test may have left NTP unsynced:
