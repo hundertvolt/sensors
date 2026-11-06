@@ -9036,10 +9036,18 @@ fragments into pieces of at most `chunk_bytes` bytes — counted in bytes, so a 
 make a piece longer than the cap — one `ServingLimits` field, default **256**
 (`_DEFAULT_CHUNK_BYTES`), that also sets the static-file read size below, so the two bounds cannot
 drift apart — without ever splitting a fragment, and
-`add_value()` writes a value the way `json.dumps()` would — dicts, lists and tuples walked, only
-keys and scalars dumped, with `json.dumps()`'s own `", "`/`": "` separators and its non-string-key
-rule (`True` → `"true"`). No value, however nested, is ever built as one string, so **the largest
-allocation on the path is one piece**. Its pending-fragment list is collapsed every
+`add_value()` writes a value the way `json.dumps()` would — a scalar, or a container of at most four
+scalars whose strings (keys included) have at most four characters (`_FLAT_MAX`, at most 224 B however
+escaped), in one `json.dumps()`; any other dict, list or tuple walked, only keys and scalars dumped,
+with `json.dumps()`'s own `", "`/`": "` separators and its non-string-key rule (`True` → `"true"`).
+No larger value, however nested, is ever built as one string, so **the largest allocation on the path
+is one piece**. Dumping the small containers whole is what makes `/status`'s error histories cheap:
+about 1.8x fewer CPU cycles than walking them, on the Unix port (owner, 2026-11-06). **Each top-level
+value goes through `add_value_yielding()`, which yields to the loop after it**: no answer holds the
+loop longer than its largest value. Before it a `/status` build held the loop 0.74 s on `dev`, and
+three readers' builds 2.3 s back to back, past the UART link's 1 s acknowledgement wait (bench,
+2026-11-06); `/status` now reads its sources up to one build's length apart, the other routes collect
+theirs before writing. Its pending-fragment list is collapsed every
 `_MAX_PENDING_FRAGMENTS` (16), because a piece made of tiny fragments (`", "`, single digits) would
 otherwise need a list array as large as the piece. The bytes are **identical** to what the routes
 emitted before (the top level keeps its own `,`/`:`), pinned against MicroPython's own

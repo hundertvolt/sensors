@@ -58,7 +58,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine, Iterable, Sequence
+    from collections.abc import Callable, Coroutine, Iterable, Sequence
     from typing import NoReturn, TypedDict, TypeVar
 
     from typing_extensions import Unpack
@@ -3779,6 +3779,65 @@ def test_h2_piece_writer_counts_bytes_not_characters() -> None:
         writer.add("\u00e9")  # two bytes in UTF-8
     writer.flush()
     assert pieces == [b"\xc3\xa9\xc3\xa9", b"\xc3\xa9"], pieces
+
+
+def _added(value: object) -> "list[str]":
+    # The fragments add_value() hands to add(), in order.
+    added: list[str] = []
+    writer = _PieceWriter([], _DEFAULT_CHUNK_BYTES)
+    plain = writer.add
+
+    def spy(fragment: str) -> None:
+        added.append(fragment)
+        plain(fragment)
+
+    writer.add = spy  # type: ignore[method-assign]
+    writer.add_value(value)
+    return added
+
+
+def test_h2_a_small_flat_value_is_one_dump() -> None:
+    # At most four scalars, no string past four characters: one json.dumps(), not seven fragments per pair walked, the
+    # /status error history's cost on silicon (SPECIFICATION.md Part I.3). A larger, nested or long-string one is walked.
+    dumped: list[object] = [{"type": "E", "num": 3}, [1, 2.5, None, "x"], (True,), {1: 2}, {}, []]
+    for value in dumped:
+        assert _added(value) == [json.dumps(value)], (value, _added(value))
+    walked: list[object] = [[1, 2, 3, 4, 5], {"a": [1]}, ({},), {"host": "y" * 5}, {"hosts": 1}, ["y" * 600]]
+    for value in walked:
+        assert len(_added(value)) > 1, (value, _added(value))
+
+
+def _turns_during(work: "Callable[[], Coroutine[object, object, object]]") -> int:
+    # How many turns a busy sibling task got while `work` ran: zero means work held the loop to its end.
+    turns = [0]
+
+    async def sibling() -> None:
+        while True:
+            turns[0] += 1
+            await asyncio.sleep(0)
+
+    async def main() -> int:
+        task = asyncio.create_task(sibling())
+        await asyncio.sleep(0)
+        start = turns[0]
+        await work()
+        moved = turns[0] - start
+        await cancel(task)
+        return moved
+
+    return run(main())
+
+
+def test_a_streamed_dict_answer_yields_after_each_value() -> None:
+    # No answer holds the loop to its end: each top-level value written is followed by a yield (Part I.3).
+    result = {f"K{i}": {"Reading": i, "History": [i, i + 1]} for i in range(6)}
+    assert _turns_during(lambda: _stream_dict_response(result, _WIRE_CHUNK_BYTES)) >= len(result)
+
+
+def test_a_status_build_yields_after_each_source() -> None:
+    # A /status build held the loop 0.74 s on silicon, three readers' builds 2.3 s back to back (bench, 2026-11-06).
+    service, _app = _make_hammer_service()
+    assert _turns_during(service._build_status_pieces) >= len(service._error_sources) + 1
 
 
 def test_a_networking_get_with_a_multibyte_ssid_stays_bounded() -> None:
