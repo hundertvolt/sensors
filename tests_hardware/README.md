@@ -938,8 +938,8 @@ board itself and asserts the half each reset kind sets.
 |---|---|---|---|
 | 0 | `bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown` | L4 | not yet run |
 | 1 | `manual/manual_persistence.py`'s power-cycle steps (each reads `ResetReason` after power returns; `test_console_soft_reset_keeps_the_reset_record` holds a valid record across its cut, so its 1 also shows the cut cleared the scratch registers) | manual | not yet run |
-| 2 | with SDA held across a `machine.reset()` and a watchdog reset, each with its REASON bit: `flash/test_bus_concurrency.py::test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot`; after the bootloader command's BOOTSEL round trip, which loses the record: `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load), `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel` | L4, L3 | not yet run |
-| 3 | `bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly`; `flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed` | L4, L3 | not yet run |
+| 2 | with SDA held across a `machine.reset()` and a watchdog reset, each with its REASON bit: `flash/test_bus_concurrency.py::test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot`; after the bootloader command's BOOTSEL round trip, which loses the record: `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load), `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel`; after a fault inside the running graph that stops every feed: `flash/test_task_supervisor.py::test_a_fault_inside_the_running_graph_stops_every_feed_and_the_watchdog_resets` | L4, L3 | not yet run |
+| 3 | `bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly`; `flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed`; a reboot at a boot's first answer: `bench/test_system_commands_over_rest.py::test_a_reboot_at_a_boots_first_answer_resets_cleanly` | L4, L3 | not yet run |
 | 5 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` (a task dying until the budget reboots, also with a console host holding the port unread) | L4 | not yet run |
 | 6 | `bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed`; the fallback itself on L3: `flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm` (`reboot_fallback_starves_the_watchdog.py`) | L4, L3 | not yet run |
 | 7 | `flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots`; `bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults` | L3, L4 | not yet run |
@@ -999,7 +999,7 @@ needs a driver-level trigger is not reachable at L4 except by hand.
 | FRAM chip lost | the chip unplugged | manual L4 | `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery` | by hand the seconds from the pull to the first FRAM log entry (`fram-pull-latency.txt`, "none within 120 s" when none), then FRAM-backed entries written again after the replug, no reboot |
 | UART link lost | the crossover jumper pulled mid-transfer | manual L4 | `manual/manual_bus_electrical.py::test_uart_crossover_pull_recovery` | the link's `Failures` rise and every code logged meanwhile (`uart-crossover-pull.txt`, the verbatim errcount beside it), its `Transfers` advancing within 30 s of the replug, no reboot |
 | supervisor reboot | a task dying until the restart budget is spent | L4 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` | `ResetReason` 5 with the forced bit; SYSTEM's escalation entry in the rounds the script printed before the reset (its log is RAM-only, so production's history never holds it) |
-| hardware watchdog | the watchdog starved | L3, L4 | `flash/test_watchdog_starvation.py`; `bench/test_reset_reasons.py` (codes 2 and 6) | the reset, then the code |
+| hardware watchdog | the watchdog starved; every feed stopped inside the running graph | L3, L4 | `flash/test_watchdog_starvation.py`; `flash/test_task_supervisor.py`; `bench/test_reset_reasons.py` (codes 2 and 6) | the reset, then the code |
 
 ## The hotspot role reversal
 
@@ -1377,6 +1377,10 @@ assumption, not at a product bug.
   (task_errors capped at 200): a task that dies at once adds `_TASK_FAIL_INCREMENT` (100) per cycle,
   and `_TASK_FAIL_MAX` (300) would trip a reboot around the 4th cycle (~7 s), which this script does
   not test.
+- **The running graph under a fault** (`flash/test_task_supervisor.py`, each over the bench build's scratch config):
+  every failed arm of an emptied alarm pool handled in place (`timer_pool_empty_beside_the_graph.py`), every wall-clock
+  consumer following a stepped RTC (`clock_step_under_the_running_graph.py`), and `main()` ending or a supervisor raise
+  stopping every feed until the watchdog resets (`watchdog_fault_in_the_running_graph.py`).
 - **REST on the normal network** (`bench/test_rest_endpoints_over_sta.py`): the website served over
   the bridge, and `GET /measurements` plausible for every sensor the bench TOML declares
   (`_load.measurement_findings()`, `tests_hardware/plausibility_bounds.py`).
@@ -1572,7 +1576,7 @@ to be applied.'); no test swaps a real hardware trigger for a software-only one,
 `ResetVOC` worker would if trusted.
 
 - **Exceptions**, rows of SPECIFICATION.md E.6.6: `ws2812-no-readback` (`LightCmdLED` and the WS2812
-  timing), `scd30-rdy-irq-vs-fallback`, `fram-write-protect-no-rest`, `uart-fault-catalog`.
+  timing), `scd30-rdy-irq-vs-fallback`, `fram-write-protect-no-rest`, `uart-fault-catalog`, `ntp-responder-modes`.
 - **Scratched (owner, 2026-09-25)**: a periodic SET wired into the bench UART exerciser's live load,
   and a hard-reset-recovery bench test for NOTIFY's FRAM chunk like SGP40's, which needs an observable
   "a fresh write just completed" signal NOTIFY lacks: each would change `src/` for the test alone, and
@@ -1588,11 +1592,15 @@ to be applied.'); no test swaps a real hardware trigger for a software-only one,
   shutdown, reset records, error counts), traced from `src/` through every tier: each silicon script
   drives real product objects from a real trigger - the boot phases, every reset code but the power
   cut's 1, both boot-entry handlers, the restart, both escalations, the shutdown's steps and feed gaps,
-  a held SDA across both resets, `ResetErrors` refused, an escalation entry that never ends,
-  `ConfigFaults`, the random boot signature, the trigger spacing. L1/L2 only: a dropped one-shot fire's
-  watchdog reset (each half on silicon apart); gaps until written: a command in the boot window, failed
-  arms beside the graph, `main()` ending inside the running system, the unfed boot stretches' and the
-  supervisor scan budget's figures.
+  a held SDA across both resets and its one report, `ResetErrors` refused, an escalation entry that
+  never ends, `ConfigFaults`, the random boot signature, the trigger spacing, a reboot at a boot's first
+  answer, the failed arms of an emptied alarm pool, `main()` ending and a supervisor raise inside the
+  running graph, a stepped RTC. L1/L2 only: a dropped one-shot fire's watchdog reset (each half on
+  silicon apart); gaps until written: the unfed boot stretches' and the supervisor scan budget's figures.
+- **The webserver and the link under the bench's load**: a negative Content-Length, each refusal at the
+  ceiling counted once in `HTTPDropped`, four zero-think-time readers' floor and the cap after them, and
+  FRAM log writes and a config flush during link traffic. The scriptable NTP responder's modes are an
+  accepted limitation (owner, 2026-11-06; E.6.6 `ntp-responder-modes`).
 
 ## Persistence-write gating: one global flag plus an AND-gated extra flag
 
@@ -1641,7 +1649,7 @@ directory, removed on every path; a store's absent file gets one defaults write 
 | default | SCD30 NVM | 0, at most 1: `scd30_measuring`'s start command, only when no measurement arrives within three intervals, at most once per session |
 | `--allow-persistence-write`, flash tier | SCD30 NVM | `test_scd30_same_device_read_write_concurrency`: 1 (the ambient pressure the chip already holds, re-sent) |
 | `--allow-persistence-write`, flash tier | flash filesystem | `test_config_floats_round_trip_unchanged`: 1 scratch write (its repeat answers `Unchanged`); `test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration`: 7 scratch writes (also needs `--allow-neopixel-sweep`); `test_a_real_config_write_during_traffic_loses_no_frame`: 1 scratch flush per CRC mode (2 modes); `test_link_transactions_during_config_writes_are_recorded`: 5 scratch writes per CRC mode; `test_config_value_survives_a_genuine_hard_reset`: 2 (the scratch file's defaults, then the marker); `test_config_reset_deletes_every_config_file_and_reboots`: the scratch build's defaults per store, one damaged file, `resetconfig`'s deletions; `test_a_damaged_config_file_is_repaired_and_listed_as_a_config_fault`: the scratch build's defaults per store, one damaged file and its repair; `test_a_hung_shutdown_step_ends_in_a_watchdog_reset`: per command, the scratch build's defaults per store and the deletions until the hung step; `test_flash_write_loop_gap_is_recorded`: 1 scratch write (create, 1 KiB, close, remove) |
-| `--allow-persistence-write`, bench tier | flash filesystem | 2 each (the change and its restore): `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value`, `test_representative_put_round_trips_over_the_hotspot_link`, `test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`, `test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly`, `test_garbage_ssid_via_rest_config_is_handled_gracefully`, `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog` (`DebugLevel` 0, then 5), `test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link`, `test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback`, `test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback`; up to 5 each (4 changes and the restore): the ISL29125 and BMP3xx config-write arms of `bench/test_bus_concurrency_under_api_load.py`; 1: `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot` (a well-formed wrong password, which the next test restores); 1: `test_real_credentials_put_succeeds_and_confirms_accepted_values`; 0: `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt` (the marker is its AND-gate on the previous test's write); `test_config_reset_over_rest_brings_back_the_defaults`: `resetconfig`'s deletions, the reboot's one defaults write per file, one restore write per saved file |
+| `--allow-persistence-write`, bench tier | flash filesystem | 2 each (the change and its restore): `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value`, `test_representative_put_round_trips_over_the_hotspot_link`, `test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`, `test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly`, `test_garbage_ssid_via_rest_config_is_handled_gracefully`, `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog` (`DebugLevel` 0, then 5), `test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link`, `test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback`, `test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback`; up to 5 each (4 changes and the restore): the ISL29125 and BMP3xx config-write arms of `bench/test_bus_concurrency_under_api_load.py`; 1: `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot` (a well-formed wrong password, which the next test restores); 1: `test_fram_log_writes_and_a_config_flush_during_link_traffic_under_api_load` (`GMTOffset`, local time only, toggled between its default and the default plus a minute, so no run spends a restore); 1: `test_real_credentials_put_succeeds_and_confirms_accepted_values`; 0: `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt` (the marker is its AND-gate on the previous test's write); `test_config_reset_over_rest_brings_back_the_defaults`: `resetconfig`'s deletions, the reboot's one defaults write per file, one restore write per saved file |
 | `--allow-scd30-extra-write` (with `--allow-persistence-write`) | SCD30 NVM | flash `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`: 2 (the offset and its restore); flash `test_scd30_argument_reaction_is_recorded`: up to 3, restored in the script; bench `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`: up to 3 (2 offsets and the restore); bench `test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero`: 4 (`AmbPres` 0, the stepped `Altitude`, and both restores); up to 12 in all |
 | manual (`scripts/run_manual_hardware_tests.sh`; each step states its writes before its `confirm()`) | flash filesystem | the flash config across a power cycle: 2 (`WarnCO2` and its restore); the power cut mid config write: up to 20 scratch writes and 1 removal per round, 3 rounds; the shutdown-command power cuts: `resetconfig`'s deletions, the next boot's one defaults write per file, one restore write per saved file (`config_files_restore.py`; `erasefram` is FRAM, outside the budget) |
 | manual | SCD30 NVM | the NVM across a power cycle: 2 (`MeasInterval` and its restore); the power cut mid NVM write: up to 21 (20 changes and the restore), plus 1 for the `PUT` that puts `MeasInterval` back after the boot when the cut left it changed |
