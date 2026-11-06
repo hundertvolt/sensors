@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from harness import Board
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link", "uart_load")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link",)
 
 # GET only: every worker below hits a read-only endpoint, so nothing here can persist to flash in a
 # loop. A PUT belongs in this tier only where it is documented command-only and never persisted.

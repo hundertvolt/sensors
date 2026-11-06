@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from harness import Board, _Note
     from http_client import JSONObject, JSONValue
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_1_reformat_relaunch", "ci_suite._run_13_config_reset", "ci_suite._run_13_erase_fram", "ci_suite._run_13_near_misses", "scenarios.erasefram_concurrent_with_a_reboot_accepts_exactly_one", "scenarios.reboot_and_bootloader_at_once_accept_exactly_one", "scenarios.reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing")
 
 _SRC = "asy_system_service.py"
 _RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED = (module_int_const(SRC_DIR, _SRC, name) for name in ("_RR_WATCHDOG", "_RR_REBOOT", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED"))

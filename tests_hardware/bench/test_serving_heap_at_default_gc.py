@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scenarios.connections_at_each_count_from_one_to_max_connections_all_succeed", "scenarios.connections_beyond_max_connections_are_rejected_cleanly_not_crashed")
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 # Every registered JSON GET route, plus the page and the largest static file it fetches next (a static mount, not a

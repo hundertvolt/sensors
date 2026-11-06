@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("fram", "construction", "fram_crash_points", "ci_suite._run_5b_error_log_restore_is_all_or_nothing", "ci_suite._run_5c_storage_paused_shutdown_never_loses_the_error_log")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("fram", "construction", "fram_crash_points", "ci_suite._run_5b_error_log_restore_is_all_or_nothing", "ci_suite._run_5c_storage_paused_shutdown_never_loses_the_error_log", "scenarios.reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup")
 
 _SHORT_SCRIPT_TIMEOUT_S = 30.0
 _BACKUP_SCRIPT_TIMEOUT_S = 150.0

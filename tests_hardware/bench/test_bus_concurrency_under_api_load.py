@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency", "scenarios.isl29125_config_put_during_get_loops", "scenarios.realistic_mixed_polling_and_a_concurrent_real_config_write", "scenarios.survives_bus_and_api_load_while_ntp_is_unreachable")
 
 # _GET_WORKERS + 1 concurrent clients (the SGP40 reset thread too), two slots under the build's own
 # max_connections: at it, real wireless timing overlaps into an undesired reject-when-full. Derived,

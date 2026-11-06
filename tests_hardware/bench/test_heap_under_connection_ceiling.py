@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 # The worst-case body: microdot reads one only when Content-Length > 0, up to max_content_length
