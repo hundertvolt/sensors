@@ -2646,8 +2646,8 @@ def _scenario_loggers_set_up_by_the_batch(device: str) -> None:
 _GET_ROUTES = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status")
 
 
-# A device's whole serving demand stays within the heap free after boot (SPECIFICATION.md I.6: about 105,000 B) less
-# the 32,768 B contiguity reserve; estimated (agent, 2026-10-08) - measurement owed: post-boot free heap on dev, phase C.
+# A device's whole serving demand stays within the heap free after boot less the 32,768 B contiguity reserve; the
+# estimate, its measurement and its margin are SPECIFICATION.md Part N's web.serving_demand_budget_b row.
 # @tunable web.serving_demand_budget_b = 72232
 _SERVING_DEMAND_BUDGET_B = 72232
 
