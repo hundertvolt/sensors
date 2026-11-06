@@ -302,3 +302,13 @@ Yesterday: 5 of 308 failed through the hotspot and 0 of 156 on a direct join, wi
 **FRAM.** 4b's erase tests blanked the chip again, so yesterday's history is gone from it, as a test-owned erase. The `/status` read before the flash is in `logs/day2_20261106/status_before_new_image.json` (git-ignored). Nothing was cleared by hand.
 
 **Next (agent, 2026-11-06):** `run 5` on this image, then twins `arzi`, `schlafzi`, `dev`.
+
+## 17. `run 5` on the 512 B image: a cascade, its cause, and the rerun (2026-11-06, 07:03-)
+
+**First run, 07:03-07:32, 1,740 s: 7 failed, 13 passed, 84 errored in setup, 6 in teardown.** No memory line. The archive is `build/archive/run_bench_hardware_suite/20261106T070339Z`.
+
+**The cascade's cause, found in the harness.** `test_fram_erase_under_api_load` failed with `the board did not leave USB within 60.0s`, but the kernel log shows it did: USB disconnect at 07:11:38.040, `ttyACM0` back at 07:11:38.360. `kick_after_reset()` polls the node every 500 ms (`_USB_GRACE_POLL_S`) and the gap is about 320 ms, so it misses roughly 1 reset in 3. Five gaps read 300-340 ms. With no kick, the AP's stale entry lasted to 07:13:10, the board went to its hotspot, and the tests after it failed in setup until a later reset at 07:16:01. This is `a4ed871a`'s own check; item 2's cascade had a different start.
+
+**Fix (agent, 2026-11-06, decided on the lead's behalf, since the rerun can't run without it; the lead can revert it):** `kick_after_reset()` polls at 62.5 ms, in `tests_hardware/harness.py`. `tests_scripts/test_bench_harness_helpers.py` gets a test with a real gap's timing, which fails at the 500 ms step. Those two test files pass, with ruff and mypy clean on both changed files. The full `tests_scripts` was not run. No image change; the image stays `c8887b35`.
+
+**The rerun:** the 78 test functions that errored in setup, plus `test_fram_erase_under_api_load`, through `PYTEST_K`. Tests that already ran aren't repeated, as a cascade's tests never spent their writes. The selection is in `logs/day2_20261106/rerun_5_k.txt`.
