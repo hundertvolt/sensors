@@ -525,13 +525,19 @@ def test_kick_after_reset_sees_a_real_resets_short_usb_gap(monkeypatch: pytest.M
     assert fake.calls == ["kick_all_stations"]
 
 
-def test_reset_board_kicks_the_stations_once_its_reset_has_fired_and_is_plain_without_a_bench() -> None:
-    # The AP keeps a reset board's stale entry for about 60 s (bench, 2026-11-06), so the kick follows the reset; a
-    # flash-only rig or --twin has no bench to kick.
+def test_reset_board_is_kick_then_reset_with_a_bench_and_a_plain_reset_without_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    # One kick order for every reset: with a bench it delegates to kick_then_reset(); a flash-only rig or --twin has
+    # no bench to kick.
     kicked, plain = _Recorder(), _Recorder()
+
+    def kick_then_reset(board: object, bench: object) -> None:
+        assert board is kicked and bench is kicked
+        kicked.calls.append("kick_then_reset")
+
+    monkeypatch.setattr(harness, "kick_then_reset", kick_then_reset)
     harness.reset_board(kicked, kicked)  # type: ignore[arg-type]
     harness.reset_board(plain, None)  # type: ignore[arg-type]
-    assert (kicked.calls, plain.calls) == (["hard_reset", "kick_all_stations"], ["hard_reset"])
+    assert (kicked.calls, plain.calls) == (["kick_then_reset"], ["hard_reset"])
 
 
 class _SoakBoard(_Recorder):
@@ -570,13 +576,34 @@ def test_a_flash_run_ends_on_one_reset_kicked_with_a_bench_then_the_boot_line(mo
     next(teardown)
     with pytest.raises(StopIteration):
         next(teardown)
-    assert board.calls == ["hard_reset", *(["kick_all_stations"] if kicked else []), "back on USB", "boot line"]
+    assert board.calls == [*(["kick_all_stations"] if kicked else []), "hard_reset", "back on USB", "boot line"]
 
 
 @pytest.mark.parametrize("module", ["conftest.py", "flash/conftest.py", "flash/test_memory_stress.py"])
 def test_every_session_flash_run_and_soak_reset_goes_through_reset_board(module: str) -> None:
     # Each leaves the board for later tests or the session-end check, so with a bench each kicks the AP's stations.
     assert _bare_resets(_module_tree(TESTS_HARDWARE / module)) == [], f"{module}: call harness.reset_board() instead"
+
+
+def _soak_tests(tree: ast.Module) -> "list[ast.FunctionDef]":
+    # The module's soak_duration tests, by their marker.
+    return [fn for fn in tree.body if isinstance(fn, ast.FunctionDef) and any(isinstance(d, ast.Attribute) and d.attr == "soak_duration" for d in fn.decorator_list)]
+
+
+def test_every_flash_soak_leaves_the_board_serving_for_the_bench_half() -> None:
+    # The soak runner runs flash and bench in one session, so a flash soak's last board call is followed by
+    # reset_board() and the wait for the board back on USB: main.py serving again, the AP's stations kicked.
+    offenders, found = [], 0
+    for path in sorted((TESTS_HARDWARE / "flash").glob("test_*.py")):
+        for fn in _soak_tests(_module_tree(path)):
+            found += 1
+            calls = sorted((node for node in ast.walk(fn) if isinstance(node, ast.Call)), key=lambda call: (call.lineno, call.col_offset))
+            names = [_call_name(call) for call in calls]
+            last = max((i for i, name in enumerate(names) if name in {"run_isolated", "tail_log", "exec_live", "read_live_system_log"}), default=-1)
+            after = names[last + 1 :]
+            if "reset_board" not in after or after[after.index("reset_board") + 1 :][:1] != ["wait_until"]:
+                offenders.append(f"{path.name}::{fn.name}")
+    assert found >= 3 and offenders == [], f"{found} flash soaks, not ending on reset_board() and the presence wait: {offenders}"
 
 
 def test_the_soak_reads_systems_log_first_only_after_a_hard_reset_and_a_fresh_boot() -> None:
@@ -625,7 +652,7 @@ def test_the_soak_window_opens_on_sta_and_a_reboot_in_it_names_the_reset_reason_
 
     monkeypatch.setattr(http_client, "fetch", fetch)
     monkeypatch.setattr(soak, "read_live_system_log", read_live_system_log)
-    reset = ["hard_reset", "kick_all_stations"]
+    reset = ["kick_all_stations", "hard_reset"]
     if rebooted:
         with pytest.raises(AssertionError, match="ResetReason 21"):
             soak.test_single_core_timing_headroom_holds_under_normal_full_task_load(board, board, _SoakRequest())

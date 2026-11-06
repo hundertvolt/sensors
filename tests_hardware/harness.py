@@ -667,12 +667,13 @@ def render_device_script(path: Path, **extras: object) -> Path:
 
 
 def reset_board(board: "Board", bench: "BenchBridge | None") -> None:
-    # A reset leaving the board for later tests or a session-end check: with the session's bench, the AP's stations are
-    # kicked once it has fired, as the AP keeps a reset board's stale entry for about 60 s and the board falls back to
-    # its hotspot (bench, 2026-11-06); a flash-only rig or --twin resets plainly.
-    board.hard_reset()
-    if bench is not None:
-        bench.kick_all_stations()
+    # A reset leaving the board for later tests or a session-end check: kick_then_reset() with the session's bench, as
+    # the AP keeps a reset board's stale entry for about 60 s and the board falls back to its hotspot (bench,
+    # 2026-11-06); a flash-only rig or --twin resets plainly.
+    if bench is None:
+        board.hard_reset()
+    else:
+        kick_then_reset(board, bench)
 
 
 def reset_reason(dut_ip: str) -> object:

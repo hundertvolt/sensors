@@ -222,7 +222,7 @@ def test_the_session_start_saves_status_over_rest_before_any_raw_repl_call(conft
     config = _Config()
     conftest.session_start_evidence(config, _Board(log=log), None if answer == "absent" else _DUT_IP, _Bench(log) if kicked else None)
     rest = ["GET /status saved (session-start)"] if answer == "answers" else []
-    assert log == [*rest, "raw-REPL FRAM dump (session-start)", "hard_reset", *(["kick_all_stations"] if kicked else [])]
+    assert log == [*rest, "raw-REPL FRAM dump (session-start)", *(["kick_all_stations"] if kicked else []), "hard_reset"]
     assert config.stash[conftest._REST_SAVED] is (answer == "answers")
     assert [source for source, _ in config.notes] == ([] if answer == "answers" else ["fram_evidence_saved"]), config.notes
 
