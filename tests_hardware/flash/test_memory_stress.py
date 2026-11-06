@@ -10,7 +10,7 @@ import heap_map
 import http_client
 import pytest
 from error_log_helpers import assert_no_new_task_raised, read_live_system_log
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, boot_lines, configured_max_connections, crash_lines, device_toml, get_routes, parse_facts, wait_for_boot, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, boot_lines, configured_max_connections, crash_lines, device_toml, get_routes, parse_facts, reset_board, reset_reason, wait_for_boot, wait_until
 from heap_bounds import WORST_CASE_ALLOCATION
 from soak_durations import SOAK_DURATION_SECONDS
 
@@ -20,6 +20,7 @@ from buildgen.validate import smallest_hard_consumer
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from bench_control import BenchBridge
     from harness import Board
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction", "scenarios.loop_lag_under_combined_load")
@@ -31,6 +32,8 @@ _PRESENCE_TIMEOUT_S = 30.0
 _BOOT_TIMEOUT_S = 30.0  # the boot line after the soak's first hard reset
 # Past the boot's one-time setup lines, so a DebugLevel at or above 3 cannot print them into the window as a reboot.
 _BOOT_SETTLE_S = 30.0
+# The window's STA wait: the session's own serving bound after a reset, conftest.py's dut_ip (agent, 2026-11-06).
+_STA_TIMEOUT_S = 90.0
 _STRETCH_SCRIPT_TIMEOUT_S = 60.0
 _FLASH_GAP_SCRIPT_TIMEOUT_S = 30.0
 # The lag script's own 30 s window plus the shipped boot and the scratch cleanup.
@@ -183,8 +186,15 @@ def test_c_stack_peak_is_within_half_the_limit(board: "Board", result_note: "Cal
     assert isinstance(peak, int) and peak <= limit // 2, f"the C-stack peak {peak} B is over half the {limit} B limit (chain {facts.get('chain')}): {facts}"
 
 
+def _sta(dut_ip: str) -> bool:
+    # GET /status's networking.Mode: "STA" on the bench network, "AP" while the board hosts its hotspot
+    # (src/asy_wifi_service.py).
+    networking = http_client.fetch(dut_ip, 80, "GET", "/status").json().get("networking")
+    return isinstance(networking, dict) and networking.get("Mode") == "STA"
+
+
 @pytest.mark.soak_duration
-def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: "Board", request: pytest.FixtureRequest) -> None:
+def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: "Board", bench_if_configured: "BenchBridge | None", request: pytest.FixtureRequest) -> None:
     duration = request.config.getoption("--soak-duration")
     if duration is None:
         pytest.skip("passive soak over one named duration - run via scripts/run_bench_soak_tests.sh --duration {short,mid,long}")
@@ -192,20 +202,24 @@ def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: "B
     # SYSTEM's task-end log is read before and after the window, each read interrupting the firmware, so each is
     # followed by a hard reset: at DebugLevel 0 a task that died raising prints nothing (SPECIFICATION.md I.4(e)).
     # The first read waits for a fresh boot's line, so it never lands mid-boot after the session's own reset.
-    board.hard_reset()
+    reset_board(board, bench_if_configured)
     wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")
     wait_for_boot(board, _BOOT_TIMEOUT_S)
     before = read_live_system_log(board)
-    board.hard_reset()
+    reset_board(board, bench_if_configured)
     wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")
     time.sleep(_BOOT_SETTLE_S)
+    # The window opens on STA alone: hotspot mode is not the normal full task load this soak claims.
+    dut_ip = request.getfixturevalue("dut_ip")
+    wait_until(lambda: _sta(dut_ip), timeout_s=_STA_TIMEOUT_S, description=f"GET /status networking.Mode STA at {dut_ip} before the soak window")
     # Passive observation only (tail_log(), never exec()/run_isolated(): those stop main.py).
     lines = board.tail_log(duration_s=duration_s)
+    reason = reset_reason(dut_ip) if boot_lines(lines) else None  # read at once: the live read and the reset below end it
     after = read_live_system_log(board)
-    board.hard_reset()
+    reset_board(board, bench_if_configured)
     wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")
     # A boot line mid-window is an unexpected reboot; a crash line is a raised exception or an allocation failure that
     # was caught and logged - the case the memory rule is named for (the board never prints the class name for it).
-    assert not boot_lines(lines), f"observed what looks like an unexpected mid-soak reboot (watchdog starvation?): {boot_lines(lines)}\nfull log:\n" + "\n".join(lines)
+    assert not boot_lines(lines), f"observed what looks like an unexpected mid-soak reboot (watchdog starvation?), ResetReason {reason!r}: {boot_lines(lines)}\nfull log:\n" + "\n".join(lines)
     assert not crash_lines(lines), "observed an unexpected traceback or allocation failure during the soak window:\n" + "\n".join(crash_lines(lines))
     assert_no_new_task_raised(before, after, "the soak window")

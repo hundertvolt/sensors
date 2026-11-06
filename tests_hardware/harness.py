@@ -666,6 +666,25 @@ def render_device_script(path: Path, **extras: object) -> Path:
     return target
 
 
+def reset_board(board: "Board", bench: "BenchBridge | None") -> None:
+    # A reset leaving the board for later tests or a session-end check: with the session's bench, the AP's stations are
+    # kicked once it has fired, as the AP keeps a reset board's stale entry for about 60 s and the board falls back to
+    # its hotspot (bench, 2026-11-06); a flash-only rig or --twin resets plainly.
+    board.hard_reset()
+    if bench is not None:
+        bench.kick_all_stations()
+
+
+def reset_reason(dut_ip: str) -> object:
+    # GET /status's system.ResetReason, read the moment a soak sees a reboot (its next reset overwrites it); a read
+    # that fails returns what kept it from answering, so the reboot's own failure still reports.
+    try:
+        system = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_SERVING_PROBE_TIMEOUT_S).json().get("system")
+    except (OSError, http_client.HTTP_ERROR, ValueError, TypeError) as exc:
+        return f"not read: {exc!r}"
+    return system.get("ResetReason") if isinstance(system, dict) else f"not read: GET /status system is {system!r}"
+
+
 def resolve_board_device(
     by_id_dir: Path = Path("/dev/serial/by-id"),
     sys_tty_dir: Path = Path("/sys/class/tty"),

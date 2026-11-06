@@ -10,7 +10,7 @@ import _load
 import http_client
 import pytest
 from error_log_helpers import assert_no_task_ended, code, errcount_entry, get_errcount, reset_all_error_logs, save_errcount
-from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, bench_device, boot_lines, configured_max_connections, crash_lines, device_toml, fram_backed_logger_names, get_routes, parse_facts, restore_board_to_serving, wait_for_script_server, wait_until
+from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, bench_device, boot_lines, configured_max_connections, crash_lines, device_toml, fram_backed_logger_names, get_routes, parse_facts, reset_reason, restore_board_to_serving, wait_for_script_server, wait_until
 from soak_durations import SOAK_DURATION_SECONDS
 
 from buildgen.model import load_device
@@ -73,7 +73,7 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
     save_errcount(dut_ip, request.node.name)  # what the board logged before this test is evidence (CLAUDE.md)
     reset_all_error_logs(dut_ip, request.node.name)
     lines, record = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
-    _assert_no_crash_or_reboot(lines, "max-speed hammer load")
+    _assert_no_crash_or_reboot(lines, "max-speed hammer load", dut_ip)
     # Answered means processed and answered with a 200 under load, which a wedged server cannot fake.
     assert record.answered >= _MIN_ANSWERED, f"too few reads answered during the hammer load ({record.answered} ok, {len(record.errors)} rejected/errored) - server may have wedged"
     wait_until(lambda: _load.serving(dut_ip), timeout_s=_RECOVERY_TIMEOUT_S, poll_interval_s=_RECOVERY_POLL_S, description="GET /status serving again after the hammer")
@@ -100,7 +100,7 @@ def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnos
     counts = get_errcount(dut_ip)
     logged = {name: entry for name in fram_backed_logger_names(bench_device()) if _beyond_the_ceiling(name, entry := errcount_entry(counts, name))}
     try:
-        _assert_no_crash_or_reboot(lines, "the extended max-speed hammer load")
+        _assert_no_crash_or_reboot(lines, "the extended max-speed hammer load", dut_ip)
         assert_no_task_ended(dut_ip, "extended max-speed hammer load")
         assert not logged, f"a FRAM-backed module logged a real error during the hammer load, beyond WEBSERVER's ceiling refusals - real diagnostic evidence, captured before any cleanup: {logged!r}"
         assert record.answered >= _MIN_ANSWERED, f"too few reads answered during the hammer load ({record.answered} ok, {len(record.errors)} rejected/errored) - server may have wedged"
@@ -189,7 +189,7 @@ def test_http_soak_stays_live(board: "Board", dut_ip: str, request: pytest.Fixtu
         stop.set()
         alive = _load.join([reader], _JOIN_TIMEOUT_S)
     assert not alive, "the soak reader never finished"
-    _assert_no_crash_or_reboot(lines, "the HTTP soak")
+    _assert_no_crash_or_reboot(lines, "the HTTP soak", dut_ip)
     assert_no_task_ended(dut_ip, "the HTTP soak")
     result_note(f"{len(request_errors)} of {len(sent)} soak requests failed over {SOAK_DURATION_SECONDS[duration]:g}s")
     assert len(request_errors) <= _SOAK_REQUEST_FAILURE_RATE * len(sent), f"too many failed/non-200 requests during the soak ({len(request_errors)} of {len(sent)}): {request_errors[:10]}"
@@ -231,13 +231,14 @@ def test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_c
     assert isinstance(lag_max, int) and lag_max <= bound_us, f"the loop lagged {lag_max} us, past the {bound_us} us smallest hard consumer: {facts}"
 
 
-def _assert_no_crash_or_reboot(lines: "list[str]", what: str) -> None:
+def _assert_no_crash_or_reboot(lines: "list[str]", what: str, dut_ip: str) -> None:
     # The soak gate: either allocation marker covers a load that allocated, failed, logged it and carried on (the board
-    # never prints the class name for a caught one); a crash line adds a traceback, a boot line a reboot mid-load.
+    # never prints the class name for a caught one); a crash line adds a traceback, a boot line a reboot mid-load, whose
+    # ResetReason the failure reads at once.
     allocation = [line for line in lines if any(marker in line for marker in MEMORY_ERROR_MARKERS)]
     assert not allocation, f"observed an allocation failure during {what}, caught or not:\n" + "\n".join(allocation)
     assert not crash_lines(lines), f"observed a crash during {what}:\n" + "\n".join(crash_lines(lines))
-    assert not boot_lines(lines), f"observed an unexpected reboot during {what} (real memory exhaustion -> WDT reset?):\n" + "\n".join(boot_lines(lines))
+    assert not boot_lines(lines), f"observed an unexpected reboot during {what} (real memory exhaustion -> WDT reset?), ResetReason {reset_reason(dut_ip)!r}:\n" + "\n".join(boot_lines(lines))
 
 
 def _beyond_the_ceiling(name: str, entry: "ErrcountEntry") -> bool:

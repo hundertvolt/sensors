@@ -422,15 +422,20 @@ when measurement is off), at most once per pytest session and never retried afte
 **The session's own state.** Before the first test the session saves the evidence (the `/status`
 body when `--dut-ip` answers, then the raw FRAM dump) and checks the standard state
 (Prerequisites); at its end it saves both again, compares the SCD30 values with the start and leaves
-the board serving: every flash run ends with one hard reset to a serving board.
+the board serving: every flash run ends with one hard reset to a serving board. With a bench bridge
+configured (`BenchBridge().is_configured()`, as the bench tier reads it, and no `--twin`), that
+reset and the headroom soak's kick the AP's stations once each has fired (`harness.reset_board()`),
+as every session reset does; a flash-only rig resets plainly.
 
 **Verify the image.** Before any bench test runs, the bench conftest's `board_image` fixture reads
 the image record (`--image-record`, default beside the `.uf2`) and compares it with the board's
 `GET /system`: the device, `BuildDate`, the lwIP ensemble at the record's `maxConnections`, that
 `maxConnections` against this tree's device TOML, and no tick-offset test image unless
-`--allow-multi-day-rollover`. A mismatch stops the session naming each deviation and the reflash
-that fixes it; a record from a dirty tree is reported as a local-only image to revert after the
-round. A test that reflashes mid-session runs the same comparison (`check_image()`).
+`--allow-multi-day-rollover`, once the board answers at all: a board still rebooting or rejoining
+after the last reset (a flash half before the bench half) is waited for up to 90 s. A mismatch
+stops the session naming each deviation and the reflash that fixes it; a record from a dirty tree
+is reported as a local-only image to revert after the round. A test that reflashes mid-session
+runs the same comparison (`check_image()`).
 
 ## How a round runs
 
@@ -659,7 +664,7 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
   naming what the reset path skipped; its reset waits for an `observe_during()` log tail to free
   the serial port, which `mpremote` needs for its raw REPL entry.
 - After a reset or a flash the board can fall back to hotspot mode, since a reset without a kick
-  right before it leaves a stale station entry on the bench AP ("Workarounds");
+  leaves a stale station entry on the bench AP for about 60 s ("Workarounds");
   `kick_all_stations()` + `hard_reset()` recovers it, occasionally only on a second try, and for a
   hand recovery `.venv/bin/python tests_hardware/kick_then_reset.py [--device D]` does both steps
   (~40 s to recover, recorded 2026-09-19, `1fb370b`). A system command issued over REST
@@ -697,7 +702,7 @@ check.
 | the bench's USB CDC stops entering the raw REPL until the port is rebound (recorded 2026-09-02) | `harness._usb_reset_device()`, from `Board._mpremote()` | one unbind and bind per `mpremote` call (a 10 s command timeout, at most 2 s to unbind and 3 s to bind); a refused sudo fails the run | a full round records no rebind in `Board.recovery_events` | 2026-10-14, `v1.29.0` (code read) |
 | a transient USB-settle failure of `mpremote` right after a reset | `Board._mpremote()` | retried within 10 s, polled every 0.5 s, never once the script printed | a round records no transient retry | 2026-10-14, `v1.29.0` (code read) |
 | a reset re-enumerates the CDC device under another node | `Board._mpremote()`, `_rebind_device_if_moved()` | 2 re-resolves per call | a round records no node rebind | 2026-10-14, `v1.29.0` (code read) |
-| a stale AP-side station entry survives the DUT's reset and blocks its reassociation (recorded 2026-09-02) | `BenchBridge.kick_client()`, through `kick_all_stations()` before every expected reconnect, or through `harness.kick_after_reset()` once a command's own reset took the board off USB | one `iw station del` per station per reset | a round records no stale-entry reconnect failure | 2026-10-14, `v1.29.0` (code read) |
+| a stale AP-side station entry survives the DUT's reset and blocks its reassociation (recorded 2026-09-02) | `BenchBridge.kick_client()`, through `kick_all_stations()` before every expected reconnect, through `harness.reset_board()` after a session, flash-run or soak reset, or through `harness.kick_after_reset()` once a command's own reset took the board off USB | one `iw station del` per station per reset | a round records no stale-entry reconnect failure | 2026-10-14, `v1.29.0` (code read) |
 | `nmcli -g` escapes `:` as `\:` in an SSID or PSK | `BenchBridge.ap_ssid()`, `ap_password()` | `--escape no` on every SSID/PSK read | `nmcli -g` stops escaping | 2026-10-14, `v1.29.0` (code read) |
 | `nmcli connection down` errors on an inactive connection | `BenchBridge.ap_down()` | that one error taken as already down, once per call | `nmcli` makes `down` idempotent | 2026-10-14, `v1.29.0` (code read) |
 | nmcli's own rescan can miss a hotspot `is_ssid_visible()` just saw (recorded 2026-09-08) | `bench/test_hotspot_role_reversal.py`'s `_join_dut_hotspot_with_reverify_retry()` | 5 joins, each retry a recovery note | a round records no re-verify retry | 2026-10-14, `v1.29.0` (code read) |

@@ -192,9 +192,20 @@ def test_the_standard_state_report_names_each_deviation_and_its_repair(conftest:
     assert "2026-10-13 09:00:00" in by_name["image BuildDate"] and "2026-10-14 12:00:00" in by_name["image BuildDate"]
 
 
+class _Bench:
+    # A bench bridge whose kick lands in the board's log.
+    def __init__(self, log: "list[str]") -> None:
+        self.log = log
+
+    def kick_all_stations(self) -> None:
+        self.log.append("kick_all_stations")
+
+
+@pytest.mark.parametrize("rig", ["flash-only", "bench"])
 @pytest.mark.parametrize("answer", ["answers", "refuses", "absent"])
-def test_the_session_start_saves_status_over_rest_before_any_raw_repl_call(conftest: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: str) -> None:
+def test_the_session_start_saves_status_over_rest_before_any_raw_repl_call(conftest: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: str, rig: str) -> None:
     log: list[str] = []
+    kicked = rig == "bench"
 
     def save_errcount(dut_ip: str, reason: str) -> None:
         if answer == "refuses":
@@ -209,11 +220,35 @@ def test_the_session_start_saves_status_over_rest_before_any_raw_repl_call(conft
     monkeypatch.setattr(error_log_helpers, "save_errcount", save_errcount)
     monkeypatch.setattr(harness, "save_fram_raw", save_fram_raw)
     config = _Config()
-    conftest.session_start_evidence(config, _Board(log=log), None if answer == "absent" else _DUT_IP)
+    conftest.session_start_evidence(config, _Board(log=log), None if answer == "absent" else _DUT_IP, _Bench(log) if kicked else None)
     rest = ["GET /status saved (session-start)"] if answer == "answers" else []
-    assert log == [*rest, "raw-REPL FRAM dump (session-start)", "hard_reset"]
+    assert log == [*rest, "raw-REPL FRAM dump (session-start)", "hard_reset", *(["kick_all_stations"] if kicked else [])]
     assert config.stash[conftest._REST_SAVED] is (answer == "answers")
     assert [source for source, _ in config.notes] == ([] if answer == "answers" else ["fram_evidence_saved"]), config.notes
+
+
+@pytest.mark.parametrize("rig", ["twin", "flash-only", "bench"])
+def test_a_reset_kicks_only_where_the_bench_tier_finds_its_bridge(conftest: ModuleType, monkeypatch: pytest.MonkeyPatch, rig: str) -> None:
+    # The bench fixture's own two tests, without its skip; a twin run (on a bench host too) reads no host network state.
+    twin, configured, found = rig == "twin", rig != "flash-only", rig == "bench"
+    reads: list[bool] = []
+    bench = object()
+
+    class _Asked:
+        config = _Config(**{"--twin": twin})
+
+        def getfixturevalue(self, name: str) -> object:
+            assert name == "bench", name
+            return bench
+
+    def is_configured(_self: object) -> bool:
+        reads.append(configured)
+        return configured
+
+    monkeypatch.setattr(conftest.BenchBridge, "is_configured", is_configured)
+    bridge = conftest.bench_if_configured.__wrapped__(_Asked())
+    assert (bridge is bench, bridge is None) == (found, not found)
+    assert reads == ([] if twin else [configured])
 
 
 def test_bench_device_names_a_toml_and_is_exported_for_the_session(conftest: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -261,7 +296,7 @@ class _Request:
 def _start_state(conftest: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, board: _RepairableBoard, **options: object) -> _Config:
     # Drives standard_state's start on a bench-less fake board, its snapshot and evidence dumps faked.
     monkeypatch.setattr(conftest.BenchBridge, "is_configured", lambda _self: False)
-    monkeypatch.setattr(conftest, "_scd30_snapshot", lambda _board, _ip: {})
+    monkeypatch.setattr(conftest, "_scd30_snapshot", lambda _board, _bench, _ip: {})
     monkeypatch.setattr(conftest, "_clear_write_protect_exec", lambda: "WP_CLEARED exec")  # its pins are another case's
     monkeypatch.setattr(harness, "save_fram_raw", lambda b, _reason: harness.FramDump(tmp_path / "dump.txt", {"write_protected": b.protected}))
     config = _Config(**options)

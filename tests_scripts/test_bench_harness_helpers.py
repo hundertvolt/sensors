@@ -525,14 +525,128 @@ def test_kick_after_reset_sees_a_real_resets_short_usb_gap(monkeypatch: pytest.M
     assert fake.calls == ["kick_all_stations"]
 
 
+def test_reset_board_kicks_the_stations_once_its_reset_has_fired_and_is_plain_without_a_bench() -> None:
+    # The AP keeps a reset board's stale entry for about 60 s (bench, 2026-11-06), so the kick follows the reset; a
+    # flash-only rig or --twin has no bench to kick.
+    kicked, plain = _Recorder(), _Recorder()
+    harness.reset_board(kicked, kicked)  # type: ignore[arg-type]
+    harness.reset_board(plain, None)  # type: ignore[arg-type]
+    assert (kicked.calls, plain.calls) == (["hard_reset", "kick_all_stations"], ["hard_reset"])
+
+
+class _SoakBoard(_Recorder):
+    # A board back on USB at once (the headroom soak's): the fresh boot's line on its first tail, then `window`.
+    def __init__(self, window: "list[str]") -> None:
+        super().__init__()
+        self.tails = [[harness.BOOT_COMPLETION_MARKERS[0]], window]
+
+    def is_device_present(self) -> bool:
+        return True
+
+    def tail_log(self, duration_s: float, baudrate: int = 115200) -> "list[str]":
+        del duration_s, baudrate
+        self.calls.append("tail_log")
+        return self.tails.pop(0) if self.tails else []
+
+
+class _NoTwin:
+    # The FixtureRequest of a run without --twin.
+    def __init__(self) -> None:
+        self.config = self
+
+    def getoption(self, name: str) -> object:
+        assert name == "--twin", name
+        return False
+
+
+@pytest.mark.parametrize("rig", ["bench", "flash-only"])
+def test_a_flash_run_ends_on_one_reset_kicked_with_a_bench_then_the_boot_line(monkeypatch: pytest.MonkeyPatch, rig: str) -> None:
+    kicked = rig == "bench"
+    flash_conftest = load_script_module(TESTS_HARDWARE / "flash" / "conftest.py", "flash_conftest_under_test")
+    board = _SoakBoard([])
+    monkeypatch.setattr(flash_conftest, "wait_until", lambda *_a, **_k: board.calls.append("back on USB"))
+    monkeypatch.setattr(flash_conftest, "wait_for_boot", lambda *_a: board.calls.append("boot line"))
+    teardown = flash_conftest.leave_board_serving.__wrapped__(board, board if kicked else None, _NoTwin())
+    next(teardown)
+    with pytest.raises(StopIteration):
+        next(teardown)
+    assert board.calls == ["hard_reset", *(["kick_all_stations"] if kicked else []), "back on USB", "boot line"]
+
+
+@pytest.mark.parametrize("module", ["conftest.py", "flash/conftest.py", "flash/test_memory_stress.py"])
+def test_every_session_flash_run_and_soak_reset_goes_through_reset_board(module: str) -> None:
+    # Each leaves the board for later tests or the session-end check, so with a bench each kicks the AP's stations.
+    assert _bare_resets(_module_tree(TESTS_HARDWARE / module)) == [], f"{module}: call harness.reset_board() instead"
+
+
 def test_the_soak_reads_systems_log_first_only_after_a_hard_reset_and_a_fresh_boot() -> None:
     # Its calls in source order, no twin: without a bench the session's own reset leaves the board mid-boot, so the
     # first live read must follow a reset of the soak's own, the board back on USB and the boot line.
     tree = ast.parse((TESTS_HARDWARE / "flash" / "test_memory_stress.py").read_text(encoding="utf-8"))
     soak = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "test_single_core_timing_headroom_holds_under_normal_full_task_load")
     calls = sorted((node for node in ast.walk(soak) if isinstance(node, ast.Call)), key=lambda call: (call.lineno, call.col_offset))
-    order = [_call_name(call) for call in calls if _call_name(call) in {"hard_reset", "wait_until", "wait_for_boot", "read_live_system_log"}]
-    assert order[: order.index("read_live_system_log") + 1] == ["hard_reset", "wait_until", "wait_for_boot", "read_live_system_log"], order
+    order = [_call_name(call) for call in calls if _call_name(call) in {"reset_board", "wait_until", "wait_for_boot", "read_live_system_log"}]
+    assert order[: order.index("read_live_system_log") + 1] == ["reset_board", "wait_until", "wait_for_boot", "read_live_system_log"], order
+
+
+class _SoakRequest:
+    # The soak's FixtureRequest: --soak-duration short, and the bench session's DUT address.
+    def __init__(self) -> None:
+        self.config = self
+
+    def getoption(self, name: str) -> object:
+        return {"--soak-duration": "short"}[name]
+
+    def getfixturevalue(self, name: str) -> object:
+        assert name == "dut_ip", name
+        return "dut"
+
+
+@pytest.mark.parametrize("window", ["quiet", "rebooted"])
+def test_the_soak_window_opens_on_sta_and_a_reboot_in_it_names_the_reset_reason_read_at_once(monkeypatch: pytest.MonkeyPatch, clock: _Clock, window: str) -> None:
+    # Hotspot mode is not the normal full task load, so the window waits for Mode STA; a reboot inside it is read
+    # before the live log read and the closing reset that would overwrite its ResetReason.
+    del clock  # patches the settle sleep and the waits' polls
+    rebooted = window == "rebooted"
+    soak = load_script_module(TESTS_HARDWARE / "flash" / "test_memory_stress.py", "flash_memory_stress_under_test")
+    board = _SoakBoard([harness.BOOT_COMPLETION_MARKERS[0]] if rebooted else [])
+    modes = ["AP", "STA"]
+
+    def fetch(host: str, _port: int, method: str, path: str, *_args: object, **_kwargs: object) -> http_client.HttpResponse:
+        assert (host, method, path) == ("dut", "GET", "/status")
+        mode = modes.pop(0) if len(modes) > 1 else modes[0]
+        board.calls.append(f"GET /status ({mode})")
+        return http_client.HttpResponse(200, {}, json.dumps({"networking": {"Mode": mode}, "system": {"ResetReason": 21}}).encode())
+
+    def read_live_system_log(read: object) -> "dict[str, error_log_helpers.ErrcountEntry]":
+        assert read is board
+        board.calls.append("live read")
+        return {"SYSTEM": error_log_helpers.ErrcountEntry(counter=0, history=[])}
+
+    monkeypatch.setattr(http_client, "fetch", fetch)
+    monkeypatch.setattr(soak, "read_live_system_log", read_live_system_log)
+    reset = ["hard_reset", "kick_all_stations"]
+    if rebooted:
+        with pytest.raises(AssertionError, match="ResetReason 21"):
+            soak.test_single_core_timing_headroom_holds_under_normal_full_task_load(board, board, _SoakRequest())
+    else:
+        soak.test_single_core_timing_headroom_holds_under_normal_full_task_load(board, board, _SoakRequest())
+    read_at_once = ["GET /status (STA)"] if rebooted else []
+    assert board.calls == [*reset, "tail_log", "live read", *reset, "GET /status (AP)", "GET /status (STA)", "tail_log", *read_at_once, "live read", *reset]
+
+
+@pytest.mark.parametrize(("answer", "shown"), [(b'{"system": {"ResetReason": 2}}', "ResetReason 2"), (None, "ResetReason 'not read: ConnectionRefusedError")], ids=["read", "unreadable"])
+def test_a_reboot_under_a_bench_load_names_the_reset_reason_read_at_once(monkeypatch: pytest.MonkeyPatch, answer: "bytes | None", shown: str) -> None:
+    # The board's answer, or what kept it from answering, in the reboot's own failure message.
+    def fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
+        if answer is None:
+            raise ConnectionRefusedError
+        return http_client.HttpResponse(200, {}, answer)
+
+    bench_stress = load_script_module(TESTS_HARDWARE / "bench" / "test_memory_stress_bench.py", "bench_memory_stress_under_test")
+    monkeypatch.setattr(http_client, "fetch", fetch)
+    with pytest.raises(AssertionError, match=re.escape(shown)):
+        bench_stress._assert_no_crash_or_reboot([harness.BOOT_COMPLETION_MARKERS[0]], "the HTTP soak", "dut")
 
 
 def test_elf_symbols_drops_a_name_nm_lists_more_than_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
