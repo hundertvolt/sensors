@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm", "ci_suite._run_8_wifi_persistence_and_configure_ntp", "ci_suite._run_11b_full_ceiling_concurrency")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "ci_suite._run_8_wifi_persistence_and_configure_ntp", "ci_suite._run_11b_full_ceiling_concurrency", "scenarios.api_burst_at_the_ceiling_during_bus_load", "scenarios.every_admitted_connection_is_actually_served_a_complete_correct_response", "scenarios.n_healthy_concurrent_connections_up_to_max_connections_all_succeed", "scenarios.connections_beyond_max_connections_are_rejected_cleanly_not_crashed", "scenarios.a_full_ceiling_of_real_page_loads_is_served_without_truncation", "scenarios.multiple_browser_like_sessions_concurrently_all_succeed", "scenarios.realistic_mixed_openhab_polling_and_browser_session_concurrently", "scenarios.a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly")
 
 # ---------------------------------------------------------------------------
 # WiFi outage or flap inside an already-established STA connection. Per
@@ -660,7 +660,7 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, 
     bmp_result = _load.as_object(result.get("BMP3XX"), "result.BMP3XX")
     assert bmp_result.get("PresOvers") == "Invalid", f"a wrong-typed field was not marked Invalid: {bmp_result!r}"
     assert bmp_result.get("FiltCoeff") == "Invalid", f"an out-of-range field was not marked Invalid: {bmp_result!r}"
-    assert isinstance(body["result"], dict) and "TotallyUnknownSensor" not in body["result"], f"an entirely unknown sensor key was not silently ignored: {result!r}"
+    assert result.get("TotallyUnknownSensor") == "Invalid", f"an unknown sensor did not answer Invalid (SPECIFICATION.md A.8): {result!r}"
     assert _load.serving(dut_ip), "webserver unresponsive after nonsense PUT field values"
     try:
         # A rejected key logs BAD_ARG on its own CFGMGR_<NAME> logger, not the sensor's (write_config()).

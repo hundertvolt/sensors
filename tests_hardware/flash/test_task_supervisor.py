@@ -10,7 +10,7 @@ from harness import DEVICE_SCRIPTS_DIR, parse_facts
 if TYPE_CHECKING:
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_5_recovery_after_bounded_fault",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration",)
 
 _SCRIPT_TIMEOUT_S = 15.0
 _TASK_RETURNED = code("E", "TASK_RETURNED")

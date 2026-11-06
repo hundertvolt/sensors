@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from harness import Board
     from http_client import JSONObject, JSONValue
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scenarios.put_pause_time_round_trips_and_counts_down_over_real_http", "scenarios.put_round_trips_through_a_real_twin_backed_driver_over_real_http", "scenarios.sensors_put_round_trips_a_real_scd30_field_over_real_http")
 
 # Different from every driver default (PresOvers=1, TempOvers=1, FiltCoeff=0) and all real
 # allowed discrete settings (_OSR_SETTINGS, _IIR_SETTINGS in asy_bmp3xx_driver.py): a real change

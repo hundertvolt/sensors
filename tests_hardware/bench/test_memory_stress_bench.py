@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from error_log_helpers import ErrcountEntry
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm", "ci_suite._run_11_soak", "loop_lag")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "ci_suite._run_11_soak", "scenarios.loop_lag_under_combined_load")
 
 # max_connections GET threads at true max speed (unlike the modest soak below) plus 1 thread PUTting SGP40.ResetVOC
 # every 3s - the request density that originally found real MemoryErrors within 45s; 120s needs no soak flag.

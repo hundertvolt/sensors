@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortask_integration", "wifi_modes", "ci_suite._run_6_configure_ssid", "ci_suite._run_7_wifi_hotspot_dns")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "wifi_modes", "ci_suite._run_6_configure_ssid", "ci_suite._run_7_wifi_hotspot_dns", "scenarios.every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly", "scenarios.wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server", "scenarios.real_website_hotspot_mode_redirects_unmatched_path_to_root", "scenarios.real_website_put_to_unmatched_path_in_hotspot_mode_still_405", "scenarios.real_website_hotspot_mode_still_serves_real_index_and_real_api_route")
 
 pytestmark = pytest.mark.role_reversal
 

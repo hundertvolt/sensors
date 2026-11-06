@@ -20,22 +20,6 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
   audit"). Most of what is left
   is test code: monkeypatch and wrapper classes duck-typing a real MicroPython object, which need a
   typing strategy (e.g. `Protocol` classes and `__getattr__` delegation) rather than a flag flip.
-- **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
-  (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no priority in
-  terms of order now, it's only highly important to be applied.') has now run once, beyond
-  bus-hazard's own corner** — UART, WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and
-  webserver/notification/config-push were all swept, real call chains traced end-to-end rather than
-  grep-counted. Full account, including what was fixed, what's a confirmed structural exception, and
-  what's named-but-not-fixed (needing either a dedicated real-hardware session or a project-owner
-  design decision): `tests_hardware/README.md`'s "Tier parity beyond the bus hazards". No second instance of the
-  SGP40-shaped bug (a real hardware trigger silently substituted with a software-only one) turned
-  up, but several real tier-parity gaps did, most now closed. Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structural
-  exception until injection hardware exists (2026-09-22, SPECIFICATION.md E.6.6 row
-  `uart-fault-catalog`); the
-  shipped-driver F.5.8 test exists (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test
-  are scratched, each needing a `src/` change for the test alone (owner, 2026-09-25). Re-running
-  this sweep against other domains (it did not touch e.g. sensortask/asy_system_service integration
-  beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 ## Open questions (need owner input or further investigation)
 
@@ -145,6 +129,8 @@ gates, traps).
   the twin's boots assert the watchdog would never have fired
   (`tests/test_digital_twin_sensortask_integration.py`, `would_have_triggered_count` 0); that proves
   the sequence, not rp2 timing, so the figures are silicon-only.
+- **The supervisor's scan budget, measured** — one pass with every supervised task ended at once,
+  timed on `dev` with SYSTEM's entries on FRAM (Part N `system.scan_budget`); no script yet, zero wear.
 - **The on-target no-yield stretches and a flash write's loop gap** — on `dev`,
   `flash/test_memory_stress.py`'s `test_routine_no_yield_stretches_stay_under_the_gc_term` (the
   default flash tier, zero wear) and `test_flash_write_loop_gap_is_recorded` (one scratch flash
@@ -180,19 +166,6 @@ gates, traps).
   after the last reset and no task ended. Wear: 2 flash writes (the `BackupPeriod` change and its
   restore); FRAM writes are not wear. Twin row: none (its twin record: the module needs the bench
   bridge).
-- **What SCL and SDA do on silicon during an I2C bus recovery** — on `dev`, with a slave holding SDA
-  low mid-byte: the line levels through `I2C.recover()`'s clear and its re-construction (pico-sdk's
-  `i2c_init()` resets the whole block, SPECIFICATION.md F.5.1), and through the constructor's boot
-  clear. Expected: the held slave releases SDA within the nine pulses, the STOP is on the wire, and
-  no sibling sees a stray START while the controller is rebuilt. Then, with SDA held the same way, a
-  `machine.reset()` and a watchdog reset: whether the bus comes back and whether the next boot's
-  clear frees it (constructing `machine.I2C` clocks nothing itself). Zero wear. Twin row: the
-  bus-recovery case of `tests/test_digital_twin_bus_hazard_concurrency.py` for the sequence; none
-  for the line levels, since the twin models no electrical bus state. The held SDA itself is made by
-  `i2c_held_sda_recovery.py`
-  (`flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers`), which
-  checks SDA high and every device answering after both clears; the line levels need a scope, and
-  the two resets with SDA held a script of their own.
 - **The free alarm count on silicon** —
   `tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py` on `dev`: record its
   `constructed=N` (the alarms free at that moment, not the pool size) with the image's other

@@ -938,7 +938,7 @@ board itself and asserts the half each reset kind sets.
 |---|---|---|---|
 | 0 | `bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown` | L4 | not yet run |
 | 1 | `manual/manual_persistence.py`'s power-cycle steps (each reads `ResetReason` after power returns; `test_console_soft_reset_keeps_the_reset_record` holds a valid record across its cut, so its 1 also shows the cut cleared the scratch registers) | manual | not yet run |
-| 2 | `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_watchdog_without_a_record`; with SDA held across a `machine.reset()` and a watchdog reset, each with its REASON bit: `flash/test_bus_concurrency.py::test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot`; after the bootloader command's BOOTSEL round trip, which loses the record: `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load), `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel` | L4, L3 | not yet run |
+| 2 | with SDA held across a `machine.reset()` and a watchdog reset, each with its REASON bit: `flash/test_bus_concurrency.py::test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot`; after the bootloader command's BOOTSEL round trip, which loses the record: `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load), `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel` | L4, L3 | not yet run |
 | 3 | `bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly`; `flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed` | L4, L3 | not yet run |
 | 5 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` (a task dying until the budget reboots, also with a console host holding the port unread) | L4 | not yet run |
 | 6 | `bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed`; the fallback itself on L3: `flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm` (`reboot_fallback_starves_the_watchdog.py`) | L4, L3 | not yet run |
@@ -947,7 +947,7 @@ board itself and asserts the half each reset kind sets.
 | 9 | `bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed`; `flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset` | L4, L3 | not yet run |
 | 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5; 11 after a power-on, a Ctrl-D soft reset with phase 1 marked and no record (`reset_code_invalid_record.py`'s STATE `boot_phase` calls `begin_boot()`): `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
 | 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code; with SYSTEM's FRAM chunk lock held, its entry write never ends and the watchdog's reset, timer bit, reads the recorded 20) | L4 | not yet run |
-| 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed`; after a power-on, a Ctrl-D soft reset inside the watchdog window: `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
+| 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed`; a harness hard reset of the serving board, whose `mpremote` Ctrl-C ends `main.py` before its `machine.reset()`: `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_a_console_interrupt`; after a power-on, a Ctrl-D soft reset inside the watchdog window: `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
 | 22 | `bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed`, an `OSError` and a `SystemExit` from the loop core (`reset_code_loop_end.py`: the frozen entry imported again after `mpremote`'s Ctrl-C, under the board's own config, no flash write) | L4 | not yet run |
 
 ## System commands
@@ -1308,8 +1308,8 @@ assumption, not at a product bug.
     `C03_read_before_a_command` - and after an NVM write cut by power loss -
     `manual/manual_persistence.py::test_power_loss_mid_scd30_nvm_write`;
   - the FRAM breakout's MISO idle level - `fram_conformance_probe.py`'s `A01_miso_idle_byte`;
-  - the FRAM CS level at power-off - `manual/manual_bus_electrical.py::test_fram_cs_at_power_off`, with
-    an oscilloscope only;
+  - the FRAM CS level at power-off - unmeasured, a limitation (SPECIFICATION.md C.3.1, `FRAM_SPI`'s
+    CS pad);
   - the seconds from a FRAM pull to its first FRAM log entry, and a pulled crossover jumper's first
     failed transfer, codes and recovery - `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery`
     and `::test_uart_crossover_pull_recovery`;
@@ -1573,10 +1573,10 @@ to be applied.'); no test swaps a real hardware trigger for a software-only one,
 
 - **Exceptions**, rows of SPECIFICATION.md E.6.6: `ws2812-no-readback` (`LightCmdLED` and the WS2812
   timing), `scd30-rdy-irq-vs-fallback`, `fram-write-protect-no-rest`, `uart-fault-catalog`.
-- **Scratched (owner, 2026-09-25)**: a hard-reset-recovery bench test for NOTIFY's FRAM chunk like
-  SGP40's needs an observable "a fresh write just completed" signal NOTIFY lacks; adding one would
-  change `src/` for the test alone, and the flash tier already proves a FRAM chunk's reset-raced write
-  is all-or-nothing.
+- **Scratched (owner, 2026-09-25)**: a periodic SET wired into the bench UART exerciser's live load,
+  and a hard-reset-recovery bench test for NOTIFY's FRAM chunk like SGP40's, which needs an observable
+  "a fresh write just completed" signal NOTIFY lacks: each would change `src/` for the test alone, and
+  the flash tier already proves a FRAM chunk's reset-raced write is all-or-nothing.
 - **Traced end to end and genuine**: the WiFi bench workers (`ap_down`/`ap_up`, UDP block and
   redirect, `netem`, the role reversal, the spoofed NTP source), each reaching the mechanism its name
   claims; the wedged-WiFi `isconnected()` backstop's automated bench coverage with timing data
@@ -1591,7 +1591,8 @@ to be applied.'); no test swaps a real hardware trigger for a software-only one,
   a held SDA across both resets, `ResetErrors` refused, an escalation entry that never ends,
   `ConfigFaults`, the random boot signature, the trigger spacing. L1/L2 only: a dropped one-shot fire's
   watchdog reset (each half on silicon apart); gaps until written: a command in the boot window, failed
-  arms beside the graph, `main()` ending inside the running system, the unfed boot stretches' figures.
+  arms beside the graph, `main()` ending inside the running system, the unfed boot stretches' and the
+  supervisor scan budget's figures.
 
 ## Persistence-write gating: one global flag plus an AND-gated extra flag
 
