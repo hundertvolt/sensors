@@ -503,6 +503,28 @@ def test_kick_after_reset_kicks_once_the_board_has_left_usb_and_never_before(mon
     assert fake.calls == calls and clock.now == pytest.approx(gone_at or 30.0)
 
 
+def test_kick_after_reset_sees_a_real_resets_short_usb_gap(monkeypatch: pytest.MonkeyPatch, clock: _Clock, tmp_path: Path) -> None:
+    # A reset's node is gone for about 320 ms (bench, 2026-11-06), between two polls of a 500 ms step: missing it raises
+    # and leaves the AP's stale entry unkicked, so the board goes to its hotspot and the tests after it fail in setup.
+    node = tmp_path / "ttyACM0"
+    node.touch()
+
+    class Node(_Recorder):
+        device = str(node)
+
+    def sleep(seconds: float) -> None:
+        clock.sleep(seconds)
+        if 3.1 <= clock.now < 3.42:
+            node.unlink(missing_ok=True)
+        else:
+            node.touch()
+
+    monkeypatch.setattr(time, "sleep", sleep)
+    fake = Node()
+    assert 3.1 <= harness.kick_after_reset(fake, fake, 30.0) < 3.42  # type: ignore[arg-type]
+    assert fake.calls == ["kick_all_stations"]
+
+
 def test_the_soak_reads_systems_log_first_only_after_a_hard_reset_and_a_fresh_boot() -> None:
     # Its calls in source order, no twin: without a bench the session's own reset leaves the board mid-boot, so the
     # first live read must follow a reset of the soak's own, the board back on USB and the boot line.
