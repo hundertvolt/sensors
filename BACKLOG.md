@@ -979,6 +979,10 @@ gates, traps).
   **2026-11-04, test orchestration and CI only, no dependency or installer change**: the twin CI runs suite and
   exclusive-port-53 scenarios in one job per device and GC stage (`scripts/run_digital_twin_ci.sh`, `ci.yml`), the
   launcher stop file is gone, and `@tunable` lines outside Part N's scope left `scripts/`. Nothing new to install.
+  **2026-11-06, six private `scripts/` helpers and their test, no dependency or installer change**: `_run_checks.sh`,
+  `_log_verdict.py`, `_errcount_digest.py`, `_failed_tests.py`, `_preflight.sh` and `_tidy.sh` (the skills under
+  `.claude/skills/`) need only the standard library, coreutils and git; a chroot's lint and typecheck legs cover them.
+  Nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
   fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
