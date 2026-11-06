@@ -711,9 +711,12 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     assert len(statuses) >= _MAX_CONNECTIONS, f"only {len(statuses)} of {len(sizes)} PUTs were answered at all - too few to say anything about the cap ({len(refused)} refused)"
     assert 200 in statuses and 413 in statuses, f"the run never saw both verdicts, so the cap was never exercised under concurrency: {sorted(set(map(str, statuses)))}"
     wait_until(lambda: _load.serving(dut_ip), timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="webserver serving normally again after the concurrent mixed-body load cleared")
-    _assert_ceiling_traced(dut_ip, len(refused), "the concurrent mixed-body storm")
+    # An over-cap PUT's 413 goes out before its body is read, so the close's RST can erase it, status line too (RFC 9112
+    # 9.6): the client files a refusal the server never counted, so only the refusals within the cap bound HTTPDropped.
+    within = [i for i in refused if sizes[i] <= cap]
+    _assert_ceiling_traced(dut_ip, len(within), f"the concurrent mixed-body storm's refusals within the cap ({len(refused) - len(within)} more over it)")
     assert_no_task_ended(dut_ip, "client misbehaviour")
-    result_note(f"{len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
+    result_note(f"{len(answered)} answered, {len(refused)} refused at the connection ceiling ({len(refused) - len(within)} over the cap), 0 answered wrongly")
 
 
 @pytest.mark.provokes_log(
