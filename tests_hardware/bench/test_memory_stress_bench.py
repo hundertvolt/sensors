@@ -166,7 +166,7 @@ def test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_c
     facts = parse_facts(output)
     bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the flash test's and the twin scenario's one source
     lag_max, lag_p99, samples = facts.get("lag_max_us"), facts.get("lag_p99_us"), facts.get("samples")
-    result_note(f"loop lag under HTTP load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); {record.answered} reads answered, per route {record.served}")
+    result_note(f"loop lag under HTTP load: max {lag_max} us, ended {facts.get('lag_max_at_ms')} ms after main() started, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us); {record.answered} reads answered, per route {record.served}")
     unserved = [route for route in _HAMMER_PATHS if not record.served.get(route)]
     assert _HAMMER_PATHS and not unserved, f"GET routes never served under the load: {unserved} of {len(_HAMMER_PATHS)} routes; {record.errors[:5]}"
     assert facts.get("main_running") is True, f"the shipped main() ended inside the window: {facts}"

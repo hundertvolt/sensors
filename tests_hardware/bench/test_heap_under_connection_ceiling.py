@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import evidence
 import heap_map
 import pytest
 from harness import MEMORY_ERROR_MARKERS, configured_max_connections, discover_max_connections, parse_facts, restore_board_to_serving, wait_for_script_server
@@ -70,6 +71,7 @@ def test_heap_at_peak_while_a_full_ceiling_is_held(board: "Board", bench: "Bench
         hammer.join(timeout=_HAMMER_JOIN_S)
         holder_alive = hammer.is_alive()
         restore_board_to_serving(board, bench, dut_ip)
+    evidence.save_text("heap-at-peak-script.txt", output)  # its main()'s console too, for a log entry the run left
     assert not holder_alive, "the connection holder is still running after its own test - it will hammer the board through every test that follows"
     facts = parse_facts(output)
     stage = facts.get("gc_threshold")

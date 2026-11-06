@@ -193,9 +193,14 @@ def test_spoofed_off_subnet_source_address_is_ignored(bench: "BenchBridge", join
         text=True,
     )
     try:
-        # tcpdump says "listening on" once attached: a spoof sent before that would be answered unseen.
-        listening = capture.stderr.readline() if capture.stderr is not None else ""
-        assert "listening on" in listening, f"the capture never started: {listening!r}"
+        # tcpdump says "listening on" once attached, after a "verbose output suppressed" line: a spoof sent before it
+        # would be answered unseen. timeout(1) ends the stream, which bounds the read.
+        heard: list[str] = []
+        for line in capture.stderr or ():
+            heard.append(line)
+            if "listening on" in line:
+                break
+        assert heard and "listening on" in heard[-1], f"the capture never started: {heard!r}"
         sent = subprocess.run(  # argv from constants and this interpreter, no shell
             ["sudo", "-n", sys.executable, str(REPO_ROOT / "tests_hardware" / "spoof_udp.py"), "--src", _SPOOF_SOURCE, "--dst", joined_hotspot, "--sport", str(_SPOOF_SOURCE_PORT), "--dport", "53", "--payload-hex", query.hex()],  # sudo from PATH
             capture_output=True,
@@ -300,11 +305,11 @@ def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined
     ("WEBSERVER", "W", "HTTP_BAD_HEAD"),
 )
 def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotspot: str, request: pytest.FixtureRequest) -> None:
-    # A head the server refuses: answered with a 400-class status line or closed, never left hanging; its one traced
-    # drop is W HTTP_BAD_HEAD and HTTPDropped counts it.
+    # A head the server refuses (a Content-Length not ASCII digits, SPECIFICATION.md A.5): answered with a 400-class
+    # status line or closed, never left hanging; its one traced drop is W HTTP_BAD_HEAD and HTTPDropped counts it.
     reset_all_error_logs(joined_hotspot, request.node.name)
     with socket.create_connection((joined_hotspot, 80), timeout=_RAW_SOCKET_TIMEOUT_S) as sock:
-        sock.sendall(b"NOT A REAL HTTP REQUEST\r\n\r\n")
+        sock.sendall(b"GET / HTTP/1.1\r\nHost: x\r\nContent-Length: x\r\n\r\n")
         try:
             answer = sock.recv(4096)
         except TimeoutError:
@@ -460,11 +465,13 @@ def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(bench: 
 
 @pytest.mark.destructive_last
 @pytest.mark.provokes_log(
-    "the failed streaks of the stored credentials while the bench AP was down, and the switch back",
+    "the failed streaks of the stored credentials while the bench AP was down, and the switch back, whose first poll can"
+    " end without a verdict while the bench restores its bridge and AP",
     ("WIFI", "W", "WLAN_NO_AP"),
     ("WIFI", "W", "WLAN_AUTH_FAILED"),
     ("WIFI", "W", "WLAN_TO_HOTSPOT"),
     ("WIFI", "W", "WLAN_SILENT"),
+    ("WIFI", "W", "WLAN_NO_VERDICT"),
 )
 def test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge(board: Board, bench: "BenchBridge", joined_hotspot: str, dut_ip: str, result_note: "_load.Note") -> None:
     # No STA-phase field is added to /networking (owner, 2026-09-26: 'It seems to be unreachable by definition.'): a

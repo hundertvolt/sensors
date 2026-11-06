@@ -36,6 +36,8 @@ _NTP_RESYNC_AFTER_RESET_TIMEOUT_S = 120.0
 _NTP_RETRY_CHAIN_MARGIN_S = 10.0
 _SYNC_AGE_SLACK_S = 2.0
 _WAIT_POLL_S = 2.0
+# From serving: the first backup 60 s after boot with NTP synced, about 30 s later undated (src/asy_sgp40_driver.py).
+_SGP40_FIRST_BACKUP_TIMEOUT_S = 150.0
 _ISL29125_DRIVER = "asy_isl29125_driver.py"
 _MATH_HELPERS = "math_helpers.py"
 _NTP = "asy_ntp_client.py"
@@ -481,3 +483,13 @@ def wait_for_ntp_quiet(dut_ip: str, served_at: float, result_note: Note) -> None
         if answered >= synced_by:
             raise TimeoutError(f"NTP not synced within {_NTP_RESYNC_AFTER_RESET_TIMEOUT_S}s of serving after the outage, so its sync would log into the next test's window: last view (counter, synced, age) {view!r}")
         time.sleep(_WAIT_POLL_S)
+
+
+def wait_for_sgp40_backup(dut_ip: str) -> None:
+    # Each SGP40's first backup since the last boot, GET /status's BackupTS (null until one, 0 when undated): a test
+    # that erased FRAM leaves a valid backup, as it found one, so no later boot reads a blank chunk (agent, 2026-11-06).
+    def written() -> bool:
+        sensors = as_object(get_object(dut_ip, "/status").get("sensors"), "GET /status sensors")
+        return all(as_object(sensors.get(name), f"GET /status sensors.{name}").get("BackupTS") is not None for name in instance_loggers("sgp40"))
+
+    harness.wait_until(written, timeout_s=_SGP40_FIRST_BACKUP_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="each SGP40's first backup since the boot after the erase (GET /status BackupTS)")

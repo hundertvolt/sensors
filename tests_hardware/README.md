@@ -621,7 +621,9 @@ None of these is discoverable by reading the code; each is a current fact of thi
 
 The rule for any test that reaches the ceiling: **assert the property your feature owns, not that
 every client is served.** A body-cap test owns "every client that IS answered is answered
-correctly"; being answered at all is the ceiling's business. Pair that with a floor on how many
+correctly"; being answered at all is the ceiling's business. A 413 goes out before its body is read,
+so the close's RST can cut the 413's own body: a reset after its status line counts as that 413
+(owner, 2026-11-06). Pair that with a floor on how many
 were answered, or the test passes vacuously on a run where nearly everything was refused - the
 same "assert a minimum engagement beside every ceiling" habit as for device scripts.
 
@@ -899,7 +901,8 @@ Silicon's run is the bench tier's
 `bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer`
 (BENCH mode `"production"`: `main()` on the board's own config and address); the shipped `main()`
 writes production FRAM chunks, so the board's error log is saved first. The script emits facts
-only; the host holds the worst lag to the device's smallest hard consumer (Part F.3's `lag.loop`)
+only, among them when its worst lag ended after `main()` started (inside the boot or under the load);
+the host holds the worst lag to the device's smallest hard consumer (Part F.3's `lag.loop`)
 and checks that every route was served, `main()` kept running and the FRAM load ran without a
 failed write.
 
@@ -969,7 +972,9 @@ the reset:
 - **`erasefram`** blanks the whole chip and reboots (code 8), destroying every FRAM-backed log: the
   raw dump runs first. L3 also measures the erase's feed gaps, races it against a chunk write, a bus
   session and a storage pause, and cuts it with a reset mid-erase (every chunk old or blank after);
-  L4 checks every error log blank after the boot. FRAM is outside the wear budget.
+  L4 checks every error log blank after the boot, then waits up to 150 s (about 60 s) for each SGP40's
+  first backup (`GET /status` `BackupTS`), as does the cut erase of code 9, so no later boot reads a
+  blank backup chunk (agent, 2026-11-06). FRAM is outside the wear budget.
 - **`reboot`** and **`bootloader`** run the reboot sequence - record, flush, pause, reset - and the
   reply precedes the reset within its bound (codes 3 and 4); a hung shutdown step ends in a watchdog
   reset read as command incomplete (code 9).
@@ -1062,14 +1067,13 @@ check" paragraph.
   `wlan.connect()` itself raising is no network-path fault `tc` or `iptables` can express; the
   twin's `--fault wlan:...` hook (`digital_twin/launch.py`) injects it.
 - **Every garbage injection proves it was delivered.** The NTP and DNS garbage tests redirect the
-  port with a `nat` PREROUTING DNAT to a `RogueUdpResponder` on 127.0.0.1, and each asserts the
-  responder answered the DUT's address at least once (`answered_from`), so a redirect that never
-  delivered fails as "the injection never reached the DUT", never as a pass. That redirect may not
-  deliver on this bench: a live `iptables -t nat -L PREROUTING -n -v` poll showed the rule matching
-  real traffic while a listening socket on the redirected port received nothing, across several
-  `hard_reset()` cycles, and `net.ipv4.conf.*.route_localnet` reads `0` on every interface, the
-  Linux condition under which DNAT to 127.0.0.1 from a non-loopback interface fails. The garbage
-  tests have not run on the bench since the delivery check; their next run settles it.
+  port with a `nat` PREROUTING `REDIRECT` to a `RogueUdpResponder` bound on every address, and each
+  asserts the responder answered the DUT's address at least once (`answered_from`), so a redirect
+  that never delivered fails as "the injection never reached the DUT", never as a pass. `REDIRECT`
+  targets the ingress interface's own address: a DNAT to 127.0.0.1 never delivered on this bench,
+  whose `net.ipv4.conf.*.route_localnet` reads `0` on every interface, the Linux condition under
+  which DNAT to 127.0.0.1 from a non-loopback interface fails. The garbage tests' next bench run
+  settles the `REDIRECT` (agent, 2026-11-06).
 - **A garbage DNS reply and silence log the same code** (`NTP_DNS`: `resolve_ipv4()` keeps no log
   of its own), so the DNS garbage test's delivery proof is the responder's count, not the log.
 - **The redirect cannot exercise the DUT's source filter**: conntrack rewrites the redirected
