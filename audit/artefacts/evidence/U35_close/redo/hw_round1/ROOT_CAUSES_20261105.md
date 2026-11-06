@@ -433,3 +433,25 @@ Image still `d3f10239`, no reflash. Merge `df8e640c`.
 | d. `begin_boot()` once, phase mark cleared, then the hard reset | 2 | FORCE |
 
 `main.py`'s Ctrl-C writes record 21, and it survives a stop and a soft reset. `build_system()` calls `begin_boot()`, which consumes the record, and those scripts clear the phase mark, so the next `machine.reset()` finds neither and falls through to `_RR_WATCHDOG`. So 2 after such a script is a harness reset, not an expired watchdog. The boot at 13:58 itself was not read for its bits. Case d stands in for a `build_system()` script, as those write scratch config.
+
+## 20. The new image and the `/status` stall's source (2026-11-06, 17:08- UTC)
+
+**Reflash, owner's OK, 17:08:23-17:12:26:** built from `9c0699e4` (the lead's `ae1d292a` merged), `BuildDate` 2026-11-06T17:08:25Z, `match=1`, `/uart` answers 200. Flash cycles today: 4.
+
+**`/status` timing, `heap_probe/status_timing.py`, 3 readers for 60 s, 32768, under `mpremote run`, no flash write (`logs/day2_20261106/status_timing_1.console`):** 51 answered 200, 0 memory failures.
+
+| Span | Mean | Max |
+|---|---|---|
+| Whole build | 739 ms (min 703) | 786 ms |
+| `errcount`, 22 sources | 640 ms, 29 ms each | 56 ms for one |
+| `system` | 41 ms | 70 ms |
+| `networking` | 14.5 ms | 37 ms |
+| `notification`, `SGP40`, `UARTLINK`, `UART_init` | 1-2.5 ms each | 27 ms |
+| `GET /status` less the build (the lock wait) | 3 ms | |
+| Send, 32 pieces | 1,052 ms | 1,412 ms |
+
+Timed `gc.collect()`: idle 19.3 ms x3, free 71,328 B; after load 21.0 ms x3, free 62,384 B. So collection is not the stall.
+
+**Loop lag of 200 ms or more, same run: 27 events, 39.4 s of the 58.3 s between the first and last, against 37.7 s of builds.** They fall in three groups: 747-852 ms, 1,507-1,610 ms and 2,267-2,313 ms, one, two and three builds. 24 of the 27 match the builds ending inside them to within 16-134 ms; the other 3 only count a neighbouring build at the window's edge. A lag task sleeping 10 ms cannot run while they last, so the builds do not yield to it (inferred from that, not traced in the scheduler), and up to three readers' builds run back to back.
+
+So the stall is the `/status` build's CPU time, mostly `errcount`, held without a yield and multiplied by concurrent readers. 2.3 s exceeds the 1,000 ms UART ACK wait and the 925 ms hard consumer, which fits `E81` and `loop_lag_under_http_load`. A fix is not this runner's to choose.
