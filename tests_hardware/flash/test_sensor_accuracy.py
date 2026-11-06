@@ -4,11 +4,14 @@ lighting scenarios, the SGP40 cadence soak and the SCD30's float32 FRC window. S
 
 import math
 from itertools import pairwise
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
-from harness import DEVICE_SCRIPTS_DIR, Board, parse_facts
+from harness import DEVICE_SCRIPTS_DIR, Board, parse_facts, reset_board, wait_until
 from plausibility_bounds import BOUNDS
+
+if TYPE_CHECKING:
+    from bench_control import BenchBridge
 
 
 class _ResultNote(Protocol):
@@ -26,6 +29,7 @@ _ENVELOPE_SCRIPT_TIMEOUT_S = 420.0
 _SCENARIOS_SCRIPT_TIMEOUT_S = 900.0
 # The script's fixed 600 s window plus the boot it runs first.
 _SGP40_CADENCE_SCRIPT_TIMEOUT_S = 660.0
+_PRESENCE_TIMEOUT_S = 30.0  # the board back on USB after the soak's closing reset, as the headroom soak waits
 _RANGES = (375, 10000)  # the ISL29125's two full scales, FN8424 p.10 Table 5
 _CCT_SPAN_K = (2000.0, 12500.0)  # source: McCamy (1992)'s usable span, the formula the driver's CCT uses
 _FRC_SCRIPT = "scd30_plausibility_read.py"
@@ -147,12 +151,14 @@ def test_sgp40_voc_algorithm_produces_plausible_and_stable_results(board: Board)
 
 
 @pytest.mark.soak_duration
-def test_sgp40_sample_cadence(board: Board, request: pytest.FixtureRequest, result_note: _ResultNote) -> None:
+def test_sgp40_sample_cadence(board: Board, bench_if_configured: "BenchBridge | None", request: pytest.FixtureRequest, result_note: _ResultNote) -> None:
     # Ten minutes of the bench device's task graph over a scratch config, read cycles counted: the figures are the
     # deliverable (no pass threshold, SPECIFICATION.md M.3), and the window is fixed whatever the duration.
     if request.config.getoption("--soak-duration") is None:
         pytest.skip("a fixed 600 s run of the whole task graph - run scripts/run_bench_soak_tests.sh --duration short")
     facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "sgp40_sample_cadence.py", timeout_s=_SGP40_CADENCE_SCRIPT_TIMEOUT_S))
+    reset_board(board, bench_if_configured)  # the soak runner's bench half follows in this session: main.py serving again
+    wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")
     assert facts["built"] is True and facts["timers_started"] is True, f"the system did not come up: {facts}"
     result_note(" ".join(f"{key}={facts[key]}" for key in ("cycles", "elapsed_ms", "lost", "max_gap_ms", "gaps_over_1500", "backup_period_min")))
     assert _num(facts["cycles"]) > 0, "no SGP40 read cycle in the window"
