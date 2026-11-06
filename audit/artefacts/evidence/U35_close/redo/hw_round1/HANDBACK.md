@@ -1,6 +1,6 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-06 11:57 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-06 13:23 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
@@ -16,7 +16,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-06 11:57 UTC. Each verdict
 | 9 | crc16_hazards | rc=1; FAIL (pytest exited 1); failed: flash/test_uart_crossover.py::test_comm_hazards_are_serialised_refused_or_recovered[crc16], run |  | 2026-11-06 11:04:12 | 0h03 | 0.12 | 0/0/0/0 |
 | 10a | soak_short | rc=1; FAIL (pytest exited 1); failed: bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved, bench/test_memory_stress_bench.py::test_http_soak_stays_live, bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline | 21 | 2026-11-06 11:10:21 | 0h14 | 0.18 | 0/0/0/8 |
 | 10m | soak_mid | rc=1; FAIL (pytest exited 1); failed: flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load, bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved, bench/test_memory_stress_bench.py::test_http_soak_stays_live, bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline | 21 | 2026-11-06 11:25:08 | 0h32 | 0.01 | 0/0/0/8 |
-| 11 | fram_8mhz | not run |  |  |  |  | 0/0/0/0 |
+| 11 | fram_8mhz | rc=0 |  | 2026-11-06 13:10:58 | 0h09 | 0.02 | 0/0/0/0 |
 | 12a | boot_stretch | not run |  |  |  |  | 0/0/0/0 |
 | 12b | ring_peak | not run |  |  |  |  | 0/0/0/0 |
 | 12c | dns_idle_poll | not run |  |  |  |  | 0/0/0/0 |
@@ -43,7 +43,10 @@ Wear started (the sheet's maxima per started step): FC 2 of 9, FS owned 0 of 126
 ## Long runs summed (October's aggregate)
 
 ```
-
+fram runs=1 scratch_restored=1
+fram op=rdid runs=1 n=274287 oserrors=0 bad=0 worst_us=7307 bad_rate<1.1e-05 oserrors_rate<1.1e-05
+fram op=read256 runs=1 n=274287 oserrors=0 bad=0 worst_us=7631 bad_rate<1.1e-05 oserrors_rate<1.1e-05
+fram op=write1 runs=1 n=274287 oserrors=0 bad=0 worst_us=9500 bad_rate<1.1e-05 oserrors_rate<1.1e-05
 ```
 
 ## Logs
@@ -39368,6 +39371,26 @@ SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"t
 SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":38},{"type":"W","num":79},{"type":"W","num":38},{"type":"W","num":79},{"type":"W","num":38},{"type":"W","num":79}],"counter":21}
+```
+<!-- end step -->
+
+### 11 fram_8mhz
+
+<!-- step 11 -->
+```
+== step 11 start 2026-11-06 13:10:58 1793970658 load 0.00 0.08 0.09
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM L fram op=rdid n=274287 oserrors=0 bad=0 worst_us=7307
+SUM L fram op=read256 n=274287 oserrors=0 bad=0 worst_us=7631
+SUM L fram op=write1 n=274287 oserrors=0 bad=0 worst_us=9500
+SUM L fram scratch_restored=1
+DONE=1
+rc=0 13:20:00
+== step 11 end rc=0 2026-11-06 13:20:08 550s load 0.02 0.07 0.08
+== read-across: GET /status after step 11
+SUM status not read: no JSON answer
 ```
 <!-- end step -->
 
