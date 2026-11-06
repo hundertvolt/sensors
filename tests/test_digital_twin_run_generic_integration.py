@@ -6,7 +6,6 @@ Every device's own boot is tests_scripts/test_digital_twin_generated_boot.py's; 
 Run 11."""
 
 import asyncio
-import io
 import os
 import socket
 import struct
@@ -61,7 +60,6 @@ from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm a
 from _twin_common import Injections, StatePaths  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim
-from _untraced import untraced  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_config_manager  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_crc_checks  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -206,14 +204,14 @@ def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_never
 
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
-    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None, None, False, False, False) == runner._NO_TEST_FLAGS
+    assert runner.TestFlags(False, None, None, None, None, False, False, None, None, None, None, False, False, False) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
-        "--test-hold-system-entry", "25", "--test-kbd-traceback", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
+        "--test-hold-system-entry", "25", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
         "--test-defer-faults", "--test-pin-send-buffer", "--test-uart-driven-clock",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), True, 10, "sequencer", "block", True, True, True)
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), 10, "sequencer", "block", True, True, True)
     assert _parse("--test-hold-system-entry", "25:cut").instrumentation.hold_system_entry == (25, True)
     refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-hold-system-entry", "25:never"), ("--test-hold-system-entry", "0:cut"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
     for flags in refused:
@@ -627,17 +625,6 @@ def test_the_held_system_entry_waits_for_its_release_and_lets_every_other_entry_
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
     run_timed(scenario(), _RUN_BOUND_S)
-
-
-def test_the_kbd_traceback_flag_catches_the_interrupt_object_by_a_sigint_and_prints_where_it_was_raised() -> None:
-    said: list[str] = []
-    out = io.StringIO()
-    # Untraced: an interrupt raised inside the coverage tracer would end tracing for the whole file.
-    show = untraced(lambda: runner._test_kbd_traceback(said.append, out))
-    assert said == ["KBD_CAPTURED True"], said
-    show()
-    text = out.getvalue()
-    assert said[-1] == "KBD_TRACEBACK" and "KeyboardInterrupt" in text and "in _test_kbd_traceback" in text, (said, text)
 
 
 class _Holder:

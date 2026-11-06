@@ -750,9 +750,9 @@ def _record(kind: str, full_msg: str) -> None:
     _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = _CHECKS_PER_PASS.get(_CURRENT_PASS_LABEL, 0) + 1
 
 
-def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None) -> None:
+def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None, interrupt: bool = False) -> None:
     # Boots on the same state and checks the reset reason the product read at boot (and, given its catalog name, the one
-    # SYSTEM entry that reset logged), then shuts down.
+    # SYSTEM entry that reset logged), then shuts down on its stop file, or by SIGINT with interrupt=True.
     proc = _spawn(ctx, [], ctx.logs_dir / log_name)
     try:
         _wait_until_serving(proc)
@@ -764,7 +764,7 @@ def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, 
     except Exception as exc:
         _fail(f"{label}: {exc!r}")
     finally:
-        ec = _shutdown(proc, label)
+        ec = _shutdown(proc, label, interrupt=interrupt)
         _check(condition=ec == 0, msg=f"{label}: clean shutdown (exit code {ec})")
 
 
@@ -916,7 +916,7 @@ def _run_12_reset_reasons(ctx: RunContext) -> None:
     reset = parse_machine_reset_line(read_log(proc.log_path))
     _check(condition=reset is not None and reset.kind == "bootloader", msg=f"Run 12: the runner's machine reset line names the bootloader entry ({reset!r})")
     log_b = ctx.logs_dir / "run12_b_after_bootloader.log"
-    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"))  # what the SIGINT relaunch follows
+    _relaunch_reason(ctx, log_b.name, "Run 12 (after bootloader)", _reset_code("_RR_WATCHDOG"), interrupt=True)  # what the SIGINT relaunch follows
     line = _shutdown_line(log_b, "Run 12 (after bootloader)")
     _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot after the bootloader left no record (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
     _relaunch_reason(ctx, "run12_c_sigint_relaunch.log", "Run 12 (SIGINT relaunch)", _reset_code("_RR_POWER_ON"))
@@ -1601,8 +1601,8 @@ def _save_fram_evidence(ctx: RunContext, label: str) -> None:
         shutil.copy2(fram, evidence / fram.name)
 
 
-def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False) -> int:
-    ec = shutdown(run, run_label, timeout_s)
+def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False, interrupt: bool = False) -> int:
+    ec = shutdown(run, run_label, timeout_s, interrupt=interrupt)
     _check_exit(run, ec, run_label)
     _check_run_log(run, run_label, starves_watchdog=starves_watchdog)
     return ec
