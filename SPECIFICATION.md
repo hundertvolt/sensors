@@ -10119,7 +10119,9 @@ API and website design."). **Its record** is the module's owner list, each item 
 "(owner, date)" tag, in the Part section the module owns — Part M for a chip, M.1.1 the shape —
 and the commit message cites it; K.4's tags and C.5's schema implement it. A question the
 discussion leaves open goes to BACKLOG.md's owner-question list, never into a guessed design
-(agent, 2026-11-05).
+(agent, 2026-11-05). A record point that departs from a standing owner rule (C.4.2's staleness
+rule, say: a failed read publishes nothing, the last good sample stands) is put to the owner
+before any code, never followed silently (agent, 2026-11-06).
 
 ## K.1 Before writing any code
 
@@ -10182,8 +10184,9 @@ fixture TOML (or a real `devices/*.toml` with a draft instance added), not by in
    AST or pinned both ways, and `tests_scripts/test_buildgen_source_agreement.py` fails on a
    resolvable driver missing a row of either table, before any TOML uses it. Add rows to
    `REQUIRED_TOML_FIELDS`/`OPTIONAL_TOML_FIELDS` (every constructor parameter with no default is
-   required; every one with a default your device might want to override is optional). If the
-   driver sits on a bus,
+   required; every one with a default your device might want to override is optional). A
+   parameter a `@wiring` or `@value-wiring` tag fills is an `[instance.wiring]` field, never a
+   buildspec row (C.14.2, L.6.3). If the driver sits on a bus,
    add it to `BUS_KIND_BY_DRIVER` too. **Check the datasheet for a real address-select pin before
    deciding `ADDRESS_CAPABLE_DRIVERS` vs. `FIXED_ADDRESS_DRIVERS`** — ISL29125's own datasheet
    states its address is hardwired with no select pin (FN8424 p15), which is why it lands in
@@ -10232,7 +10235,9 @@ measurement body, Part H.5.1 and L.6.4) are the two worked examples to copy from
 takes `codes=<table>`, its table in `buildgen/error_catalog.json`'s `status` section (H.5.1); a
 dimensionless value omits `unit` and a bool or code field `decimals`, as ISL29125's `R` and
 `CalLight` tags do (agent, 2026-11-05). If a bus prerequisite exists (a minimum I2C
-bus timeout, say), add a `# @requires bus.<field><op><value>` tag too (C.2/SPECIFICATION.md Part L); if
+bus timeout, say, or the datasheet's maximum SCL frequency, `bus.frequency<=<Hz>` in
+`asy_scd30_driver.py` and `asy_sgp40_driver.py`), add a `# @requires bus.<field><op><value>` tag
+too (C.2/SPECIFICATION.md Part L); if
 a cross-instance reference exists beyond the generic `fram_target` shape, check whether `@wiring`/
 `@value-wiring` already cover it before inventing a new tag family. Every tag family gets full
 accept/reject grammar test coverage (`tests_scripts/test_buildgen_web_tag.py`,
@@ -10307,6 +10312,8 @@ host-side pytest, not MicroPython:
   driver falls in a reserved I2C range.
 - `tests_scripts/buildgen_fixtures/novel_combo.toml` — extend the synthetic multi-driver fixture so
   the driver is exercised there too, the same way `uart_link`/`isl29125` both were.
+- A host test about the devices carrying the driver takes them from `tests_scripts/_devices.py`'s
+  `devices_with(<driver>)`, never a device name: `test_no_variant_literals.py` fails on one.
 
 **Bus-hazard coverage, all four tiers, standing rule (CLAUDE.md, explicit — full detail in Part
 C.8)** — same-device read/write concurrency, cross-device interleaving with every real neighbour on
@@ -10398,7 +10405,10 @@ files' — nothing is reported as passing unrun.
 - One targeted fault-planting pass over the new module in a throwaway worktree: each planted fault
   (a flipped comparison, a dropped call or await, a swallowed exception, a removed guard or clamp,
   an off-by-one bound) turns a named test red, and nothing from the worktree is kept (owner,
-  2026-09-25, paraphrase).
+  2026-09-25, paraphrase). The copy holds at least `src/`, `tests/`, `digital_twin/` and
+  `buildgen/` (`tests/microtest.py` imports from `digital_twin/`, `tests/_error_codes.py` reads
+  `buildgen/error_catalog.json`), and a test loading a generated module needs
+  `scripts/_generate_sensortask_modules.py` rerun after each plant (`tests/_generated_tree.py`).
 - **The gate** (owner, 2026-09-26): the specification walked paragraph by paragraph against the
   code; every hardware and runtime claim rechecked at its primary source (A.6, Part F); every new
   test shown to fail against broken code; no knowledge lost against the tree before the change;

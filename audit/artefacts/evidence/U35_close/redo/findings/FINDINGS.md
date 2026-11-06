@@ -185,3 +185,25 @@ done-criteria, observations. Each with its evidence, for the owner.
   656fc82f), so that comparison finding was mistaken; C.9's one-Timer-per-starter rule has no basis in Part F and no
   product dependant, only a test count (tests/_sensortask_scenarios.py:1524-1530): open for the last round as (c), the
   rule or the count. tests_scripts whole 6,887 passed at aff1af5c.
+- 12.24 (lead, 21:23; bench item 15, b82284ec) The final 4a on b7533307's tree (8 KB ring): GC stage red on one file,
+  scenarios[dev] failed_config_snapshot_is_sent_as_unavailable ("SCD30: 1 GET(s) sent the marker and the verify took
+  0 of 2 faults (38.6s)"), Pi load about 8; passes 3 of 3 alone. Open, no root cause: diagnose on this host, with the
+  bench's log for the file. The 512 B ring itself: unit tier both stages and dev twin suite+harness both stages green
+  here (S/u35/lead/ring_gate_*.out) and in snapshot 40's CI; no Pi run yet (b6a7bc1e already carried 8,192 B).
+- 12.25 (lead, 21:23) ROWS row 8 was stale: the close-out bullet ("Closing a piece of work", OR51.a (2)/(4) with the
+  owner's 2026-09-26 words) has been in CLAUDE.md since f9b907f1 (R4's rewrite). R4's report named it open in error;
+  corrected to the owner.
+- 12.26 (lead, 03:10 2026-11-06; proof run 3, S/p10_lead/sgp40/COMPARE.md) The comparison's four "record vs real"
+  points are prep errors in S/p10/sgp40/BRIEF.md, not product deviations, each checked in the real tree (84a76ae8):
+  a failed read keeps the last good sample (C.4.2's staleness rule, owner 2026-09-12/09-29; SPEC:3330-3334); a task
+  restart restores the FRAM backup as a boot does (SPEC:443-445); BackupMaxAge 0 accepts any age, a future date
+  expiring only under a nonzero one (SPEC:356, driver :525); an unsynced end of the NTP wait restores a dated backup
+  with no warning, as legacy (driver :517-533; no owner word for a warning). The run's boot-warning question (log 19)
+  is moot: the real module logs the same SGP_NO_BACKUP on a blank chunk and the real twin suite expects it.
+  Procedure lesson: the build followed a record point that contradicts a standing owner rule without noticing.
+- 12.27 (lead, 03:10) Real-tree doc/code mismatch: SPEC M.3 (11740) gives the heater-off wait as "2 ms
+  (`_HEATER_OFF_MAX_MS` + 1)", src/asy_sgp40_driver.py:754 sleeps `_HEATER_OFF_MAX_MS` = 1 ms. Last round: make one
+  match the other (sleep_ms(1) can end under 1 ms on a tick boundary, so the doc's +1 reads as the intent).
+- 12.28 (lead, 03:10) Real-tree test fragility (compare (C) 11): tests/test_digital_twin_hot_replug.py:199 reads a
+  reader's sources by getattr on `_temperature`/`_humidity`, a silent no-op for any other attribute name. Goes to
+  the Part K fix unit (fail loudly, naming the attributes).

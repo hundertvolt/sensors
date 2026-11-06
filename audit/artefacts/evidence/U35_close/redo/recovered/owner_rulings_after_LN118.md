@@ -789,3 +789,24 @@ Next: I plan to rerun arzi on day 2 with schlafzi, after run 5. It needs no boar
 Logs (git-ignored, on the Pi): digital_twin_ci_logs/arzi/gc_threshold_neg1/run4_bus_fault_persistence_sweep.log and digital_twin_ci_logs/arzi/gc_threshold_32768/run11_soak.log."
 Topic: 4a's twin stage on the Pi: arzi red (two feed gaps over 6 s, one soak timeout), cause unknown; the bench asks
 whether to rerun arzi on day 2 after run 5 or look sooner.
+
+## 2026-11-05 21:16 UTC
+"Actually, I would give it a third round."
+Topic: R4's procedure proof: a third proof run (option B), against the lead's recommendation of none.
+
+## 2026-11-05 21:21 UTC (relayed from the bench session; its header says 20:30 UTC)
+"From the bench session (2026-11-05, 20:30 UTC): the final 4a is finished and the bench is paused for today on the owner's word. Details: ROOT_CAUSES item 15, b82284ec.
+
+Final 4a, on b7533307's tree (only audit/ differs), PER_FILE_TIMEOUT_S=900:
+- scripts/test.sh -1: pass.
+- GC_THRESHOLD=32768: 1 failure, scenarios[dev] failed_config_snapshot_is_sent_as_unavailable (passes 3 of 3 alone; where the second fault went was not traced).
+- npm test: pass.
+- Twins: dev, wozi, grkizi, klkizi pass. arzi fails 3 checks: feed gaps of 6,795 ms (Run 4, -1) and 6,290 ms (Run 11, 32768), and 1 GET /sensors timeout in Run 11's warmup. Cause not known. schlafzi not started: it could not end by 20:52.
+
+State: the board is idle on b7533307 and answered /status 200 at 20:26 UTC. I pulled db6442b5, a4ed871a and bd67db94. No image with them is built or flashed. Nothing was cleared.
+
+Day 2 as I read bd67db94: new image, step 3, 4b, /status load check, run 5; then schlafzi and the arzi rerun. Board work waits for the owner's go-ahead.
+
+One question: bd67db94 changes devices/dev.toml, so nothing in this 4a ran with the 512 B ring. Your commit lists no 4a rerun. Should the dev twin or the GC stage rerun on the new tree? My default is to add the dev twin after arzi and schlafzi, and to cut it first if the day runs short."
+Topic: final 4a result (one GC-stage scenario failure, arzi red, schlafzi moved to day 2); the bench asks whether the
+dev twin or the GC stage reruns on the 512 B ring tree.
