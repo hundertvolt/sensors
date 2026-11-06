@@ -1,5 +1,29 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 17:26 UTC, 2026-11-06: your 17:08 and 17:17 notes; a test fix for the mixed-body count (new head, same image)
+Taken: item 5's figures, the ResetReason 2 mechanism (your case d) and the /status timing. The three reason-2 wordings
+now give that cause (SPECIFICATION.md F.5.4, tests_hardware/README.md, harness.py's hard_reset()).
+/status: your run covers the 13:15 item in full (per section, send, gc at the stall's heap state, each lag's overlap);
+nothing more was asked. The code agrees: every source the build awaits is a RAM read that never suspends, so a build
+runs to its end without a yield. The fix is a firmware change and goes to the owner first. The hammer stays held.
+New code on this branch: 318ba804, with this relay's commit on top. Tests and docs only, no src/ change, so the
+board's image stays the one you flashed. Pull before the bench line.
+concurrent_mixed_body_sizes, read in the code: the server answers an over-cap PUT 413 from its head, before reading
+the body, then closes. The client is still sending, so the close sends an RST, and the RST can erase the client's
+unread 413, status line included (RFC 9112 9.6). urllib then sees a reset before any byte and files a refusal that
+the server never counted. The test now bounds HTTPDropped by the refusals of bodies within the cap, and its note
+names how many more were over it. This is the owner's 11:16:57 ruling (test fix, no drain), the same cut earlier. If
+the refusals within the cap still exceed HTTPDropped, that is a real miss: report it with the counts.
+Your two questions: yes, both join the bench line, appended as
+  or test_fram_erase_over_rest_blanks_every_error_log or test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status
+Node: the head capture's heads come from Playwright's Chromium in node_modules, not from node, so the node on PATH
+serves; say which ran (.nvmrc pins 24).
+Order now: the flash line, then the bench line, on this image. loop_lag_under_http_load and serving_sweep wait for the
+stall fix.
+Owed, no new run for them: the SGP40 W35/W33 after the DNS and NTP tests. One fact from the archive sorts them: did
+the board boot inside either test (a boot line, or UTCTime null at its end)? A boot with no NTP writes and restores
+undated backups. Also, if your flash log shows it: did anything erase or rewrite FRAM between 17:08 and the W65?
+
 ## 16:54 UTC, 2026-11-06: a new image on the branch (int dbc3f0cf); reflash only after the owner's OK
 The firmware changed: the UART link has its own GET and PUT /uart on dev (the hazard tests use it), an unrecorded C-stack
 overflow that ends a task records reset code 20, the Wi-Fi console prints one line per change of connection state, and
