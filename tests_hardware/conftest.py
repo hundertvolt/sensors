@@ -229,6 +229,16 @@ def bench(board: Board, request: pytest.FixtureRequest) -> BenchBridge:
     return bridge
 
 
+@pytest.fixture(scope="session")
+def bench_if_configured(request: pytest.FixtureRequest) -> "BenchBridge | None":
+    # The bridge harness.reset_board() kicks: the bench fixture, its leftovers cleared, where its own two tests find one
+    # (no --twin, BenchBridge().is_configured()); None on a flash-only rig or under --twin, never its skip.
+    if request.config.getoption("--twin") or not BenchBridge().is_configured():
+        return None
+    bridge: BenchBridge = request.getfixturevalue("bench")
+    return bridge
+
+
 class Deviation(NamedTuple):
     # One way the board differs from the standard state: what was read, what the state holds, how it is restored.
     name: str
@@ -290,7 +300,7 @@ def scd30_deviations(start: "dict[str, object]", end: "dict[str, object]") -> "l
     return [Deviation(f"SCD30 {key}", repr(end.get(key)), repr(start.get(key)), _RESTORE_SCD30) for key in sorted(set(start) | set(end)) if start.get(key) != end.get(key)]
 
 
-def session_start_evidence(config: pytest.Config, board: "Board", dut_ip: "str | None") -> "harness.FramDump":
+def session_start_evidence(config: pytest.Config, board: "Board", dut_ip: "str | None", bench: "BenchBridge | None") -> "harness.FramDump":
     # Evidence before anything clears it: /status over REST first when the DUT answers at --dut-ip (the in-RAM
     # ResetReason a raw-REPL entry would end), then the read-only raw FRAM dump, then the reset the dump needs.
     saved = False
@@ -304,7 +314,7 @@ def session_start_evidence(config: pytest.Config, board: "Board", dut_ip: "str |
         record_session_note(config, "pre-session /status not saved: no reachable --dut-ip", source="fram_evidence_saved")
     config.stash[_REST_SAVED] = saved
     dump = harness.save_fram_raw(board, "session-start")
-    board.hard_reset()
+    harness.reset_board(board, bench)
     return dump
 
 
@@ -324,7 +334,7 @@ def fram_evidence_saved(request: pytest.FixtureRequest) -> "harness.FramDump | N
     board = _board_if_present(request)
     if board is None:
         return None
-    return session_start_evidence(request.config, board, request.config.getoption("--dut-ip"))
+    return session_start_evidence(request.config, board, request.config.getoption("--dut-ip"), request.getfixturevalue("bench_if_configured"))
 
 
 def _get_json(dut_ip: str, path: str) -> "dict[str, object]":
@@ -354,7 +364,7 @@ def _board_state(board: "Board", bench: "BenchBridge | None", dut_ip: "str | Non
     if bench is not None and dut_ip is not None:
         harness.restore_board_to_serving(board, bench, dut_ip)
     else:
-        board.hard_reset()
+        harness.reset_board(board, bench)
     level, files = parse_board_state(output)
     if dut_ip is not None:  # with a bench the running system's own answer is the reading
         rest_level = _get_json(dut_ip, "/system").get("DebugLevel")
@@ -370,7 +380,7 @@ def _bench_instances(driver: str) -> "dict[str, dict[str, bench_facts.Fact]]":
     return {label: spec for label, spec in instances.items() if isinstance(spec, dict) and spec.get("driver") == driver}
 
 
-def _scd30_snapshot(board: "Board", dut_ip: "str | None") -> "dict[str, object]":
+def _scd30_snapshot(board: "Board", bench: "BenchBridge | None", dut_ip: "str | None") -> "dict[str, object]":
     # Over REST the configured values of every SCD30 instance; without a bench what the read-only interval script yields.
     if dut_ip is not None:
         body = _get_json(dut_ip, "/sensors")
@@ -383,7 +393,7 @@ def _scd30_snapshot(board: "Board", dut_ip: "str | None") -> "dict[str, object]"
             snapshot.update({f"{label}.{key}": values.get(key) for key in _SCD30_SNAPSHOT})
         return snapshot
     facts = scd30_prerequisite.interval_facts(board)
-    board.hard_reset()
+    harness.reset_board(board, bench)
     return {f"interval read {key}": value for key, value in facts.items()}
 
 
@@ -397,7 +407,7 @@ def _repair(config: pytest.Config, board: "Board", bench: "BenchBridge | None", 
                 raise HardwareTestFailureError(f"PUT /system DebugLevel {_STANDARD_DEBUG_LEVEL} was refused: {res.status_code} {res.body!r}")
         else:
             facts = harness.parse_facts(board.run_isolated(_DEBUG_LEVEL_SCRIPT, standard_debug_level=_STANDARD_DEBUG_LEVEL))
-            board.hard_reset()
+            harness.reset_board(board, bench)
             if facts.get("written") is not True and facts.get("before") != _STANDARD_DEBUG_LEVEL:
                 raise HardwareTestFailureError(f"{_DEBUG_LEVEL_SCRIPT.name} did not set DebugLevel {_STANDARD_DEBUG_LEVEL}: {facts}")
         record_session_note(config, f"repaired DebugLevel to {_STANDARD_DEBUG_LEVEL} (one flash write)", recovery=True, source="standard_state")
@@ -414,7 +424,7 @@ def _repair(config: pytest.Config, board: "Board", bench: "BenchBridge | None", 
     if bench is not None and dut_ip is not None:
         harness.restore_board_to_serving(board, bench, dut_ip)
     else:
-        board.hard_reset()
+        harness.reset_board(board, bench)
 
 
 # The scratch the hardware tests may leave: config_HWTEST_* files and the hwtest-scratch directory, removed whole.
@@ -488,7 +498,7 @@ def standard_state(request: pytest.FixtureRequest, fram_evidence_saved: "harness
         remaining = board_state_deviations(level, files, dump.facts.get("write_protected"))
         if remaining:
             exit_on_deviations(config, remaining)
-    start = _scd30_snapshot(board, dut_ip)
+    start = _scd30_snapshot(board, bench, dut_ip)
     yield
     if dut_ip is not None:
         # A flash run's last hard reset (flash/conftest.py's leave_board_serving, torn down before this) waits only for
@@ -500,13 +510,13 @@ def standard_state(request: pytest.FixtureRequest, fram_evidence_saved: "harness
             description=f"DUT serving at {dut_ip} before the session-end GET /status",
         )
         error_log_helpers.save_errcount(dut_ip, "session-end")
-    end = _scd30_snapshot(board, dut_ip)
+    end = _scd30_snapshot(board, bench, dut_ip)
     level, files = _board_state(board, bench, dut_ip)
     dump = harness.save_fram_raw(board, "session-end")
     if bench is not None and dut_ip is not None:
         harness.restore_board_to_serving(board, bench, dut_ip)
     else:  # the last step on the board, after the flash tier's own serving check: it proves the boot again
-        board.hard_reset()
+        harness.reset_board(board, bench)
         wait_until(board.is_device_present, timeout_s=_END_PRESENT_TIMEOUT_S, description="board back on USB after the session-end reset")
         wait_for_boot(board, _END_BOOT_TIMEOUT_S)
     deviations = board_state_deviations(level, files, dump.facts.get("write_protected")) + scd30_deviations(start, end)

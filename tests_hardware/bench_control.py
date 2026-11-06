@@ -142,7 +142,7 @@ class BenchBridge:
 
     def clear_udp_port_redirect(self, port: int, local_port: int, comment: str = FAULT_COMMENT) -> None:
         # Safe when redirect_udp_port_to_local() was never reached, absence proven as unblock_udp_ports() proves it.
-        _delete_rule("nat", "PREROUTING", ["-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment], f"--dport {port} ")
+        _delete_rule("nat", "PREROUTING", ["-p", "udp", "--dport", str(port), "-j", "REDIRECT", "--to-ports", str(local_port), "-m", "comment", "--comment", comment], f"--dport {port} ")
 
     def gateway_ip(self, iface: str | None = None) -> str:
         # The DUT's own IP as seen by the bench radio while it's a client of the DUT's hotspot -
@@ -262,10 +262,10 @@ class BenchBridge:
     # Sequential flip, not simultaneous AP+client - the bench Pi4 has a single WiFi radio (owner, 2026-09-01).
 
     def redirect_udp_port_to_local(self, port: int, local_port: int, comment: str = FAULT_COMMENT) -> None:
-        # Redirects UDP traffic for `port` to a local rogue responder on 127.0.0.1:<local_port> -
-        # simulates a garbage-response server, unlike block_udp_ports()'s "silently unreachable"
-        # fault. A standard `nat` PREROUTING DNAT-to-loopback pattern.
-        _run_iptables(["-t", "nat", "-A", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment])
+        # UDP traffic for `port` to a local rogue responder on <local_port>: a garbage-response server, unlike
+        # block_udp_ports()'s silence. REDIRECT targets the ingress interface's own address, which delivers where a DNAT
+        # to 127.0.0.1 does not (route_localnet 0, tests_hardware/README.md).
+        _run_iptables(["-t", "nat", "-A", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "REDIRECT", "--to-ports", str(local_port), "-m", "comment", "--comment", comment])
 
     def start_udp_source_capture(self, src_host: str, dst_port: int, iface: str | None = None) -> subprocess.Popen[str]:
         # Workaround: DNAT to 127.0.0.1 does not deliver to a local socket on this bench (route_localnet 0), so a

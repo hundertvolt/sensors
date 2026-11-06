@@ -35,6 +35,7 @@ _JUSTIFIED_UNMARKED = {
     "test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry": "its NTPHost PUT carries the stored value and is asserted Unchanged: write_config() stages nothing",
     "test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage": "its NTPHost PUT carries the stored value and is asserted Unchanged: write_config() stages nothing",
     "test_invalid_credentials_rejected_without_triggering_reconnect": "its PW is one short of _VAL_PW's lower bound and is asserted Invalid: nothing persists",
+    "test_zero_think_time_readers_degrade_the_service_and_it_answers_within_the_cap_after": "its DebugLevel PUTs carry the stored value and are asserted Unchanged: write_config() stages nothing",
 }
 
 # Non-test functions (helpers and fixtures) that issue a persisting PUT. Pinned by name so a NEW one

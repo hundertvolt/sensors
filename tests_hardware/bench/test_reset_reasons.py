@@ -5,10 +5,11 @@ the half the reset kind fixes, and restores serving after. Code 1 (a power cut) 
 import time
 from typing import TYPE_CHECKING
 
+import _load
 import http_client
 import pytest
 import serial
-from error_log_helpers import code, get_errcount, save_errcount
+from error_log_helpers import ErrcountEntry, code, get_errcount, save_errcount
 from harness import DEVICE_SCRIPTS_DIR, SRC_DIR, fram_backed_logger_names, kick_after_reset, kick_then_reset, parse_facts, picotool, restore_board_to_serving, save_fram_raw, scratch_config_entries, wait_until
 
 from buildgen.validate import _WDT_TIMEOUT_MS, module_int_const
@@ -69,6 +70,11 @@ def _system_status(dut_ip: str) -> "JSONObject":
     system = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_STATUS_TIMEOUT_S).json().get("system")
     assert isinstance(system, dict), f"/status carries no system block: {system!r}"
     return system
+
+
+def _holds_its_boot_warning_alone(entry: "ErrcountEntry") -> bool:
+    # A restarted log the boot after the cut erase gave one entry: SGP40's warning for the blanked backup.
+    return entry["counter"] == 1 and [(h.get("type"), h.get("num")) for h in entry["history"] if h.get("type") != "N"] == [("W", code("W", "SGP_NO_BACKUP"))]
 
 
 def _provoked(board: "Board", bench: "BenchBridge", script: str, *, hold_unread_s: "float | None" = None, **extras: object) -> "dict[str, object]":
@@ -153,8 +159,12 @@ def test_an_invalid_record_reads_as_unknown(board: "Board", bench: "BenchBridge"
 
 
 @pytest.mark.provokes_log(
-    "the planted EIO cuts the erase, over a scratch-config boot that logs each config file not found",
+    "the planted EIO cuts the erase, over a scratch-config boot that logs each config file not found; each boot after it"
+    " reads the blanked SGP40 backup and warns once (owner, 2026-11-06) until the first backup the test waits for,"
+    " undated while NTP is unsynced",
     *scratch_config_entries(),
+    ("SGP40", "W", "SGP_NO_BACKUP"),
+    ("SGP40", "W", "SGP_WRITTEN_NO_TS"),
 )
 def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
     try:
@@ -166,14 +176,15 @@ def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge
         reason = _system_status(dut_ip).get("ResetReason")  # no REASON read: the errcount below needs main.py serving
         result_note(f"erase cut by an EIO: ResetReason {reason}")
         assert reason == _RR["COMMAND_INCOMPLETE"], f"the cut erase read ResetReason {reason}, not {_RR['COMMAND_INCOMPLETE']}"
+        after = get_errcount(dut_ip)  # before the dump, whose exec parks main.py
         save_fram_raw(board, "reset-reason-command-incomplete-after")
-        after = get_errcount(dut_ip)
         # The chunks are blanked before any unit is written: each FRAM-backed log restarted, or kept what it held.
-        changed = [name for name in fram_backed_logger_names() if after[name]["history"] != before[name]["history"] and after[name]["counter"] >= before[name]["counter"] > 0]
+        changed = [name for name in fram_backed_logger_names() if after[name]["history"] != before[name]["history"] and after[name]["counter"] >= before[name]["counter"] > 0 and not _holds_its_boot_warning_alone(after[name])]
         assert not changed, f"a log neither restarted nor kept its saved history across the cut erase: {changed}"
     finally:
         board.exec(_SCRATCH_REMOVE)
         restore_board_to_serving(board, bench, dut_ip)
+        _load.wait_for_sgp40_backup(dut_ip)
 
 
 @pytest.mark.parametrize("phase", _BOOT_PHASES)
@@ -228,7 +239,7 @@ def test_a_console_interrupt_is_attributed(board: "Board", bench: "BenchBridge",
         _evidence(board, bench, dut_ip, "reset-reason-console-interrupt")
         with serial.Serial(board.device, 115200, timeout=1.0) as port:
             port.write(b"\x03")
-        wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the watchdog reset after a console interrupt")
+        kick_after_reset(board, bench, _WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S)  # the reset's USB gap, about 320 ms
         bits = _attributed(board, dut_ip, _RR_INTERRUPTED, result_note, "console interrupt")
         assert bits & _TIMER_BIT and not bits & _FORCED_BIT, f"the interrupt's watchdog reset must set the timer bit, never the forced one: {bits}"
     finally:
