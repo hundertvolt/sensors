@@ -187,7 +187,7 @@ def _replug_on(device: str, driver: str) -> None:
 async def _run_on_clock(device: str, scenario: "Callable[[ModuleType, DrivenTime], Coroutine[object, object, None]]") -> None:
     # `scenario` on the device's module, booted and run on one driven clock (tests/_fake_time.py), the modules put back
     # after. A UART-wired plan too: its link reads wire time off the twin's plain clock, digital_twin/_flash_stall.py's
-    # plain_us() (agent, 2026-10-22).
+    # plain_us() (agent, 2026-10-22; owner-reviewed, 2026-11-06).
     module = load_device(device)
     with DrivenTime(*_driven_modules(), sleeps=True) as clock:
         await scenario(module, clock)

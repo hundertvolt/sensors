@@ -113,7 +113,7 @@ paraphrase), unless a line says otherwise:
   UART0, GP16/GP17 at 115200 baud, was recorded on 2026-08-28; whether it is still attached is open
   until the same check. No SHTC3 is fitted, though some legacy code wires one.
 
-Silicon observations on this bench (agent, 2026-08-28):
+Silicon observations on this bench (2026-08-28):
 
 - After `stop_continuous_measurement()` the SCD30 completes one more reading about 1 s later before
   it goes idle; a test polling data-ready right after the stop sees that reading.
@@ -205,7 +205,7 @@ others); the three connection names are the ones `ensure_bench_bridge()` looks f
 is there:
 
 - `bridge.mac-address` is pinned to the uplink's real hardware MAC before the bridge first comes up:
-  a synthesized bridge MAC can drift and orphan the router's DHCP reservation (agent, 2026-09-04,
+  a synthesized bridge MAC can drift and orphan the router's DHCP reservation (observed 2026-09-04,
   `28c5d8e`; SPECIFICATION.md Part B.13).
 - The AP runs at 2.4 GHz (`band bg`) on channel 6: left on auto, NetworkManager picked channel 13,
   which the board's CYW43439 did not associate with reliably (`ensure_bench_bridge()`'s own note).
@@ -1386,10 +1386,20 @@ assumption, not at a product bug.
   (task_errors capped at 200): a task that dies at once adds `_TASK_FAIL_INCREMENT` (100) per cycle,
   and `_TASK_FAIL_MAX` (300) would trip a reboot around the 4th cycle (~7 s), which this script does
   not test.
+- **One supervisor pass with every task ended** (`flash/test_task_supervisor.py::test_one_supervisor_pass_with_every_task_ended_stays_inside_the_watchdog`,
+  `supervisor_scan_timing.py`): Part N's `system.scan_budget` measured - five tasks end at once after a clean pass, and
+  the 2 s sleep plus the escalating pass (four end entries and the reboot's, persisted to SYSTEM's FRAM chunk, three
+  task starts) is timed between two feeds, then the countdown from the last feed to the reset, which is stubbed, so the
+  board keeps running. Zero flash wear; the chunk is cleared at both ends, the raw FRAM dump saved first.
 - **The running graph under a fault** (`flash/test_task_supervisor.py`, each over the bench build's scratch config):
   every failed arm of an emptied alarm pool handled in place (`timer_pool_empty_beside_the_graph.py`), every wall-clock
   consumer following a stepped RTC (`clock_step_under_the_running_graph.py`), and `main()` ending or a supervisor raise
   stopping every feed until the watchdog resets (`watchdog_fault_in_the_running_graph.py`).
+- **Real clients' request heads** (`bench/test_request_head_capture.py::test_real_clients_request_heads_fit_the_devices_head_guard`):
+  Part N's `web.max_header_lines` and `web.max_head_bytes` measured - the bench host's Python, curl and Playwright
+  Chromium each load a page from a local capturing listener, and each head stays inside the device's guard; the
+  result note carries every client's largest head. It needs node and the repository's `node_modules` (`env --tier
+  generic`); the board is only read by the tier's own fixtures, so it writes nothing.
 - **REST on the normal network** (`bench/test_rest_endpoints_over_sta.py`): the website served over
   the bridge, and `GET /measurements` plausible for every sensor the bench TOML declares
   (`_load.measurement_findings()`, `tests_hardware/plausibility_bounds.py`).

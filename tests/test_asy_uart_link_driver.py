@@ -658,10 +658,10 @@ def _shipped_rates() -> "tuple[PollRates, PollRates]":
     return found[0], found[1]
 
 
-# The hazard runs poll as the firmware wiring the link ships, never at a rate no device uses (agent, 2026-10-27).
+# The hazard runs poll as the firmware wiring the link ships, never at a rate no device uses (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 _SHIPPED_RATES = _shipped_rates()
 # From the request to the run's end on the driven clock, exact on any host: the measured figure in both CRC modes at
-# _SHIPPED_RATES, with no margin (agent, 2026-10-27).
+# _SHIPPED_RATES, with no margin (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 _HAZARD_RUN_VIRTUAL_MS = 22440
 
 

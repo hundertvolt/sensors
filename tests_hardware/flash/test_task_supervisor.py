@@ -10,7 +10,7 @@ import pytest
 from error_log_helpers import code
 from harness import DEVICE_SCRIPTS_DIR, SRC_DIR, HardwareTestFailureError, parse_facts, save_fram_raw, wait_for_boot, wait_until
 
-from buildgen.validate import module_int_const
+from buildgen.validate import _WDT_TIMEOUT_MS, module_int_const
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "clock_jump", "timer_pool", "scenarios.watchdog_fault_main_exit", "scenarios.watchdog_fault_supervisor_raise")
 
 _SCRIPT_TIMEOUT_S = 15.0
+_SCAN_SCRIPT_TIMEOUT_S = 60.0  # the script's own 20 s watch, its FRAM setup and the chunk clears
+_SCAN_ENTRIES = 5  # four task ends and the reboot's entry (Part N system.scan_budget)
 _GRAPH_SCRIPT_TIMEOUT_S = 120.0
 _TASK_RETURNED = code("E", "TASK_RETURNED")
 _TIMER = code("E", "TIMER")
@@ -54,6 +56,20 @@ def test_the_supervisor_restarts_a_real_dead_task(board: "Board") -> None:
     # At DebugLevel 0 a dying task prints nothing: asyncio's default handler text or a traceback is a leak past the log.
     leaked = [line for line in output.splitlines() if "Task exception wasn't retrieved" in line or "Traceback" in line]
     assert not leaked, "a task's end reached the console at DebugLevel 0:\n" + "\n".join(leaked)
+
+
+def test_one_supervisor_pass_with_every_task_ended_stays_inside_the_watchdog(board: "Board", result_note: "Callable[[str], None]") -> None:
+    # Part N's system.scan_budget on silicon: the sleep and the escalating pass between two feeds, then the reset's
+    # countdown after the last one, each under the watchdog; the script writes SYSTEM's FRAM chunk, so the dump comes first.
+    save_fram_raw(board, "supervisor-scan-timing")
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "supervisor_scan_timing.py", timeout_s=_SCAN_SCRIPT_TIMEOUT_S))
+    scan_ms, reset_ms = facts.get("scan_feed_to_feed_ms"), facts.get("feed_to_reset_ms")
+    result_note(f"the sleep and one escalating pass {scan_ms} ms between feeds, the reset {reset_ms} ms after the last feed")
+    system = facts.get("system")
+    assert isinstance(system, dict) and system.get("ErrCount", 0) >= _SCAN_ENTRIES, f"the pass logged fewer than {_SCAN_ENTRIES} SYSTEM entries: {facts}"
+    assert isinstance(scan_ms, int) and scan_ms < _WDT_TIMEOUT_MS, f"the supervisor sleep and its escalating pass took {scan_ms} ms between feeds, not under {_WDT_TIMEOUT_MS}: {facts}"
+    assert isinstance(reset_ms, int) and reset_ms < _WDT_TIMEOUT_MS, f"the reset came {reset_ms} ms after the last feed, not under {_WDT_TIMEOUT_MS}: {facts}"
+    assert facts.get("cleared_last") is True, f"the SYSTEM chunk the script wrote was not cleared: {facts}"
 
 
 def test_the_running_graph_handles_every_failed_arm_of_an_emptied_alarm_pool_in_place(board: "Board") -> None:

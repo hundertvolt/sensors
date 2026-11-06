@@ -584,9 +584,9 @@ def test_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
 
 
 def test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect() -> None:
-    # Recombination test (owner, 2026-09-04, paraphrase): the fully wired system tolerates a genuine 60 s wifi_mode_lock
-    # hold (the real ESTABLISHED-branch retry) under concurrent bus load, on the first shared-bus device. The retry waits
-    # outside the lock; a forced failed reconnect runs it, its sleep driven over real SCD30 cycles (agent, 2026-10-21).
+    # Recombination test (owner, 2026-09-04, paraphrase): the wired system tolerates a genuine 60 s wifi_mode_lock hold (the
+    # ESTABLISHED-branch retry) under bus load, on the first shared-bus device. The retry waits outside the lock; a forced
+    # failed reconnect runs it, its sleep driven over real SCD30 cycles (agent, 2026-10-21; owner-reviewed, 2026-11-06).
     device, bus_name = _SHARED[0][0], _SHARED[0][1]
     scd30s = [a["address"] for a in wiring_plan(device)["buses"][bus_name] if a["driver"] == "scd30"]
     assert scd30s, f"{device}: no SCD30 on {bus_name} to count the retry's real bus cycles by"

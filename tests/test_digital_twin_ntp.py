@@ -118,9 +118,9 @@ async def _ask(port: int, request: bytes = _REQUEST) -> "bytes | None":
 
 
 def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleType, DrivenTime], Coroutine[object, object, T]]", cfg_path: str, fram_state: "str | None" = None) -> "T":
-    # The device's real main() as its boot entry runs it, beside the responder: the config the twin's runner writes,
-    # a station to join, the product's port 123 mapped to the responder's and the wall clock installed; the product's
-    # waits and the responder's rounds pass on one driven clock, which `scenario` drives (agent, 2026-10-27).
+    # The device's real main() beside the responder: the config the twin's runner writes, a station to join, the product's
+    # port 123 mapped to the responder's and the wall clock installed; the product's waits and the responder's rounds pass
+    # on one driven clock, which `scenario` drives (agent, 2026-10-27; owner-reviewed, 2026-11-06).
     machine.reset_peripherals()  # a second boot of one test builds its buses again, and finds its radio restarted
     network.reset_test_state()
     machine.configure_fram_state_path(fram_state)

@@ -839,9 +839,9 @@ def _check_uart_bus(model: DeviceModel, bus_name: str, table: "TomlDoc") -> None
 
 
 def _check_uart_link_buses(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
-    # Refuses the timeout, rxbuf and poll-rate values the protocol would refuse at boot - a config mismatch out of
-    # runtime scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24). Generated
-    # code wires no framing (adds 0); the CRC adds the width of the link's crc mode.
+    # Refuses the timeout, rxbuf and poll-rate values the protocol would refuse at boot - a config mismatch out of runtime
+    # scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24; owner-reviewed, 2026-11-06).
+    # Generated code wires no framing (adds 0); the CRC adds the width of the link's crc mode.
     for spec in _uart_links(model):
         bus_name = _checked_str(spec.fields["bus"])
         _check_uart_link_timing(model, spec, bus_name, buses[bus_name], src_dir)
@@ -1316,9 +1316,9 @@ def module_str_const(src_dir: Path, filename: str, name: str) -> str:
 
 
 def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> HardConsumer:
-    # The device's smallest hard consumer of loop time (SPECIFICATION.md F.3), the one source the twin's loop-lag
-    # scenario and the bench lag test read: the watchdog's room beside one supervisor sleep, and each uart_link's
-    # reply timeout less its two polls, its idle poll and one GC pause; the first smallest wins (agent, 2026-10-21).
+    # The device's smallest hard consumer of loop time (Part F.3), read by the twin's loop-lag scenario and the bench lag
+    # test: the watchdog's room beside one supervisor sleep, and each uart_link's reply timeout less its two polls, its idle
+    # poll and one GC pause; the first smallest wins (agent, 2026-10-21; owner-reviewed, 2026-11-06).
     task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
     consumers = [HardConsumer(_WDT_TIMEOUT_MS - task_check_s * 1000)]
     reply_ms, gc_pause = (module_int_const(src_dir, "asy_uart_comm.py", n) for n in ("_DEFAULT_TIMEOUT_MS", "_GC_PAUSE_WORST_MS"))

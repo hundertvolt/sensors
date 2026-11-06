@@ -89,7 +89,7 @@ so the clock and every timestamp the unit stores or reports move with it. Local 
 `LocalTime` and the notification window) adds **GMT Offset** all year and **DST Offset** on top from
 01:00 UTC on the last Sunday of March to 01:00 UTC on the last Sunday of October (System page, both
 default 3600 s): the EU rule, as the legacy firmware applied it. No other region's switch dates are
-built in; elsewhere set DST Offset to 0 and change GMT Offset at your local switch (agent, 2026-09-30).
+built in; elsewhere set DST Offset to 0 and change GMT Offset at your local switch.
 
 ## SGP40 VOC baseline FRAM backup
 

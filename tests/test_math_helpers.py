@@ -591,7 +591,7 @@ def test_cct_mccamy_boundary_domain_values_accepted_or_rejected_on_their_own_mer
 
 
 def test_cct_mccamy_tracks_the_planckian_locus_within_its_stated_error() -> None:
-    # Oracle: colour-science 0.4.7 blackbody spectra against the CIE 1931 2-degree CMFs (agent, 2026-09-29) -
+    # Oracle: colour-science 0.4.7 blackbody spectra against the CIE 1931 2-degree CMFs -
     # not this port's own output.
     for chroma_x, chroma_y, kelvin, bound_pct in (
         (0.44754, 0.40743, 2856.0, 1.0),

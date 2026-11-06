@@ -1,7 +1,7 @@
 """Bench-only UART crossover-link exerciser: wraps one role's `UARTComm` over an already-built
 `asy_uart_driver.UART` bus, plus the banner/echo application logic and transfer/failure counters
 that have no home in the standalone protocol module itself. See SPECIFICATION.md Part J.7/A.7."""
-# Not a SensorReader/SensorReaderConfig subclass, like UARTComm (agent, 2026-09-11; Part J.9) -
+# Not a SensorReader/SensorReaderConfig subclass, like UARTComm (agent, 2026-09-11; Part J.9; owner-reviewed, 2026-11-06) -
 # resolved via buildgen.driver_registry._OVERRIDES.
 
 import asyncio

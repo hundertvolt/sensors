@@ -107,7 +107,7 @@ _HAMMER_LIMIT_S = 300
 _LEAK_ROUNDS = 300
 _LEAK_WARMUP_ROUNDS = 20
 # Heap retained per transfer, read after a collection at two transfer counts: a rate, never an absolute delta. Calibrated
-# on the Unix port (agent, 2026-10-14): at most 0.6 B clean, 78 B with a planted 16-byte-per-transfer leak.
+# on the Unix port (2026-10-14): at most 0.6 B clean, 78 B with a planted 16-byte-per-transfer leak.
 _LEAK_RATE_BYTES_PER_TRANSFER = 16
 _CRC16_ROUNDS = 3
 _HAMMER_ROUNDS = 120
@@ -125,9 +125,9 @@ _COEXIST_NOISE_TASKS = 4
 _HAZARD_READERS = 3
 _HAZARD_WRITE_PAUSE_MS = 1
 # Each reader starts a GET at every multiple of this on the driven clock and pauses its writes on that clock too, so a
-# run serves the same reads on any host and at either GC stage (agent, 2026-10-21).
+# run serves the same reads on any host and at either GC stage (agent, 2026-10-21; owner-reviewed, 2026-11-06).
 _HAZARD_READ_PERIOD_MS = 2500
-# From the request to the run's end on the driven clock, exact on any host: the measured figure, no margin (agent, 2026-10-21).
+# From the request to the run's end on the driven clock, exact on any host: the measured figure, no margin (agent, 2026-10-21; owner-reviewed, 2026-11-06).
 _HAZARD_RUN_VIRTUAL_MS = 208370
 _EXERCISE_PERIOD_MS = src_int("src/asy_uart_link_driver.py", "_EXERCISE_PERIOD_MS")
 _HAZARD_RECOVERY_ATTEMPTS = src_int("src/asy_uart_link_driver.py", "_HAZARD_RECOVERY_ATTEMPTS")

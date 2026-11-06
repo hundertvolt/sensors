@@ -990,7 +990,7 @@ def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
 
 # ---------------------------------------------------------------------------
 # main() - a real, short, bounded end-to-end smoke boot of a generated module with one injected fault, once per distinct
-# wiring of the FRAM its stores write and the SGP40 the fault arms; main()'s shutdown drains each (agent, 2026-10-27).
+# wiring of the FRAM its stores write and the SGP40 the fault arms; main()'s shutdown drains each (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 # ---------------------------------------------------------------------------
 
 
@@ -1013,7 +1013,7 @@ def _stored_level_boot_on(device: str) -> None:
     setup = asy_wifi_service.WifiService.setup
 
     async def setup_then_hold(self: "asy_wifi_service.WifiService") -> None:
-        # The run ends here (agent, 2026-10-26): the WIFI store's whole setup inside the window, no later setup or task in it.
+        # The run ends here (agent, 2026-10-26; owner-reviewed, 2026-11-06): the WIFI store's whole setup inside the window, no later setup or task in it.
         await setup(self)
         returned.append(self.cfgmgr.valid)
         await asyncio.Event().wait()  # until main()'s shutdown path cancels the boot

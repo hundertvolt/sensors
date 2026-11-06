@@ -1,6 +1,6 @@
 """Per-driver "what does this need from the TOML" facts: required/optional fields, which drivers
 sit on a bus, and which have a real TOML-configurable `address` (SPECIFICATION.md's schema note -
-each fact datasheet-checked (agent, 2026-09-09), not re-derived here)."""
+each fact datasheet-checked, not re-derived here)."""
 
 # One of the two tables buildgen keeps by hand (owner, 2026-09-18; the other is definitions.py's
 # status/errcount catalog): TOML field names and constructor parameter names are independent naming

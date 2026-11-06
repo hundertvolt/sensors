@@ -325,7 +325,7 @@ jobs:
         id: month
         run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
       # Firefox+geckodriver float by design: the floor is current Chromium, Firefox and Safari (owner, 2026-09-26,
-      # paraphrase); the key rolls monthly and with the installer (agent, 2026-09-30; B.10.1). WebKit and Edge
+      # paraphrase); the key rolls monthly and with the installer (agent, 2026-09-30; B.10.1; owner-reviewed, 2026-11-06). WebKit and Edge
       # reinstall every run.
       - name: Cache Firefox + geckodriver (conda-forge)
         uses: actions/cache@v6

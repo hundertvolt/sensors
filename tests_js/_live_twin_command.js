@@ -335,7 +335,7 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
 /**
  * Records every page's requests in flight. A reload waits on `settled()` until the other tabs have nothing left on the
  * network (agent, 2026-10-13; SPECIFICATION.md Part H.7.1: a follow-up into a full ceiling is refused until it has
- * drained), and the reset probe names what they had open when a reload still fails.
+ * drained; owner-reviewed, 2026-11-06), and the reset probe names what they had open when a reload still fails.
  * @param {import("playwright").Page[]} pages
  */
 function trackInFlight(pages) {
@@ -418,7 +418,7 @@ function trackInFlight(pages) {
 /**
  * Keeps every new request of `pages` in the browser until `release()`, so those tabs open no connection while another
  * tab reloads: Playwright's routing, not Chromium's frozen lifecycle state, which left a headless page's timers running
- * (agent, 2026-10-13).
+ * (agent, 2026-10-13; owner-reviewed, 2026-11-06).
  * @param {import("playwright").Page[]} pages
  * @param {() => void} onHeld called after each request it holds
  */
@@ -495,7 +495,7 @@ async function loadPage(page, timeoutMs) {
 /**
  * Reloads tab `index` once the other tabs have drained, holding them meanwhile. Drain and reload share one TAB_WAIT_MS
  * slot; the drain gets at most its first TAB_WAIT_MS - SECTION_WAIT_MS, so the reload keeps at least one section wait,
- * and a drain still open then fails naming every request the other tabs had in flight (agent, 2026-10-13).
+ * and a drain still open then fails naming every request the other tabs had in flight (agent, 2026-10-13; owner-reviewed, 2026-11-06).
  * @param {import("playwright").Page[]} pages
  * @param {number} index the tab to reload
  * @param {ReturnType<typeof trackInFlight>} tracker
