@@ -123,9 +123,10 @@ def test_a_fixture_yielding_inside_a_restoring_try_covers_its_tests() -> None:
 
 
 def _resets_after_yield(fn: ast.FunctionDef) -> bool:
-    # A fixture whose teardown - the statements after its yield - calls hard_reset().
+    # A fixture whose teardown - the statements after its yield - resets the board: hard_reset(), or reset_board(),
+    # which kicks the bench AP's stations after it.
     yields = [i for i, stmt in enumerate(fn.body) if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Yield)]
-    return bool(yields) and any("hard_reset" in _called_names(stmt) for stmt in fn.body[yields[0] + 1 :])
+    return bool(yields) and any({"hard_reset", "reset_board"} & _called_names(stmt) for stmt in fn.body[yields[0] + 1 :])
 
 
 def _autouse_session(fn: ast.FunctionDef) -> bool:

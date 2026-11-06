@@ -9,6 +9,8 @@ import os
 import _bench_device as device  # rendered: the bench device's generated module
 import machine
 
+from asy_print_log import report_if_fatal
+
 # @include _shared/facts.py
 # @include _shared/watchdog.py
 
@@ -40,13 +42,15 @@ def _deep(depth: "list[int]", n: int) -> int:
 
 
 def _exhaust(reader: object, deaths: "list[int]") -> None:
-    # From outside: the reader's read loop becomes a recursion that ends only in the stack check's RuntimeError.
+    # From outside: the reader's read loop becomes a recursion that ends only in the stack check's RuntimeError, which
+    # its handler records before the raise, as a reader's broad handler does (src/asy_print_log.py report_if_fatal()).
     async def read_loop() -> None:
         depth = [0]
         try:
             _deep(depth, 0)
-        except RuntimeError:
+        except RuntimeError as e:
             deaths.append(depth[0])
+            report_if_fatal(e)
             raise
 
     reader._read_loop = read_loop  # type: ignore[attr-defined]

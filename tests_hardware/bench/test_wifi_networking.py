@@ -59,10 +59,12 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
 # ---------------------------------------------------------------------------
 
 
-def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board, dut_ip: str) -> None:
+def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # A sync proven by state: an RTC set inside the window, or the client synced with its last sync no older than the
-    # window plus the read itself. The failure-word scan comes second.
-    _networking(dut_ip)  # the board answers before the window opens
+    # window plus the read itself. The window opens on a reset, so the boot's sync falls in it (a synced client waits
+    # NTPInterval hours); the failure-word scan comes second.
+    _networking(dut_ip)  # the board answers before the reset
+    kick_then_reset(board, bench)
     started = time.monotonic()
     lines = board.tail_log(duration_s=_SYNC_TAIL_S)
     read_started = time.monotonic()

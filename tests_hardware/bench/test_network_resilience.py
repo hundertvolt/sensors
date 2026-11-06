@@ -52,13 +52,14 @@ from harness import (
 )
 from rogue_udp_responder import RogueUdpResponder
 
+from buildgen.codegen import generate_boot_entry_source
 from buildgen.definitions import definitions_for_toml
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "ci_suite._run_8_wifi_persistence_and_configure_ntp", "ci_suite._run_11b_full_ceiling_concurrency", "scenarios.api_burst_at_the_ceiling_during_bus_load", "scenarios.every_admitted_connection_is_actually_served_a_complete_correct_response", "scenarios.n_healthy_concurrent_connections_up_to_max_connections_all_succeed", "scenarios.connections_beyond_max_connections_are_rejected_cleanly_not_crashed", "scenarios.a_full_ceiling_of_real_page_loads_is_served_without_truncation", "scenarios.multiple_browser_like_sessions_concurrently_all_succeed", "scenarios.realistic_mixed_openhab_polling_and_browser_session_concurrently", "scenarios.a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("sensortask_integration", "ci_suite._run_8_wifi_persistence_and_configure_ntp", "ci_suite._run_11b_full_ceiling_concurrency", "scenarios.api_burst_at_the_ceiling_during_bus_load", "scenarios.every_admitted_connection_is_actually_served_a_complete_correct_response", "scenarios.n_healthy_concurrent_connections_up_to_max_connections_all_succeed", "scenarios.connections_beyond_max_connections_are_rejected_cleanly_not_crashed", "scenarios.a_full_ceiling_of_real_page_loads_is_served_without_truncation", "scenarios.multiple_browser_like_sessions_concurrently_all_succeed", "scenarios.realistic_mixed_openhab_polling_and_browser_session_concurrently", "scenarios.a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly", "scenarios.negative_content_length_is_refused", "scenarios.refusal_at_the_ceiling_is_counted")
 
 # ---------------------------------------------------------------------------
 # WiFi outage or flap inside an already-established STA connection. Per
@@ -105,12 +106,16 @@ _OVER_CEILING_ATTEMPTS = 3
 _CAPTURE_ATTEMPTS = 3
 _STORM_REPEAT_MIN = 3
 _NTP_BLOCK_MARGIN_S = 10.0
-_NO_RECONNECT_TAIL_S = 5.0
+_RECONNECT_DROP_MARGIN_S = 3.0  # past the drop: the disconnect itself and the 1 s uptime tick that sees it
+_UPTIME_SLACK_S = 2.0  # two whole-second WifiUptime reads, each up to a request's latency off the host's clock
 _NTP = "asy_ntp_client.py"
 _WIFI = "asy_wifi_service.py"
 _WEBSERVER = "asy_webserver_service.py"
 # The two traced ways a connection ends at the ceiling: the refusal itself, and a client resetting one it gave up on.
 _CEILING_TRACES = (code("W", "HTTP_REFUSED"), code("W", "HTTP_PEER_RESET"))
+# The head check refuses a signed length before any method dispatch, so a GET carries the twin's PUT case, never a raw
+# write request (agent, 2026-11-06); its 3,000-byte body is the twin scenario's own, never read.
+_NEGATIVE_LENGTH_REQUEST = b"GET /status HTTP/1.1\r\nHost: dut\r\nContent-Length: -1\r\n\r\n" + b"x" * 3000
 
 
 @pytest.mark.provokes_log(
@@ -169,10 +174,14 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.provokes_log(
+    "a connection that cannot progress for a per-call timeout under the loss is reclaimed (SPECIFICATION.md F.3 stall.lwip_send)",
+    ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
+)
 def test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest) -> None:
     # Under 30% loss and 150 ms (+/-50 ms) latency any one request may fail; a bounded retry loop still gets through.
     reset_all_error_logs(dut_ip, request.node.name)
-    _impaired(board, bench, dut_ip, _DEGRADED_RECONNECT_TIMEOUT_S, loss_pct=30, delay_ms=150, jitter_ms=50)
+    _impaired(board, bench, dut_ip, _DEGRADED_RECONNECT_TIMEOUT_S, reclaims=(code("W", "HTTP_CALL_TIMEOUT"),), loss_pct=30, delay_ms=150, jitter_ms=50)
     assert_no_task_ended(dut_ip, "sustained packet loss and latency")
     reset_all_error_logs(dut_ip, request.node.name)  # no provoked fault stays in the live history
 
@@ -297,7 +306,9 @@ _SPOOF_YEAR = time.gmtime(_NTP_SPOOF_INJECTED_UNIX_TIME).tm_year
 @pytest.mark.provokes_log("the real reply is held back and the spoof refused, so the attempt ends without a reply", ("NTP", "E", "NTP_NO_REPLY"))
 def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A connect()'d client socket takes datagrams from its true peer only: a spoof it took would set the RTC to its
-    # Transmit Timestamp (2050-01-01), readable as GET /status's UTCTime.
+    # Transmit Timestamp (2050-01-01), readable as GET /status's UTCTime. An earlier test may have left NTP unsynced:
+    # its retry timer resyncs within one retry wait and the attempt after it.
+    wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_load.ntp_retry_period_s() + _load.ntp_attempt_s() + _NTP_BLOCK_MARGIN_S, poll_interval_s=_QUICK_POLL_S, description="NTP synced before the spoof test reads the DUT's clock")
     year_before = _utc_year(dut_ip)
     assert year_before is not None, "GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
     assert year_before < _SPOOF_YEAR - 1, f"the DUT's own UTCTime year {year_before} leaves no room to tell the spoof's {_SPOOF_YEAR} apart"
@@ -456,6 +467,61 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
+@pytest.mark.provokes_log("each refusal at the held ceiling, HTTP_REFUSED", ("WEBSERVER", "W", "HTTP_REFUSED"))
+def test_each_refusal_at_the_ceiling_is_counted_once_in_http_dropped(dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # The held heads are ended and answered before they close, so no holder is a drop of its own (the twin's slow but
+    # healthy holders): HTTPDropped then rises by exactly the refusals the clients saw, each counted once.
+    reset_all_error_logs(dut_ip, request.node.name)  # ResetErrors clears the drop window too: no hourly bin ages out
+    before = _http_dropped(dut_ip)
+    time.sleep(_SLOT_RELEASE_WAIT_S)  # as the sibling above: the last request's slot outlives its response (Part I.6)
+    held: list[socket.socket] = []
+    outcomes: list[bytes] = []
+    answers: list[bytes] = []
+    try:
+        for _ in range(_MAX_CONNECTIONS):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
+            sock.connect((dut_ip, 80))
+            sock.sendall(HELD_REQUEST_LINE)
+            held.append(sock)
+        time.sleep(_HELD_ADMIT_WAIT_S)  # each held connection's _serve() has counted it before the first attempt
+        for attempt in range(_OVER_CEILING_ATTEMPTS):
+            outcomes.append(_extra_outcome(dut_ip, held))
+            if attempt < _OVER_CEILING_ATTEMPTS - 1:
+                time.sleep(_SLOT_RELEASE_WAIT_S)
+        for sock in held:
+            sock.sendall(b"\r\n")  # the head ends: each holder is answered (an unrouted method's 405), never dropped
+        answers = [sock.makefile("rb").read() for sock in held]  # to the server's own close: nothing left unread
+    finally:
+        for sock in held:
+            sock.close()
+    result_note(f"above-ceiling attempts: {[o[:40] for o in outcomes]}; holders answered {sorted({a[:12] for a in answers})}")
+    assert not [o for o in outcomes if o], f"a connection above the {_MAX_CONNECTIONS}-connection ceiling was admitted: {outcomes}"
+    assert all(a.startswith(b"HTTP/") for a in answers), f"a holder was dropped rather than answered: {answers}"
+    wait_until(lambda: _load.serving(dut_ip), timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="webserver serving again after the held ceiling")
+    dropped = _http_dropped(dut_ip)
+    assert dropped == before + len(outcomes), f"HTTPDropped {before} -> {dropped} after {len(outcomes)} refusal(s): each must count exactly once"
+    assert_no_task_ended(dut_ip, "client misbehaviour")
+
+
+@pytest.mark.provokes_log("the negative Content-Length's refused head, HTTP_BAD_HEAD", ("WEBSERVER", "W", "HTTP_BAD_HEAD"))
+def test_a_negative_content_length_is_refused_and_counted_once(dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # A signed Content-Length answers 400 before its body is read, is counted as one drop and logged as one refused
+    # head, and the next client is served.
+    reset_all_error_logs(dut_ip, request.node.name)
+    before = _http_dropped(dut_ip)
+    with socket.create_connection((dut_ip, 80), timeout=_RAW_SOCKET_TIMEOUT_S) as sock:
+        sock.sendall(_NEGATIVE_LENGTH_REQUEST)
+        line = sock.makefile("rb").readline()
+    assert line.split()[1:2] == [b"400"], f"the negative Content-Length answered {line!r}, not 400"
+    # The drop is noted once the request returns, just after its answer: polled, then held to exactly one.
+    wait_until(lambda: _http_dropped(dut_ip) > before, timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="the refused head counted in HTTPDropped")
+    assert _http_dropped(dut_ip) == before + 1, f"HTTPDropped {before} -> {_http_dropped(dut_ip)} after one refused head"
+    assert_module_logged_one_code(dut_ip, "WEBSERVER", "W", code("W", "HTTP_BAD_HEAD"), None)
+    assert _load.serving(dut_ip), "webserver unresponsive after the negative Content-Length"
+    assert_no_task_ended(dut_ip, "a negative Content-Length")
+
+
 # ---------------------------------------------------------------------------
 # Nonsense GET/PUT requests over the normal network; test_hotspot_role_reversal.py's check is
 # hotspot-only, GET-only and asserts no response shape. None of these mutate persisted config -
@@ -570,23 +636,27 @@ def test_an_oversized_body_is_refused_before_it_is_read(dut_ip: str, request: py
     cap = _body_cap()
     per_call_s = _load.src_number(_WEBSERVER, "_DEFAULT_PER_CALL_TIMEOUT_S")
     assert per_call_s > _CAP_BINDING_ANSWER_S, f"the answer window {_CAP_BINDING_ANSWER_S}s must stay under the per-call timeout {per_call_s}s"
+    # MemFree carries up to one GC threshold of uncollected garbage, so the refusal repeats for twice that in caps: a
+    # buffer kept per refusal then moves MemFree past half the caps sent, the sawtooth never (agent, 2026-11-06).
+    refusals = 2 * (_gc_threshold() // cap + 1)
     free_before = _mem_free(dut_ip)
-    answers: dict[int, bytes] = {}
+    answers: dict[int, list[bytes]] = {cap + 1: [], cap: []}
     closed_after: float | None = None
-    for length in (cap + 1, cap):
+    for length in [cap + 1] * refusals + [cap]:
         with socket.create_connection((dut_ip, 80), timeout=_RAW_SOCKET_TIMEOUT_S) as sock:
             # A head declaring `length` body bytes, and not one of them sent.
             sock.sendall(f"PUT /sensors HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {length}\r\n\r\n".encode())
             sent_at = time.monotonic()
-            answers[length] = _answer_within(sock, _CAP_BINDING_ANSWER_S)
+            answers[length].append(_answer_within(sock, _CAP_BINDING_ANSWER_S))
             if length == cap:
                 closed_after = _closed_after(sock, sent_at, per_call_s + _CLOSE_MARGIN_S)
-    assert answers[cap + 1].startswith(b"HTTP/1.0 413"), f"Content-Length {cap + 1} with no body was not answered 413 within {_CAP_BINDING_ANSWER_S}s: {answers[cap + 1]!r}"
-    assert answers[cap] == b"<silent>", f"Content-Length {cap} was answered before its body arrived: {answers[cap]!r}"
+    unrefused = [answer[:40] for answer in answers[cap + 1] if not answer.startswith(b"HTTP/1.0 413")]
+    assert not unrefused, f"{len(unrefused)} of {refusals} heads of Content-Length {cap + 1} with no body were not answered 413 within {_CAP_BINDING_ANSWER_S}s: {unrefused}"
+    assert answers[cap] == [b"<silent>"], f"Content-Length {cap} was answered before its body arrived: {answers[cap]!r}"
     assert closed_after is not None, f"the server held a body-less request at the cap past {per_call_s + _CLOSE_MARGIN_S}s"
     free_after = _mem_free(dut_ip)
-    result_note(f"MemFree {free_before} -> {free_after} B; the at-cap connection closed after {closed_after:.1f}s")
-    assert abs(free_before - free_after) < cap, f"MemFree moved by {free_before - free_after} B across a refused body, as much as the cap {cap} B"
+    result_note(f"MemFree {free_before} -> {free_after} B across {refusals} refused bodies; the at-cap connection closed after {closed_after:.1f}s")
+    assert abs(free_before - free_after) < refusals * cap // 2, f"MemFree moved by {free_before - free_after} B across {refusals} refused bodies, half of {refusals} x the cap {cap} B: a buffer kept per refusal"
     # The 413 logs nothing (Microdot answers it before any handler); the at-cap wait is the one read-phase timeout.
     assert_module_logged_one_code(dut_ip, "WEBSERVER", "W", code("W", "HTTP_CALL_TIMEOUT"), events=1)
     assert_no_task_ended(dut_ip, "client misbehaviour")
@@ -650,7 +720,7 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     ("CFGMGR_BMP3XX", "E", "BAD_ARG"),
     ("WIFI", "E", "BAD_ARG"),
 )
-def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
+def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str, request: pytest.FixtureRequest) -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     # Wrong type, out of range and an unknown sensor key in one REST call: _VAL_PRES_OVERS accepts only _OSR_SETTINGS.
     res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": "banana", "FiltCoeff": 999}, "TotallyUnknownSensor": {"Whatever": 1}}, timeout_s=_PROBE_TIMEOUT_S)
@@ -672,14 +742,14 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, 
         host_bound, ssid_bound = _load.field_schema(_WIFI, "Hostname")[3], _load.field_schema(_WIFI, "SSID")[3]
         assert isinstance(host_bound, int) and isinstance(ssid_bound, int), f"_VAL_HOSTNAME/_VAL_SSID declare no int length bound: {host_bound!r}, {ssid_bound!r}"
         reset_all_error_logs(dut_ip, request.node.name)
-        mode = _load.mode(dut_ip)
+        before = _link(dut_ip)
         res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"Hostname": "ä" * host_bound}, timeout_s=_PROBE_TIMEOUT_S)
         assert _load.as_object(res.json().get("result"), "result").get("Hostname") == "Invalid", f"a {2 * host_bound}-byte Hostname was not refused: {res.body!r}"
-        _assert_radio_refusal_traced(board, dut_ip, "Hostname", mode)
+        _assert_radio_refusal_traced(dut_ip, "Hostname", before)
         reset_all_error_logs(dut_ip, request.node.name)
         res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"SSID": "ä" * ssid_bound}, timeout_s=_PROBE_TIMEOUT_S)
         assert _load.as_object(res.json().get("result"), "result").get("SSID") == "Invalid", f"a {2 * ssid_bound}-byte SSID was not refused: {res.body!r}"
-        _assert_radio_refusal_traced(board, dut_ip, "SSID", mode)
+        _assert_radio_refusal_traced(dut_ip, "SSID", before)
         assert_no_task_ended(dut_ip, "nonsense field values")
     finally:
         reset_all_error_logs(dut_ip, request.node.name)
@@ -1000,12 +1070,16 @@ def _assert_ceiling_traced(dut_ip: str, refusals: int, context: str) -> None:
     assert dropped >= refusals, f"{context}: HTTPDropped is {dropped}, fewer than the {refusals} refusal(s) the clients saw"
 
 
-def _assert_radio_refusal_traced(board: Board, dut_ip: str, field: str, mode_before: object) -> None:
-    # The refusal's WIFI entry, no reconnect (no connect line over a short tail, Mode unchanged) and the board serving.
+def _assert_radio_refusal_traced(dut_ip: str, field: str, before: "tuple[float, JSONObject]") -> None:
+    # The refusal's WIFI entry, Mode unchanged and no reconnect: one drops the link a connect-loop pass plus its caller
+    # grace after the PUT, restarting WifiUptime, so read past that it still counts from `before` (agent, 2026-11-06).
     assert_module_error_log_contains(dut_ip, "WIFI", code("E", "BAD_ARG"), "E")
-    lines = board.tail_log(duration_s=_NO_RECONNECT_TAIL_S)
-    assert not [line for line in lines if "WLAN connection" in line], f"a refused {field} still triggered a reconnect: {lines}"
-    assert _load.mode(dut_ip) == mode_before, f"Mode moved from {mode_before!r} after a refused {field}"
+    time.sleep(_load.src_number(_WIFI, "_WIFI_REFRESH_S") + _load.src_number(_WIFI, "_RECONNECT_CALLER_GRACE_S") + _RECONNECT_DROP_MARGIN_S)
+    (since, link), (now, after) = before, _link(dut_ip)
+    uptime_before, uptime = link.get("WifiUptime"), after.get("WifiUptime")
+    assert isinstance(uptime_before, int) and isinstance(uptime, int), f"GET /status carries no WifiUptime: {uptime_before!r} -> {uptime!r}"
+    assert uptime >= uptime_before + (now - since) - _UPTIME_SLACK_S, f"a refused {field} restarted the link: WifiUptime {uptime_before} -> {uptime} s over {now - since:.0f} s"
+    assert after.get("Mode") == link.get("Mode"), f"Mode moved from {link.get('Mode')!r} after a refused {field}"
 
 
 def _assert_recovered(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note", description: str, since: str) -> None:
@@ -1102,6 +1176,13 @@ def _garbage_window(board: Board, bench: "BenchBridge", dut_ip: str, port: int) 
         return lines, dict(responder.answered_from)
 
 
+def _gc_threshold() -> int:
+    # The firmware's gc.threshold(), read from the boot entry the bench build generates.
+    found = re.search(r"gc\.threshold\((\d+)\)", generate_boot_entry_source(bench_device()))
+    assert found is not None, "the generated boot entry sets no gc.threshold()"
+    return int(found.group(1))
+
+
 def _http_dropped(dut_ip: str) -> int:
     # GET /status's HTTPDropped: the connections dropped in the last 24 hours, so a burst's own refusals all count.
     dropped = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("networking"), "GET /status networking").get("HTTPDropped")
@@ -1109,20 +1190,23 @@ def _http_dropped(dut_ip: str) -> int:
     return dropped
 
 
-def _impaired(board: Board, bench: "BenchBridge", dut_ip: str, reachable_within_s: float, **impairment: float) -> None:
-    # Inject, REST reachable under it, clear, fully recovered - the whole window watched for a crash, then WEBSERVER;
-    # each caller asserts no task ended itself.
+def _impaired(board: Board, bench: "BenchBridge", dut_ip: str, reachable_within_s: float, *, reclaims: "tuple[int, ...]" = (), **impairment: float) -> None:
+    # Inject, REST reachable under it, clear, fully recovered - the whole window watched for a crash, then WEBSERVER,
+    # empty but for the caller's `reclaims` warnings; each caller asserts no task ended itself.
     def window() -> None:
         bench.inject_network_degradation(**impairment)
         try:
-            wait_until(lambda: _load.serving(dut_ip), timeout_s=reachable_within_s, poll_interval_s=_RECONNECT_POLL_S, description=f"REST reachable under {impairment}")
+            wait_until(lambda: _status_answered(dut_ip), timeout_s=reachable_within_s, poll_interval_s=_RECONNECT_POLL_S, description=f"REST reachable under {impairment}")
         finally:
             bench.clear_network_degradation()
-        wait_until(lambda: _load.serving(dut_ip), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description=f"REST fast and reliable again after {impairment} cleared")
+        wait_until(lambda: _status_answered(dut_ip), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description=f"REST fast and reliable again after {impairment} cleared")
 
     _result, lines = observe_during(board, window)
     assert not crash_lines(lines), f"{impairment} crashed the system instead of degrading cleanly: {crash_lines(lines)}"
-    assert_module_error_log_empty(dut_ip, "WEBSERVER")
+    if reclaims:
+        assert_module_error_log_clean(dut_ip, "WEBSERVER", allowed_warnings=reclaims)
+    else:
+        assert_module_error_log_empty(dut_ip, "WEBSERVER")
 
 
 def _index_load(dut_ip: str, reference: bytes, sizes: "list[int | str]", index: int) -> None:
@@ -1138,6 +1222,12 @@ def _keys(dut_ip: str, path: str, timeout_s: float) -> "frozenset[str]":
     res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=timeout_s)
     assert res.status_code == 200, f"{path} answered {res.status_code}"
     return frozenset(res.json())
+
+
+def _link(dut_ip: str) -> "tuple[float, JSONObject]":
+    # GET /status's networking block, and the host's clock once it answered.
+    networking = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("networking"), "GET /status networking")
+    return time.monotonic(), networking
 
 
 def _link_poller(dut_ip: str, stop: threading.Event, polls: "list[tuple[float, JSONObject | None]]") -> None:
@@ -1247,9 +1337,23 @@ def _sized_worker(dut_ip: str, index: int, size: int, outcomes: "dict[str, dict[
         status: int | str = _put_sized(dut_ip, size, timeout_s=_LOADED_FETCH_TIMEOUT_S)
         bucket = "answered"
     except (OSError, http_client.HTTP_ERROR) as exc:
-        status, bucket = f"{type(exc).__name__}: {exc}", "refused" if http_client.is_ceiling_close(exc) else "other"
+        head = exc.__context__  # fetch() reads a non-2xx body inside its HTTPError handler: that error holds the status
+        if isinstance(exc, ConnectionResetError) and getattr(head, "code", None) == 413:
+            # The 413 went out before the body was read, so the close's RST can cut its body (owner, 2026-11-06).
+            status, bucket = 413, "answered"
+        else:
+            status, bucket = f"{type(exc).__name__}: {exc}", "refused" if http_client.is_ceiling_close(exc) else "other"
     with lock:
         outcomes[bucket][index] = status
+
+
+def _status_answered(dut_ip: str) -> bool:
+    # _load.serving() raising instead of reading False, so a wait that times out names the last refusal, timeout or
+    # status it met (wait_until() reports the last error).
+    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
+    if res.status_code != 200:
+        raise AssertionError(f"GET /status answered {res.status_code}: {res.body[:120]!r}")
+    return True
 
 
 def _try_join(bench: "BenchBridge", ssid: str) -> bool:

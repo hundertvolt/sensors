@@ -1,10 +1,11 @@
-"""tests_hardware/bench/conftest.py's board_image on a fake GET /system and a tmp image record: equal build dates pass;
-a different date or device, an lwIP ensemble finding, a missing record and the tick-offset test image outside the
-rollover run each stop the session naming the cause."""
+"""tests_hardware/bench/conftest.py's board_image on a fake GET /system and a tmp image record: it waits for an answer
+within its deadline, then equal build dates pass; a different date or device, an lwIP ensemble finding, a missing record
+and the tick-offset test image outside the rollover run each stop the session naming the cause."""
 
 import contextlib
 import json
 import sys
+import time
 from pathlib import Path
 from types import ModuleType
 
@@ -118,6 +119,36 @@ def test_a_throwaway_worktree_image_is_noted_as_local_only(monkeypatch: pytest.M
     _serve(monkeypatch)
     _, notes = _board_image(tmp_path, _record(dirty=True))
     assert notes and notes[0].startswith("local-only image: revert after this round"), notes
+
+
+def test_a_board_still_rejoining_is_waited_for_then_its_image_checked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # The reset before the bench half: no route while the board reboots and rejoins, then its answer is checked.
+    unanswered = [OSError("No route to host"), ConnectionRefusedError()]
+    payload = json.dumps({"build": {"BuildDate": _DATE}}).encode()
+
+    def fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
+        if unanswered:
+            raise unanswered.pop(0)
+        return http_client.HttpResponse(200, {}, payload)
+
+    monkeypatch.setattr(http_client, "fetch", fetch)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    stopped, notes = _board_image(tmp_path, _record())
+    assert (stopped, unanswered, len(notes)) == ([], [], 1)
+
+
+def test_a_board_that_never_answers_fails_the_session_start_at_its_deadline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    now = [0.0]
+
+    def fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
+        raise OSError("No route to host")
+
+    monkeypatch.setattr(http_client, "fetch", fetch)
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(time, "sleep", lambda seconds: now.__setitem__(0, now[0] + seconds))
+    with pytest.raises(TimeoutError, match="No route to host"):
+        _board_image(tmp_path, _record())
+    assert now[0] == pytest.approx(_bench_conftest()._SERVING_TIMEOUT_S)
 
 
 @pytest.mark.parametrize(("status", "body"), [(503, {"error": "busy"}), (200, {"uptime": 1}), (200, ["not", "an", "object"])], ids=["status", "no-build", "array"])
