@@ -1,6 +1,6 @@
 # Round 1 bench hand-back
 
-Rebuilt by `round1.py` after every step, last 2026-11-06 09:33 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
+Rebuilt by `round1.py` after every step, last 2026-11-06 09:54 UTC. Each verdict is its step's newest run; after step 4a a passing pytest step reads NOT CLEAN (lower levels skipped).
 
 | step | name | verdict | ResetReason after | started (UTC) | took | host load at end | FC/FS/NVM/pre |
 |---|---|---|---|---|---|---|---|
@@ -12,7 +12,7 @@ Rebuilt by `round1.py` after every step, last 2026-11-06 09:33 UTC. Each verdict
 | 5g | bench_tier_gc_control | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry, bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping, bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load, bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load and 92 more | 21 | 2026-11-05 11:03:40 | 0h33 | 0.61 | 0/0/0/66 |
 | 3 | final_image | rc=0 | 2 | 2026-11-06 09:05:58 | 0h03 | 2.41 | 1/0/0/0 |
 | 4b | flash_tier | rc=4; NOT CLEAN (lower levels skipped: L0 L1 L2) | 21 | 2026-11-06 09:09:50 | 0h05 | 0.21 | 0/0/0/136 |
-| 5 | bench_tier | rc=1; FAIL (pytest exited 1); failed: bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes, bench/test_boot_order_and_triggers.py::test_bus_triggers_keep_their_minimum_spacing, bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot], bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held], bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp and 1 more | 21 | 2026-11-06 09:18:22 | 0h13 | 0.01 | 0/0/0/66 |
+| 5 | bench_tier | rc=1; FAIL (pytest exited 1); failed: bench/test_network_resilience.py::test_put_nonsense_field_values_are_marked_invalid_not_crashed, bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed, bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1], bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2], bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3] and 7 more | 21 | 2026-11-06 09:35:22 | 0h19 | 0.19 | 0/0/0/66 |
 | 9 | crc16_hazards | not run |  |  |  |  | 0/0/0/0 |
 | 10a | soak_short | not run |  |  |  |  | 0/0/0/8 |
 | 10m | soak_mid | not run |  |  |  |  | 0/0/0/8 |
@@ -26415,6 +26415,1123 @@ SUM errcount NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"
 SUM errcount SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":33}],"counter":4}
 SUM errcount SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+== step 5 start 2026-11-06 09:35:22 1793957722 load 0.38 0.20 0.37
+Resolved 22 packages in 4ms
+Audited 20 packages in 0.62ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+== Marker selection: -m "not soak_duration and not multi_day_rollover"
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors-bench/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors-bench
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 129 items / 111 deselected / 18 selected
+
+tests_hardware/bench/test_network_resilience.py::test_put_nonsense_field_values_are_marked_invalid_not_crashed FAILED [  5%]
+tests_hardware/bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_a_console_interrupt PASSED [ 11%]
+tests_hardware/bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed PASSED [ 16%]
+tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[escalate] PASSED [ 22%]
+tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[hold_console] PASSED [ 27%]
+tests_hardware/bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed PASSED [ 33%]
+tests_hardware/bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown PASSED [ 38%]
+tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed FAILED [ 44%]
+tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed ERROR [ 44%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1] PASSED [ 50%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1] ERROR [ 50%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2] PASSED [ 55%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2] ERROR [ 55%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3] PASSED [ 61%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3] ERROR [ 61%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4] PASSED [ 66%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4] ERROR [ 66%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5] PASSED [ 72%]
+tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5] ERROR [ 72%]
+tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot] PASSED [ 77%]
+tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot] ERROR [ 77%]
+tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held] FAILED [ 83%]
+tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held] ERROR [ 83%]
+tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed FAILED [ 88%]
+tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed ERROR [ 88%]
+tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception] PASSED [ 94%]
+tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception] ERROR [ 94%]
+tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base] PASSED [100%]
+tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base] ERROR [100%]
+
+==================================== ERRORS ====================================
+________ ERROR at teardown of test_an_incomplete_command_is_attributed _________
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_an_incomplete_command_is_attributed>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f95ce9620>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed'
+pre_clear = []
+expected = frozenset({('CFGMGR_BMP3XX', 'W', 22), ('CFGMGR_ISL29125', 'W', 22), ('CFGMGR_NOTIFY', 'W', 22), ('CFGMGR_NTP', 'W', 22), ('CFGMGR_SGP40', 'W', 22), ('CFGMGR_SYSTEM', 'W', 22), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+______ ERROR at teardown of test_a_hang_in_boot_phase_p_is_attributed[1] _______
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_hang_in_boot_phase_p_is_attributed[1]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f958394e0>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1]'
+pre_clear = []
+expected = frozenset({('CFGMGR_BMP3XX', 'W', 22), ('CFGMGR_ISL29125', 'W', 22), ('CFGMGR_NOTIFY', 'W', 22), ('CFGMGR_NTP', 'W', 22), ('CFGMGR_SGP40', 'W', 22), ('CFGMGR_SYSTEM', 'W', 22), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+______ ERROR at teardown of test_a_hang_in_boot_phase_p_is_attributed[2] _______
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_hang_in_boot_phase_p_is_attributed[2]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f956f0860>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2]'
+pre_clear = []
+expected = frozenset({('CFGMGR_BMP3XX', 'W', 22), ('CFGMGR_ISL29125', 'W', 22), ('CFGMGR_NOTIFY', 'W', 22), ('CFGMGR_NTP', 'W', 22), ('CFGMGR_SGP40', 'W', 22), ('CFGMGR_SYSTEM', 'W', 22), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+______ ERROR at teardown of test_a_hang_in_boot_phase_p_is_attributed[3] _______
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_hang_in_boot_phase_p_is_attributed[3]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f95838900>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3]'
+pre_clear = []
+expected = frozenset({('CFGMGR_BMP3XX', 'W', 22), ('CFGMGR_ISL29125', 'W', 22), ('CFGMGR_NOTIFY', 'W', 22), ('CFGMGR_NTP', 'W', 22), ('CFGMGR_SGP40', 'W', 22), ('CFGMGR_SYSTEM', 'W', 22), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+______ ERROR at teardown of test_a_hang_in_boot_phase_p_is_attributed[4] _______
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_hang_in_boot_phase_p_is_attributed[4]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f956f2340>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4]'
+pre_clear = []
+expected = frozenset({('CFGMGR_BMP3XX', 'W', 22), ('CFGMGR_ISL29125', 'W', 22), ('CFGMGR_NOTIFY', 'W', 22), ('CFGMGR_NTP', 'W', 22), ('CFGMGR_SGP40', 'W', 22), ('CFGMGR_SYSTEM', 'W', 22), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+______ ERROR at teardown of test_a_hang_in_boot_phase_p_is_attributed[5] _______
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_hang_in_boot_phase_p_is_attributed[5]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f95d2a5c0>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5]'
+pre_clear = []
+expected = frozenset({('CFGMGR_BMP3XX', 'W', 22), ('CFGMGR_ISL29125', 'W', 22), ('CFGMGR_NOTIFY', 'W', 22), ('CFGMGR_NTP', 'W', 22), ('CFGMGR_SGP40', 'W', 22), ('CFGMGR_SYSTEM', 'W', 22), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_____ ERROR at teardown of test_a_c_stack_exhaustion_is_attributed[reboot] _____
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_c_stack_exhaustion_is_attributed[reboot]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f95d2a2a0>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot]'
+pre_clear = []
+expected = frozenset({('CFGMGR_BMP3XX', 'W', 22), ('CFGMGR_ISL29125', 'W', 22), ('CFGMGR_NOTIFY', 'W', 22), ('CFGMGR_NTP', 'W', 22), ('CFGMGR_SGP40', 'W', 22), ('CFGMGR_SYSTEM', 'W', 22), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+___ ERROR at teardown of test_a_c_stack_exhaustion_is_attributed[entry_held] ___
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_c_stack_exhaustion_is_attributed[entry_held]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f95876200>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held]'
+pre_clear = []
+expected = frozenset({('CFGMGR_BMP3XX', 'W', 22), ('CFGMGR_ISL29125', 'W', 22), ('CFGMGR_NOTIFY', 'W', 22), ('CFGMGR_NTP', 'W', 22), ('CFGMGR_SGP40', 'W', 22), ('CFGMGR_SYSTEM', 'W', 22), ...})
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_________ ERROR at teardown of test_a_console_interrupt_is_attributed __________
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_console_interrupt_is_attributed>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f956f1b20>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_ ERROR at teardown of test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception] _
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f956f1940>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception]'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+_ ERROR at teardown of test_a_loop_ended_by_an_exception_after_boot_is_attributed[base] _
+
+request = <SubRequest 'no_unprovoked_log_entry' for <Function test_a_loop_ended_by_an_exception_after_boot_is_attributed[base]>>
+log_check_host = <function log_check_host.<locals>.<lambda> at 0x7f959beca0>
+
+    @pytest.fixture(autouse=True)
+    def no_unprovoked_log_entry(request: pytest.FixtureRequest, log_check_host: "Callable[[], str]") -> "Iterator[None]":
+        # GET /status before and after each bench test, clearing and writing nothing: an E or W entry in any logger beyond the
+        # test's provokes_log set fails it, before any clear it made too. An unanswered ends_unreachable end carries its window.
+        test, expected = request.node.nodeid, _expected_entries(request.node)
+        window = _Carry({}, error_log_helpers.clears_made(), expected, (test,))
+        if _CARRIED:
+            carried = _CARRIED.pop()
+            read = _try_read_logs(log_check_host)
+            if read is None:
+                window = carried._replace(expected=carried.expected | expected, tests=(*carried.tests, test))
+            else:
+                _check(carried, read)
+                window = window._replace(before=read)
+        else:
+            window = window._replace(before=_read_logs(log_check_host, test, "before"))
+        yield
+        if request.node.get_closest_marker("ends_unreachable") is None:
+>           _check(window, _read_logs(log_check_host, test, "after"))
+
+tests_hardware/bench/conftest.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/bench/conftest.py:162: in _check
+    error_log_helpers.assert_no_unprovoked_entry(window.before, after, " + ".join(window.tests), pre_clear=error_log_helpers.reads_before_clears(window.clears), expected=window.expected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+before = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+after = {'CFGMGR_SCD30': {'counter': 0, 'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0},...m': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, ...]}, ...}
+test = 'tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base]'
+pre_clear = [], expected = frozenset()
+
+    def assert_no_unprovoked_entry(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", test: str, *, pre_clear: "Sequence[dict[str, ErrcountEntry]]" = (), expected: "frozenset[tuple[str, str, int]]" = frozenset()) -> None:
+        # The bench log check's verdict (C.7: a normal operation logs neither E nor W): over each segment from a test's first
+        # read through the reads its own clears took first to its last, no logger gained one beyond its provokes_log set.
+        bounds = [before, *pre_clear, after]
+        gained = [entry for i in range(len(bounds) - 1) for entry in new_logged_entries(bounds[i], bounds[i + 1], cleared=i > 0)]
+        found = [f"{module} {kind}{num} {name(kind, num) or '(no live catalog row)'}" for module, kind, num in dict.fromkeys(gained) if (module, kind, num) not in expected]
+>       assert not found, f"{test} logged {'; '.join(found)} - a test whose entries are its purpose names each in provokes_log(\"<why>\", (logger, kind, catalog name), ...)"
+               ^^^^^^^^^
+E       AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+
+tests_hardware/error_log_helpers.py:160: AssertionError
+=================================== FAILURES ===================================
+________ test_put_nonsense_field_values_are_marked_invalid_not_crashed _________
+
+request = <FixtureRequest for <Function test_put_nonsense_field_values_are_marked_invalid_not_crashed>>
+
+    @pytest.mark.provokes_log(
+        "each refused field logs BAD_ARG: the BMP3XX pair on its config manager, the radio's byte-bound refusals on WIFI",
+        ("CFGMGR_BMP3XX", "E", "BAD_ARG"),
+        ("WIFI", "E", "BAD_ARG"),
+    )
+    def test_put_nonsense_field_values_are_marked_invalid_not_crashed(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
+        reset_all_error_logs(dut_ip, request.node.name)
+        # Wrong type, out of range and an unknown sensor key in one REST call: _VAL_PRES_OVERS accepts only _OSR_SETTINGS.
+        res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": "banana", "FiltCoeff": 999}, "TotallyUnknownSensor": {"Whatever": 1}}, timeout_s=_PROBE_TIMEOUT_S)
+        assert res.status_code == 200, f"a syntactically valid but nonsensical PUT body crashed the request instead of being marked Invalid: {res.status_code} {res.body!r}"
+        body = res.json()
+        result = _load.as_object(body.get("result"), "result")
+        bmp_result = _load.as_object(result.get("BMP3XX"), "result.BMP3XX")
+        assert bmp_result.get("PresOvers") == "Invalid", f"a wrong-typed field was not marked Invalid: {bmp_result!r}"
+        assert bmp_result.get("FiltCoeff") == "Invalid", f"an out-of-range field was not marked Invalid: {bmp_result!r}"
+        assert result.get("TotallyUnknownSensor") == "Invalid", f"an unknown sensor did not answer Invalid (SPECIFICATION.md A.8): {result!r}"
+        assert _load.serving(dut_ip), "webserver unresponsive after nonsense PUT field values"
+        try:
+            # A rejected key logs BAD_ARG on its own CFGMGR_<NAME> logger, not the sensor's (write_config()).
+            entry = errcount_entry(get_errcount(dut_ip), "CFGMGR_BMP3XX")
+            assert entry["counter"] == 2, f"expected exactly 2 type/range validation errors on CFGMGR_BMP3XX (one per rejected field), got: {entry!r}"
+            assert_module_error_log_contains(dut_ip, "CFGMGR_BMP3XX", code("E", "BAD_ARG"), "E")
+            assert_no_task_ended(dut_ip, "nonsense sensor values")
+            # A radio value within the schema's character count but past its byte bound (C.7.4): two UTF-8 bytes per "ä".
+            host_bound, ssid_bound = _load.field_schema(_WIFI, "Hostname")[3], _load.field_schema(_WIFI, "SSID")[3]
+            assert isinstance(host_bound, int) and isinstance(ssid_bound, int), f"_VAL_HOSTNAME/_VAL_SSID declare no int length bound: {host_bound!r}, {ssid_bound!r}"
+            reset_all_error_logs(dut_ip, request.node.name)
+            mode = _load.mode(dut_ip)
+            res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"Hostname": "ä" * host_bound}, timeout_s=_PROBE_TIMEOUT_S)
+            assert _load.as_object(res.json().get("result"), "result").get("Hostname") == "Invalid", f"a {2 * host_bound}-byte Hostname was not refused: {res.body!r}"
+>           _assert_radio_refusal_traced(board, dut_ip, "Hostname", mode)
+
+tests_hardware/bench/test_network_resilience.py:678: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+field = 'Hostname', mode_before = 'STA'
+
+    def _assert_radio_refusal_traced(board: Board, dut_ip: str, field: str, mode_before: object) -> None:
+        # The refusal's WIFI entry, no reconnect (no connect line over a short tail, Mode unchanged) and the board serving.
+        assert_module_error_log_contains(dut_ip, "WIFI", code("E", "BAD_ARG"), "E")
+        lines = board.tail_log(duration_s=_NO_RECONNECT_TAIL_S)
+>       assert not [line for line in lines if "WLAN connection" in line], f"a refused {field} still triggered a reconnect: {lines}"
+E       assert not ['WIFI WLAN connection established']
+
+tests_hardware/bench/test_network_resilience.py:1007: AssertionError
+___________________ test_an_incomplete_command_is_attributed ___________________
+
+self = <urllib.request.HTTPHandler object at 0x7f95d60980>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f97032450>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+>               h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+
+/usr/lib/python3.13/urllib/request.py:1319: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.13/http/client.py:1367: in request
+    self._send_request(method, url, body, headers, encode_chunked)
+/usr/lib/python3.13/http/client.py:1413: in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1362: in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+/usr/lib/python3.13/http/client.py:1122: in _send_output
+    self.send(msg)
+/usr/lib/python3.13/http/client.py:1066: in send
+    self.connect()
+/usr/lib/python3.13/http/client.py:1032: in connect
+    self.sock = self._create_connection(
+/usr/lib/python3.13/socket.py:864: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+all_errors = False
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               ConnectionRefusedError: [Errno 111] Connection refused
+
+/usr/lib/python3.13/socket.py:849: ConnectionRefusedError
+
+During handling of the above exception, another exception occurred:
+
+board = <harness.Board object at 0x7f95d601a0>
+bench = <bench_control.BenchBridge object at 0x7f973b3b10>
+result_note = <function result_note.<locals>._note at 0x7f95838ea0>
+
+    @pytest.mark.provokes_log(
+        "the planted EIO cuts the erase, over a scratch-config boot that logs each config file not found",
+        *scratch_config_entries(),
+    )
+    def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
+        try:
+            before = get_errcount(dut_ip)
+            _evidence(board, bench, dut_ip, "reset-reason-command-incomplete")
+            facts = _provoked(board, bench, "reset_code_command_incomplete.py")
+            assert facts.get("answer") == "Valid" and isinstance(facts.get("raised_at"), int), f"the erase never reached its failing unit: {facts}"
+            assert "no_reset_after_ms" not in facts, f"the board outlived the cut erase: {facts}"
+            reason = _system_status(dut_ip).get("ResetReason")  # no REASON read: the errcount below needs main.py serving
+            result_note(f"erase cut by an EIO: ResetReason {reason}")
+            assert reason == _RR["COMMAND_INCOMPLETE"], f"the cut erase read ResetReason {reason}, not {_RR['COMMAND_INCOMPLETE']}"
+            save_fram_raw(board, "reset-reason-command-incomplete-after")
+>           after = get_errcount(dut_ip)
+                    ^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_reset_reasons.py:170: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/error_log_helpers.py:97: in get_errcount
+    _body, status = _status(dut_ip)
+                    ^^^^^^^^^^^^^^^
+tests_hardware/error_log_helpers.py:79: in _status
+    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_ERRCOUNT_TIMEOUT_S)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/http_client.py:94: in fetch
+    opened = urllib.request.urlopen(request, timeout=timeout_s)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:189: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:489: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:506: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/usr/lib/python3.13/urllib/request.py:466: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/usr/lib/python3.13/urllib/request.py:1348: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <urllib.request.HTTPHandler object at 0x7f95d60980>
+http_class = <class 'http.client.HTTPConnection'>
+req = <urllib.request.Request object at 0x7f97032450>, http_conn_args = {}
+
+    def do_open(self, http_class, req, **http_conn_args):
+        """Return an HTTPResponse object for the request, using http_class.
+    
+        http_class must implement the HTTPConnection API from http.client.
+        """
+        host = req.host
+        if not host:
+            raise URLError('no host given')
+    
+        # will parse host:port
+        h = http_class(host, timeout=req.timeout, **http_conn_args)
+        h.set_debuglevel(self._debuglevel)
+    
+        headers = dict(req.unredirected_hdrs)
+        headers.update({k: v for k, v in req.headers.items()
+                        if k not in headers})
+    
+        # TODO(jhylton): Should this be redesigned to handle
+        # persistent connections?
+    
+        # We want to make an HTTP/1.1 request, but the addinfourl
+        # class isn't prepared to deal with a persistent connection.
+        # It will try to read all remaining data from the socket,
+        # which will block while the server waits for the next request.
+        # So make sure the connection gets closed after the (only)
+        # request.
+        headers["Connection"] = "close"
+        headers = {name.title(): val for name, val in headers.items()}
+    
+        if req._tunnel_host:
+            tunnel_headers = {}
+            proxy_auth_hdr = "Proxy-Authorization"
+            if proxy_auth_hdr in headers:
+                tunnel_headers[proxy_auth_hdr] = headers[proxy_auth_hdr]
+                # Proxy-Authorization should not be sent to origin
+                # server.
+                del headers[proxy_auth_hdr]
+            h.set_tunnel(req._tunnel_host, headers=tunnel_headers)
+    
+        try:
+            try:
+                h.request(req.get_method(), req.selector, req.data, headers,
+                          encode_chunked=req.has_header('Transfer-encoding'))
+            except OSError as err: # timeout error
+>               raise URLError(err)
+E               urllib.error.URLError: <urlopen error [Errno 111] Connection refused>
+
+/usr/lib/python3.13/urllib/request.py:1322: URLError
+_____________ test_a_c_stack_exhaustion_is_attributed[entry_held] ______________
+
+board = <harness.Board object at 0x7f95d601a0>
+bench = <bench_control.BenchBridge object at 0x7f973b3b10>
+result_note = <function result_note.<locals>._note at 0x7f95874b80>
+mode = 'entry_held'
+
+    @pytest.mark.parametrize("mode", ["reboot", "entry_held"])
+    @pytest.mark.provokes_log(
+        "the recursing reader's TASK_RAISED and the supervisor's STACK_EXHAUSTED in SYSTEM",
+        ("SYSTEM", "E", "TASK_RAISED"),
+        ("SYSTEM", "E", "STACK_EXHAUSTED"),
+        *scratch_config_entries(),
+    )
+    def test_a_c_stack_exhaustion_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]", mode: str) -> None:
+        # The reader dies of the stack check's RuntimeError; the handler that catches it records the overflow, and the
+        # supervisor's next pass reboots with the stack code (SPECIFICATION.md F.1) - or, its entry write held for good, stops
+        # feeding with the code recorded, so the watchdog's reset reads 20 ("Awaited plainly", asy_system_service.py).
+        try:
+            _evidence(board, bench, dut_ip, f"reset-reason-stack-exhausted-{mode}")
+            facts = _provoked(board, bench, "reset_code_stack_exhausted.py", mode=mode)
+            assert "no_reset_after_ms" not in facts and "failure" not in facts, f"{mode}: the board outlived the stack exhaustion: {facts}"
+            reset = facts.get("reset")
+            if mode == "entry_held":
+                assert facts.get("held") is True and reset is None, f"the held entry write still let the reboot arm: {facts}"
+>               bits = _attributed(board, dut_ip, _RR["STACK_EXHAUSTED"], result_note, f"stack exhaustion in {facts.get('reader')}, its entry held")
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_reset_reasons.py:214: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+expected = 20
+result_note = <function result_note.<locals>._note at 0x7f95874b80>
+context = 'stack exhaustion in scd30, its entry held'
+
+    def _attributed(board: "Board", dut_ip: str, expected: int, result_note: "Callable[[str], None]", context: str) -> int:
+        # Asserts the reason, then reads the watchdog's REASON bits off the chip (the exec parks main.py) for the half checks.
+        reason = _system_status(dut_ip).get("ResetReason")
+        bits = next((int(line.split()[1]) for line in board.exec(_READ_REASON_BITS).splitlines() if line.startswith("REASON_BITS ")), None)
+        result_note(f"{context}: ResetReason {reason}, watchdog REASON bits {bits}")
+>       assert reason == expected, f"{context}: ResetReason reads {reason}, not {expected}; watchdog REASON bits {bits}"
+E       AssertionError: stack exhaustion in scd30, its entry held: ResetReason reads 11, not 20; watchdog REASON bits 1
+E       assert 11 == 20
+
+tests_hardware/bench/test_reset_reasons.py:48: AssertionError
+____________________ test_a_console_interrupt_is_attributed ____________________
+
+board = <harness.Board object at 0x7f95d601a0>
+bench = <bench_control.BenchBridge object at 0x7f973b3b10>
+result_note = <function result_note.<locals>._note at 0x7f956f2de0>
+
+    def test_a_console_interrupt_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
+        # One Ctrl-C on a freshly opened port: the firmware drops to the REPL with its watchdog armed and the watchdog resets.
+        try:
+            _evidence(board, bench, dut_ip, "reset-reason-console-interrupt")
+            with serial.Serial(board.device, 115200, timeout=1.0) as port:
+                port.write(b"\x03")
+>           wait_until(lambda: not board.is_device_present(), timeout_s=_WDT_TIMEOUT_MS / 1000 + _LOSS_MARGIN_S, description="the watchdog reset after a console interrupt")
+
+tests_hardware/bench/test_reset_reasons.py:231: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+check_fn = <function test_a_console_interrupt_is_attributed.<locals>.<lambda> at 0x7f95cea8e0>
+timeout_s = 10.0, poll_interval_s = 1.0
+description = 'the watchdog reset after a console interrupt'
+
+    def wait_until(
+        check_fn: "Callable[[], bool]",
+        timeout_s: float,
+        poll_interval_s: float = _WAIT_UNTIL_POLL_S,
+        description: str = "condition",
+    ) -> bool:
+        # Bounded poll-until-condition wait, test-harness-only (never used to change src/'s own real
+        # timing - SPECIFICATION.md Part F.3). Polls `check_fn()` until truthy or `timeout_s` elapses,
+        # treating a raising check as not-yet-ready; always returns True or raises TimeoutError.
+        deadline = time.monotonic() + timeout_s
+        last_exc: BaseException | None = None
+        while time.monotonic() < deadline:
+            try:
+                if check_fn():
+                    return True
+            except Exception as exc:
+                last_exc = exc
+            time.sleep(min(poll_interval_s, max(deadline - time.monotonic(), 0.0)))
+        try:
+            if check_fn():
+                return True
+        except Exception as exc:
+            last_exc = exc
+        detail = f" (last error: {last_exc!r})" if last_exc is not None else ""
+>       raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")
+E       TimeoutError: timed out after 10.0s waiting for: the watchdog reset after a console interrupt
+
+tests_hardware/harness.py:782: TimeoutError
+=========================== short test summary info ============================
+FAILED tests_hardware/bench/test_network_resilience.py::test_put_nonsense_field_values_are_marked_invalid_not_crashed
+FAILED tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed
+FAILED tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held]
+FAILED tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed
+ERROR tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception]
+ERROR tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base]
+===== 4 failed, 14 passed, 111 deselected, 11 errors in 1148.32s (0:19:08) =====
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Not covered: 17 test(s) deselected by a wear gate; --allow-persistence-write would select them.
+== Summary: run_bench_hardware_suite ==
+Commit: 88d7ad69
+Levels: L4
+Counts (tests): passed 6 · failed 12 · skipped 0 · deselected 111 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed: failed in call: urllib.error.URLError: <urlopen error [Errno 111] Connection refused>
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1]: error in teardown: AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2]: error in teardown: AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3]: error in teardown: AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4]: error in teardown: AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5]: error in teardown: AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot]: error in teardown: AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held]: failed in call: AssertionError: stack exhaustion in scd30, its entry held: ResetReason reads 11, not 20; watchdog REASON bits 1
+  - tests_hardware/bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed: failed in call: TimeoutError: timed out after 10.0s waiting for: the watchdog reset after a console interrupt
+  - tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception]: error in teardown: AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+  - tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base]: error in teardown: AssertionError: tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base] logged SGP40 W65 SGP_NO_BACKUP - a test whose entries are its purpose names each in provokes_log("<why>", (logger, kind, catalog name), ...)
+Skipped: none
+Deselected:
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_scd30_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_a_wrong_password_over_the_hotspot_reopens_the_hotspot: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_garbage_ssid_via_rest_config_is_handled_gracefully: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults: by wear gate --allow-persistence-write, not covered by this run
+  - tests_hardware/bench/test_boot_order_and_triggers.py::test_webserver_answers_before_the_first_ntp_sync_completes: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_boot_order_and_triggers.py::test_bus_triggers_keep_their_minimum_spacing: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_fram_erase_under_api_load: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_reboot_under_api_load: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_dut_accepts_the_toml_hotspot_password: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_an_aaaa_query_gets_an_empty_answer: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_leaves_captive_dns_serving_and_it_recovers: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_role_flips_back_and_the_board_is_sta_connected_on_the_bridge: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_the_uart_link_across_the_mode_switch_is_recorded: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_memory_stress_bench.py::test_http_soak_stays_live: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_modlwip_send_stall.py::test_no_send_stall_with_the_override: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_modlwip_send_stall.py::test_send_stall_on_the_unpatched_image: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_real_wifi_outage_and_recovery_while_in_normal_sta_mode: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_real_wifi_flaps_repeatedly_without_wedging_the_system: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_rest_answers_first_try_under_light_realistic_wifi_congestion: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_real_packet_corruption: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_rest_stays_reachable_under_duplicated_and_reordered_packets: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_get_nonsense_path_is_shaped_404_over_the_normal_network: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_put_malformed_raw_request_is_rejected_cleanly_over_the_normal_network: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_put_oversized_body_is_rejected_with_413_over_the_normal_network: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_put_body_cap_boundary_is_exact_over_the_normal_network: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_network: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_an_oversized_body_is_refused_before_it_is_read: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_abrupt_disconnect_mid_response_does_not_hang_the_server: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_network_resilience.py::test_openhab_case_two_pollers_and_an_open_website_are_all_served: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_measurements_endpoint_returns_plausible_values_for_every_real_sensor: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_rest_endpoints_over_sta.py::test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_scd30_frc_readiness_baseline.py::test_scd30_frc_readiness_baseline: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_notification_pause_time_push_counts_down_over_real_rest: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_sgp40_reset_voc_command_push_over_real_rest: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_sensor_config_push_over_real_hardware.py::test_isl29125_calibrate_command_push_over_real_rest: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_reset_errors_after_an_accepted_reboot_is_refused_and_clears_nothing: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_near_miss_action_words_do_nothing_over_rest: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_erase_reboot_and_mempause_at_once: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_system_commands_over_rest.py::test_reboot_and_bootloader_at_once: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_ticks_ms_rollover.py::test_ticks_ms_rollover_is_survived: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_uart_link_crc16.py::test_the_link_suite_runs_on_a_crc16_image: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_the_link_stays_healthy_while_the_api_is_hammered: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_real_transfers_complete_while_the_api_is_hammered: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_an_api_overload_does_not_corrupt_the_link_or_the_reverse: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_wifi_networking.py::test_real_sta_connect_reaches_established_after_a_hard_reset: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing: by runner selection (-m), not covered by this run
+  - tests_hardware/bench/test_wifi_radio_reinit.py::test_the_radio_reinit_rung_restores_the_link: by runner selection (-m), not covered by this run
+Passed only on retry: none
+Recovery passes: none
+Notes:
+  - tests_hardware/bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_a_console_interrupt: harness hard reset: ResetReason 21, watchdog REASON bits 2
+  - tests_hardware/bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed: reply to USB loss: 4.8 s (bound 8.0 s, watchdog 8000 ms)
+  - tests_hardware/bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed: bootloader: ResetReason 2
+  - tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[escalate]: supervisor escalation (escalate): ResetReason 5, watchdog REASON bits 2
+  - tests_hardware/bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed[hold_console]: supervisor escalation (hold_console): ResetReason 5, watchdog REASON bits 2
+  - tests_hardware/bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed: starved-watchdog fallback: ResetReason 6, watchdog REASON bits 1
+  - tests_hardware/bench/test_reset_reasons.py::test_an_invalid_record_reads_as_unknown: invalid record: ResetReason 0, watchdog REASON bits 2
+  - tests_hardware/bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed: erase cut by an EIO: ResetReason 9
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[1]: hang in boot phase 1 (SystemService): ResetReason 11, watchdog REASON bits 1
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[2]: hang in boot phase 2 (_collect_setups): ResetReason 12, watchdog REASON bits 1
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[3]: hang in boot phase 3 (_collect_task_starters): ResetReason 13, watchdog REASON bits 1
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[4]: hang in boot phase 4 (_collect_trigger_starters): ResetReason 14, watchdog REASON bits 1
+  - tests_hardware/bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed[5]: hang in boot phase 5 (ntp_force_sync): ResetReason 15, watchdog REASON bits 1
+  - tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[reboot]: stack exhaustion in scd30 (depths [26, 26]): ResetReason 20, watchdog REASON bits 2
+  - tests_hardware/bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed[entry_held]: stack exhaustion in scd30, its entry held: ResetReason 11, watchdog REASON bits 1
+  - tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[exception]: loop ended by exception: ResetReason 22, watchdog REASON bits 2
+  - tests_hardware/bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed[base]: loop ended by base: ResetReason 22, watchdog REASON bits 2
+  - session (standard_state): vl805_firmware: not read (no VL805 CURRENT line, exit 1)
+  - session (board_image): image: overrides ['modlwip_eagain'], uartCrc {'uart0': 'none', 'uart1': 'none'}, BuildDate '2026-11-06T09:05:59Z'
+Checked nothing: none
+Result: FAIL (pytest exited 1)
+Exit code: 1
+== step 5 end rc=1 2026-11-06 09:54:33 1151s load 0.19 0.10 0.16
+== read-across: GET /status after step 5
+SUM status system={"BootSignature": 1793958866, "ConfigFaults": [], "LastTaskEnd": null, "LocalTime": {"Hour": 10, "MDay": 6, "Minute": 54, "Month": 11, "Second": 33, "Weekday": 4, "Year": 2026, "Yearday": 310}, "MemFree": 60688, "MemPaused": false, "ResetReason": 21, "SysUptime": 17, "TimeStale": false, "UTCTime": {"Hour": 9, "MDay": 6, "Minute": 54, "Month": 11, "Second": 33, "Weekday": 4, "Year": 2026, "Yearday": 310}, "UnixTime": 1793958873}
+SUM status sensors={"SGP40": {"BackupTS": null, "RestoreTS": null}, "UARTLINK": {"Failures": 0, "Transfers": 9}, "UART_init": {"Last": null, "Pending": false, "Runs": 0}}
+SUM errcount BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_BMP3XX {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":5}
+SUM errcount CFGMGR_ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":5}
+SUM errcount CFGMGR_NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":5}
+SUM errcount CFGMGR_NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":5}
+SUM errcount CFGMGR_SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount CFGMGR_SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":5}
+SUM errcount CFGMGR_SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":5}
+SUM errcount CFGMGR_WIFI {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":22}],"counter":5}
+SUM errcount DNSSRV {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount FRAM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount ISL29125 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NEOPIXEL {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NOTIFY {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount NTP {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SCD30 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
+SUM errcount SGP40 {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"W","num":65}],"counter":33}
+SUM errcount SYSTEM {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"E","num":42},{"type":"E","num":25}],"counter":2}
 SUM errcount UART_init {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount UART_resp {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
 SUM errcount WEBSERVER {"history":[{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0},{"type":"N","num":0}],"counter":0}
