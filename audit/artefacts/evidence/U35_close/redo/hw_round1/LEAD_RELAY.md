@@ -1,5 +1,30 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 17:49 UTC, 2026-11-06: your 17:45 note; two test fixes (new head, same image); the stall fix is with the owner
+New code on this branch: 78d2000a, with this relay's commit on top. Tests only, the image stays. No rerun needed for it.
+Reason 2: the wordings say what a harness reset reads; 2 for a real expiry is the code's own meaning (the reset table's
+row 2), and your fault_inside_the_running_graph boot (2, TIMER) is that. The REASON bits tell the two apart. No change.
+hazard_run_under_the_readers_load: its session-end UART entries (W56, E80, E85, E81) are all in its provokes_log, so
+they are its own. The 13 GET /status refusals are the stall: connections pile up behind a frozen loop, then pass the
+ceiling of 6 together. It reruns after the stall fix, with loop_lag and serving_sweep.
+answers_before_first_ntp: fixed. It now saves and clears the logs at its opening, since its task-ended check reads the
+whole log and the flash line's E115 was not its own.
+W35/W33: taken, thanks. The garbage NTP and DNS tests and the spoof test boot with no sync, as the first-sync test does,
+so all three now declare SGP_WRITTEN_NO_TS and SGP_RESTORED_NO_TS. BootSignature is random when no sync came within
+the boot's wait (src/asy_system_service.py:500-508), so 3274099019 just confirms that boot had no NTP: nothing to trace.
+W65: taken, item 5's erase.
+FRAM E51 at real_sta_connect's teardown, my reading: its hard reset can land between a chunk's two block writes, and
+the next boot's read finds two valid, different copies (src/asy_fram_manager.py:243-246; the owner's 2026-07-18 rule
+makes it a hard failure that the next write heals). One fact would confirm it, no new run: the boot console after that
+reset, if saved; the lines around the E51 name the chunk being read. The handling goes to the last round's harness
+item (a reset of a running board may leave one E51), not now.
+Taken as figures: head guard 13 lines / 632 B against 32 / 2,048; radio re-init back in 8,216 ms against 20,000;
+supervisor pass 2,316 ms between feeds; the c_stack and hard-reset reasons.
+The /status fix: the owner agreed its shape (a yield per written value in the shared piece writer) and is deciding on
+a lighter writing of small values in the same change. When it is built and gated, a new image comes here; reflash
+only after the owner's OK, then: the /status timing probe again, loop_lag_under_http_load, serving_sweep, and
+hazard_run_under_the_readers_load. The chroot legs can run meanwhile; say if a board run overlaps one.
+
 ## 17:26 UTC, 2026-11-06: your 17:08 and 17:17 notes; a test fix for the mixed-body count (new head, same image)
 Taken: item 5's figures, the ResetReason 2 mechanism (your case d) and the /status timing. The three reason-2 wordings
 now give that cause (SPECIFICATION.md F.5.4, tests_hardware/README.md, harness.py's hard_reset()).
