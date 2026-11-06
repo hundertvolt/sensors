@@ -132,6 +132,16 @@ def test_config_reset_deletes_every_config_file_and_reboots(board: "Board", requ
         _restart(board)
 
 
+@pytest.mark.persistence_write
+def test_a_damaged_config_file_is_repaired_and_listed_as_a_config_fault(board: "Board", result_note: "Callable[[str], None]") -> None:
+    # Owns two scratch writes, the damage and the setup's repair; the other stores' defaults are the scratch build's.
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "config_fault_listed_at_setup.py", timeout_s=_SCRIPT_TIMEOUT_S))
+    assert "failure" not in facts and "leftover_errno" not in facts, f"the scratch build over the damaged file failed: {facts}"
+    result_note(f"damaged {facts.get('damaged')}: ConfigFaults {facts.get('config_faults')}")
+    assert isinstance(facts.get("damaged"), str) and facts.get("config_faults") == [facts["damaged"]], f"ConfigFaults lists {facts.get('config_faults')}, not the damaged store alone: {facts}"
+    assert facts.get("repaired") is True, f"the setup left the damaged file unrepaired: {facts}"
+
+
 def test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]") -> None:
     save_fram_raw(board, "before-erase")
     try:

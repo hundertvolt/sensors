@@ -751,4 +751,4 @@ class SGP40_I2C:
         # Datasheet Table 14: hotplate off, measurement stopped, idle mode; the next measure command restarts it.
         async with self._i2c_sgp40 as sgp40, sgp40.i2c_device as i2c:
             await i2c.write(_CMD_HEATER_OFF)
-        await asyncio.sleep_ms(_HEATER_OFF_MAX_MS)
+        await asyncio.sleep_ms(_HEATER_OFF_MAX_MS + 1)  # sleep_ms() counts whole ticks, so it can end up to 1 ms early

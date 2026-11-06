@@ -491,6 +491,14 @@ def standard_state(request: pytest.FixtureRequest, fram_evidence_saved: "harness
     start = _scd30_snapshot(board, dut_ip)
     yield
     if dut_ip is not None:
+        # A flash run's last hard reset (flash/conftest.py's leave_board_serving, torn down before this) waits only for
+        # the boot line, so the strict read below waits for the board to serve.
+        wait_until(
+            lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_HTTP_READY_PROBE_TIMEOUT_S).status_code == 200,
+            timeout_s=_DUT_SERVING_AFTER_STA_S + _IP_AND_HTTP_TIMEOUT_S,
+            poll_interval_s=_HTTP_READY_POLL_S,
+            description=f"DUT serving at {dut_ip} before the session-end GET /status",
+        )
         error_log_helpers.save_errcount(dut_ip, "session-end")
     end = _scd30_snapshot(board, dut_ip)
     level, files = _board_state(board, bench, dut_ip)

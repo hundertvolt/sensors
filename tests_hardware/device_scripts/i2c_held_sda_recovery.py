@@ -16,6 +16,7 @@ from asy_sgp40_driver import SGP40_I2C
 # @include _shared/facts.py
 # @include _shared/watchdog.py
 # @include _shared/bus_reader_loops.py
+# @include _shared/held_sda.py
 
 try:
     from typing import TYPE_CHECKING
@@ -26,13 +27,11 @@ if TYPE_CHECKING:
     import machine
     from _shared.bus_reader_loops import Drivers, Seen, device_reader
     from _shared.facts import done, fact
+    from _shared.held_sda import _START_POINTER, _hold_sda_low, _target, _wrapper
     from _shared.watchdog import arm
-    from bench_facts import BenchFacts, BusFacts
+    from bench_facts import BenchFacts
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
-
-_HALF_PERIOD_US = 5  # 100 kHz bit-banged, inside every bench device's ceiling (SCD30 Interface Description p.2)
-_START_POINTER = 0x00  # where the held read starts: its first data bit must be 0 (checked, never assumed)
 
 
 async def _answered(i2c: asy_i2c_driver.I2C, labels: "list[str]", wdt: "machine.WDT") -> "dict[str, str | None]":
@@ -50,48 +49,6 @@ async def _answered(i2c: asy_i2c_driver.I2C, labels: "list[str]", wdt: "machine.
     return answers
 
 
-def _hold_sda_low(bus: "BusFacts", address: int) -> bool:
-    # START, the read address, the ACK clock; SCL is left low, so the device keeps driving data bit 7 (0) on SDA. The
-    # pins go back to the controller's I2C function after, as the runtime clear hands them back. True when SDA is low.
-    sda = Pin(bus["sda_pin"], Pin.OPEN_DRAIN, value=1, pull=Pin.PULL_UP)
-    scl = Pin(bus["scl_pin"], Pin.OPEN_DRAIN, value=1, pull=Pin.PULL_UP)
-    time.sleep_us(_HALF_PERIOD_US)
-    sda.value(0)
-    time.sleep_us(_HALF_PERIOD_US)
-    scl.value(0)
-    byte = (address << 1) | 1
-    for bit in range(7, -1, -1):
-        sda.value((byte >> bit) & 1)
-        time.sleep_us(_HALF_PERIOD_US)
-        scl.value(1)
-        time.sleep_us(_HALF_PERIOD_US)
-        scl.value(0)
-    sda.value(1)  # released for the device's ACK
-    time.sleep_us(_HALF_PERIOD_US)
-    scl.value(1)
-    time.sleep_us(_HALF_PERIOD_US)
-    scl.value(0)  # the ACK clock ends: the device now drives the first data bit and holds it while SCL is low
-    time.sleep_us(_HALF_PERIOD_US)
-    held = sda.value() == 0
-    Pin(bus["scl_pin"], Pin.ALT, pull=Pin.PULL_UP, alt=Pin.ALT_I2C)
-    Pin(bus["sda_pin"], Pin.ALT, pull=Pin.PULL_UP, alt=Pin.ALT_I2C)
-    return held
-
-
-def _pick(i2c: asy_i2c_driver.I2C, scan: "list[int]") -> "int | None":
-    # The first discovered device that answers a read at _START_POINTER with its top bit clear.
-    reply = bytearray(1)
-    for address in scan:
-        try:
-            i2c.writeto(address, bytes((_START_POINTER,)))
-            i2c.readfrom_into(address, reply)
-            if not reply[0] & 0x80:
-                return address
-        except OSError:  # a device that refuses a pointer read (a command-based part) is not the one to hold
-            continue
-    return None
-
-
 def _stuck_errno(i2c: asy_i2c_driver.I2C, address: int) -> "int | None":
     # One byte on the controller's path: rp2 bit-bangs a zero-length write (ports/rp2/machine_i2c.c:127-145), whose ACK
     # read takes a held SDA as an ACK (extmod/machine_i2c.c:141). _pick's own pointer write, as a read could clear a
@@ -103,25 +60,9 @@ def _stuck_errno(i2c: asy_i2c_driver.I2C, address: int) -> "int | None":
     return None
 
 
-def _target() -> "tuple[str, asy_i2c_driver.I2C, list[int], int] | None":
-    # The first bus with a device to hold: (its id, its wrapper, the known devices it answers for, the held address).
-    known = BENCH["addresses"].values()
-    for bus_id in sorted(b for b in BENCH["bus"] if b.startswith("i2c")):
-        i2c = _wrapper(BENCH["bus"][bus_id])
-        scan = [a for a in i2c.scan() or [] if a in known]
-        address = _pick(i2c, scan)
-        if address is not None:
-            return bus_id, i2c, scan, address
-    return None
-
-
-def _wrapper(bus: "BusFacts") -> asy_i2c_driver.I2C:
-    return asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
-
-
 async def _main() -> None:
     wdt = arm()
-    target = _target()
+    target = _target(BENCH)
     if target is None:
         fact("held_device", None)
         done()

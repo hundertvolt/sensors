@@ -10,7 +10,7 @@ import _load
 import evidence
 import http_client
 import pytest
-from error_log_helpers import code, get_errcount, save_errcount
+from error_log_helpers import code, errcount_entry, get_errcount, save_errcount
 from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, REPO_ROOT, SRC_DIR, HardwareTestFailureError, crash_lines, dut_hostname_candidates, fram_backed_logger_names, hotspot_password, kick_after_reset, observe_during, parse_facts, picotool, restore_board_to_serving, save_fram_raw, wait_until
 
 from buildgen.validate import module_int_const
@@ -36,6 +36,9 @@ _SERVING_TIMEOUT_S = 120.0
 _SERVING_POLL_S = 2.0
 _HOTSPOT_UP_S = 60.0
 _PICOTOOL_TIMEOUT_S = 30.0
+# The shutdown closes the listener once the supervisor parks, 0-2 s after the acceptance: a ResetErrors arriving later
+# meets a closed socket, and the test reboots once more for it (agent, 2026-11-06).
+_WINDOW_TRIES = 3
 
 
 def _command(dut_ip: str, word: "JSONValue") -> str:
@@ -179,6 +182,33 @@ def test_fram_erase_over_rest_blanks_every_error_log(board: "Board", bench: "Ben
         counts, owed = get_errcount(dut_ip), {name: (1, [("W", code("W", "SGP_NO_BACKUP"))]) for name in _load.instance_loggers("sgp40")}
         kept = {name: counts[name] for name in fram_backed_logger_names() if (counts[name]["counter"], [(h.get("type"), h.get("num")) for h in counts[name]["history"] if h.get("type") != "N"]) not in ((0, []), owed.get(name))}
         assert not kept, f"FRAM-backed logs not blank after the erase, each SGP40's W SGP_NO_BACKUP for its blank backup chunk aside: {kept}"
+    finally:
+        restore_board_to_serving(board, bench, dut_ip)
+
+
+def test_reset_errors_after_an_accepted_reboot_is_refused_and_clears_nothing(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "_Note") -> None:
+    # Saved before any ResetErrors (CLAUDE.md); one is sent only once the reboot answered Valid, inside its shutdown.
+    before = get_errcount(dut_ip)
+    save_errcount(dut_ip, "reset-errors-after-reboot")
+    answer = ""
+    try:
+        for attempt in range(1, _WINDOW_TRIES + 1):
+            boot = _system(dut_ip).get("BootSignature")
+            assert _command(dut_ip, "reboot") == "Valid", "the reboot was not accepted, so no ResetErrors followed it"
+            try:
+                result = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=_PUT_TIMEOUT_S).json().get("result")
+                answer = str(result.get("ResetErrors")) if isinstance(result, dict) else f"no result: {result}"
+            except (OSError, http_client.HTTP_ERROR) as exc:
+                result_note(f"try {attempt}: the ResetErrors reached a closed listener ({exc!r})", recovery=True)
+            _answers, replied = _kicked(board, bench, {"reboot": "Valid"})
+            system = _serving_status(dut_ip, replied, result_note, f"the reboot under a ResetErrors, try {attempt}", boot)
+            assert system.get("ResetReason") == _RR_REBOOT, f"the reboot read {system.get('ResetReason')}, not {_RR_REBOOT}"
+            if answer:
+                break
+        assert answer == "Failed", f"a ResetErrors after the accepted reboot answered {answer!r} (empty: none of {_WINDOW_TRIES} tries reached the listener), not 'Failed'"
+        after = get_errcount(dut_ip)
+        cleared = [name for name in fram_backed_logger_names() if errcount_entry(after, name)["counter"] < errcount_entry(before, name)["counter"]]
+        assert not cleared, f"FRAM-backed logs the refused ResetErrors cleared across the reboot: {cleared}"
     finally:
         restore_board_to_serving(board, bench, dut_ip)
 

@@ -30,6 +30,9 @@ _ASSOCIATION_ATTEMPTS = 2
 _PROBE_TIMEOUT_S = 10.0
 _NTP_RESYNC_MARGIN_S = 10.0
 _RTC_SET_LINE = "RTC set to:"  # src/asy_ntp_client.py, the line a completed sync prints
+_NTP_WAIT_S = _load.src_number("asy_system_service.py", "_NTP_WAIT_TIME")  # the boot signature's random fallback
+_SIGNATURE_MARGIN_S = 30.0  # the boot before the uptime clock starts, then the status pass that sets the signature
+_BLOCKED_BOOTS = 2  # two fallback signatures that differ show its entropy (agent, 2026-11-06)
 
 
 def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
@@ -95,11 +98,21 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
     # is unreachable" (SPECIFICATION.md F.2), which tests/test_ntp_wifi_dns_integration.py proves at the mock level.
     reset_all_error_logs(dut_ip, request.node.name)
     bench.block_udp_ports([123])
+    lines: list[str] = []
+    signatures: list[object] = []
     try:
-        kick_then_reset(board, bench)  # forces a fresh NTP sync attempt against the now-unreachable server
-        lines = board.tail_log(duration_s=_ROGUE_TAIL_S)  # generous relative to asy_ntp_client.py's own retry/backoff budget
+        for _boot in range(_BLOCKED_BOOTS):
+            kick_then_reset(board, bench)  # forces a fresh NTP sync attempt against the now-unreachable server
+            lines += board.tail_log(duration_s=_ROGUE_TAIL_S)  # generous relative to asy_ntp_client.py's own retry/backoff budget
+            # Held past _NTP_WAIT_TIME: unsynced, the boot then sets its signature from get_rand_32() (asy_system_service.py).
+            wait_until(lambda: _status(dut_ip)[0].get("BootSignature") is not None, timeout_s=_NTP_WAIT_S + _SIGNATURE_MARGIN_S, description="the NTP-blocked boot's fallback boot signature")
+            system, networking = _status(dut_ip)
+            assert networking.get("NTPSynced") is False and int(str(system.get("SysUptime"))) >= _NTP_WAIT_S, f"the signature is not the fallback's: NTPSynced {networking.get('NTPSynced')!r}, SysUptime {system.get('SysUptime')!r}"
+            signatures.append(system.get("BootSignature"))
     finally:
         bench.unblock_udp_ports([123])
+    result_note(f"fallback boot signatures of {_BLOCKED_BOOTS} NTP-blocked boots: {signatures}")
+    assert len(set(signatures)) == _BLOCKED_BOOTS, f"NTP-blocked boots repeated a fallback boot signature: {signatures}"
 
     assert not crash_lines(lines), "a blocked NTP server crashed the system instead of degrading cleanly:\n" + "\n".join(crash_lines(lines))
     # NTP sync failure must not block the rest of build_system(): the boot still completes.
@@ -120,7 +133,13 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
 
 
 def _networking(dut_ip: str) -> "JSONObject":
-    return _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("networking"), "GET /status networking")
+    return _status(dut_ip)[1]
+
+
+def _status(dut_ip: str) -> "tuple[JSONObject, JSONObject]":
+    # GET /status's system and networking blocks, from one read.
+    status = _load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S)
+    return _load.as_object(status.get("system"), "GET /status system"), _load.as_object(status.get("networking"), "GET /status networking")
 
 
 def _resync_after_block_s() -> float:

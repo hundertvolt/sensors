@@ -3,6 +3,7 @@ SGP40 general-call regression, same-device read/write concurrency per chip, the 
 the live-topology sweep and the FRAM fault scripts. Each script reports facts; each test here gives the verdict."""
 
 import errno
+import json
 from typing import Protocol
 
 import plausibility_bounds
@@ -33,6 +34,16 @@ _REC_SDA_LOW = module_int_const(SRC_DIR, "asy_i2c_driver.py", "_REC_SDA_LOW")
 _REC_SDA_STUCK = module_int_const(SRC_DIR, "asy_i2c_driver.py", "_REC_SDA_STUCK")
 _RR_REBOOT = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_REBOOT")
 _RR_FRAM_ERASED = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_FRAM_ERASED")
+_RR_WATCHDOG = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_WATCHDOG")
+_TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # the watchdog's REASON bits 0-1, TIMER and FORCE (pico-sdk watchdog.h)
+# The running firmware's reset reason, the REASON bits (an exec's Ctrl-C changes no reset register) and a scan through
+# each I2C wrapper the boot built, read through exec_live().
+_READ_AFTER_HELD_RESET = (
+    "import json, sys\nfrom machine import mem32\n"
+    "m = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\n"
+    "buses = [k for k in dir(m[0]) if k.startswith('i2c') and hasattr(getattr(m[0], k), 'take_boot_clear_status')] if m else []\n"
+    "print('AFTER ' + json.dumps({'reason': m[0].sysfunct.get_reset_reason(), 'bits': mem32[0x40058008] & 3, 'scan': {b: getattr(m[0], b).scan() for b in buses}} if m else None))\n"
+)
 # Each chip driver's soft reset as its setup writes it: (to the chip's own address, else the general call), the bytes.
 _SETUP_RESETS = {
     "scd30": (True, "d304"),  # soft reset 0xD304, SCD30 Interface Description 1.4.10
@@ -266,6 +277,39 @@ def test_a_held_sda_line_is_cleared_and_every_device_answers(board: Board, resul
     assert boot["held"] is True and boot["sda_high"] is True, f"the boot-time clear did not release SDA: {boot}"
     assert boot["status"] == _REC_SDA_LOW, f"the boot-time clear returned {boot['status']}, expected {_REC_SDA_LOW}"
     assert all(answer is None for answer in boot["answered"].values()), f"after the boot-time clear: {boot['answered']}"
+
+
+# Bench counterpart: none, E.6.6 row `flash-only-bus-checks`
+@pytest.mark.parametrize("mode", ["machine_reset", "watchdog"])
+def test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot(board: Board, request: pytest.FixtureRequest, result_note: _ResultNote, mode: str) -> None:
+    # SDA held across a machine.reset() or a watchdog reset: the production boot's own clear frees it, every device that
+    # answered before answers that boot's controller, and the boot reads 2 with the reset's REASON bit. No register written.
+    facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "i2c_held_sda_across_a_reset.py", timeout_s=_RESET_SCRIPT_TIMEOUT_S, mode=mode), allow_missing_done=True)
+    held, answering = facts.get("held"), facts.get("answering")
+    assert isinstance(held, dict) and held["sda_low"] is True, f"{mode}: the bit-banged read left SDA high - no held line went into the reset: {facts}"
+    assert isinstance(answering, dict) and any(answering.values()), f"{mode}: no I2C device answered before the hold: {facts}"
+    if request.config.getoption("--twin"):
+        result_note("twin run: no production boot follows the reset - the after-boot half is silicon's")
+        return
+    try:
+        wait_until(board.is_device_present, timeout_s=_REACHABLE_TIMEOUT_S, poll_interval_s=_REACHABLE_POLL_S, description=f"board back on USB after the {mode} with SDA held")
+        wait_for_boot(board, _COMMAND_BOOT_TIMEOUT_S)
+        output = board.exec_live(_READ_AFTER_HELD_RESET)
+        line = next((ln for ln in output.splitlines() if ln.startswith("AFTER ")), None)
+        assert line is not None, f"the board printed no AFTER line:\n{output}"
+        after = json.loads(line[len("AFTER ") :])
+        assert isinstance(after, dict), f"no running sensortask_* module with a SystemService after the boot:\n{output}"
+        result_note(f"{mode} with {held} held: ResetReason {after['reason']}, REASON bits {after['bits']}, scan {after['scan']}")
+        silent = {bus: sorted(set(before) - set(after["scan"].get(bus) or [])) for bus, before in answering.items() if set(before) - set(after["scan"].get(bus) or [])}
+        assert not silent, f"{mode}: devices that answered before the hold are silent on the next boot's controller: {silent}"
+        assert after["reason"] == _RR_WATCHDOG, f"{mode}: the next boot read ResetReason {after['reason']}, not {_RR_WATCHDOG} (an unrecorded reset)"
+        if mode == "machine_reset":
+            assert after["bits"] & _FORCED_BIT, f"the machine.reset() left the forced bit clear: {after['bits']}"
+        else:
+            assert after["bits"] & _TIMER_BIT and not after["bits"] & _FORCED_BIT, f"a starvation reset must set the timer bit, never the forced one: {after['bits']}"
+    finally:
+        board.hard_reset()
+        wait_until(board.is_device_present, timeout_s=_REACHABLE_TIMEOUT_S, poll_interval_s=_REACHABLE_POLL_S, description="board back on USB after the closing hard reset")
 
 
 # Bench counterpart: none, E.6.6 row `flash-only-bus-checks`

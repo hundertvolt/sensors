@@ -90,7 +90,7 @@ def test_get_and_set_and_a_multi_chunk_train_cross_the_jumper(board: Board, crc_
     _clean_counts(facts)
     assert facts["capped_setup"] is True and facts["over_cap_refused"] is True, f"the over-cap train was not refused: {facts}"
     assert _codes(facts["over_cap_log"]) == [code("E", "UART_TRANSFER_CAP")], f"the refusal was not logged exactly once: {facts['over_cap_log']}"
-    assert facts["largest_block_after"] == facts["largest_block_before"], f"the refused train moved the largest free block: {facts['largest_block_before']} -> {facts['largest_block_after']}"
+    assert _int(facts["largest_block_after"]) >= _int(facts["largest_block_before"]), f"the refused train shrank the largest free block, which only a retained allocation does (a collection only grows it): {facts['largest_block_before']} -> {facts['largest_block_after']}"
 
 
 @pytest.mark.parametrize("crc_mode", _CRC_MODES)

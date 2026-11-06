@@ -94,12 +94,13 @@ _HOTSPOT_WAIT_S = 90.0  # five scripted connect failures, then the hotspot and i
 _UART_LOAD_S = 20.0  # the concurrent-load window
 _UART_LOAD_FAULTS = 3  # SGP40 measure reads failed under the UART load: logged and persisted, below any restart
 _SGP40_MEASURE_RAW = 0x260F  # the command whose following read the fault matches, so setup stays healthy
-# Per sensor driver, the bus op and key of one read its config snapshot (get_config_snapshot()) makes, from src/: once the
-# boot is done, BMP3XX's CONFIG and SCD30's temperature offset are read by nothing else unless a write or recovery runs.
+# Per sensor driver, the bus op and key of one read its config snapshot (get_config_snapshot()) makes, from src/:
+# after the boot nothing else reads BMP3XX's CONFIG or SCD30's ambient pressure unless a write or recovery runs
+# (SCD30's start-up reads its temperature offset after BOOT_DONE, behind the soft reset's fixed 2.5 s wait).
 _SNAPSHOT_READS = {
     "bmp3xx": ("readfrom_mem", module_int_const(SRC_DIR, "asy_bmp3xx_driver.py", "_REGISTER_CONFIG")),
     "isl29125": ("readfrom_mem", module_int_const(SRC_DIR, "asy_isl29125_driver.py", "_REGISTER_CONFIG1")),
-    "scd30": ("readfrom_into", module_int_const(SRC_DIR, "asy_scd30_driver.py", "_CMD_SET_TEMPERATURE_OFFSET")),
+    "scd30": ("readfrom_into", module_int_const(SRC_DIR, "asy_scd30_driver.py", "_CMD_CONTINUOUS_MEASUREMENT")),
 }
 _SNAPSHOT_FAULTS = 2  # ISL29125's verify takes at most one per 1 s cycle, so a GET loop always takes the other
 _VERIFY_FAILED = "Config read-back for reconciliation failed"  # asy_isl29125_driver.py's _verify_config(): a fault no GET took
@@ -289,8 +290,7 @@ class Context:
         # the host's clock would judge the host's load, not the link (SPECIFICATION.md J.7; agent, 2026-10-27).
         clock = ("--test-uart-driven-clock",) if "uart_link" in self.drivers else ()
         launch = TwinLaunch(self.micropython_bin, f"sensortask_{self.device}", GENERATED_SRC_DIR / f"sensortask_{self.device}_wiring_plan.json", self.device, HOST, port, self.gc_threshold, _micropypath(self.device))
-        # Armed on every boot, so a shutdown() meeting an ignored SIGINT can print where that interrupt was raised.
-        run = spawn(launch, state_dir=state, log_path=self.logs_dir / f"twin_{self.boots:02d}.log", args=(*level, "--test-kbd-traceback", *clock, *args))
+        run = spawn(launch, state_dir=state, log_path=self.logs_dir / f"twin_{self.boots:02d}.log", args=(*level, *clock, *args))
         twin = Twin(run, port)
         try:
             wait_until_serving(run, HOST, port, _SERVING_TIMEOUT_S)
@@ -299,7 +299,7 @@ class Context:
             if run.proc.poll() is None:
                 code = shutdown(run, f"{self.device} twin {self.boots}")
                 if code != 0 or run.killed:
-                    self.failures.append(f"twin {self.boots}: the SIGINT shutdown ended {exit_reason(code, killed=run.killed)} (exit code {code})")
+                    self.failures.append(f"twin {self.boots}: the shutdown ended {exit_reason(code, killed=run.killed)} (exit code {code})")
                 elif parse_shutdown_line(read_log(run.log_path)) is None:
                     self.failures.append(f"twin {self.boots}: a clean shutdown printed no shutdown line")
             elif not twin.exit_claimed:
@@ -401,7 +401,7 @@ class SharedBoot:
             except _SCENARIO_ERRORS as exc:
                 problems = [f"idle check after {item.name}: {type(exc).__name__}: {exc}"]
         if failed or problems or last:
-            self.stack.close()  # the boot's SIGINT shutdown and log gate, into self.ctx.failures
+            self.stack.close()  # the boot's shutdown and log gate, into self.ctx.failures
             self.twin = None
         problems += [f"shared boot {self.ctx.boots} ({', '.join(self.names)}): {f}" for f in self.ctx.failures[self.reported :]]
         self.reported = len(self.ctx.failures)

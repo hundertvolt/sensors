@@ -2927,7 +2927,7 @@ Seeds:
 - **PAR.S07** UI measurement poll 2 s → 3 s (definitions `landingSection` poll 3000 ms).
 - **PAR.S08** Config migration: nothing in `src/`/`buildgen/` reads `config.json`; after reflash every
   unit boots with SSID `""` → hotspot; if nobody joins within the hotspot window, the second streak
-  permanently deactivates WLAN until a power cycle. BACKLOG #2's "avoids this structurally" covers
+  permanently deactivates WLAN until a power cycle. BACKLOG.md's config-schema migration item's "avoids this structurally" covers
   key-adding updates, not this transition. ⟨pass 2, answered: runbook covers the first-boot hotspot hazard (OR52.a (1)) — G9: HR209⟩
 - **PAR.S09** Legacy FRAM chunk 0 (SGP40 VOC state, no CRC, 248 B) sits where the refactor's first
   chunk now lives; expect CRC/status errors on first boot that seed misleading errcount entries (see
