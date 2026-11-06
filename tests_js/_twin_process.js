@@ -3,7 +3,7 @@
 // twin holds while it runs, and the verdict read from a stopped twin's output.
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,9 @@ const QSTR_MAX_BYTES = 255;
 const spawnErrors = new WeakMap();
 /** @type {WeakMap<import("node:child_process").ChildProcess, () => void>} */
 const lockReleases = new WeakMap();
+/** @type {WeakMap<import("node:child_process").ChildProcess, string>} */
+const stopFiles = new WeakMap();
+let launched = 0; // the twins this process spawned, which names each one's stop file
 
 /**
  * `start()`'s process, or the lock released again when it throws, so a failed launch leaves no port held.
@@ -49,20 +52,20 @@ function spawnOrRelease(release, start) {
 }
 
 /**
- * Stops one twin: SIGINT, then SIGKILL past the shutdown bound, returning only once it has exited.
+ * Stops one twin: its stop file, then SIGKILL past the shutdown bound, returning only once it has exited.
  * @param {import("node:child_process").ChildProcess} proc
+ * @param {string} stopFile the runner's --stop-file, which spawnTwin() gave it
  */
-async function stopProcess(proc) {
+async function stopProcess(proc, stopFile) {
     if (proc.pid === undefined || proc.exitCode !== null || proc.signalCode !== null) {
         return; // never started (waitUntilServing() names its spawn error) or already gone
     }
     const exited = new Promise((resolve) => {
         proc.once("exit", resolve);
     });
-    // SIGINT, not SIGTERM/kill('SIGTERM'): run_generic_integration.py's own graceful-shutdown path
-    // (FRAM/SCD30 flush) only runs on KeyboardInterrupt - a plain SIGTERM would skip it, same
-    // reasoning as scripts/_digital_twin_ci_suite.py's own _shutdown().
-    proc.kill("SIGINT");
+    // The stop file ends the runner on main()'s clean path, as scripts/_twin_process.py's shutdown() does: an interrupt
+    // the Unix port loses at an `async with` body's end leaves a twin serving until it is killed (SPECIFICATION.md F.6.1).
+    writeFileSync(stopFile, "");
     // The SIGKILL fallback timer is cleared once the child is gone. A plain Promise.race leaves
     // the setTimeout pending, and a pending timer keeps Node's event loop alive - which showed up
     // as Vitest's "something prevents Vite server from exiting" on every live-twin run.
@@ -182,6 +185,8 @@ export function sleep(ms) {
  * @returns {import("node:child_process").ChildProcess}
  */
 export function spawnTwin({ device, port, configDir }) {
+    launched += 1; // a stop file per twin: a restarted twin's stop runs beside its predecessor's repeated stopTwin()
+    const stopFile = path.join(tmpdir(), `sensors-twin-stop-${process.pid}-${launched}`);
     const args = [
         RUNNER,
         "--module",
@@ -200,6 +205,8 @@ export function spawnTwin({ device, port, configDir }) {
         "", // same convention, "SCD30 persistence" section
         "--mem-backup-state-path",
         "", // the watchdog scratch registers, likewise
+        "--stop-file",
+        stopFile,
         "--config-dir",
         configDir,
     ];
@@ -214,6 +221,7 @@ export function spawnTwin({ device, port, configDir }) {
         throw new Error(`the twin was not started: ${refused.join(", ")} - the Unix port interns each as a qstr of at most ${QSTR_MAX_BYTES} bytes and dies before the runner starts`);
     }
     const bin = requireInterpreter();
+    rmSync(stopFile, { force: true }); // an earlier process's, left by a run killed before its stop, would end this one at once
     const release = acquirePortLock(DNS_PORT, LOCK_RUNNER);
     const proc = spawnOrRelease(release, () => spawn(bin, args, {
         cwd: REPO_ROOT,
@@ -222,6 +230,7 @@ export function spawnTwin({ device, port, configDir }) {
         stdio: ["ignore", "pipe", "pipe"],
     }));
     lockReleases.set(proc, release);
+    stopFiles.set(proc, stopFile);
     // An unhandled ChildProcess 'error' event crashes the whole Node/Vitest process, skipping the
     // caller's try/finally: the listener keeps the error for waitUntilServing() to name.
     proc.on("error", (err) => { spawnErrors.set(proc, err); });
@@ -233,9 +242,11 @@ export function spawnTwin({ device, port, configDir }) {
  * @param {import("node:child_process").ChildProcess} proc
  */
 export async function stopTwin(proc) {
+    const stopFile = /** @type {string} */ (stopFiles.get(proc)); // every twin comes from spawnTwin()
     try {
-        await stopProcess(proc);
+        await stopProcess(proc, stopFile);
     } finally {
+        rmSync(stopFile, { force: true });
         lockReleases.get(proc)?.();
         lockReleases.delete(proc);
     }
