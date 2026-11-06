@@ -289,8 +289,7 @@ class Context:
         # the host's clock would judge the host's load, not the link (SPECIFICATION.md J.7; agent, 2026-10-27).
         clock = ("--test-uart-driven-clock",) if "uart_link" in self.drivers else ()
         launch = TwinLaunch(self.micropython_bin, f"sensortask_{self.device}", GENERATED_SRC_DIR / f"sensortask_{self.device}_wiring_plan.json", self.device, HOST, port, self.gc_threshold, _micropypath(self.device))
-        # Armed on every boot, so a shutdown() meeting an ignored SIGINT can print where that interrupt was raised.
-        run = spawn(launch, state_dir=state, log_path=self.logs_dir / f"twin_{self.boots:02d}.log", args=(*level, "--test-kbd-traceback", *clock, *args))
+        run = spawn(launch, state_dir=state, log_path=self.logs_dir / f"twin_{self.boots:02d}.log", args=(*level, *clock, *args))
         twin = Twin(run, port)
         try:
             wait_until_serving(run, HOST, port, _SERVING_TIMEOUT_S)
@@ -299,7 +298,7 @@ class Context:
             if run.proc.poll() is None:
                 code = shutdown(run, f"{self.device} twin {self.boots}")
                 if code != 0 or run.killed:
-                    self.failures.append(f"twin {self.boots}: the SIGINT shutdown ended {exit_reason(code, killed=run.killed)} (exit code {code})")
+                    self.failures.append(f"twin {self.boots}: the shutdown ended {exit_reason(code, killed=run.killed)} (exit code {code})")
                 elif parse_shutdown_line(read_log(run.log_path)) is None:
                     self.failures.append(f"twin {self.boots}: a clean shutdown printed no shutdown line")
             elif not twin.exit_claimed:
@@ -401,7 +400,7 @@ class SharedBoot:
             except _SCENARIO_ERRORS as exc:
                 problems = [f"idle check after {item.name}: {type(exc).__name__}: {exc}"]
         if failed or problems or last:
-            self.stack.close()  # the boot's SIGINT shutdown and log gate, into self.ctx.failures
+            self.stack.close()  # the boot's shutdown and log gate, into self.ctx.failures
             self.twin = None
         problems += [f"shared boot {self.ctx.boots} ({', '.join(self.names)}): {f}" for f in self.ctx.failures[self.reported :]]
         self.reported = len(self.ctx.failures)

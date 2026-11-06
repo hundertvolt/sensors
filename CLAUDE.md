@@ -827,7 +827,9 @@ Three standing practices:
   deferred SIGINT-delivery path (`MICROPY_ASYNC_KBD_INTR=0`) for every build, without editing the
   fetched checkout (SPECIFICATION.md Part B.14: the
   mechanism, why a plain `-D` can't do this, and the re-verification checklist for a MicroPython
-  version bump).
+  version bump). A twin that serves on past its SIGINT is a different MicroPython defect, an
+  interrupt lost at an `async with` body's end, which is why twins end through their stop file
+  (SPECIFICATION.md Part F.6.1).
 - **Known intermittent-`MemoryError` cause: every test file runs with an explicit `-X heapsize`**, a
   Unix-port-only test-harness setting unrelated to the real rp2040's own RAM budget: `scripts/test.sh`
   runs each `tests/test_*.py` file as one Unix-port process for all its test functions, sharing one

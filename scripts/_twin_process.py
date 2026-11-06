@@ -34,9 +34,7 @@ EXIT_SUITE_TIMEOUT = -256  # wait_exit()'s own give-up: no exit code or signal d
 _EXIT_NAMES = {0: "a clean exit", EXIT_SIMULATED_RESET: "a simulated reset", EXIT_SIMULATED_BOOTLOADER: "a simulated bootloader entry", EXIT_SIMULATED_POWER_LOSS: "a simulated power loss", EXIT_SUITE_TIMEOUT: "no exit before the caller's deadline"}
 
 _KILL_REAP_TIMEOUT_S = 5.0  # the wait for a SIGKILLed twin to be reaped
-# A twin that ignored its SIGINT: the wait for its interrupt's traceback (--test-kbd-traceback), then for a second SIGINT.
-_KBD_TRACEBACK_WAIT_S = 1.0
-_SECOND_SIGINT_WAIT_S = 2.0
+_STOP_FILE = "stop"  # in a launch's state directory: the runner's --stop-file, which shutdown() creates
 # A feed gap above this share of the armed watchdog timeout is a near reset; a run that starves it on purpose skips the check.
 FEED_GAP_SHARE_MAX = 0.75
 _SERVING_POLL_S = 0.25
@@ -168,7 +166,7 @@ def _int_field(fields: dict[str, str], name: str) -> int:
 
 
 def _proc_diagnostic_fields(pid: int) -> dict[str, str]:
-    # Best-effort /proc read of a process that ignored SIGINT (its state, RSS, the kernel wait it sits in and where the
+    # Best-effort /proc read of a twin that outlived its shutdown (its state, RSS, the kernel wait it sits in and where the
     # kernel holds SIGINT); never raises, since it only adds detail to a failure already being reported.
     fields: dict[str, str] = {}
     proc_dir = Path(f"/proc/{pid}")
@@ -182,23 +180,6 @@ def _proc_diagnostic_fields(pid: int) -> dict[str, str]:
     with contextlib.suppress(OSError, KeyError, ValueError):
         fields["SIGINT"] = _sigint_state(fields, proc_dir)
     return fields
-
-
-def _second_sigint(run: TwinRun) -> str:
-    # What a second SIGINT says about the first: the runtime exits 1 at once, printing nothing, while the first is still
-    # pending (ports/unix/unix_mphal.c:65-69, v1.29.0); a traceback or a clean exit means the first was raised and absorbed.
-    with contextlib.suppress(OSError, RuntimeError):
-        send_line(run, "KBD_TRACEBACK")  # a twin spawned with --test-kbd-traceback prints its interrupt's traceback
-    time.sleep(_KBD_TRACEBACK_WAIT_S)
-    offset = len(read_log(run.log_path))
-    run.proc.send_signal(signal.SIGINT)
-    try:
-        code = run.proc.wait(timeout=_SECOND_SIGINT_WAIT_S)
-    except subprocess.TimeoutExpired:
-        return "still running: neither SIGINT was acted on"
-    if code == 1 and "KeyboardInterrupt" not in log_from(run.log_path, offset):
-        return "exit 1 at once, nothing printed: the first was never consumed"
-    return f"{exit_reason(code)}: the first was raised and absorbed"
 
 
 def _sigint_state(fields: dict[str, str], proc_dir: Path) -> str:
@@ -256,7 +237,7 @@ def exit_reason(code: int, *, killed: bool = False) -> str:
     # What an exit code says happened; a negative one is a signal death unless this module sent that signal.
     if code < 0 and code != EXIT_SUITE_TIMEOUT:
         if killed and code == -signal.SIGKILL:
-            return "killed by the caller after it ignored SIGINT"
+            return "killed by the caller after it ignored its shutdown"
         try:
             name = signal.Signals(-code).name
         except ValueError:
@@ -382,18 +363,21 @@ def send_line(run: TwinRun, line: str) -> None:
     run.proc.stdin.flush()
 
 
-def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0) -> int:
-    # SIGINT, whose handler flushes the persisted state (never SIGTERM); a twin that ignores it is described (/proc, a
-    # second SIGINT's outcome, the log tail), then killed: run.killed, the SIGKILL code.
+def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0, *, interrupt: bool = False) -> int:
+    # The stop file: the runner ends on main()'s clean path, which flushes the persisted state as its SIGINT handler does,
+    # and no interrupt the Unix port can lose is sent (SPECIFICATION.md F.6.1); SIGINT only with interrupt=True. A twin
+    # still running at the bound is described (/proc, the log tail), then killed: run.killed, the SIGKILL code.
     if run.proc.poll() is None:
-        run.proc.send_signal(signal.SIGINT)
+        if interrupt:
+            run.proc.send_signal(signal.SIGINT)
+        else:
+            (run.state_dir / _STOP_FILE).touch()
         start = time.monotonic()
         try:
             run.proc.wait(timeout=timeout_s)
         except subprocess.TimeoutExpired:
             elapsed = time.monotonic() - start
-            print(f"DIAG: {label}: SIGINT ignored for {elapsed:.1f}s (timeout={timeout_s}s), about to SIGKILL pid={run.proc.pid} - /proc fields: {_proc_diagnostic_fields(run.proc.pid) or '(unavailable)'}")
-            print(f"DIAG: {label}: a second SIGINT: {_second_sigint(run)}")
+            print(f"DIAG: {label}: still running {elapsed:.1f}s after its {'SIGINT' if interrupt else 'stop file'} (timeout={timeout_s}s), about to SIGKILL pid={run.proc.pid} - /proc fields: {_proc_diagnostic_fields(run.proc.pid) or '(unavailable)'}")
             print(f"DIAG: {label}: last {_LOG_TAIL_LINES} log lines before SIGKILL:\n{log_tail(run)}")
             if run.proc.poll() is None:
                 run.proc.kill()
@@ -414,12 +398,13 @@ def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[s
         launch.micropython_bin, RUNNER, "--module", launch.module, "--wiring-plan", str(launch.wiring_plan), "--device", launch.device,
         "--host", launch.host, "--port", str(launch.port), "--fram-state-path", str(paths.fram), "--scd30-state-path", str(paths.scd30),
         "--mem-backup-state-path", str(paths.mem_backup), "--config-dir", str(paths.config_dir) + "/", "--gc-threshold", str(launch.gc_threshold),
-        *args,
+        "--stop-file", str(state_dir / _STOP_FILE), *args,
     ]
     refused = _uninternable(cmd[1:], env)
     if refused:
         raise ValueError(f"the twin was not started: {', '.join(refused)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")
     paths.config_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / _STOP_FILE).unlink(missing_ok=True)  # a previous launch's on the same state would end this one at once
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")
     log_file = log_path.open("w", encoding="utf-8")  # closed by shutdown()/wait_exit(), which end the process first
     proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
