@@ -404,4 +404,5 @@ Image still `d3f10239`, no reflash. Merge `df8e640c`.
 
 - With the stopped slice of 13:10-13:20 the runner's summary sums 14 runs, n=3,703,418 each, upper bound `bad_rate<8.1e-07`.
 - Worst `rdid` is bimodal by slice: 1,298-1,335 us in 6 of 13 slices, 7,314-7,387 us in the other 7. Cause not traced.
-- The script leaves `main.py` stopped (`/status` 000 at 16:16:52). `fram()` now ends on `reset_and_kick.py` (harness `reset_board`, lead 14:21); run by hand after this run: `/status` 200 after 11.7 s, Mode STA, `ResetReason` 21.
+- `/status` 000 at 16:16:52. `long_fram.py` arms `WDT(timeout=8000)` and feeds it only inside its loop. Inferred, not proven: the watchdog resets the board about 8 s after the last slice, unkicked, and the AP's stale entry sends it to the hotspot, which fits `WIFI W38,W79` and `SGP40 W35,W33` at 16:17. The boot's `ResetReason` was not read before the next reset.
+- `fram()` now ends on `reset_and_kick.py` (harness `reset_board`, lead 14:21), straight after the last slice. Run by hand after this run: `/status` 200 after 11.7 s, Mode STA, `ResetReason` 21 (an interrupted running `main.py`, on the reading above).
