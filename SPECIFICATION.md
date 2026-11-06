@@ -444,7 +444,8 @@ throughout: same top-level features as today's deployed units, not a feature cha
   cycle sends the device-addressed heater-off (SGP40 datasheet Table 14), which reaches only the SGP40 — the participant
   rung of the recovery ladder (C.7); the general-call reset stays at setup (C.8). A task restart restores the FRAM
   backup as a boot does, so `VOCState` reads 3 for the next 24 h; while the restore waits for NTP the chunk is read
-  every cycle, and every read that is not valid, a first boot's blank chunk included, persists one `SGP_NO_BACKUP`.
+  every cycle, and a read that finds no valid backup ends the restore and persists one `SGP_NO_BACKUP` (W65), so
+  it is logged once per boot or task start, a first boot's blank chunk and an erased chip included (owner, 2026-11-06).
 - **BMP3XX recovery.** A second consecutive failed read soft-resets the chip (0xB6 to CMD) and writes
   the stored oversampling and filter configuration back, since the reset returns every user setting to its default
   (BMP388 DS001 §4.3.22) — the participant rung of the recovery ladder (C.7); a reset the chip rejects (`ERR_REG`
@@ -3663,7 +3664,8 @@ level / the same module, which should be clear about what it is. If there is a d
 it's a fault on that level. If that propagates up, is handled and degraded to a warning, that's a
 valuable traceback."). Expected startup jitter logs no error or warning, on any boot, on any module
 (owner, 2026-09-12, recorded in `8a45060`); in general an expected condition prints only — a
-normal situation never logs a code, and a test of one asserts no entry (agent, 2026-10-22; owner-reviewed, 2026-11-06). A failed config read is persisted by `ConfigManager` and by
+normal situation never logs a code, and a test of one asserts no entry (agent, 2026-10-22; owner-reviewed, 2026-11-06). One exception: SGP40's W65 after
+a first boot or an FRAM erase, logged once (owner, 2026-11-06). A failed config read is persisted by `ConfigManager` and by
 the caller that meets it (C.5), each in its own log.
 
 `_error_check(results, condition=True) -> bool` is the shared consecutive-failure-streak counter
