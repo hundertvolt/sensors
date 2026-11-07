@@ -42797,3 +42797,10 @@ errcount added: WEBSERVER counter 0->20 (W60,W51,W60); FRAM counter 0->2 (E46,W6
 ResetReason after: 21; flash cycles today: 1; logs/day3_20261107/rerun2_loop_lag_archive/, rerun2_loop_lag.out
 status: lag figure confirmed. E46+W63 inferred: the pair tests_hardware/README.md names for a block write cut off by a reset, here the test's own FRAM load (its script writes production chunks) cut by restore_board_to_serving's closing reset; the moment not traced. W51 not traced; it also came at this test's teardown on the earlier image.
 08:13 UTC 2026-11-07 skill: round1.sh (campaign runner against bench-routines): handback() rebuilt HANDBACK.md from step logs after each run, erasing appended blocks (it did so at 08:12, ddf54f84); changed: the rollup stays at logs/handback_rollup.md, only WEAR.txt is committed; HANDBACK.md restored from a63f9494 with this block added; commit is this one
+
+08:20:52 UTC 2026-11-07 step lead-19:04 item 3 rerun: -k test_a_hazard_run_under_the_readers_load_reports_every_verdict; HEAD d91a0010 at start; image 2026-11-07T07:55:06Z
+pytest: 1 failed, 135 deselected in 328.64s; FAILED at _hazard_findings
+The 13 GET /status refusals are gone: load.failures was empty and that assertion passed. New verdict, reached for the first time under load: FieldSweep uid [True, False, False], expected [True, True, False]: no ACK for uid 0xFE right after uid 0x00. All other fields and both the initiation and crossing verdicts as expected; recovery True on every field.
+errcount added: UART_init counter 2 (E85,E81); UART_resp counter 23 (W56,E80 repeated, history keeps the last); WEBSERVER none in the session-end read (the test clears first)
+ResetReason after: 21; flash cycles today: 1; logs/day3_20261107/rerun3_hazard_archive/, rerun3_hazard.out
+status: failure confirmed, once. Cause not traced; inferred candidate: the responder had not finished its timeout and resync for uid 0x00's unfinished first chunk when 0xFE arrived, since the sweep waits a fixed quiet time on a loop now under load. Not ruled out: the ACK read window itself.
