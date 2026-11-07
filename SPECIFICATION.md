@@ -5269,10 +5269,11 @@ differs from this tree's file — all through the one probe, `scripts/_unix_port
 one setup for every flavour the run needs (`standard` and `lwip` on a plain run, `standard` and
 `settrace` under `--coverage`; E.5.2); each condition is checked again after `setup`, and one still
 unmet fails the run naming it. `SKIP_APT=1 scripts/test.sh` skips the first-run apt-get install. To
-run one file directly:
+run one file as `scripts/test.sh` does — its binary, layout, heap size (Part N's `l1.unix_heapsize`)
+and `TZ=UTC`, at `-1` and then at `32768` through `tests/_threshold_runner.py`:
 
 ```
-MICROPYPATH="$(scripts/_unix_port.sh micropypath unit)" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
+scripts/_run_checks.sh mpy:tests/test_math_helpers.py
 ```
 
 The unit and twin layouts are defined once, in `scripts/micropypath.toml`; every launcher reads
@@ -5287,7 +5288,7 @@ too, since `sensortask_wozi.py`'s `import frozen_html` needs it. Where the Unix-
 from rp2 is F.7; on it, `asyncio` (a frozen Python package) takes attribute assignments and the C
 builtin modules (`time`, `socket`) do not, so a test that must see a C module's calls replaces the
 module-level name in the module under test. **The second L1 file set**, `tests/lwip_host/`, runs the
-same way on `~/pico-toolchain/micropython/ports/unix/build-lwip/micropython` instead (E.1); its rig
+same way on the `lwip` flavour's binary (`scripts/_unix_port.sh unix_port_bin lwip`) instead (E.1); its rig
 differences are F.7's `build-lwip` rows.
 
 Any test file that imports a `sensortask_<device>.py` module directly (`tests/_sensortask_scenarios.py`

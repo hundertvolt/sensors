@@ -119,7 +119,8 @@ Each is enforced by the named gate unless it says none; the full text is in CLAU
 - The UART wire format is a contract with a C peer: every change gets an entry in `UART_C_PORT_CHANGELOG.md`.
 - Never edit `ext/microdot.py` or anything under `legacy/`. Never commit a credential or copy the hotspot fallback
   literal anywhere.
-- A change to the build environment gets a line in BACKLOG.md's clean-chroot list.
+- A build-environment change that adds an install, a host requirement or a recipe step gets a line in BACKLOG.md's
+  chroot entry.
 
 ## Bench work, setup and cleanup
 

@@ -1,16 +1,8 @@
 # path<TAB>sentence prefix: actorless decision vocabulary present when the check landed. Only shrinks:
 # the sentence, then rerun `uv run python tests_scripts/test_decision_vocabulary.py --regenerate`.
-BACKLOG.md	- **The sibling `W12` ("saturated on the high range") finding from the same isol
 BACKLOG.md	Once an item is resolved (bug fixed, decision settled, question answered) it com
 CLAUDE.md	- **Don't touch `sensors/config.json`-equivalent files or commit any real creden
-CLAUDE.md	- **Two suites that both bind real ports must never run at the same time.** `scr
-CLAUDE.md	Installed into `typings/` (gitignored) — **deliberately not** a `pyproject.toml`
-CLAUDE.md	On the *target* this is already institutionalized and stays that way: every oper
-CLAUDE.md	The hardware pair reads one shared `tests_hardware/harness.py` `MEMORY_ERROR_MAR
-CLAUDE.md	`scripts/test.sh`'s own backgrounded `tests_scripts/` tier is a deliberate non-i
 CLAUDE.md	`tests/` and `digital_twin/` reassign methods to mock them — that IS the project
-CLAUDE.md	a *dispatch-only* PUT persists nothing and is deliberately outside the gate, and
-CLAUDE.md	catching `(OSError, MemoryError)` and degrading locally is a backstop for genuin
 DEVICE_REFERENCE.md	**`0` disables this staleness check** — a restored backup is accepted no matter
 DEVICE_REFERENCE.md	Change them deliberately, one at a time, and expect the lux scale to shift with
 HEAP_FRAGMENTATION_MEASUREMENTS.md	Name the position on every line: `after_build_system`, `after_starter_loop_end`

@@ -1145,19 +1145,22 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # libcap2-bin (setcap, for the port-53 DNS test) is in versions.toml's apt_packages too; it stays here
 # because a reused chroot with a built toolchain skips that install and fails late.
 
-# Per verification: copy the CURRENT working tree (uncommitted changes included) into the chroot,
-# then run the documented workflow ("Code quality tooling" above).
+# Per verification: copy the CURRENT working tree (uncommitted changes included) into the chroot.
+# A checkout, not a worktree: scripts/test.sh's checkout-write guard needs the copy's own .git.
 rm -rf "$CHROOT/root/sensors"
 cp -r /path/to/this/repo/checkout "$CHROOT/root/sensors"   # adjust to wherever it's actually checked out
 chroot "$CHROOT" /bin/bash -c "
   source /root/proxy-env.sh
   cd /root/sensors
   rm -rf .venv typings   # don't carry over host-built artifacts
-  uv sync
+  # The whole installer (versions.toml's apt_packages, ARM toolchain, firmware, mpy-cross, the Unix
+  # ports), then uv sync, the .nvmrc-pinned Node, npm ci and Chromium: README's install path.
+  uv run toolchain/setup_toolchain.py env --tier generic
   source .venv/bin/activate
+  for d in ~/pico-toolchain/node/node-v*-linux-*/bin; do [ -x \"\$d/node\" ] && PATH=\"\$d:\$PATH\"; done   # the pytest tier asserts that Node
   scripts/lint.sh
   scripts/typecheck.sh
-  scripts/test.sh   # builds the Unix port from scratch: exercises versions.toml's apt_packages
+  scripts/test.sh
 "
 
 # Cleanup when done
@@ -1195,12 +1198,9 @@ is a real regression, never a tracked finding. What fails it: a raw Python trace
 "installation failed" from `uv`/`pip`/`apt`, a `scripts/test.sh` build failure, or any other
 mismatch against the ordinary-sandbox run.
 
-**The installer leg.** A change to `toolchain/setup_toolchain.py` or `toolchain/versions.toml` needs
-a second verification, since the recipe above never runs the toolchain installer: reuse the same
-chroot (through installing `git`/`curl`/`ca-certificates`/`python3`/`pip`/`uv`; `python3-venv` is not
-needed), copy the working tree in the same way, then run `uv run toolchain/setup_toolchain.py` (a full
-build: ARM toolchain, firmware, `mpy-cross` and the Unix ports, several minutes) instead of the lint
-and typecheck scripts. What a passing run shows: SPECIFICATION.md Part B.6; what has been checked:
+**The installer.** The recipe's `env --tier generic` step runs the toolchain installer in full
+(several minutes), so one run per target also covers a change to `toolchain/setup_toolchain.py` or
+`toolchain/versions.toml`. What a passing run shows: SPECIFICATION.md Part B.6; what has been checked:
 Part B.7.
 
 ## Further reading
