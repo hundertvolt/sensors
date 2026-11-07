@@ -74,7 +74,8 @@ Run an ad-hoc call from the repository root as `.venv/bin/python -c "import sys;
 
 ## Session start
 
-1. `date -u` for every stamp you write. Fetch; read the relay entries you have not seen; merge them in (standing rules).
+1. `date -u` for every stamp you write; in a heredoc it is `$(date -u +%T)` expanded there, never typed (bench,
+   2026-11-07). Fetch; read the relay entries you have not seen; merge them in (standing rules).
 2. `scripts/_preflight.sh --bench`, then `GET /status` answers 200 and `Mode` is STA, not the hotspot. A board in its
    hotspot after a reset usually missed its kick, not a code fault.
 3. Save `/status` as `logs/<UTC>_start_status.json`, then `python3 scripts/_errcount_digest.py` on it; note

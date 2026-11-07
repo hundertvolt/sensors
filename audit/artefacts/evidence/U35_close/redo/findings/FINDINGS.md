@@ -634,3 +634,208 @@ full: the planted-leak calibration is unchanged. The new test (one early dip) fa
 The failed job's twin log artifact was not read: its storage host is blocked by this environment's network policy.
 Gate on 2f6d1453: lint_direct, host mypy, tests_scripts 6,972 passed / 6 skipped; Run 11 grkizi -1 with the fixed
 warm-up 7.6 KB vs 11.3 KB (67 %, as CI's worst at a full warm-up, 68 %): the margin is about a third, not wide.
+
+## 12.84 Trixie leg at TEST_PARALLELISM=4 (bench note ~10:2x); relay 10:24 (bench aed1a1a9)
+Fresh chroot, clone of e43f381b: env, lint, typecheck 0; test.sh 1 - tests_scripts 6,966 passed, tests 5,838 passed,
+8 failed, all in the scenario harness (dev uart_ring under load, gap 20,574 ms, wtc 1; klkizi two IncompleteRead with
+gaps to 9,980 ms; klkizi and schlafzi hotspot toggle TimeoutError; schlafzi accept-queue twin killed -9 after ignoring
+shutdown; wozi hung-shutdown watchdog late past its window). grkizi and arzi passed. No failing name shared with either
+16-job leg of 2026-11-06 (trixie 16, noble 6). Bench's inference: host contention (the backgrounded pytest tier with
+Chromium beside the 4 jobs). Not taken as root cause yet. Relay 10:24: no blind rerun at fewer jobs; vmstat -t 1 on the
+host for the noble leg's test.sh, then read (b), then each failing device's scenario harness alone in the trixie
+chroot with vmstat; a scenario failing alone is code. The test.sh / README / Part N corrections wait on that.
+
+## 12.85 Noble leg at TEST_PARALLELISM=4 (bench note ~12:2x); relay 12:26 (bench e962e1e1)
+f0238c4b: env, lint, typecheck 0; test.sh 1 (L0, L2 FAIL). tests_scripts 6,971 passed, 1 failed
+(test_the_timeout_interrupts_the_files_process_once: "the interpreter got 0 SIGINTs"); 14 scenario failures on all six
+devices, gaps over 6,000 ms on every device (largest wozi 17,131; first-boot-like 7.17-7.20 s on four). Two read as
+more than timing: arzi/grkizi every_admitted_connection... got a GET answered 400; klkizi/schlafzi
+a_command_right_after_the_first_answer... watchdog starved (gaps 8,403, 8,513). Names recur across legs (survives_bus...
+on 5 jobs; every_admitted... noble both days). The 10:24 relay landed after the bench's last fetch: no noble vmstat.
+Lead reading of the 400 (code, not yet confirmed in the log): per-call timeout 5 s; after a stall longer than that the
+overdue wait_for_ms sleep pops before the IO-ready read (earlier heap key), the head read raises TimeoutError,
+ext/microdot.py:1425 prints it and dispatch_request(None) answers 400. Signature asked: traceback + W49 + a gap over
+5 s. Relay 12:26: read (b); then each of the six devices' scenario harness alone in the noble chroot with vmstat; then
+test.sh at 4 jobs there with vmstat; three reads from saved logs first (the 400, the 7.2 s boot gaps' phase, the SIGINT
+test). Trixie rebuild deferred.
+
+## 12.86 Read (b) and reads (a)-(c) (bench note stamped 12:45, received 12:33 lead time); relay 12:34 (bench 06d88081)
+Read (b), 3 readers, console host-stamped: no miss (uid [True, True, False]), 194 /status reads 200; 7 "callback
+rejected command 7" lines, 0x00 to 0xFE 2.50 s, chunks 2 to 255 3.30 s; SGP40's backup (FRAM) right after 0xFE;
+UART_init E85,E88 where the loaded misses logged E85,E81. Known procedure difference from the failing test: its
+reset_all_error_logs() first. (a) the 400s: W49 then Microdot's catch, in boots with largest gaps 6,511/6,498 ms - the
+per-call-timeout mechanism (span inferred: twin lines carry no times). (b) ~7.2 s gaps: first boots (shared_boots
+twin_01/02, erasefram... twin_01), phase unreadable; ~9,0xx = watchdog_fault_block, deliberate. (c) SIGINT test: count 0
+in a 1 s window, stalled counter (inferred). Relay 12:34: read (b') with the reset first, between step 2 and 3; the E88
+console lines from read (b)'s saved log; the bench's clock (its stamps ~12 min ahead of the lead's date -u).
+
+## 12.87 Bench clock and E88 settled (its note 12:35:06); a code reading of the uid miss; relay 12:38 (bench f4c49115)
+The bench's 12:45/12:44/10:28 were estimates, not readings; the Pi's clock is synchronized (+9.7 ms). E88 belongs to
+the crossing step (12:25:10-12), before the sweep: unrelated. Read (b) sweep stamps (host arrival): uid 0x00 reject
+12:28:19.765, resync 21.270 (1.505 s), 0xFE reject 22.268 (2.503 s after 0x00's); chunks 2 to 255 3.30 s. Lead reading
+(inferred, src/asy_uart_comm.py _accept_set -> _reject_wrn -> _resync; asy_print_log.py wrn_s; asy_uart_link_driver.py
+_sweep_fields): the decline persists W56 to FRAM before the resync drain starts, and the console line prints after that
+write; the sweep's 3 s wait runs from the ACK. Counted from the ACK the next value lands at 3.0 s and the drain ends at
+D + 1.5 s, D the W56 write with its SPI lock waits (readers' /status FRAM reads, SGP40's backup). D > 1.5 s drains the
+next frame: no ACK, E81. Read (b): D(0x00) about 0.5 s (3.0 - 2.50, 0xFE's own write taken as short), margin about
+1.0 s. The withdrawn 08:35 reading had the right budget and the wrong hidden term. Signature asked of (b'): no 0xFE
+reject line, 0x00's reject-to-resync over 1.505 s, D from the E81 time. No src/ change on an inference.
+
+## 12.88 Step 2: each device's scenario harness alone, noble chroot, vmstat (12:33:00-13:33:04); relay 13:34 (bench 9dda941d)
+dev, grkizi, klkizi, schlafzi pass alone; arzi 1 failure (mixed_healthy_and_flaky..., IncompleteRead) and wozi 1
+(static_site_is_served_over_real_http), both in shared boot 1. Gaps over 5 s alone: arzi 7,683 and wozi 7,148 (shared
+boot 1), and the deliberate watchdog_fault_block 9,016-9,032 on every device; every other first boot 2,012-2,022 ms.
+Host: 7,082 MB available, swap unused, si/so 0; vmstat's own output has holes (7 s at 12:46:06, 6 s at 13:23:27, five
+of 3-4 s) beside blocked processes and wa 18-65 - microSD write stalls. The two 6-7 s holes fall in arzi's and wozi's
+first minute: the two ~7 s gaps and the two failures. Confirmed: that correlation. Inferred: write-back throttling of
+a writer (the twin calls no fsync; test.sh's mktemp scratch sits under the chroot's /tmp on the microSD). Relay 13:34:
+after (b'), step 3 = test.sh at 4 jobs with TMPDIR=/dev/shm (the remedy), then the default parallelism if green.
+
+## 12.89 Read (b'): the miss reproduced at chunks 2; every logged miss sits inside a long SGP40 FRAM backup
+reset_all_error_logs() 13:34:34-38, then the hazard run under 3 readers: chunks [False, False, False, True] (expected
+[False, False, True, True]), uid right. SGP40 backup ("Writing backup" to "Backup written"): with readers 8.3-19.7 s
+in both reads (b) and (b'), without them 0.5-1.06 s. At the miss the backup ran 13:36:50.479-58.799; the responder
+printed "unexpected frame while listening" 44.151 (chunks 1, expected), resync 45.698, then nothing until a second
+"unexpected frame" 59.174 (0.375 s after the backup ended), resync 13:37:00.875, then chunks 255 declined 08.308; no
+decline line for chunks 2. uid 0xFE sat 1.3 s before a backup in (b) and 0.5 s after one in (b'). The initiator logs
+nothing in the sweep, so 12.87's three numbers do not apply. Code (lead): the FRAM chunk ops hold the bus session lock
+across their asyncio.sleep(0) (asy_fram_manager.py _clear_chunk/_write paths), and /status reads no FRAM (errcount and
+get_mem_status are RAM), so under back-to-back readers each held yield costs a scheduler round and a backup holds the
+FRAM bus for its whole 8-20 s (inferred); a persisted log write elsewhere waits that long (the second "unexpected frame"
+line printing 0.375 s after the backup fits: its err_s writes FRAM before printing). Not shown: why the chunks 2 frame
+was judged unexpected rather than ACKed, and what the responder awaited 45.698-59.174. 12.87's drain-margin reading
+fits uid 0xFE but not this miss as logged. Next step needs an instrumented image (reflash) or a twin with slowed FRAM:
+put to the owner with the FRAM lag (all devices, back-to-back /status only).
+
+## 12.90 Step 3 green: test.sh at 4 jobs with its scratch in RAM (noble, 13:41:46-14:11:43); relay 14:14 (bench ea0971cc)
+Exit 0, L0/L1/L2 PASS: 137 files, 5,846 tests, tests_scripts 6,972 (the SIGINT test included), all six scenario jobs;
+the pytest tier's twins' largest gap 70 ms. TMPDIR=/dev/shm landed on devtmpfs (the chroot's /dev is a plain bind of
+the host's devtmpfs, not its /dev/shm tmpfs): RAM all the same. Closed: the chroot legs' failures at 16 and 4 jobs are
+the microSD's write stalls under test.sh's mktemp scratch (step 2's correlation plus this remedy), a host setting, not
+code. Docs owed after the 16-job run (started ~14:13): README's recipe gains `mount -t tmpfs tmpfs "$CHROOT/tmp"` and
+its umount; README's "~139 ms: 4x, 16 jobs, green" and test.sh's mid-band comment ("the bench Pi4's class" - the Pi4
+probes in the fast band) corrected. Relay 14:14: trixie rebuilt with the tmpfs /tmp after the 16-job run; the hammer's
+hold reason (the /status stall) is gone, its start waits on the owner's answer to the UART question (12.89).
+
+## 12.91 Owner "B" (14:20:22): trace then fix the loaded UART miss; trace image to the bench (relay 14:23, head 989b8511)
+Trace branch audit/uart-trace 421365bb on int 2f6d1453, bench commit 3c0fafe2 (also carrying 2f6d1453): board-clock
+TRACE lines (print only) in asy_uart_comm.py (rx header + validation, ACK, fault and W56 persist times, drain start/end
+and bytes, listen backoff), asy_uart_link_driver.py (sweep sends and replies), asy_fram_driver.py (bus wait or hold over
+100 ms). Unit tests on it: uart_comm 199, uart_link_driver 51, fram_driver 94, fram_manager 148 passed; ruff fails by
+design (prints); never merged to the main line. Bench order: after the 16-job noble run, reflash (owner's OK asked by
+the bench), read (b') up to three times until a miss; every TRACE and SGP40 backup line from the reset to the run's end.
+
+## 12.92 Owner on the microSD's wear (14:39:21); relay 14:40 (bench a3060dc9)
+The owner: "I hope that's not wear of the card, and too heavy write cycles should not be conducted allover again..."
+Applied as CLAUDE.md's standing wear rule (host storage included): the trixie rebuild from 14:14 is off (a fresh
+chroot is the campaign's heaviest card write); the trixie leg stands at 12.84 (GCC 14 build, lint, typecheck, 5,838
+unit tests) with its 8 failures attributed to the card by step 3's noble proof (inferred for trixie, not re-run). All
+logs to /dev/shm. Lead's own slip: runs before 13:41 (both 16-job legs, the 4-job legs, step 2) wrote their scratch to
+the card, sent without weighing the card's wear. Asked, read only: ext4 lifetime_write_kbytes vs card size, card
+make, kernel-log card errors, the noble chroot's size (whole-chroot-in-RAM check), step 2's vmstat bo sum. Wear itself
+is not established either way: microSD stalls under sustained small writes are normal behaviour, and errors in the
+kernel log would be the sign.
+
+## 12.93 The microSD's wear numbers (bench note 14:43, read only)
+Root /dev/mmcblk0p2: ext4 lifetime writes 239 GiB on a 119 GiB card (Samsung, 10/2019, SDXC UHS-I): about two full
+card-writes in its life. 20.8 GiB since this boot (07:25:58), most of it the two chroot legs; step 2's hour wrote only
+92 MiB (vmstat bo sum). No mmc or I/O errors this boot; one hung-task report at 09:42:56 (card-detect worker waited
+over 120 s to claim the host during the morning's chroot work): busy, not an error. Reading: no sign of wear; the card
+keeps no wear counter of its own, so this is the best reading available. Revised: step 2's stalls came with little
+volume, so the inferred cause is the card's own write latency (a writer waiting on a stalled card), not volume-driven
+write-back throttling; the confirmed parts (the correlation, the RAM remedy) stand. The noble chroot is 7.9 GiB against
+7.8 GiB RAM and a 3.9 GiB /dev/shm: a whole-chroot-in-RAM check is impossible on this Pi; the tmpfs /tmp is the
+remedy. The README recipe gets only the tmpfs /tmp line, as planned.
+
+## 12.94 Owner (14:46:59): the card's writes are a style matter, not a blocker
+Scratch and logs in RAM stay (the better style); nothing further blocks on the card. The trixie rebuild stays off by
+the lead's call: the morning's run covered trixie's purpose (GCC 14), and its failures are explained. Correction given
+to the owner's reading: the SD bus was nowhere near full; the pauses are the card's controller reorganising flash under
+many small scattered writes (inferred); parallel jobs hit it more often, but one job at a time (step 2) hit it too.
+
+## 12.95 Trace read (b') x3 and the 16-job noble run (bench 16:27; head 7e2e628c)
+16-job noble, scratch in RAM, 14:13:40-14:43:34: green (137 files, 5,846 tests, tests_scripts 6,972, six scenario jobs,
+feed gaps <= 161/8000 ms, no vmstat hole >= 3 s): settles README's "16 jobs, green" and test.sh's band comment.
+Reflash FC +1 16:10:30Z (owner "Yes go ahead" to the bench), trace image, flash cycles today 2. Read (b'): attempts 1-2
+PASS, 3 misses uid 0xFE. Confirmed: uid 0's W56 FRAM write took 8,047 ms behind SGP40's backup (FRAM holds to 5.8 s,
+waits to 5.9 s under the readers); uid 254 sent 3.07 s after the ACK; the resync's drain after the write swallowed its
+53 B. Persist times 229-8,047 ms (7 of the three runs' writes over 1.5 s). Hidden case: attempt 2's cmd 5 drained the
+same way after a 4,144 ms W56; the verdict cannot see it (cmd 5 expected un-ACKed), so a PASS can carry a loss.
+Next: the receiver fix (owner B): the UART link never awaits its own FRAM log write; the resync print gains the
+drained byte count so the fixed image's console shows any swallowed frame. Bench skill proposal (hand-back stamp from
+$(date -u +%T) in the heredoc): no conflict.
+
+## 12.96 Owner (16:36:16) questions the 8 s; the cause is the FRAM chunk code's CRC under the lock (code read)
+Confirmed in code: the SGP40 backup chunk is 264 B (VOC state 256 + timestamp 8) with CRC32; _write_chunk() computes the
+CRC inside `async with self.fram` (FRAM driver session lock + SPI bus lock), once per copy (two identical copies, so
+computed twice), and CRCBase._crc/_crc_wide yield asyncio.sleep(0) after every byte: 264 handovers per copy held under
+the lock. Reads (_read_chunk) do the same: incremental CRC per 8-byte slice under the lock, plus a sleep per slice.
+Measured fit: holds to 5.8 s per copy under the readers = ~22 ms per handover; unloaded backups 0.5-1.06 s (12.89) =
+~1-2 ms per handover. The FRAM transfers themselves are microseconds. So the 8-20 s is a defect (lock held across
+hundreds of yields), not FRAM timing; every FRAM-backed log write waits behind it. Put to the owner: fix it at the
+source (no CRC work under the lock), and whether the UART background writer (unit uartq, running) is still wanted.
+
+## 12.97 Owner (16:45:25): B, and a design check against the pillars; the lead's two violations
+Owner: only B stays (the UART link independent of FRAM timing, and the FRAM hold fixed at its source); the lead should
+have checked the pillars before asking (FRAM and UART are unrelated devices: any coupling is a violation), and the 8 s
+(0.5-1 s even unloaded) should have raised suspicion as overkill/runaway. Asked: is B sufficient; the affected parts
+get a review and design check. Done: unit uartq stopped before its design was checked (S/wt-uartq, uncommitted, 11
+files +370/-54, kept as one candidate); review unit designfu started read-only (brief S/u35r/r5/BRIEF_DESIGNFU.md,
+hand-back S/u35r/r5/DESIGN_FU.md by 19:00 UTC): violations per part, the coupling sweep over src/, whether B suffices,
+the smallest designs, the candidate's verdict. No code changes until the owner has its result.
+
+## 12.98 Owner (16:55:48, 17:02:19): the coupling's origin, and the audit's missing lens; designfu's hand-back
+Origin (git, lead): the per-byte CRC yield and the CRC under the FRAM session are original (07-13); the UART fault path
+awaiting its log before resync is pre-audit (09-11/12); the UART's FRAM wiring pre-audit (09-16, WP3); the whole-bus hold
+per block pre-audit (09-18, owner's heap decision); the decline path's every-time W56 await is audit (U2, 10-06; before:
+the first refusal per id only - corrects the lead's 16:5x answer); nothing post-restart. The restart's scans took the
+pre-audit tree as baseline, so nothing in it was questioned. Owner 17:02: every part, pre-audit included, gets the lens
+"reasonable, minimal, efficient for its function; leaner without losing anything". Lead proposed a read-only
+proportionality sweep of the rest of src/ (~11,000 lines, two agents, ~2 %): awaiting the owner's go.
+designfu (S/u35r/r5/DESIGN_FU.md, 50 lines): B suffices for every cross-device coupling and both halves are needed; (ii)
+is removal-only in asy_fram_manager.py (CRC once outside the lock, check after release, compare by ==, check_length and
+the slice machinery go, ~-50 lines, format unchanged); (i) = the uartq candidate trimmed (MemoryError guard on the task
+allocation; _err stays a coroutine); the remaining root is the per-byte CRC yield, owner-ruled 2026-09-18 "don't touch".
+Lead's checks: both cited rulings found (SPEC :8847, :6743); check_length has no caller; normal reads already move the
+whole block in one >=32 B transfer (F.5.2's handled EIO path), so (ii) adds no new transfer class; the supervisor awaits
+_log_dead_task() before its feed (asy_system_service.py:531), so the 8-20 s watchdog row is structurally right, unseen.
+Slip (designfu): two read-only tool outputs showed the dev hotspot field and one of its grep commands typed the literal;
+in no file. Reported to the owner. Briefs from now on: read devices/*.toml and generated modules filtered, never whole.
+
+## 12.99 Owner (17:07:53): the per-module promotion commands with the lean/efficiency questions - found
+Found: PROJECT_AUDIT_PLAN.md:373, OR51 (2026-09-26, commit 22bd4c77), the only record: the owner showed two instruction
+sets used before every session's merge (four and eight items); the row paraphrases them with a few verbatim fragments.
+Its design questions: structure good, understandable, lean; setup reasonable, resilient, reliable; simplification
+"especially as much code was accumulated"; anything missing; purpose fully met. Related verbatim: OR36 (:340) "lean,
+clean, efficient, minimal, reliable, perfectly suited for the target hardware". OR51.a (1): the audit applies the
+whole gate to the whole tree; the plan's 4.2 (:647): every file passes it, "the design questions" included. So the lens
+was agreed and planned for every file, pre-audit code included, and was not applied to the CRC and FRAM chunk code
+(U12, U16). OR51.a (4) put the quality bar into SPECIFICATION.md Part D: the design questions are not there (D.8 is a
+weaker "improvement pass ... not a mandate to rewrite"), nor in Part K's checklist - a doc gap. The full verbatim sets
+are in no file of the repo or its history.
+
+## 12.100 Owner (17:16:12): why the agreed design questions were missed at every stage (lead, from git and docs)
+(1) Per-file reading: the per-byte yield reads as D.5/F.3 compliance in asy_crc_checks.py ("so a large buffer can't
+stall other tasks"); the CRC call reads as normal in asy_fram_manager.py; the cost exists only in their combination
+under load. Promotions (07-15/07-18) and audit units read file by file; U16 (10-07) added more yields inside the lock.
+(2) The one time it reached the owner (09-18, commit 23e54438, 16:58) it was framed as a heap-remediation side item,
+"5.8x wall-time, latency only, no memory", Unix port, idle; not said: the CRC runs inside the FRAM session lock (since
+07-18), and 8951387d (14:16 the same day) widened that hold to the SPI bus. Ruling recorded "decided, not deferred;
+not to be modified". (3) U12 (10-07) had the routine open and kept the yield citing that ruling; no stage re-checked
+its premise. (4) The hold on record (SPEC :7266-7282, 18-23 ms, 09-25) was a 1-byte write / 8-byte read, idle, with "a
+second SPI device (none wired)" as the only named waiter; the real waiters were never listed; the backup's duration was
+first measured in R5 (12.89). (5) Post-restart: the pre-audit tree as trusted baseline; the lead's 14:20 options again
+let "the hold stays and is documented" stand. Common root: the design questions were answered by reading, never by one
+number per operation - the function's physical need against its worst-case cost (largest buffer, under load) and who
+waits meanwhile. Proposed (docs, in B's unit): Part D gets OR51's design questions with that check; a ruling records
+the facts it rests on and returns to the owner when one is shown false; owner questions state a cost's context.
+
+## 12.101 Owner (17:21:06): every agreement and the specs bind at every level; did the same happen elsewhere?
+The 12.100 mechanism is general (per-file reading; rulings on the isolated case; the harmless case measured), so other
+agreements can be affected; one more instance is known (designfu: F.3's hold.fram_block names a non-existent waiter).
+SPEC 0.1 states breadth ("every principle binds the whole tree") but not depth (function to system): one sentence owed.
+Proposed (replaces the 17:0x proportionality sweep; awaiting the owner's go): one read-only check, three passes over
+existing inventories - (1) the rulings that keep or accept a cost (~79 owner-cited statements in SPEC by a rough grep,
+plus matching OR rows): their premise at combination, worst-case load and system level; (2) F.3's 37 budget rows and
+Part N's 191 rows: worst-case measurement condition and the real consumers from code; (3) the ~11,000 src/ lines outside
+designfu: OR51's design questions at function, module/integration and system level. Ranked, capped, evidence only.

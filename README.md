@@ -362,8 +362,8 @@ times a fixed loop in the very Unix-port interpreter the tests run under, on a m
 picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond or when the probe cannot run (the bands
 are SPECIFICATION.md Part N's `runner.*` rows), honouring a cgroup CPU quota when one is set,
 because core *count* alone cannot tell a fast x86 runner from a slow host (the bench Pi4 probes at
-~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than CPU-bound, so oversubscribing a
-fast host is
+120-139 ms: 4x, 16 jobs, green with the scratch in RAM - the chroot recipe's `/tmp` line). The suite
+is sleep-bound rather than CPU-bound, so oversubscribing a fast host is
 close to free; a `--coverage` run is the exception, CPU-bound under the settrace binary, and takes one
 file per usable core; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
 (whole-suite timeout for the backgrounded `tests_scripts/` pytest job, a positive integer of
@@ -1119,6 +1119,8 @@ EOF
 cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
 mount --bind /proc "$CHROOT/proc"; mount --bind /sys "$CHROOT/sys"
 mount --bind /dev "$CHROOT/dev"; mount --bind /dev/pts "$CHROOT/dev/pts"
+# test.sh's scratch in RAM: on an SD card, write stalls of several seconds froze the twins (bench Pi4, 2026-11-07).
+mount -t tmpfs tmpfs "$CHROOT/tmp"
 
 # Only in a sandbox whose HTTPS goes through a local policy proxy: pass its env vars and CA bundle
 # through (the chroot shares the host's network namespace). Skip it on a machine with direct access.
@@ -1164,7 +1166,7 @@ chroot "$CHROOT" /bin/bash -c "
 "
 
 # Cleanup when done
-umount "$CHROOT"/dev/pts "$CHROOT"/dev "$CHROOT"/sys "$CHROOT"/proc
+umount "$CHROOT"/tmp "$CHROOT"/dev/pts "$CHROOT"/dev "$CHROOT"/sys "$CHROOT"/proc
 rm -rf "$CHROOT"
 ```
 

@@ -1175,3 +1175,82 @@ the bench's repeat run; the new image's reflash still needs the owner's OK, aske
 (Answer to the question on the bench board's address in 11 tracked files of the public repository: none of the three
 options is needed; nothing is masked or rewritten. Read with it: bench-routines' rule keeping the bench's addresses
 out of pushed files and printed output, added 08:29 from the bench's proposal, guards only against this, so it goes.)
+
+## 2026-11-07 14:20:22 UTC - the UART hazard miss under /status load: trace, then fix (option B)
+"B"
+(Answer to the question on the loaded UART hazard test's miss, which falls inside SGP40 FRAM backups of 8-20 s under
+three back-to-back /status readers: A record it as a known limitation, B trace it with one instrumented dev image (one
+reflash, the owner's OK asked by the runner) and then fix the UART receiver so it never waits on its own FRAM log write
+inside an exchange (a second reflash; a protocol change-log entry, internal). The FRAM bus hold stays as it is and is
+documented; the FRAM driver changes only if the trace shows the UART fix is not enough. Chosen: B.)
+
+## 2026-11-07 14:36:54 UTC - the bench Pi4's microSD and the chroot test failures (question)
+"What was the issue with the SD card?"
+(A question, not a ruling: asks what the microSD finding was. Answered from FINDINGS 12.84, 12.85, 12.88 and 12.90.)
+
+## 2026-11-07 14:39:21 UTC - the bench Pi4's microSD: wear, and no more heavy write cycles on it
+"I hope that's not wear of the card, and too heavy write cycles should not be conducted allover again..."
+(Said after the answer that the chroot legs' failures were the microSD's write stalls under test.sh's scratch. Read
+as direction under CLAUDE.md's standing wear rule, which names the host's own storage: no repeat of heavy write runs on
+the bench Pi4's microSD.)
+
+## 2026-11-07 14:46:59 UTC - the bench Pi4's microSD: write style, not a blocker
+"So the writing stalled the bus bandwidth through too many parallel ops rather than writing tons of data? That's no good style, for sure, but not as critical as I thought, seen from the amount written. So better style yes, but no blocker."
+(Said after the wear numbers: about two full card-writes in the card's life, no card errors, step 2's hour 92 MiB.
+Read: the card's write load is a style matter, not a blocker; scratch and logs in RAM stay as the better style.)
+
+## 2026-11-07 16:36:16 UTC - the 8 s FRAM wait behind SGP40's backup: questioned
+"I saw this on the bench: "The write waited 8 s, because the SGP40 sensor's backup was holding the FRAM chip"
+
+That sounds very fishy to me. Where do these 8 s come from? The backup should not take that long, I would expect it in the few hundreds of milliseconds range, and 8s waiting for something - what is this?"
+(A question, not a ruling: challenges the 8 s FRAM wait and the 8-20 s SGP40 backup; expects a backup in the few
+hundred ms. To be answered from the code and the trace files.)
+
+## 2026-11-07 16:45:25 UTC - the FRAM hold and the UART miss: option B, and a review against the pillars
+"If you check the whole situation against our pillars, which you should already have done before even asking me, it would have been plainly obvious that only option B stays - what would any setting of FRAM or UART ever have cross dependencies? It's two completely different devices. That's a violation already. Then, these 8s should have made you suspicious if it had been way less, that's overkill, runaway, all these situations we tried to prevent a few days ago. Yet another violation of the pillars. So is option B sufficient at all? The whole affected software parts need a review and design check again."
+(Answer to A/B/C on the 8-20 s FRAM hold behind SGP40's per-byte CRC under the lock: B, both fixes - the UART link
+independent of FRAM timing, and the FRAM hold fixed at its source. And: the lead should have checked against the
+pillars before asking; the 8 s should have raised suspicion. Asked: is B sufficient; the affected software parts get a
+review and design check again.)
+
+## 2026-11-07 16:47:31 UTC - the design check's yardstick
+"Especially keep in mind: all gaps closed, (really) agreed on features implemented, and from there on minimal, efficient and lean changes."
+(Direction for the FRAM/CRC/logging/UART design check (unit designfu) and the fixes after it: every real gap closed,
+only really agreed features, and from there the minimal, efficient, lean change.)
+
+## 2026-11-07 16:55:48 UTC - the FRAM-UART coupling: before or after the restart?
+"Generally, was that cross link added before or after our discussion and restart due to the audit runaway?"
+(A question, not a ruling: when the UART link's dependence on FRAM timing entered the code, relative to the
+2026-10-28 restart. Answered from git history.)
+
+## 2026-11-07 17:02:19 UTC - the audit's missing lens: proportionality of all code, pre-audit included
+"At least good news as it means the working process did not drift again. But anyway, the code before the audit is not perfect (the actual reason for an audit!), and some stage of the audit should have caught it with a viewpoint "is that reasonable, is that minimal and efficient for the intended function, could the same outcome be implemented leaner without losing anything". That should have been caught all along the code."
+(Answer to the cross link's origin (pre-audit, 09-16; the per-byte CRC handover original). Direction on the lens:
+every part of the code, pre-audit included, is judged by "is that reasonable, minimal and efficient for the intended
+function; could the same outcome be leaner without losing anything". No stage applied it to the pre-audit code.)
+
+## 2026-11-07 17:07:53 UTC - the owner's per-module promotion commands (pre-audit)
+"In the pre audit recordings, I wrote you some commands I sent to every module along its promotion. It includes exactly these questions about efficiency and lean code. Do you find these lines?"
+(A question: find the owner's pre-audit per-module promotion commands, which already asked about efficiency and lean
+code.)
+
+## 2026-11-07 17:16:12 UTC - why the agreed lean/efficiency questions were missed at every stage
+"The interesting question is, I gave these orders to both the promotions and to our audit specs, why was it missed at all stages?"
+(A question: the root cause of the miss across the promotions, the audit units and the post-restart passes, given
+that the design questions were ordered for both.)
+
+## 2026-11-07 17:21:06 UTC - agreements and specs bind every level, micro to macro
+"I wonder if the same happened to other agreements as well. The agreements apply on function, module, import, integration and upstream and downstream, and full system - the specs (not just that one statement, in general!) apply to micro, medium and macro level!"
+(Direction: every agreement and the specifications in general bind at every level - function, module, import,
+integration, upstream and downstream, full system. Question: whether other agreements were, like the design questions,
+checked at one level only or rested on incomplete facts.)
+
+## 2026-11-07 17:31:00 UTC - go: the findings into the general specs, the ruling's consequences, all scans; run through
+"Yes, probably I was not specific enough about the different viewpoints applying to the specs. Maybe that would have prevented part of the runaway as well. Probably applying this this already answers the open questions about the checksum from, and respecting, multiple points of view.
+
+ These findings are fundamental. They must flow into and be applied to the general specs, as well as the consequences about the ruling. This, as well as all necessary scans and checks, can start immediately and run through. We will probably hit the weekly limit, but that's none of your fault - I did some completely unrelated work using up significant amounts. So just go ahead. But before you start - I still have substantial amounts of Claude API credits. Is there a way to use them in this session, or in another, maybe in a Claude Code instance on the bench , and if so, how?"
+(Go for the three-pass levels check (replacing the proportionality sweep). The checksum yield question is answered by
+applying the levels, respecting every viewpoint (no separate owner ruling needed). The 12.100/12.101 findings go into
+the general specifications, with the consequences for the 2026-09-18 CRC ruling (and any other ruling whose premise
+failed). Start now and run through; the budget stop is lifted for this line of work, the weekly limit accepted.
+Question: how to use the owner's Claude API credits, here or in another instance, e.g. on the bench.)
