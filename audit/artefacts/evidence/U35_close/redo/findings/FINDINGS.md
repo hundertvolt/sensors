@@ -596,3 +596,41 @@ works on a running board since 0c0ad52c (2026-10-15): the board fixture's is_rea
 main.py) before session_start_evidence's REST save; FRAM logs still kept, pre-session RAM fields lost; its unit test
 calls the function directly. Workaround relayed: save /status by hand before each runner start. Fix: host-side, no image.
 Skills: 4 bench commits read and carried (cb6a1b78, d2737a05, c55da08e, e5b28b9d), gates 791 passed, shellcheck clean.
+
+## 12.82 Owner go 08:42 for both fixes; LAN address ruling 08:52; relay 08:59 (int 0d875688, bench d1afd7cc)
+Harness: fram_evidence_saved now saves /status over REST before it asks for the board fixture (whose is_reachable()
+mpremote exec stopped main.py), then the raw dump and the reset; a run with no board records no note. Its test drives
+the fixture itself (12 cases incl. no board and twin); on the old order 3 fail. Gate: lint_direct, host and main mypy,
+--collect-only tests_hardware, tests_scripts 6,972 passed / 6 skipped (d81a6620). Sweep wait: NOT changed. 12.81's
+margin reading is withdrawn: the responder declines the hazard cmd (id 7) right after its ACK (_accept_set ->
+_set_callback -> _reject_wrn: W56 + resync: 1.5 s drain, 1.5 s hold-off), no 1 s chunk-2 wait, so the slack is
+1.5 s; loop holds of 122 ms do not explain it, and chunks 2->255 (same shape) never missed. Bench repeat: 2/2 misses at
+uid 0xFE under 3 readers, 0/1 without. Cause open; asked: (a) UART_resp counter delta no-load vs 23 loaded (from saved
+files), (b) after both chroot legs, a loaded manual run with host-stamped console lines. LAN address (public repo, 11
+tracked files on the bench branch, 4 on the audit branch, 1 on main): owner "A simple LAN IP is nothing to be worried
+about" - nothing masked; bench-routines' address rule removed (0d875688).
+Read (a), bench 09:06 (saved /status reads, no board contact): UART_resp +23 in each loaded run (rerun3 0->23; rerun3b
+cleared first, 23 at end), +25 in the no-reader manual run (23->48, Runs 1); UART_init +2 in all three. Two fewer
+responder events under load, not one; the counter counts repeats and the history keeps ten, so which two is open.
+The procedures also differ (the bench test around the run vs a bare PUT /uart). Read (b) after both chroot legs.
+
+## 12.83 Snapshot 45 CI red: Run 11's warm-up stopped mid-settle; it now runs in full (int 2f6d1453)
+One check failed in run 42356435943, digital-twin-e2e (grkizi, -1): Run 11 trend 17,582 B decline against a 14,144 B
+tolerance (early_avg 1,293,313, late_avg 1,275,731, 888 samples); 286 other checks passed. Its 868 requests are 44
+warm-up cycles (7 endpoints): the plateau rule (no new MEM_SAMPLE floor for 20 cycles; agent 2026-10-15, owner-reviewed
+2026-11-06 with its measurement owed) stopped the warm-up while the settle was still falling. The other 15 boots of the
+family (arzi, grkizi, klkizi, schlafzi at both stages, this run and 42256926224) warmed 96-100 cycles: 4.2-8.9 KB
+against 11.2-15.4 KB. Local, 0d875688, grkizi at -1, five boots: every warm-up ran to its 100 cap, free heap falls
+about 70 KB from boot and is still falling at cycle 100; the 80 cycles after it read 5.3-7.2 KB against 12.2-13.6 KB.
+The failed boot's early_avg (1,293.3 K) is where the local trace stands near cycle 44 (1,293.8 K). Per-cycle minima sit
+4.9-5.1 K under the cycle mean (worst 9.2-10.0 K), so a floor held 20 cycles is a matter of chance mid-settle.
+Pre-fix webserver file (5536f8b1's, on 0d875688), three boots: 4.0-5.9 KB against 13.0-17.0 KB, one warm-up stopped
+at 96 by the same rule; per-cycle minima 5.2-5.6 K under the mean (worst 10.5-11.2 K), deeper than with the stall fix.
+The stall fix raises neither; its yields lengthen a cycle about 7 % (window 868-876 samples against 927-938; CI 3-10 %).
+Fix (2f6d1453): the warm-up always runs l2.soak_warmup_cycles = 100; l2.soak_plateau_cycles, its tag and Part N row
+go; the warm-up row carries the measurement. A leak sets a new floor every cycle, so a leaking boot always warmed in
+full: the planted-leak calibration is unchanged. The new test (one early dip) fails on the old rule as CI did (trend
+18,000 vs 6,831). Cost: dev and wozi boots that stopped at 35-88 cycles now run 100 (up to about 1 min per stage).
+The failed job's twin log artifact was not read: its storage host is blocked by this environment's network policy.
+Gate on 2f6d1453: lint_direct, host mypy, tests_scripts 6,972 passed / 6 skipped; Run 11 grkizi -1 with the fixed
+warm-up 7.6 KB vs 11.3 KB (67 %, as CI's worst at a full warm-up, 68 %): the margin is about a third, not wide.

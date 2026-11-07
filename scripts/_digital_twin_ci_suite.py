@@ -192,12 +192,9 @@ _RESET_ERRORS_BUDGET_S = _SERVER_OUTER_CAP_S * 0.8
 
 # Run 11 (soak), host-side ("Driver/DUT process separation"): every soak request goes over real HTTP, so the client's
 # allocation and CPU work never shares the DUT's heap; each cycle walks every GET route the device serves and the site.
+# Fixed: the post-boot settle shows no end a window can detect, and a trend taken mid-settle reads as a leak (README).
 # @tunable l2.soak_warmup_cycles = 100
 _SOAK_WARMUP_CYCLES = 100
-# The warm-up ends once no cycle sets a new MEM_SAMPLE floor for this many cycles, the bound above: a device with more
-# instances settles longer after boot, and a trend taken mid-settle would read as a leak (digital_twin/README.md).
-# @tunable l2.soak_plateau_cycles = 20
-_SOAK_PLATEAU_CYCLES = 20
 # The three values below are calibrated against a planted per-request leak, which they turn red at both GC stages while
 # the unplanted tree stays green (owner, 2026-10-23); digital_twin/README.md "Run 11's calibrated numbers" has it.
 # @tunable l2.soak_cycles = 80
@@ -835,7 +832,7 @@ def _run_11_soak_boot(ctx: RunContext, log_path: Path) -> _SoakRun:
     window: tuple[int, int] | None = None  # the cycles' span of the log, in bytes: file order is emission order
     try:
         _wait_until_serving(proc)
-        warmed = _soak_warm_up(log_path, endpoints, http_failures)
+        warmed = _soak_warm_up(endpoints, http_failures)
         cycles_start = log_path.stat().st_size
         for cycle in range(_SOAK_CYCLES):
             for path in endpoints:
@@ -1623,24 +1620,14 @@ def _shutdown_step_lines(log_text: str) -> list[str]:
     return [step for line in log_text.splitlines() for step in steps if f"SYSTEM {step}" in line]
 
 
-def _soak_warm_up(log_path: Path, endpoints: tuple[str, ...], http_failures: list[str]) -> int:
-    # Warm-up cycles until no cycle has set a new MEM_SAMPLE floor for _SOAK_PLATEAU_CYCLES cycles, at most
-    # _SOAK_WARMUP_CYCLES; a cycle that printed no sample counts toward neither. Returns the cycles run.
-    floor: int | None = None
-    held = 0
-    for cycle in range(_SOAK_WARMUP_CYCLES):
-        offset = log_path.stat().st_size
+def _soak_warm_up(endpoints: tuple[str, ...], http_failures: list[str]) -> int:
+    # _SOAK_WARMUP_CYCLES cycles, whatever the samples show. Returns the cycles run.
+    for _ in range(_SOAK_WARMUP_CYCLES):
         for path in endpoints:
             try:
                 _http("GET", path)
             except (OSError, http.client.HTTPException) as e:  # one more failure, never an abort of the cycles
                 http_failures.append(f"warmup: GET {path} -> {e!r}")
-        samples = [free for _offset, free in _mem_samples_from(log_path, offset)]
-        if samples:
-            held = 0 if floor is None or min(samples) < floor else held + 1
-            floor = min(samples) if floor is None else min(floor, *samples)
-        if held >= _SOAK_PLATEAU_CYCLES:
-            return cycle + 1
     return _SOAK_WARMUP_CYCLES
 
 

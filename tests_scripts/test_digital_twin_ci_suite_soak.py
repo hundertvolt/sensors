@@ -1,5 +1,5 @@
 """Tests scripts/_digital_twin_ci_suite.py's Run 11 (soak) and main(): _parse_mem_samples(), _mem_trend(), the warm-up
-that ends once the sampled floor holds, _run_11_soak()'s one-boot verdict over a stubbed twin, a missing API reference,
+of a fixed length, _run_11_soak()'s one-boot verdict over a stubbed twin, a missing API reference,
 a held port and the log default. The real twin runs it in scripts/run_digital_twin_ci.sh (SPECIFICATION.md Part E.9)."""
 
 import subprocess
@@ -258,6 +258,11 @@ def _settling(i: int) -> int:
     return 1_000_000 - 1_000 * min(i, _SETTLED_AT * _PER_CYCLE)
 
 
+def _dipping(i: int) -> int:
+    # _settling() with one deep transient in the first cycle: a floor the settle takes 25 cycles to go under.
+    return _settling(i) - (75_000 if i == 2 else 0)
+
+
 def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boots: "list[Callable[[int], int]]", *, warmup_cycles: int = 1, stamp: "Callable[[int], int] | None" = None) -> "tuple[object, list[Path], int]":
     # Runs _run_11_soak() over stubbed boots: boot k's request i, warm-up included, prints a MEM_SAMPLE of boots[k](i)
     # free bytes stamped stamp(i), as the twin's sampler does; a given stamp is also the suite's clock (one host clock,
@@ -348,14 +353,8 @@ def test_a_backwards_clock_step_mid_soak_still_selects_the_cycles_samples(ci_sui
     assert "min=1000000 max=1000010 " in out and f"samples={measured}\n" in out, out
 
 
-def test_the_warm_up_ends_once_the_sampled_floor_holds_for_its_window(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # The floor is new on every cycle until _SETTLED_AT, then holds: the warm-up ends a window later, far inside its bound.
-    summary, _spawned, sent = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [_settling], warmup_cycles=100)
-    warmed = sent // _PER_CYCLE - ci_suite._SOAK_CYCLES
-    assert warmed == _SETTLED_AT + ci_suite._SOAK_PLATEAU_CYCLES, warmed
-    assert summary.failed == []  # type: ignore[attr-defined]
-
-
-def test_a_floor_that_never_holds_warms_up_to_the_bound(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _summary, _spawned, sent = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [_leaking], warmup_cycles=40)
+@pytest.mark.parametrize("boot", [_leaking, _dipping])
+def test_the_warm_up_runs_its_full_length_whatever_the_samples_show(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boot: "Callable[[int], int]") -> None:
+    # A floor held for a while, here by one early dip, is no sign the post-boot settle has ended.
+    _summary, _spawned, sent = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [boot], warmup_cycles=40)
     assert sent // _PER_CYCLE - ci_suite._SOAK_CYCLES == 40

@@ -1163,3 +1163,15 @@ the day-3 findings; snapshot 45 built and pushed in reply. Also relayed, said to
 absolutely can scan through your work styles and calls from this session and compare them to the newly added skills - if
 you find something missing or could be improved, go ahead adding things. But cross check with the main session in order
 not to break anything.")
+
+## 2026-11-07 08:42:41 UTC - go for the two proposed fixes (pre-session /status order; the hazard sweep's wait)
+"Go for the fixes you proposed"
+(Answer to the 08:35 report's question: the harness fix saving /status before the board fixture's mpremote check, and
+widening the hazard sweep's fixed wait in src/asy_uart_link_driver.py. My recommendation had made the second depend on
+the bench's repeat run; the new image's reflash still needs the owner's OK, asked by the bench itself.)
+
+## 2026-11-07 08:52:32 UTC - the bench's LAN address in public files: no action
+"A simple LAN IP is nothing to be worried about"
+(Answer to the question on the bench board's address in 11 tracked files of the public repository: none of the three
+options is needed; nothing is masked or rewritten. Read with it: bench-routines' rule keeping the bench's addresses
+out of pushed files and printed output, added 08:29 from the bench's proposal, guards only against this, so it goes.)
