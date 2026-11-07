@@ -15,7 +15,11 @@ us, diff = time.ticks_us, time.ticks_diff
 stats = {}  # name: [n, total_ms, max_us]
 rows = []  # (end_ms, build_ms, slowest source, its ms); GET_STATUS less BUILD is the lock wait
 sends = []  # (start_ms, send_ms, pieces)
-lags = []  # (at_ms, lag_ms) of 200 ms or more
+lags = []  # (at_ms, lag_ms) of LAG_ROW_MS or more
+LAG_ROW_MS = 100
+LAG_TOPS = (25, 50, 100, 200, 400, 800)  # lag_hist: below each top, then the rest
+lag_hist = [0] * (len(LAG_TOPS) + 1)
+lag_max = [0]
 current = [None, 0]
 def note(name, t):
     d = diff(us(), t)
@@ -87,7 +91,15 @@ async def lag():
         t0 = time.ticks_ms()
         await asyncio.sleep_ms(10)
         d = diff(time.ticks_ms(), t0) - 10
-        if d >= 200 and len(lags) < CAP:
+        for i, top_ms in enumerate(LAG_TOPS):
+            if d < top_ms:
+                lag_hist[i] += 1
+                break
+        else:
+            lag_hist[-1] += 1
+        if d > lag_max[0]:
+            lag_max[0] = d
+        if d >= LAG_ROW_MS and len(lags) < CAP:
             lags.append((time.ticks_ms(), d))
 def timed_collects(tag):
     for i in range(3):
@@ -99,10 +111,12 @@ async def driver():
     await asyncio.sleep(45)
     timed_collects("IDLE")
     stats.clear(); rows.clear(); sends.clear(); lags.clear()
+    lag_hist[:] = [0] * len(lag_hist); lag_max[0] = 0
     print("LOAD_NOW", time.ticks_ms())
     await asyncio.sleep(LOAD_S + 5)
     timed_collects("AFTER")
     print("LOAD_END", time.ticks_ms())
+    print("LAG_MAX", lag_max[0], "HIST", LAG_TOPS, lag_hist)
     for name, s in sorted(stats.items()):
         print("STAT", name, "n", s[0], "total_ms", s[1], "max_us", s[2])
     await asyncio.sleep_ms(50)

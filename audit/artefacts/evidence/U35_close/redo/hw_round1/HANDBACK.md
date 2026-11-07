@@ -42781,3 +42781,11 @@ rc=0
 <!-- end step -->
 
 08:00:05 UTC 2026-11-07 skill: bench-routines: session start step 3 named BuildDate among /status fields, and /status has none; changed: step 3 points at GET /system build.BuildDate; commit 105a9fd6
+
+FC +1 2026-11-07T08:02:22Z 7cd1a24a (owner's OK this session; image BuildDate 2026-11-07T07:55:06Z, 58,236 B free; board read back match; flash cycles today: 1)
+08:09:51 UTC 2026-11-07 step lead-19:04 item 1 (/status timing probe, no flash write): selection heap_probe/status_timing.py at 3 readers then 1, 60 s each, 32768, under mpremote run; HEAD dc3ee940; image 2026-11-07T07:55:06Z
+3 readers: 53 answered 200, memfails 0; longest loop hold 122 ms (22 at 100-200 ms, none above 200 ms); yesterday's image: 27 holds of 747-2,313 ms. Build (await-inclusive) mean 882, max 1,002 ms; errcount sum of means 705 ms; send, 33 pieces, mean 1,729, max 2,414 ms; GET_STATUS mean 1,399, max 2,591 ms; gc.collect 19.4 ms idle, 20.9 ms after load.
+1 reader: 47 answered 200, memfails 0; longest loop hold 104 ms (4 at 100-200 ms); build mean 721, max 823 ms; errcount sum of means 593 ms; send mean 327, max 514 ms.
+errcount added: none (22 sources unchanged)
+ResetReason after: 2, harness reset after a script consumed the boot (expected; REASON bits not read); flash cycles today: 1; logs/day3_20261107/status_timing_{3readers,1reader}.console
+status: hold figures confirmed by the probe's own lag task (a 10 ms sleeper). The build spans now include what other tasks run in its yields, so they do not give the fix's CPU per build: 0.45 s neither confirmed nor refuted.
