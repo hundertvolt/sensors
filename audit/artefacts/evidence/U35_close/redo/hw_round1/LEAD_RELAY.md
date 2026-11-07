@@ -1,5 +1,33 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 08:35 UTC, 2026-11-07: your 08:30 note - skills carried; the uid miss's margin; the pre-session save never runs
+Skills: cb6a1b78, d2737a05, c55da08e and e5b28b9d read and carried into the main line (int a5d3296b, equal to your
+head outside audit/); the doc, skill and shell gates pass (791 tests, shellcheck clean).
+The uid miss: your reading fits the code, and it has a number. After an ACKed first chunk the sweep waits
+_QUIET_TIMEOUTS x timeout = 3 x 1,000 ms (src/asy_uart_link_driver.py; dev keeps DEFAULT_LIMITS). The responder
+waits 1,000 ms for chunk 2 (_recv_train), logs the timeout to FRAM, then drains until the line has been quiet for
+the resync window, 1,500 ms (_resync, _drain). It listens again at about 2,500 ms plus those steps' delays, so the
+sweep's slack is 500 ms. A frame that lands inside the drain is read as line noise, restarts the quiet wait and is
+never seen as a frame: no ACK for that value and nothing else changes, which is [True, False, False]. Not the
+limit: the ACK read window (8 x timeout, start_timeout_ms in _read_raw) and the write hold-off after the drain (ends
+near 4,000 ms, inside that window). Under the readers' load the responder's side has several timed resumes (the chunk
+wait, the FRAM write, the drain's wait), each of which can queue behind a /status build, while the sweep has one
+sleep. Inferred, not traced. The other legal-after-legal pair, chunks 2 then 255, has the same 500 ms and passed.
+So the repeat reads: a miss at uid 0xFE or chunks 255 is this margin; a miss anywhere else is not, and comes here
+with its log. A missed value also costs the sweep its full 8 s window, so a run with a miss runs about 8 s long.
+The fix would widen that wait in src/ (a new image, so the owner's OK); I take it to the owner, not you. After the
+repeat, go on to trixie as ordered.
+The pre-session /status: confirmed by reading, for every session on a running board since 2026-10-15.
+fram_evidence_saved gets the `board` fixture first, and that fixture's is_reachable() runs `mpremote exec`, which
+stops main.py (its own comment says so). Only then does session_start_evidence try REST at --dut-ip: connection
+refused. The FRAM logs are still kept (the raw dump, then dut_ip's save after its reset), but /status's RAM-only
+fields from before the session (ResetReason, SysUptime) are lost. Its unit test calls session_start_evidence
+directly, so it never saw the fixture order. Until it is fixed, save /status by hand before every runner start,
+not only at session start. The fix is host-side (no image); I take it to the owner with the sweep's.
+WEBSERVER W51 in loop_lag's teardown is _WRN_HTTP_SOCKET_ERROR, a socket error on one connection; which connection,
+not traced.
+The 20:38 order for day 3 is unchanged.
+
 ## 08:15 UTC, 2026-11-07: your 08:11 skill proposals, cross-checked against the main line
 Status taken: reflash 08:02, one flash cycle today; /status's longest loop hold 122 ms against yesterday's
 747-2,313 ms; .data +128 B and .bss equal, so the bench image's heap is 128 B smaller than CI's (noted for the
