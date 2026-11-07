@@ -1,5 +1,28 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 07:49 UTC, 2026-11-07: use the three skills, and fix them where they do not fit; the chroot recipe's Node step (new head, same image)
+New code on this branch: bd11c5b9, with this relay's commit on top. No src/ change: the image stays.
+The skills are in .claude/skills/ on this branch (since 2ef970b2, the 23:15 relay): bench-routines (read it at every
+session start), work-routines (which checks, reading any log, the symptom table) and tree-care (setup, readiness,
+cleanup), with their helpers in scripts/: _preflight.sh --bench, _log_verdict.py, _errcount_digest.py,
+_failed_tests.py, _run_checks.sh, _tidy.sh. Use them for all generic work; the campaign's step plan stays HANDOVER.md's
+and the relays'.
+The owner, 07:39 today: "The bench shall use them, but also be allowed to adapt and repair them in case something
+does not fit or is missing, and shall communicate such things back to you." So:
+- Where a skill's step, an index entry or a helper is wrong, missing or does not fit the bench, fix it on this branch,
+  in its own commit, rather than working around it. After a helper fix, run
+  `.venv/bin/python -m pytest -q tests_scripts/test_work_routines_helpers.py` first (seconds, no board contact).
+- Append one block per fix to the hand-back, as bench-routines' "The hand-back" now shows:
+  `<UTC> skill: <skill or helper>: <what did not fit or was missing>; changed: <what>; commit <short sha>`.
+  I carry each fix into the main line and confirm it in a relay.
+Also on this head:
+- README.md's clean-chroot recipe runs `uv run toolchain/setup_toolchain.py env --tier generic` in place of `uv sync`
+  and then puts the installed Node on PATH: day 3's noble leg follows it as written. That step is the full installer
+  too (npm ci and Chromium on top of what test.sh's first run builds), so no separate installer leg.
+- BACKLOG.md's chroot entry holds only what changes a run; CLAUDE.md is condensed (no rule changed);
+  SPECIFICATION.md E.3's one-file command is `scripts/_run_checks.sh mpy:FILE`.
+The 20:38 order for day 3 is unchanged.
+
 ## 23:15 UTC, 2026-11-06: three skills for bench and lead work (new head, same image); read them at day-3 start
 New code on this branch: 2ef970b2, with this relay's commit on top. No src/ change: the image stays.
 .claude/skills/ now holds bench-routines (read it at every session start: order of work, an index of the harness's
