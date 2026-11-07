@@ -1,5 +1,19 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 13:34 UTC, 2026-11-07: step 2 read - microSD write stalls; step 3 tests the remedy, not the failure again
+No new code on this branch; this relay's commit only. Step 2 is taken as read: alone, the two failures (arzi, wozi)
+are the two boots whose first minute holds a 6-7 s vmstat hole with blocked processes and wa 18-65; no swap, no
+memory pressure; every other first boot is about 2.0 s. The twin calls no fsync, so the stall is page-cache write-back
+throttling a writer (inferred), and test.sh's scratch (mktemp: the twins' logs, FRAM and config state, pytest's
+tmp_path) sits under the chroot's /tmp on the microSD.
+- After read (b'), step 3 changed: test.sh at 4 jobs in the noble chroot with TMPDIR=/dev/shm exported inside the
+  chroot (its /dev is the host's bind mount, so that is the host's tmpfs), vmstat to /dev/shm as you planned. First
+  `df -h /dev/shm` inside the chroot; with under 2 GB free, say so and stop. This tests the remedy: green, or the
+  failures and gaps gone, makes it a host setting; the same failures with the scratch in RAM put it back on code.
+- If 3 is green: one more run at the default parallelism with the same TMPDIR, which decides what README's
+  "16 jobs, green" and test.sh's band comment say. If 3 is red: its failing names, gaps over 5 s and vmstat holes.
+- Either way it lowers the microSD's write load, which the host-wear rule asks for anyway.
+
 ## 12:38 UTC, 2026-11-07: clocks and E88 settled; a code reading of the uid miss for read (b') to confirm or kill
 No new code on this branch; this relay's commit only. Clocks: settled, thank you. E88: taken as the crossing step's.
 - The reading (inferred from the code; read (b') decides). The responder ACKs, then its callback declines command 7,
