@@ -23,7 +23,8 @@ runner. `--bench` adds the bench variables and one MicroPython board on USB, wit
   (Python and website dependencies, Playwright's Chromium, the toolchain and its Unix-port builds), `--tier flash`
   (USB access and the board), `--tier bench` (the bridge and access point; passwordless sudo first, see
   `tests_hardware/README.md` "Prerequisites").
-- `uv` must be exactly the version `pyproject.toml`'s `required-version` names; any other refuses to run.
+- `uv` must be exactly the version `pyproject.toml`'s `required-version` names; any other refuses to run. A host whose
+  global `uv` differs keeps the pinned one outside the worktree (e.g. `~/.local/uv-0.8.17/bin`), first on PATH.
 - Then `source .venv/bin/activate` in this tree. A second worktree gets its own `uv sync` and venv: the lint and type
   scripts refuse a venv that belongs to another tree.
 - The host tier needs `node` on PATH; after `env` installs it, put its folder on PATH before `scripts/test.sh`.
@@ -33,6 +34,9 @@ runner. `--bench` adds the bench variables and one MicroPython board on USB, wit
   --clean` rebuilds its build folders without re-cloning.
 - A clean-chroot leg follows README.md "Build-environment verification" as written, in a real checkout, not a copied
   worktree (test.sh's checkout-write guard needs its own `.git`); its `env --tier generic` step installs the pinned Node.
+  Run one leg at a time: legs share a network namespace but not a port-lock directory. A chroot's folders are root-only,
+  so a glob into one runs inside `sudo -n bash -c`: in your own shell it expands to nothing. Check `/proc/mounts` before
+  `rm -rf` of a chroot.
 
 ## Clean up: `scripts/_tidy.sh`
 
@@ -54,4 +58,5 @@ or abandoned, never with `rm -rf` while git still records it.
 - Commit no logs, consoles, FRAM dumps or build output: they stay in git-ignored `logs/` or `build/`.
 - Append to a long-lived record instead of rewriting it: a 3.5 MB hand-back rewritten 54 times left about 114 MB of
   blob versions in history.
-- `rm` only literal paths, and look at what a path holds before deleting it.
+- `rm` only literal paths, and look at what a path holds before deleting it. A variable in a `cp` or `rm` is checked as
+  non-empty first: an empty `"$A".` copies or removes the current directory.
