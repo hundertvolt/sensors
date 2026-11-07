@@ -42779,3 +42779,5 @@ rc=0
 == step 1 end rc=0 2026-11-05 08:14:59 28s load 0.45 1.75 1.92
 ```
 <!-- end step -->
+
+08:00:05 UTC 2026-11-07 skill: bench-routines: session start step 3 named BuildDate among /status fields, and /status has none; changed: step 3 points at GET /system build.BuildDate; commit 105a9fd6
