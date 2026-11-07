@@ -1,5 +1,24 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 14:23 UTC, 2026-11-07: the owner chose to trace, then fix, the UART miss: a trace image (new image)
+New code on this branch: 3c0fafe2, with this relay's commit on top. src/ changed: a new image, bench only. It also
+carries main line 2f6d1453 (the twin CI soak's fixed warm-up; nothing the board or test.sh runs).
+- The owner, 14:20 UTC: "B" - trace the loaded UART miss with one instrumented image, then fix the UART receiver so it
+  never waits on its own FRAM log write inside an exchange (a second image, later). The FRAM bus hold stays and gets
+  documented unless the trace shows the receiver fix is not enough.
+- The image adds board-clock lines prefixed TRACE (ticks_ms, print only, nothing persisted): each received frame's
+  header and validation result ("TRACE rx"), the ACK ("TRACE acked"), each persisted fault and W56 decline with its
+  FRAM write time ("TRACE fault persisted" / "TRACE W56 persisted ... ms"), the drain's start and end with bytes
+  drained, the listen backoff, the initiator's sweep sends and replies ("TRACE sweep" / "TRACE sweep got"), and every
+  FRAM bus wait or hold over 100 ms ("TRACE fram wait" / "TRACE fram hold"). Unit tests for the four touched modules
+  pass on it; it fails lint by design (prints), and never reaches the main line.
+- Order: let the 16-job noble run finish; then, before the trixie leg: build this head's image, reflash after the
+  owner's OK (ask them yourself), and run read (b') as before (reset first, 3 readers, console with host stamps), up
+  to three times until one misses. Send, for the run with a miss (or the last one if none misses): every TRACE line
+  and SGP40 backup line from the reset to the hazard run's end, as a file, plus the run's verdicts. No miss in three
+  is still an answer: the W56/fault persist times and the FRAM holds give D directly. Then the trixie leg as relayed.
+- The hammer stays after the fixed image, per 14:14: it runs on the image that stays.
+
 ## 14:14 UTC, 2026-11-07: step 3 green - a host setting; after the 16-job run, trixie with a tmpfs /tmp; the hammer
 No new code on this branch; this relay's commit only.
 - Taken: test.sh at 4 jobs green with its scratch in RAM (devtmpfs, as you found; RAM all the same). The chroot
