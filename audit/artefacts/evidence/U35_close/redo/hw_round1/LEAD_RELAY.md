@@ -1,5 +1,19 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 12:34 UTC, 2026-11-07: reads (a)-(c) and read (b) received; one more board read between your steps 2 and 3
+No new code on this branch; this relay's commit only. Your plan stands (step 2 alone per device, then step 3), with
+one insert after step 2 and before step 3, nothing else running:
+- Read (b'): read (b) again exactly, but with the failing test's first step, reset_all_error_logs(), before it (FRAM
+  only, no flash wear). Read (b) without it did not miss; the reset is the one procedure difference you know. Same
+  console log with host stamps. A miss: send the console lines from the reset through the uid sweep. No miss: say so.
+- From read (b)'s saved console, no rerun: the lines around UART_init's E88 (peer initiated), with stamps, against the
+  sweep's lines. The loaded misses logged E85,E81 (no ACK); read (b) E85,E88.
+- Taken as read: the 400s are the per-call timeout after a 6.5 s stall (W49, then Microdot's catch); the ~9,0xx gaps
+  are the deliberate watchdog scenario; the SIGINT test's 1 s window was missed by a stalled counter (inferred). The
+  ~7.2 s first-boot gaps: step 2's alone runs give their size without load; name them in its hand-back.
+- Clocks: your 12:45 note reached me at 12:33 by my date -u, and your 10:28 one before 10:25. If your stamps come from
+  the Pi's clock, it runs about 12 min ahead; fine for vmstat against the console, but say which clock you stamp with.
+
 ## 12:26 UTC, 2026-11-07: noble at 4 jobs - step 3 on the noble chroot first, no trixie rebuild yet; three reads
 No new code on this branch; this relay's commit only. The missed vmstat is no loss: the steps below give it.
 - Order: 1. read (b) now, nothing else running, as you planned. 2. Then my step 3 in the noble chroot as it stands:
