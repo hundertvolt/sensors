@@ -82,10 +82,12 @@ for lock in "${XDG_RUNTIME_DIR:-/tmp}"/sensors-port-*.lock; do
 done
 
 if [ "$bench" = 1 ]; then
-    for name in MPREMOTE_DEVICE BENCH_DEVICE; do
-        if [ -n "${!name:-}" ]; then say OK "bench: $name is set"; else say WARN "bench: $name is not set (tests_hardware/README.md, Environment variables)"; fi
-    done
     boards="$({ find /dev/serial/by-id -maxdepth 1 -name '*MicroPython*' 2> /dev/null || true; } | wc -l)"
+    if [ -n "${MPREMOTE_DEVICE:-}" ]; then say OK "bench: MPREMOTE_DEVICE is set"
+    elif [ "$boards" -eq 1 ]; then say OK "bench: MPREMOTE_DEVICE unset, the harness resolves the one board"
+    else say WARN "bench: MPREMOTE_DEVICE unset with $boards boards (tests_hardware/README.md, Environment variables)"; fi
+    if [ -n "${BENCH_DEVICE:-}" ]; then say OK "bench: BENCH_DEVICE is set"
+    else say OK "bench: BENCH_DEVICE unset, the devices/*.toml with bench = true"; fi
     if [ "$boards" -eq 1 ]; then say OK "bench: one MicroPython board on USB"; else say WARN "bench: $boards MicroPython boards on USB, one expected"; fi
     say OK "bench: load $(cut -d' ' -f1-3 /proc/loadavg); no board run while a chroot leg or twin run is going"
 fi
