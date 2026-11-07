@@ -67,7 +67,8 @@ Run an ad-hoc call from the repository root as `.venv/bin/python -c "import sys;
 2. `scripts/_preflight.sh --bench`, then `GET /status` answers 200 and `Mode` is STA, not the hotspot. A board in its
    hotspot after a reset usually missed its kick, not a code fault.
 3. Save `/status` as `logs/<UTC>_start_status.json`, then `python3 scripts/_errcount_digest.py` on it; note
-   `ResetReason` with its REASON bits, `BuildDate` and `SysUptime`.
+   `system.ResetReason` with its REASON bits and `system.SysUptime`. `BuildDate` is not in `/status`: read
+   `GET /system`'s `build.BuildDate`.
 4. Does the head need a new image? Compare the flashed image's commit (the image record's `commit`, or the board's
    `BuildDate` against the record) with HEAD over the firmware's inputs:
    ```
