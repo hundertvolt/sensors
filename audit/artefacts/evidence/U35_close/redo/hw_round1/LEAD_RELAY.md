@@ -1,5 +1,24 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 10:24 UTC, 2026-11-07: trixie at 4 jobs - no blind rerun; host log during noble, then each failing device alone
+No new code on this branch; this relay's commit only. Snapshot 46 is green on CI; its one code change is the twin CI
+soak's warm-up (scripts/_digital_twin_ci_suite.py), which neither test.sh nor the board runs: nothing to pull.
+- Not a full trixie rerun at 1 or 2 jobs: a pass there shows only that less load passes, not what stalled a twin for
+  9-20 s. Three steps instead, in this order:
+  1. Now, for the rest of the noble leg: on the host, outside the chroot, `vmstat -t 1` into
+     logs/day3_20261107/chroot_evidence/noble/vmstat.txt until test.sh ends, and `free -m` once at its start. A feed
+     gap over 6,000 ms on seconds with a deep run queue, swap traffic (si/so) or high wa is the host; one on quiet
+     seconds is not.
+  2. Then read (b), as relayed at 08:59, with nothing else running.
+  3. Then in the trixie chroot, nothing else running, vmstat logging as in 1: the scenario harness alone for dev,
+     klkizi, schlafzi and wozi, one device at a time, once each - test.sh's own job line:
+     `uv run scripts/_digital_twin_scenarios.py --device <d> --logs-dir <dir> --shared-port-53` (after a test.sh run
+     has built the toolchain and sites in that clone). A scenario failing alone is code: send its twin log. All four
+     passing alone, with the noble gaps on loaded seconds, closes it as host capacity at these settings; then I correct
+     test.sh's band comment, README's "16 jobs, green" and the Part N rows.
+- With 3, say which scenario each ~9,0xx ms gap came from: a deliberate watchdog scenario's gap is its timeout plus
+  window and does not count; wozi's hung-shutdown failure (watchdog late past its window) is the one to check there.
+
 ## 08:59 UTC, 2026-11-07: my 08:35 margin reading is wrong; two zero-wear reads for the uid miss; the harness fix; the address rule goes (new head, same image)
 New code on this branch: a6357cc6, with this relay's commit on top. No src/ change: the image stays.
 - The owner's go (08:42) for both fixes. The first is in: fram_evidence_saved saves /status over REST before it asks
