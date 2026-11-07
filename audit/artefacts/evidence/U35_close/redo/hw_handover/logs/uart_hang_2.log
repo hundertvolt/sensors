@@ -1,0 +1,76 @@
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+13 fresh count 0x1fffffff pos 0x0 rsr 0x0 pending False overruns 0 busy True reload_busy False level 1
+22 after 64 count 0x1fffffbf pos 0x0 rsr 0x0 pending False overruns 0 busy True reload_busy False level 65
+95 after 640 count 0x1ffffd7f pos 0x0 rsr 0x0 pending False overruns 0 busy True reload_busy False level -1
+98 read 0 -> None count 0x1ffffd7f pos 0x281 rsr 0x0 pending True overruns 1 busy True reload_busy False level -1
+100 read 1 -> None count 0x1ffffd7f pos 0x281 rsr 0x0 pending True overruns 1 busy True reload_busy False level -1
+101 read 2 -> None count 0x1ffffd7f pos 0x281 rsr 0x0 pending True overruns 1 busy True reload_busy False level -1
+103 read 3 -> None count 0x1ffffd7f pos 0x281 rsr 0x0 pending True overruns 1 busy True reload_busy False level -1
+113 one more frame count 0x1ffffd3f pos 0x281 rsr 0x0 pending True overruns 1 busy True reload_busy False level -1
+114 read -> None count 0x1ffffd3f pos 0x281 rsr 0x0 pending True overruns 1 busy True reload_busy False level -1
+116 beat 1
+208 reads 500
+344 reads 1000
+640 reads 1500
+858 reads 2000
+1166 reads 2500
+1373 reads 3000
+1680 reads 3500
+1891 reads 4000
+2172 reads 4500
+2409 reads 5000
+2670 reads 5500
+2929 reads 6000
+3174 reads 6500
+3451 reads 7000
+3685 reads 7500
+3974 reads 8000
+4198 reads 8500
+4499 reads 9000
+4712 reads 9500
+5026 reads 10000
+5229 reads 10500
+5524 reads 11000
+5746 reads 11500
+6019 reads 12000
+6266 reads 12500
+6519 reads 13000
+6786 reads 13500
+7026 reads 14000
+7309 reads 14500
+7538 reads 15000
+7833 reads 15500
+8052 reads 16000
+Local directory build/mountstage/mpy is mounted at /remote
+Traceback (most recent call last):
+  File "/home/nico/programming/sensors-bench/.venv/bin/mpremote", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/main.py", line 622, in main
+    handler_func(state, args)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 515, in do_run
+    _do_execbuffer(state, buf, args.follow)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/commands.py", line 489, in _do_execbuffer
+    ret, ret_err = state.transport.follow(timeout=None, data_consumer=stdout_write_bytes)
+                   ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 220, in follow
+    data = self.read_until(1, b"\x04", timeout=timeout, data_consumer=data_consumer)
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 158, in read_until
+    if self.is_pty or self.serial.inWaiting() > 0:
+                      ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1068, in inWaiting
+    self._check_input(False)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/mpremote/transport_serial.py", line 1043, in _check_input
+    if blocking or self.orig_serial.inWaiting() > 0:
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialutil.py", line 594, in inWaiting
+    return self.in_waiting
+           ^^^^^^^^^^^^^^^
+  File "/home/nico/programming/sensors-bench/.venv/lib/python3.13/site-packages/serial/serialposix.py", line 549, in in_waiting
+    s = fcntl.ioctl(self.fd, TIOCINQ, TIOCM_zero_str)
+OSError: [Errno 5] Input/output error

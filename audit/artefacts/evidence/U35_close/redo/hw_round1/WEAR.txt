@@ -1,0 +1,2 @@
+# Round 1's opt-in wear guard (round1.sh, HANDOVER.md "Opt-in wear"). The audit session adds one line starting
+# "cleared:" once it has judged every non-wear result; round1.sh appends "passed: <step> <UTC>" for each wear pass.

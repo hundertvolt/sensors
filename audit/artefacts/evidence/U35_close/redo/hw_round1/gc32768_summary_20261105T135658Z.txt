@@ -1,0 +1,101 @@
+== Summary: scripts/test.sh ==
+Commit: b6a7bc1e
+Levels: L0 PASS · L1 FAIL · L2 FAIL (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)
+GC stage: 32768
+Counts (files): passed 132 · failed 5 · skipped 74 · deselected 6 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 6792 · failed 0 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 5731 · failed 5 · skipped 74 · deselected 6 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - scenarios[dev]: 1 of 65 scenarios failed (FAIL loop_lag_under_combined_load: AssertionError: the SGP40 fault storm never reached its 5-read streak under the load (40.1s))
+  - tests/test_digital_twin_bus_hazard_concurrency.py: 1 of 25 tests failed (ABORT test_two_failing_readers_on_one_bus_run_each_bus_rung_once: KeyboardInterrupt:)
+  - tests/test_sensortask.py[dev]: 1 of 101 tests failed (ABORT test_forty_days_of_uptime_keep_every_invariant: KeyboardInterrupt:)
+  - tests/test_sensortask.py[wozi]: 1 of 101 tests failed (ABORT test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver: KeyboardInterrupt:)
+  - tests/test_digital_twin_uart_link.py: 1 of 22 tests failed (ABORT test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict: KeyboardInterrupt:)
+Skipped:
+  - scenarios[arzi]::isl29125_config_put_during_get_loops: device wires no isl29125
+  - scenarios[arzi]::a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog: a device-independent mechanism, run on dev only (SPECIFICATION.md E.2.1)
+  - scenarios[arzi]::uart_ring_under_concurrent_load: device wires no uart_link
+  - scenarios[dev]::a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog: a device-independent mechanism, run on arzi only (SPECIFICATION.md E.2.1)
+  - scenarios[grkizi]::isl29125_config_put_during_get_loops: device wires no isl29125
+  - scenarios[grkizi]::a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog: a device-independent mechanism, run on arzi only (SPECIFICATION.md E.2.1)
+  - scenarios[grkizi]::a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog: a device-independent mechanism, run on dev only (SPECIFICATION.md E.2.1)
+  - scenarios[grkizi]::uart_ring_under_concurrent_load: device wires no uart_link
+  - scenarios[klkizi]::isl29125_config_put_during_get_loops: device wires no isl29125
+  - scenarios[klkizi]::a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog: a device-independent mechanism, run on arzi only (SPECIFICATION.md E.2.1)
+  - scenarios[klkizi]::a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog: a device-independent mechanism, run on dev only (SPECIFICATION.md E.2.1)
+  - scenarios[klkizi]::uart_ring_under_concurrent_load: device wires no uart_link
+  - scenarios[schlafzi]::isl29125_config_put_during_get_loops: device wires no isl29125
+  - scenarios[schlafzi]::a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog: a device-independent mechanism, run on arzi only (SPECIFICATION.md E.2.1)
+  - scenarios[schlafzi]::a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog: a device-independent mechanism, run on dev only (SPECIFICATION.md E.2.1)
+  - scenarios[schlafzi]::uart_ring_under_concurrent_load: device wires no uart_link
+  - scenarios[wozi]::isl29125_config_put_during_get_loops: device wires no isl29125
+  - scenarios[wozi]::a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog: a device-independent mechanism, run on arzi only (SPECIFICATION.md E.2.1)
+  - scenarios[wozi]::a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog: a device-independent mechanism, run on dev only (SPECIFICATION.md E.2.1)
+  - scenarios[wozi]::uart_ring_under_concurrent_load: device wires no uart_link
+  - tests/test_digital_twin_sensortask_integration.py[arzi]::test_a_failed_config_snapshot_is_the_unavailable_marker: runs on ['dev'], one device per distinct wiring of ['bmp3xx', 'scd30', 'isl29125']
+  - tests/test_digital_twin_sensortask_integration.py[dev]::test_a_factory_state_unit_returns_to_the_hotspot_after_every_window: runs on arzi, the first generated device: every device runs the same mechanism
+  - tests/test_digital_twin_sensortask_integration.py[grkizi]::test_a_factory_state_unit_returns_to_the_hotspot_after_every_window: runs on arzi, the first generated device: every device runs the same mechanism
+  - tests/test_digital_twin_sensortask_integration.py[grkizi]::test_a_failed_config_snapshot_is_the_unavailable_marker: runs on ['dev'], one device per distinct wiring of ['bmp3xx', 'scd30', 'isl29125']
+  - tests/test_digital_twin_sensortask_integration.py[grkizi]::test_a_stopped_scd30_ends_its_alerts: runs on ['arzi', 'dev'], one device per distinct wiring of ['notification', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[grkizi]::test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error: runs on ['arzi', 'dev', 'wozi'], one device per distinct wiring of ['sgp40', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[grkizi]::test_the_notification_window_spanning_midnight_flashes_red: runs on ['arzi', 'dev'], one device per distinct wiring of ['notification', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['fram']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_a_factory_state_unit_returns_to_the_hotspot_after_every_window: runs on arzi, the first generated device: every device runs the same mechanism
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_a_failed_config_snapshot_is_the_unavailable_marker: runs on ['dev'], one device per distinct wiring of ['bmp3xx', 'scd30', 'isl29125']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_a_restarted_sgp40_task_restores_its_voc_state_from_fram: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of ['sgp40', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_a_restored_backup_reports_its_timestamp_without_ntp: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of ['sgp40', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_a_stopped_scd30_ends_its_alerts: runs on ['arzi', 'dev'], one device per distinct wiring of ['notification', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error: runs on ['arzi', 'dev', 'wozi'], one device per distinct wiring of ['sgp40', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of ['sgp40', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of ['sgp40', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_the_captive_dns_listener_idles_at_its_idle_rate: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_the_notification_window_spanning_midnight_flashes_red: runs on ['arzi', 'dev'], one device per distinct wiring of ['notification', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[klkizi]::test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_a_factory_state_unit_returns_to_the_hotspot_after_every_window: runs on arzi, the first generated device: every device runs the same mechanism
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_a_failed_config_snapshot_is_the_unavailable_marker: runs on ['dev'], one device per distinct wiring of ['bmp3xx', 'scd30', 'isl29125']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_a_restarted_sgp40_task_restores_its_voc_state_from_fram: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of ['sgp40', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_a_restored_backup_reports_its_timestamp_without_ntp: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of ['sgp40', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_a_stopped_scd30_ends_its_alerts: runs on ['arzi', 'dev'], one device per distinct wiring of ['notification', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error: runs on ['arzi', 'dev', 'wozi'], one device per distinct wiring of ['sgp40', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of ['sgp40', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of ['sgp40', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_the_captive_dns_listener_idles_at_its_idle_rate: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_the_notification_window_spanning_midnight_flashes_red: runs on ['arzi', 'dev'], one device per distinct wiring of ['notification', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[schlafzi]::test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['fram']
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['fram']
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_a_factory_state_unit_returns_to_the_hotspot_after_every_window: runs on arzi, the first generated device: every device runs the same mechanism
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_a_failed_config_snapshot_is_the_unavailable_marker: runs on ['dev'], one device per distinct wiring of ['bmp3xx', 'scd30', 'isl29125']
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_a_stopped_scd30_ends_its_alerts: runs on ['arzi', 'dev'], one device per distinct wiring of ['notification', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_the_captive_dns_listener_idles_at_its_idle_rate: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_the_captive_dns_socket_whose_bind_fails_logs_once_then_rebuilds_binds_and_answers: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['neopixel', 'fram']
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_the_notification_window_spanning_midnight_flashes_red: runs on ['arzi', 'dev'], one device per distinct wiring of ['notification', 'scd30']
+  - tests/test_digital_twin_sensortask_integration.py[wozi]::test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back: runs on ['arzi', 'dev', 'grkizi'], one device per distinct wiring of ['fram']
+  - tests/test_digital_twin_loop_end.py[klkizi]::test_a_console_interrupt_after_boot_still_reads_21: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[klkizi]::test_a_console_soft_reset_after_ctrl_c_reads_21: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[klkizi]::test_a_loop_ended_during_boot_reads_10_plus_its_phase: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[klkizi]::test_a_non_exception_raised_in_a_task_after_boot_reads_22: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[klkizi]::test_a_power_cycle_after_ctrl_c_reads_1: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[schlafzi]::test_a_console_interrupt_after_boot_still_reads_21: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[schlafzi]::test_a_console_soft_reset_after_ctrl_c_reads_21: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[schlafzi]::test_a_loop_ended_during_boot_reads_10_plus_its_phase: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[schlafzi]::test_a_non_exception_raised_in_a_task_after_boot_reads_22: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+  - tests/test_digital_twin_loop_end.py[schlafzi]::test_a_power_cycle_after_ctrl_c_reads_1: runs on ['arzi', 'dev', 'grkizi', 'wozi'], one device per distinct wiring of every instance
+Deselected:
+  - scenarios[arzi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
+  - scenarios[dev]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
+  - scenarios[grkizi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
+  - scenarios[klkizi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
+  - scenarios[schlafzi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
+  - scenarios[wozi]::wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

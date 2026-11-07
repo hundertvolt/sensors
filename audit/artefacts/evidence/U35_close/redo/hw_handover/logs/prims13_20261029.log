@@ -1,0 +1,80 @@
+### prims13 19:05:01
+1793300701.522 Resolved 22 packages in 3ms
+1793300701.525 Audited 20 packages in 0.59ms
+1793300701.553 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+1793300702.894 SUM prims13 probe_exists_before False
+1793300706.975 READY IP=192.168.85.57
+HOST 1793300710.280 small ok 1.114s
+HOST 1793300711.030 up ok 0.547s
+HOST 1793300710.280 big ok 1.387s
+HOST 1793300711.577 up ok 0.515s
+HOST 1793300712.092 up ok 0.522s
+HOST 1793300713.114 up ok 0.516s
+HOST 1793300713.631 up ok 0.513s
+HOST 1793300714.144 up ok 0.518s
+1793300714.991 MARK baseline
+HOST 1793300715.160 up ok 0.520s
+HOST 1793300715.680 up ok 0.512s
+HOST 1793300716.192 up ok 0.509s
+HOST 1793300716.702 up ok 0.513s
+HOST 1793300717.216 up ok 0.514s
+1793300718.009 SUM prims13 baseline write_us 0 irqoff_max_us 243 windows_us [] [('accepted', 49), ('lag_max', 27), ('served_big', 19), ('served_small', 19), ('served_up', 10)]
+HOST 1793300717.730 up ok 0.515s
+HOST 1793300718.246 up ok 0.516s
+HOST 1793300719.259 up ok 0.513s
+1793300720.000 MARK write1
+HOST 1793300719.773 up ok 0.575s
+HOST 1793300720.348 up ok 0.529s
+HOST 1793300720.878 up ok 0.509s
+HOST 1793300721.884 up ok 0.524s
+HOST 1793300722.408 up ok 0.503s
+1793300723.107 SUM prims13 write1 write_us 88962 irqoff_max_us 38261 windows_us [38261] [('accepted', 50), ('lag_max', 90), ('served_big', 20), ('served_small', 20), ('served_up', 10)]
+HOST 1793300723.297 up ok 0.678s
+HOST 1793300724.399 up ok 0.558s
+1793300725.100 MARK write2
+HOST 1793300724.958 up ok 0.513s
+HOST 1793300725.471 up ok 0.513s
+HOST 1793300725.985 up ok 0.511s
+HOST 1793300726.497 up ok 0.508s
+HOST 1793300727.006 up ok 0.507s
+HOST 1793300727.513 up ok 0.515s
+1793300728.177 SUM prims13 write2 write_us 69871 irqoff_max_us 35198 windows_us [35198] [('accepted', 49), ('lag_max', 72), ('served_big', 20), ('served_small', 20), ('served_up', 10)]
+HOST 1793300728.028 up ok 0.520s
+HOST 1793300728.549 up ok 0.506s
+HOST 1793300729.055 up ok 0.510s
+HOST 1793300729.566 up ok 0.512s
+1793300730.178 MARK write3
+HOST 1793300730.078 up ok 0.520s
+HOST 1793300730.598 up ok 0.506s
+HOST 1793300731.104 up ok 0.510s
+HOST 1793300731.614 up ok 0.511s
+HOST 1793300732.126 up ok 0.543s
+HOST 1793300732.670 up ok 0.522s
+1793300733.270 SUM prims13 write3 write_us 71366 irqoff_max_us 35956 windows_us [35956] [('accepted', 51), ('lag_max', 69), ('served_big', 20), ('served_small', 22), ('served_up', 10)]
+1793300733.282 SUM prims13 remove_us 6029 irqoff_max_us 609 probe_exists_after False
+HOST 1793300733.192 up ok 0.573s
+HOST 1793300733.766 up ok 0.685s
+HOST 1793300734.451 up ok 0.572s
+HOST 1793300735.025 up ok 0.709s
+HOST 1793300735.734 up ok 0.513s
+HOST 1793300736.248 up ok 0.532s
+1793300737.294 SUM prims13 mem_free 149072
+1793300737.294 DONE
+1793300737.311 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+HOST 1793300736.781 up TimeoutError 6.011s
+HOST 1793300737.083 big TimeoutError 6.011s
+HOST 1793300737.138 small TimeoutError 6.012s
+SUM prims13_host small n 105 failed 1 lat_s p50 0.204 max 1.114
+SUM prims13_host big n 101 failed 1 lat_s p50 0.257 max 1.387
+SUM prims13_host up n 52 failed 1 lat_s p50 0.513 max 0.709
+SUM prims13_host retransmissions 57 board->host 0 at ['1793300710.834 host->board', '1793300711.351 host->board', '1793300711.828 host->board', '1793300712.344 host->board', '1793300712.847 host->board', '1793300713.368 host->board', '1793300713.879 host->board', '1793300714.392 host->board', '1793300714.896 host->board', '1793300715.420 host->board', '1793300715.932 host->board', '1793300716.438 host->board', '1793300716.954 host->board', '1793300717.464 host->board', '1793300717.976 host->board', '1793300718.489 host->board', '1793300718.996 host->board', '1793300719.509 host->board', '1793300720.075 host->board', '1793300720.604 host->board', '1793300721.125 host->board', '1793300721.616 host->board', '1793300722.137 host->board', '1793300722.644 host->board', '1793300723.228 host->board', '1793300723.284 host->board', '1793300723.698 host->board', '1793300723.704 host->board', '1793300724.697 host->board', '1793300725.208 host->board', '1793300725.726 host->board', '1793300726.229 host->board', '1793300726.741 host->board', '1793300727.252 host->board', '1793300727.765 host->board', '1793300728.276 host->board', '1793300728.788 host->board', '1793300729.301 host->board', '1793300729.813 host->board', '1793300730.324 host->board']
+host rc=0 19:05:44
+rc=0 19:05:44
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.70ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0x12e', '0x59', '0x0', '0x261'] region1 ['0x4', '0x45', '0x0']
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.59ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims13 probe_left []

@@ -1,0 +1,1900 @@
+[test_sensortask[dev]] == attempt 1/3
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/1/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/1/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/1/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/1/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/1/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/1/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] SCD30 Error counter increased to 1
+[test_sensortask[dev]] SGP40 No backup found!
+[test_sensortask[dev]] ISL29125 Error counter increased to 1
+[test_sensortask[dev]] BMP3XX Error counter increased to 1
+[test_sensortask[dev]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] SCD30 Error counter increased to 2
+[test_sensortask[dev]] ISL29125 Error counter increased to 2
+[test_sensortask[dev]] BMP3XX Error counter increased to 2
+[test_sensortask[dev]] SCD30 Soft reset failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] ISL29125 Error re-applying configuration: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] BMP3XX Soft reset failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] SCD30 Error counter increased to 3
+[test_sensortask[dev]] ISL29125 Error counter increased to 3
+[test_sensortask[dev]] BMP3XX Error counter increased to 3
+[test_sensortask[dev]] SCD30 I2C bus cleared, status 0
+[test_sensortask[dev]] BMP3XX I2C bus cleared, status 0
+[test_sensortask[dev]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] SCD30 Error counter increased to 4
+[test_sensortask[dev]] ISL29125 Error counter increased to 4
+[test_sensortask[dev]] BMP3XX Error counter increased to 4
+[test_sensortask[dev]] SCD30 I2C controller re-initialised, status 0
+[test_sensortask[dev]] BMP3XX I2C controller re-initialised, status 0
+[test_sensortask[dev]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] SCD30 Error counter increased to 5
+[test_sensortask[dev]] ISL29125 Error counter increased to 5
+[test_sensortask[dev]] BMP3XX Error counter increased to 5
+[test_sensortask[dev]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] ISL29125 Status read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] SCD30 Error counter increased to 6
+[test_sensortask[dev]] ISL29125 Error counter increased to 6
+[test_sensortask[dev]] BMP3XX Error counter increased to 6
+[test_sensortask[dev]] SCD30 Maximum error count reached!
+[test_sensortask[dev]] ISL29125 Maximum error count reached!
+[test_sensortask[dev]] BMP3XX Maximum error count reached!
+[test_sensortask[dev]] PASS test_a_bus_nak_storm_climbs_each_rung_once_per_bus_and_every_reader_recovers
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/2/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/2/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/2/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/2/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/2/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/2/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_a_cancelled_main_leaves_no_timer_feeding_the_watchdog
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/3/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NTP Config file tests/_tmp/sensortask_dev/3/config_NTP.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/3/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/3/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/3/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/3/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/3/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] FRAM FRAM Setup failed: FRAM SPI device not found
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] SYSTEM PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SYSTEM FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] CFGMGR_SYSTEM FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] WIFI PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] WIFI PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] WIFI FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] CFGMGR_WIFI FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] DNSSRV PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] DNSSRV PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] DNSSRV FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] NTP PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] NTP PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] NTP FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] CFGMGR_NTP FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] NEOPIXEL PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] NEOPIXEL PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] NEOPIXEL FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] SCD30 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] SCD30 PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SCD30 FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] SGP40 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] SGP40 PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SGP40 FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] CFGMGR_SGP40 FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] BMP3XX PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] BMP3XX PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] BMP3XX FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] CFGMGR_BMP3XX FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] ISL29125 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] ISL29125 PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] ISL29125 FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] CFGMGR_ISL29125 FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] NOTIFY PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] NOTIFY PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] NOTIFY FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] CFGMGR_NOTIFY FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] UART_init PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] UART_init PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] UART_init FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] UART_resp PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] UART_resp PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] UART_resp FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[dev]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[dev]] FRAM Read status byte failed!
+[test_sensortask[dev]] FRAM Read fault in block 1
+[test_sensortask[dev]] WEBSERVER PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[dev]] WEBSERVER PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] WEBSERVER FRAM history unreadable - RAM-only until reboot
+[test_sensortask[dev]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SYSTEM boom
+[test_sensortask[dev]] FRAM FRAM chip declared but not set up - escalating
+[test_sensortask[dev]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SYSTEM Task FRAM.start_asy_watch_chip ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 100 - FRAM.start_asy_watch_chip
+[test_sensortask[dev]] FRAM FRAM chip declared but not set up - escalating
+[test_sensortask[dev]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SYSTEM Task FRAM.start_asy_watch_chip ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 200 - FRAM.start_asy_watch_chip
+[test_sensortask[dev]] FRAM FRAM chip declared but not set up - escalating
+[test_sensortask[dev]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SYSTEM Task FRAM.start_asy_watch_chip ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 300 - FRAM.start_asy_watch_chip
+[test_sensortask[dev]] FRAM FRAM chip declared but not set up - escalating
+[test_sensortask[dev]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SYSTEM Task FRAM.start_asy_watch_chip ended: returned
+[test_sensortask[dev]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[dev]] SYSTEM Task error counter above 300 - reboot triggered!
+[test_sensortask[dev]] PASS test_a_declared_dead_fram_chip_escalates_to_a_reboot
+[test_sensortask[dev]] PASS test_a_fresh_filesystem_boot_writes_each_config_file_once
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/5/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/5/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/5/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/5/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/5/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/5/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI written by the previous build
+[test_sensortask[dev]] CFGMGR_WIFI written by the previous build
+[test_sensortask[dev]] DNSSRV written by the previous build
+[test_sensortask[dev]] NTP written by the previous build
+[test_sensortask[dev]] CFGMGR_NTP written by the previous build
+[test_sensortask[dev]] NEOPIXEL written by the previous build
+[test_sensortask[dev]] SYSTEM written by the previous build
+[test_sensortask[dev]] CFGMGR_SYSTEM written by the previous build
+[test_sensortask[dev]] SCD30 written by the previous build
+[test_sensortask[dev]] SGP40 written by the previous build
+[test_sensortask[dev]] CFGMGR_SGP40 written by the previous build
+[test_sensortask[dev]] BMP3XX written by the previous build
+[test_sensortask[dev]] CFGMGR_BMP3XX written by the previous build
+[test_sensortask[dev]] ISL29125 written by the previous build
+[test_sensortask[dev]] CFGMGR_ISL29125 written by the previous build
+[test_sensortask[dev]] NOTIFY written by the previous build
+[test_sensortask[dev]] CFGMGR_NOTIFY written by the previous build
+[test_sensortask[dev]] UART_init written by the previous build
+[test_sensortask[dev]] UART_resp written by the previous build
+[test_sensortask[dev]] WEBSERVER written by the previous build
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[dev]] FRAM CRC error in _read_chunk!
+[test_sensortask[dev]] FRAM Invalid data in block 1
+[test_sensortask[dev]] WIFI written after the foreign image
+[test_sensortask[dev]] CFGMGR_WIFI written after the foreign image
+[test_sensortask[dev]] DNSSRV written after the foreign image
+[test_sensortask[dev]] NTP written after the foreign image
+[test_sensortask[dev]] CFGMGR_NTP written after the foreign image
+[test_sensortask[dev]] NEOPIXEL written after the foreign image
+[test_sensortask[dev]] SYSTEM written after the foreign image
+[test_sensortask[dev]] CFGMGR_SYSTEM written after the foreign image
+[test_sensortask[dev]] SCD30 written after the foreign image
+[test_sensortask[dev]] SGP40 written after the foreign image
+[test_sensortask[dev]] CFGMGR_SGP40 written after the foreign image
+[test_sensortask[dev]] BMP3XX written after the foreign image
+[test_sensortask[dev]] CFGMGR_BMP3XX written after the foreign image
+[test_sensortask[dev]] ISL29125 written after the foreign image
+[test_sensortask[dev]] CFGMGR_ISL29125 written after the foreign image
+[test_sensortask[dev]] NOTIFY written after the foreign image
+[test_sensortask[dev]] CFGMGR_NOTIFY written after the foreign image
+[test_sensortask[dev]] UART_init written after the foreign image
+[test_sensortask[dev]] UART_resp written after the foreign image
+[test_sensortask[dev]] WEBSERVER written after the foreign image
+[test_sensortask[dev]] PASS test_a_layout_shifted_by_one_chunk_restores_no_neighbours_history
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/6/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/6/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/6/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/6/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/6/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/6/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[dev]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[dev]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[dev]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[dev]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[dev]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[dev]] PASS test_a_storm_of_refused_connections_spends_one_slot_and_a_request_serves_once_the_slots_free
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/7/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/7/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/7/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/7/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/7/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/7/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 100 - WIFI.start_asy_connect
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 200 - WIFI.start_asy_connect
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 300 - WIFI.start_asy_connect
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task error counter above 300 - reboot triggered!
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 400 - WIFI.start_asy_connect
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/8/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/8/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/8/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/8/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/8/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/8/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_a_task_that_keeps_ending_stops_every_feed_once_its_reboot_is_armed
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/9/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/9/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/9/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/9/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/9/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/9/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_a_uart_write_hold_off_ends_within_one_window_across_a_wrap_and_after_idles_past_the_horizon
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/10/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/10/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/10/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/10/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/10/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/10/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SYSTEM Supervisor ended with exception: planted supervisor fault
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/11/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/11/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/11/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/11/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/11/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/11/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_an_exception_escaping_the_supervisor_ends_every_feed
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/12/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/12/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/12/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/12/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/12/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/12/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] NTP No reply from NTP server: 192.0.2.1
+[test_sensortask[dev]] NTP No reply from NTP server: 192.0.2.1
+[test_sensortask[dev]] NTP No reply from NTP server: 192.0.2.1
+[test_sensortask[dev]] PASS test_an_ntp_server_that_never_replies_spends_one_slot_and_a_reply_syncs_once_it_answers
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/13/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/13/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/13/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/13/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/13/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/13/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_boot_feeds_the_watchdog_exactly_once_per_setup_call
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/14/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/14/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/14/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/14/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/14/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/14/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/15/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/15/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/15/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/15/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/15/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/15/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_boot_sequence_matches_the_generated_expectation
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/16/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/16/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/16/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/16/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/16/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/16/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_build_system_constructs_every_real_module
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/17/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/17/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/17/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/17/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/17/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/17/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_build_system_is_independently_callable_and_returns
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/18/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/18/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/18/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/18/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/18/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/18/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_build_system_web_host_and_port_are_overridable
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/19/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/19/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/19/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/19/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/19/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/19/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_build_system_web_host_and_port_default_to_production_values
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/20/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/20/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/20/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/20/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/20/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/20/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_build_system_wires_the_wifi_led_callback_after_both_exist
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/21/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/21/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/21/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/21/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/21/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/21/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_collect_level_setters_returns_one_entry_per_logger_in_the_object_graph
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/22/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/22/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/22/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/22/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/22/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/22/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_collect_task_starters_and_their_names_include_every_constructed_module
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/23/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/23/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/23/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/23/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/23/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/23/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_collect_task_starters_never_touches_start_tasks
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/24/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/24/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/24/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/24/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/24/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/24/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_collect_timer_starters_includes_every_constructed_module
+[test_sensortask[dev]] PASS test_debug_level_survives_a_simulated_reboot_through_build_system
+[test_sensortask[dev]] CFGMGR_SYSTEM Config file tests/_tmp/sensortask_dev/26/config_SYSTEM.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/27/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/27/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/27/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/27/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/27/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/27/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_dropped_one_second_wake_ups_never_skew_elapsed_values
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/28/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/28/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/28/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/28/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/28/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/28/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI written before the command
+[test_sensortask[dev]] CFGMGR_WIFI written before the command
+[test_sensortask[dev]] DNSSRV written before the command
+[test_sensortask[dev]] NTP written before the command
+[test_sensortask[dev]] CFGMGR_NTP written before the command
+[test_sensortask[dev]] SCD30 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] NEOPIXEL written before the command
+[test_sensortask[dev]] UART_init UART error: no ACK for frame 1
+[test_sensortask[dev]] SYSTEM written before the command
+[test_sensortask[dev]] CFGMGR_SYSTEM written before the command
+[test_sensortask[dev]] SCD30 written before the command
+[test_sensortask[dev]] SGP40 written before the command
+[test_sensortask[dev]] CFGMGR_SGP40 written before the command
+[test_sensortask[dev]] BMP3XX written before the command
+[test_sensortask[dev]] CFGMGR_BMP3XX written before the command
+[test_sensortask[dev]] ISL29125 written before the command
+[test_sensortask[dev]] CFGMGR_ISL29125 written before the command
+[test_sensortask[dev]] NOTIFY written before the command
+[test_sensortask[dev]] CFGMGR_NOTIFY written before the command
+[test_sensortask[dev]] UART_init written before the command
+[test_sensortask[dev]] UART_resp written before the command
+[test_sensortask[dev]] UART_init Resyncing the link
+[test_sensortask[dev]] WEBSERVER written before the command
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/29/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/29/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/29/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/29/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/29/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/29/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI written before the command
+[test_sensortask[dev]] CFGMGR_WIFI written before the command
+[test_sensortask[dev]] DNSSRV written before the command
+[test_sensortask[dev]] NTP written before the command
+[test_sensortask[dev]] CFGMGR_NTP written before the command
+[test_sensortask[dev]] SCD30 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] NEOPIXEL written before the command
+[test_sensortask[dev]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] SYSTEM written before the command
+[test_sensortask[dev]] UART_init UART error: no ACK for frame 1
+[test_sensortask[dev]] CFGMGR_SYSTEM written before the command
+[test_sensortask[dev]] SCD30 written before the command
+[test_sensortask[dev]] SGP40 written before the command
+[test_sensortask[dev]] CFGMGR_SGP40 written before the command
+[test_sensortask[dev]] BMP3XX written before the command
+[test_sensortask[dev]] CFGMGR_BMP3XX written before the command
+[test_sensortask[dev]] ISL29125 written before the command
+[test_sensortask[dev]] CFGMGR_ISL29125 written before the command
+[test_sensortask[dev]] NOTIFY written before the command
+[test_sensortask[dev]] CFGMGR_NOTIFY written before the command
+[test_sensortask[dev]] UART_init written before the command
+[test_sensortask[dev]] UART_resp written before the command
+[test_sensortask[dev]] WEBSERVER written before the command
+[test_sensortask[dev]] UART_init Resyncing the link
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/30/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/30/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/30/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/30/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/30/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/30/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI written before the command
+[test_sensortask[dev]] CFGMGR_WIFI written before the command
+[test_sensortask[dev]] DNSSRV written before the command
+[test_sensortask[dev]] NTP written before the command
+[test_sensortask[dev]] CFGMGR_NTP written before the command
+[test_sensortask[dev]] NEOPIXEL written before the command
+[test_sensortask[dev]] SCD30 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] SYSTEM written before the command
+[test_sensortask[dev]] CFGMGR_SYSTEM written before the command
+[test_sensortask[dev]] UART_init UART error: no ACK for frame 1
+[test_sensortask[dev]] SCD30 written before the command
+[test_sensortask[dev]] SGP40 written before the command
+[test_sensortask[dev]] CFGMGR_SGP40 written before the command
+[test_sensortask[dev]] BMP3XX written before the command
+[test_sensortask[dev]] CFGMGR_BMP3XX written before the command
+[test_sensortask[dev]] ISL29125 written before the command
+[test_sensortask[dev]] CFGMGR_ISL29125 written before the command
+[test_sensortask[dev]] NOTIFY written before the command
+[test_sensortask[dev]] CFGMGR_NOTIFY written before the command
+[test_sensortask[dev]] UART_init written before the command
+[test_sensortask[dev]] UART_resp written before the command
+[test_sensortask[dev]] WEBSERVER written before the command
+[test_sensortask[dev]] UART_init Resyncing the link
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/31/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/31/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/31/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/31/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/31/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/31/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI written before the command
+[test_sensortask[dev]] CFGMGR_WIFI written before the command
+[test_sensortask[dev]] DNSSRV written before the command
+[test_sensortask[dev]] NTP written before the command
+[test_sensortask[dev]] CFGMGR_NTP written before the command
+[test_sensortask[dev]] SCD30 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] NEOPIXEL written before the command
+[test_sensortask[dev]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] SYSTEM written before the command
+[test_sensortask[dev]] UART_init UART error: no ACK for frame 1
+[test_sensortask[dev]] CFGMGR_SYSTEM written before the command
+[test_sensortask[dev]] SCD30 written before the command
+[test_sensortask[dev]] SGP40 written before the command
+[test_sensortask[dev]] CFGMGR_SGP40 written before the command
+[test_sensortask[dev]] BMP3XX written before the command
+[test_sensortask[dev]] CFGMGR_BMP3XX written before the command
+[test_sensortask[dev]] ISL29125 written before the command
+[test_sensortask[dev]] CFGMGR_ISL29125 written before the command
+[test_sensortask[dev]] NOTIFY written before the command
+[test_sensortask[dev]] CFGMGR_NOTIFY written before the command
+[test_sensortask[dev]] UART_init written before the command
+[test_sensortask[dev]] UART_resp written before the command
+[test_sensortask[dev]] WEBSERVER written before the command
+[test_sensortask[dev]] UART_init Resyncing the link
+[test_sensortask[dev]] PASS test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/32/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/32/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/32/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/32/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/32/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/32/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/33/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/33/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/33/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/33/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/33/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/33/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/34/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/34/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/34/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/34/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/34/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/34/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/35/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/35/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/35/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/35/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/35/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/35/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_every_build_starts_with_every_dma_channel_free
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/36/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/36/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/36/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/36/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/36/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/36/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_WIFI months of faults
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] DNSSRV months of faults
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NTP months of faults
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NEOPIXEL months of faults
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SYSTEM months of faults
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SCD30 months of faults
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_SGP40 months of faults
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_BMP3XX months of faults
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] CFGMGR_ISL29125 PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_ISL29125 months of faults
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] CFGMGR_NOTIFY months of faults
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_init PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_init months of faults
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] UART_resp PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] UART_resp months of faults
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[dev]] WEBSERVER months of faults
+[test_sensortask[dev]] PASS test_every_logger_count_stops_at_its_top_and_its_ring_keeps_the_newest_codes_through_a_reboot
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/37/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/37/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/37/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/37/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/37/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/37/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_every_logger_is_set_up_by_the_batch_before_any_task_starts
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/38/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/38/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/38/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/38/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/38/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/38/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_every_logger_the_boot_constructs_reaches_status_errcount_exactly_once
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/39/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/39/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/39/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/39/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/39/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/39/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_every_measurement_starts_none_on_every_sensor
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/40/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/40/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/40/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/40/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/40/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/40/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_every_module_and_logger_reaches_the_fan_in_collectors_exactly_once
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/41/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/41/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/41/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/41/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/41/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/41/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SYSTEM Task FRAM.start_asy_watch_chip ended: was cancelled
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 100 - FRAM.start_asy_watch_chip
+[test_sensortask[dev]] PASS test_every_task_starter_runs_under_the_real_supervisor_and_a_killed_one_is_named_in_status
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/42/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/42/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/42/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/42/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/42/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/42/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI storm probe
+[test_sensortask[dev]] WIFI storm: the same fault again
+[test_sensortask[dev]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[dev]] DNSSRV storm: the same fault again
+[test_sensortask[dev]] NTP storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[dev]] NEOPIXEL storm: the same fault again
+[test_sensortask[dev]] SYSTEM storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[dev]] SCD30 storm: the same fault again
+[test_sensortask[dev]] SGP40 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[dev]] BMP3XX storm: the same fault again
+[test_sensortask[dev]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[dev]] ISL29125 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_ISL29125 storm: the same fault again
+[test_sensortask[dev]] NOTIFY storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[dev]] UART_init storm: the same fault again
+[test_sensortask[dev]] UART_resp storm: the same fault again
+[test_sensortask[dev]] WEBSERVER storm: the same fault again
+[test_sensortask[dev]] WIFI storm: the same fault again
+[test_sensortask[dev]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[dev]] DNSSRV storm: the same fault again
+[test_sensortask[dev]] NTP storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[dev]] NEOPIXEL storm: the same fault again
+[test_sensortask[dev]] SYSTEM storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[dev]] SCD30 storm: the same fault again
+[test_sensortask[dev]] SGP40 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[dev]] BMP3XX storm: the same fault again
+[test_sensortask[dev]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[dev]] ISL29125 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_ISL29125 storm: the same fault again
+[test_sensortask[dev]] NOTIFY storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[dev]] UART_init storm: the same fault again
+[test_sensortask[dev]] UART_resp storm: the same fault again
+[test_sensortask[dev]] WEBSERVER storm: the same fault again
+[test_sensortask[dev]] WIFI storm: the same fault again
+[test_sensortask[dev]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[dev]] DNSSRV storm: the same fault again
+[test_sensortask[dev]] NTP storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[dev]] NEOPIXEL storm: the same fault again
+[test_sensortask[dev]] SYSTEM storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[dev]] SCD30 storm: the same fault again
+[test_sensortask[dev]] SGP40 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[dev]] BMP3XX storm: the same fault again
+[test_sensortask[dev]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[dev]] ISL29125 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_ISL29125 storm: the same fault again
+[test_sensortask[dev]] NOTIFY storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[dev]] UART_init storm: the same fault again
+[test_sensortask[dev]] UART_resp storm: the same fault again
+[test_sensortask[dev]] WEBSERVER storm: the same fault again
+[test_sensortask[dev]] WIFI storm: the same fault again
+[test_sensortask[dev]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[dev]] DNSSRV storm: the same fault again
+[test_sensortask[dev]] NTP storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[dev]] NEOPIXEL storm: the same fault again
+[test_sensortask[dev]] SYSTEM storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[dev]] SCD30 storm: the same fault again
+[test_sensortask[dev]] SGP40 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[dev]] BMP3XX storm: the same fault again
+[test_sensortask[dev]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[dev]] ISL29125 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_ISL29125 storm: the same fault again
+[test_sensortask[dev]] NOTIFY storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[dev]] UART_init storm: the same fault again
+[test_sensortask[dev]] UART_resp storm: the same fault again
+[test_sensortask[dev]] WEBSERVER storm: the same fault again
+[test_sensortask[dev]] WIFI storm: the same fault again
+[test_sensortask[dev]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[dev]] DNSSRV storm: the same fault again
+[test_sensortask[dev]] NTP storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[dev]] NEOPIXEL storm: the same fault again
+[test_sensortask[dev]] SYSTEM storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[dev]] SCD30 storm: the same fault again
+[test_sensortask[dev]] SGP40 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[dev]] BMP3XX storm: the same fault again
+[test_sensortask[dev]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[dev]] ISL29125 storm: the same fault again
+[test_sensortask[dev]] CFGMGR_ISL29125 storm: the same fault again
+[test_sensortask[dev]] NOTIFY storm: the same fault again
+[test_sensortask[dev]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[dev]] UART_init storm: the same fault again
+[test_sensortask[dev]] UART_resp storm: the same fault again
+[test_sensortask[dev]] WEBSERVER storm: the same fault again
+[test_sensortask[dev]] WIFI storm: another fault
+[test_sensortask[dev]] CFGMGR_WIFI storm: another fault
+[test_sensortask[dev]] DNSSRV storm: another fault
+[test_sensortask[dev]] NTP storm: another fault
+[test_sensortask[dev]] CFGMGR_NTP storm: another fault
+[test_sensortask[dev]] NEOPIXEL storm: another fault
+[test_sensortask[dev]] SYSTEM storm: another fault
+[test_sensortask[dev]] CFGMGR_SYSTEM storm: another fault
+[test_sensortask[dev]] SCD30 storm: another fault
+[test_sensortask[dev]] SGP40 storm: another fault
+[test_sensortask[dev]] CFGMGR_SGP40 storm: another fault
+[test_sensortask[dev]] BMP3XX storm: another fault
+[test_sensortask[dev]] CFGMGR_BMP3XX storm: another fault
+[test_sensortask[dev]] ISL29125 storm: another fault
+[test_sensortask[dev]] CFGMGR_ISL29125 storm: another fault
+[test_sensortask[dev]] NOTIFY storm: another fault
+[test_sensortask[dev]] CFGMGR_NOTIFY storm: another fault
+[test_sensortask[dev]] UART_init storm: another fault
+[test_sensortask[dev]] UART_resp storm: another fault
+[test_sensortask[dev]] WEBSERVER storm: another fault
+[test_sensortask[dev]] PASS test_fault_storm_keeps_every_module_within_its_persisted_log_rate
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/43/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/43/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/43/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/43/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/43/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/43/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI written by the previous build
+[test_sensortask[dev]] CFGMGR_WIFI written by the previous build
+[test_sensortask[dev]] DNSSRV written by the previous build
+[test_sensortask[dev]] NTP written by the previous build
+[test_sensortask[dev]] CFGMGR_NTP written by the previous build
+[test_sensortask[dev]] NEOPIXEL written by the previous build
+[test_sensortask[dev]] SYSTEM written by the previous build
+[test_sensortask[dev]] CFGMGR_SYSTEM written by the previous build
+[test_sensortask[dev]] SCD30 written by the previous build
+[test_sensortask[dev]] SGP40 written by the previous build
+[test_sensortask[dev]] CFGMGR_SGP40 written by the previous build
+[test_sensortask[dev]] BMP3XX written by the previous build
+[test_sensortask[dev]] CFGMGR_BMP3XX written by the previous build
+[test_sensortask[dev]] ISL29125 written by the previous build
+[test_sensortask[dev]] CFGMGR_ISL29125 written by the previous build
+[test_sensortask[dev]] NOTIFY written by the previous build
+[test_sensortask[dev]] CFGMGR_NOTIFY written by the previous build
+[test_sensortask[dev]] UART_init written by the previous build
+[test_sensortask[dev]] UART_resp written by the previous build
+[test_sensortask[dev]] WEBSERVER written by the previous build
+[test_sensortask[dev]] WIFI written after the foreign image
+[test_sensortask[dev]] CFGMGR_WIFI written after the foreign image
+[test_sensortask[dev]] DNSSRV written after the foreign image
+[test_sensortask[dev]] NTP written after the foreign image
+[test_sensortask[dev]] CFGMGR_NTP written after the foreign image
+[test_sensortask[dev]] NEOPIXEL written after the foreign image
+[test_sensortask[dev]] SYSTEM written after the foreign image
+[test_sensortask[dev]] CFGMGR_SYSTEM written after the foreign image
+[test_sensortask[dev]] SCD30 written after the foreign image
+[test_sensortask[dev]] SGP40 written after the foreign image
+[test_sensortask[dev]] CFGMGR_SGP40 written after the foreign image
+[test_sensortask[dev]] BMP3XX written after the foreign image
+[test_sensortask[dev]] CFGMGR_BMP3XX written after the foreign image
+[test_sensortask[dev]] ISL29125 written after the foreign image
+[test_sensortask[dev]] CFGMGR_ISL29125 written after the foreign image
+[test_sensortask[dev]] NOTIFY written after the foreign image
+[test_sensortask[dev]] CFGMGR_NOTIFY written after the foreign image
+[test_sensortask[dev]] UART_init written after the foreign image
+[test_sensortask[dev]] UART_resp written after the foreign image
+[test_sensortask[dev]] WEBSERVER written after the foreign image
+[test_sensortask[dev]] PASS test_first_boot_after_a_reflash_reinitialises_every_chunk_without_flood
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/44/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/44/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/44/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/44/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/44/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/44/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_forty_days_keep_the_wifi_uptime_and_the_ntp_sync_age_on_the_driven_seconds
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/45/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/45/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/45/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/45/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/45/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/45/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 100 - WIFI.start_asy_connect
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 100 - WIFI.start_asy_connect
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 200 - WIFI.start_asy_connect
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 300 - WIFI.start_asy_connect
+[test_sensortask[dev]] PASS test_forty_days_of_uptime_keep_every_invariant
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/46/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/46/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/46/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/46/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/46/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/46/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/47/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/47/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/47/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/47/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/47/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/47/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_fram_chunk_layout_is_contiguous_deterministic_and_in_owner_order
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/48/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/48/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/48/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/48/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/48/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/48/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_fram_chunks_are_all_successfully_allocated_not_out_of_memory
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/49/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/49/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/49/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/49/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/49/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/49/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_is_hotspot_active_wiring_default_sta_phase_still_404s
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/50/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/50/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/50/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/50/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/50/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/50/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/51/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/51/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/51/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/51/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/51/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/51/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_is_hotspot_active_wiring_dynamic_phase_switch_is_reflected_live
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/52/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/52/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/52/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/52/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/52/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/52/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/53/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/53/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/53/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/53/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/53/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/53/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_hotspot_mode
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/54/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/54/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/54/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/54/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/54/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/54/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_is_hotspot_active_wiring_redirects_when_conn_is_in_hotspot_phase
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/55/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NTP Config file tests/_tmp/sensortask_dev/55/config_NTP.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/55/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/55/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/55/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/55/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/55/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_main_forwards_web_host_and_port_to_build_system
+[test_sensortask[dev]] PASS test_main_runs_setups_then_tasks_then_timers_then_force_sync_then_supervises_in_order
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/57/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/57/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/57/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/57/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/57/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/57/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_neopixel_empty_timer_list_reaches_the_generated_collector
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/58/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/58/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/58/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/58/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/58/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/58/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_notify_service_cfgmgr_exists_once_build_system_completes
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/59/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/59/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/59/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/59/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/59/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/59/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SYSTEM probe: one entry's chip cost
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 100 - WIFI.start_asy_connect
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_uptime ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 200 - WIFI.start_asy_uptime
+[test_sensortask[dev]] SYSTEM Task WIFI.start_asy_hotspot_timeout ended: returned
+[test_sensortask[dev]] SYSTEM Task ended - attempting restart, error counter increased to 300 - WIFI.start_asy_hotspot_timeout
+[test_sensortask[dev]] SYSTEM Task NTP.start_asy_sync ended: returned
+[test_sensortask[dev]] SYSTEM Task error counter above 300 - reboot triggered!
+[test_sensortask[dev]] PASS test_one_supervisor_pass_over_dead_tasks_persists_at_most_one_entry_per_end
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/60/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/60/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/60/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/60/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/60/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/60/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[dev]] UART_init UART error: no ACK for frame 1
+[test_sensortask[dev]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[dev]] UART_init Resyncing the link
+[test_sensortask[dev]] SCD30 Error counter increased to 1
+[test_sensortask[dev]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[dev]] SCD30 Error counter increased to 2
+[test_sensortask[dev]] SCD30 Device recovery after 2 failed cycles: done
+[test_sensortask[dev]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[dev]] SCD30 Error counter increased to 3
+[test_sensortask[dev]] SCD30 I2C bus cleared, status 0
+[test_sensortask[dev]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[dev]] SCD30 Error counter increased to 4
+[test_sensortask[dev]] SCD30 I2C controller re-initialised, status 0
+[test_sensortask[dev]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[dev]] SCD30 Error counter increased to 5
+[test_sensortask[dev]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[dev]] UART_init UART error: no ACK for frame 1
+[test_sensortask[dev]] SCD30 Error counter increased to 6
+[test_sensortask[dev]] SCD30 Maximum error count reached!
+[test_sensortask[dev]] PASS test_only_the_api_writes_the_scd30
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/61/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/61/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/61/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/61/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/61/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/61/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_read_triggers_follow_the_stagger_on_the_real_sequencer
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/62/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NTP JSON Data in config file tests/_tmp/sensortask_dev/62/config_NTP.cfg is invalid: syntax error in JSON
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/62/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/62/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/62/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/62/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/62/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_resetconfig_over_a_damaged_config_file_boots_next_on_every_default
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/63/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/63/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/63/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/63/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/63/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/63/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/64/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/64/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/64/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/64/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/64/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/64/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/65/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/65/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/65/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/65/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/65/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/65/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_setup_batch_runs_every_unit_in_the_collected_order
+[test_sensortask[dev]] PASS test_system_put_debug_level_updates_every_logger_in_the_object_graph
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/67/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/67/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/67/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/67/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/67/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/67/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_the_fram_manager_is_the_only_error_source_whose_own_log_is_not_fram_backed
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/68/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/68/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/68/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/68/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/68/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/68/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_the_unfed_boot_stretch_after_the_last_setup_feed_stays_within_two_seconds
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/69/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/69/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/69/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/69/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/69/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/69/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SERVING_DEMAND dev connections=6 head=2048 body_cap=2048 largest_body=7037 most_pieces=30 chunk=256 demand=69054 budget=72232 routes={'/system': (151, 1), '/sensors': (622, 3), '/networking': (196, 1), '/notification': (147, 1), '/status': (7037, 30), '/measurements': (470, 2)}
+[test_sensortask[dev]] PASS test_webserver_every_get_route_fits_the_serving_demand_budget_and_sends_its_pieces_uncopied
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/70/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/70/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/70/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/70/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/70/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/70/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_measurements_and_sensors_get_include_every_real_sensor
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/71/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/71/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/71/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/71/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/71/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/71/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_networking_put_answers_an_unknown_key_invalid
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/72/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NTP Config file tests/_tmp/sensortask_dev/72/config_NTP.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/72/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/72/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/72/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/72/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/72/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] NTP Refusing DNSFallback - not a list of up to three IPv4 addresses
+[test_sensortask[dev]] PASS test_webserver_networking_put_dns_fallback_stores_a_list_and_refuses_a_malformed_one
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/73/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/73/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/73/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/73/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/73/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/73/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_networking_put_hotspot_pw_configures_the_next_hotspot_and_reads_back_masked
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/74/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/74/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/74/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/74/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/74/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/74/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_networking_put_ntp_fields_clears_synced_until_the_next_sync
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/75/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/75/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/75/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/75/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/75/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/75/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_networking_put_ntp_fields_forces_a_resync
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/76/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/76/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/76/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/76/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/76/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/76/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_networking_put_of_the_mask_string_stores_it_as_the_password
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/77/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/77/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/77/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/77/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/77/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/77/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/78/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/78/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/78/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/78/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/78/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/78/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_light_cmd_led_refuses_a_second_flash_at_once
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/79/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/79/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/79/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/79/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/79/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/79/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_flat_field_round_trips_through_the_real_coordinator
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/80/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/80/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/80/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/80/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/80/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/80/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/81/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/81/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/81/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/81/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/81/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/81/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/82/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/82/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/82/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/82/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/82/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/82/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and_t
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/83/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/83/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/83/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/83/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/83/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/83/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/84/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/84/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/84/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/84/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/84/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/84/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_rejects_fractional_rgb
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/85/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/85/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/85/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/85/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/85/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/85/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_rejects_missing_field
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/86/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/86/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/86/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/86/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/86/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/86/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_rejects_negative_rgb
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/87/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/87/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/87/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/87/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/87/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/87/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_rejects_non_numeric_field
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/88/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/88/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/88/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/88/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/88/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/88/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_rejects_non_numeric_t
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/89/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/89/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/89/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/89/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/89/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/89/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/90/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/90/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/90/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/90/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/90/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/90/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_light_cmd_led_rejects_out_of_range_t
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/91/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/91/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/91/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/91/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/91/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/91/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/92/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/92/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/92/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/92/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/92/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/92/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_pr_is_fram_backed_when_device_wires_fram
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/93/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/93/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/93/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/93/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/93/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/93/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] ISL29125 Error reading config from sensor: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] SCD30 Error reading the config snapshot: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] BMP3XX Error reading oversampling/filter config from sensor: [Errno 5] EIO: no ACK from device
+[test_sensortask[dev]] PASS test_webserver_sensors_get_sends_the_unavailable_marker_for_a_failed_chip_config_read
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/94/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/94/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/94/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/94/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/94/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/94/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/95/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/95/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/95/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/95/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/95/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/95/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/96/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/96/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/96/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/96/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/96/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/96/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_status_answers_the_networking_snapshot_while_wifi_mode_lock_is_held
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/97/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/97/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/97/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/97/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/97/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/97/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[dev]] PASS test_webserver_status_counts_a_refused_connection_in_http_dropped_until_reset_errors
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/98/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/98/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/98/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/98/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/98/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/98/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_status_get_reflects_the_real_object_graph
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/99/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/99/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/99/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/99/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/99/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/99/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_status_in_ap_mode_reports_no_rssi_and_never_queries_it
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/100/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/100/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/100/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/100/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/100/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/100/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_status_keeps_utc_time_through_a_stale_sync_and_flags_it
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/101/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/101/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/101/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/101/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/101/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/101/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SYSTEM JSON Data in config file tests/_tmp/sensortask_dev/102/config_SYSTEM.cfg is invalid: syntax error in JSON
+[test_sensortask[dev]] PASS test_webserver_status_lists_exactly_the_modules_whose_config_file_was_unreadable_or_damaged
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/103/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/103/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/103/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/103/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/103/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/103/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_status_publishes_utc_time_only_after_the_first_ntp_sync
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/104/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/104/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/104/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/104/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/104/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/104/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI simulated
+[test_sensortask[dev]] PASS test_webserver_status_put_reset_errors_clears_a_real_modules_history
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/105/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/105/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/105/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/105/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/105/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/105/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] WIFI seeded
+[test_sensortask[dev]] CFGMGR_WIFI seeded
+[test_sensortask[dev]] DNSSRV seeded
+[test_sensortask[dev]] NTP seeded
+[test_sensortask[dev]] CFGMGR_NTP seeded
+[test_sensortask[dev]] FRAM seeded
+[test_sensortask[dev]] NEOPIXEL seeded
+[test_sensortask[dev]] SYSTEM seeded
+[test_sensortask[dev]] CFGMGR_SYSTEM seeded
+[test_sensortask[dev]] SCD30 seeded
+[test_sensortask[dev]] CFGMGR_SCD30 seeded
+[test_sensortask[dev]] SGP40 seeded
+[test_sensortask[dev]] CFGMGR_SGP40 seeded
+[test_sensortask[dev]] BMP3XX seeded
+[test_sensortask[dev]] CFGMGR_BMP3XX seeded
+[test_sensortask[dev]] ISL29125 seeded
+[test_sensortask[dev]] CFGMGR_ISL29125 seeded
+[test_sensortask[dev]] NOTIFY seeded
+[test_sensortask[dev]] CFGMGR_NOTIFY seeded
+[test_sensortask[dev]] UART_init seeded
+[test_sensortask[dev]] UART_resp seeded
+[test_sensortask[dev]] WEBSERVER seeded
+[test_sensortask[dev]] WEBSERVER seeded
+[test_sensortask[dev]] PASS test_webserver_status_put_reset_errors_clears_nothing_while_storage_is_paused
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/106/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/106/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/106/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/106/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/106/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/106/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] SGP40 simulated
+[test_sensortask[dev]] PASS test_webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/107/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/107/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/107/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/107/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/107/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/107/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] PASS test_webserver_system_get_reports_the_real_build_info
+[test_sensortask[dev]] CFGMGR_SYSTEM tests/_tmp/sensortask_dev/108/config_SYSTEM.cfg exists but is not a file, cannot write!
+[test_sensortask[dev]] CFGMGR_SYSTEM tests/_tmp/sensortask_dev/108/config_SYSTEM.cfg - Config is not valid, cannot read!
+[test_sensortask[dev]] CFGMGR_WIFI Config file tests/_tmp/sensortask_dev/108/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_dev/108/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_dev/108/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_dev/108/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_ISL29125 Config file tests/_tmp/sensortask_dev/108/config_ISL29125.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_dev/108/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[dev]] ABORT test_webserver_system_get_sends_the_unavailable_marker_for_an_unreadable_system_store:
+[test_sensortask[dev]] Traceback (most recent call last):
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/microtest.py", line 128, in run
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/microtest.py", line 39, in _call
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/_sensortask_scenarios.py", line 1630, in test
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/_sensortask_scenarios.py", line 3531, in _scenario_system_get_unreadable_store
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/_sensortask_scenarios.py", line 1600, in build
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/_async_harness.py", line 275, in run
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/_async_harness.py", line 97, in _drive
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/_async_harness.py", line 150, in _run_tracked
+[test_sensortask[dev]]   File "asyncio/core.py", line 1, in run
+[test_sensortask[dev]]   File "asyncio/core.py", line 1, in run_until_complete
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/_sensortask_scenarios.py", line 873, in _boot
+[test_sensortask[dev]]   File "/home/nico/programming/sensors-bench/tests/_generated_module.py", line 108, in boot_generated
+[test_sensortask[dev]]   File "src/asy_system_service.py", line 690, in run_setups
+[test_sensortask[dev]] KeyboardInterrupt: 
+[test_sensortask[dev]] 95/101 passed, 1 failed, 0 skipped - aborted at test_webserver_system_get_sends_the_unavailable_marker_for_an_unreadable_system_store, later tests not run

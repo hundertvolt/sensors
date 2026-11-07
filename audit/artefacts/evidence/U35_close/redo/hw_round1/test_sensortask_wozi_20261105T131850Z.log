@@ -1,0 +1,1586 @@
+[test_sensortask[wozi]] == attempt 1/3
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/1/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/1/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/1/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/1/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/1/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] SGP40 No backup found!
+[test_sensortask[wozi]] BMP3XX Error counter increased to 1
+[test_sensortask[wozi]] SCD30 Error counter increased to 1
+[test_sensortask[wozi]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] BMP3XX Error counter increased to 2
+[test_sensortask[wozi]] SCD30 Error counter increased to 2
+[test_sensortask[wozi]] BMP3XX Soft reset failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] SCD30 Soft reset failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] BMP3XX Error counter increased to 3
+[test_sensortask[wozi]] SCD30 Error counter increased to 3
+[test_sensortask[wozi]] BMP3XX I2C bus cleared, status 0
+[test_sensortask[wozi]] SCD30 I2C bus cleared, status 0
+[test_sensortask[wozi]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] BMP3XX Error counter increased to 4
+[test_sensortask[wozi]] SCD30 Error counter increased to 4
+[test_sensortask[wozi]] BMP3XX I2C controller re-initialised, status 0
+[test_sensortask[wozi]] SCD30 I2C controller re-initialised, status 0
+[test_sensortask[wozi]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] BMP3XX Error counter increased to 5
+[test_sensortask[wozi]] SCD30 Error counter increased to 5
+[test_sensortask[wozi]] BMP3XX Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] SCD30 Read failed: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] BMP3XX Error counter increased to 6
+[test_sensortask[wozi]] SCD30 Error counter increased to 6
+[test_sensortask[wozi]] BMP3XX Maximum error count reached!
+[test_sensortask[wozi]] SCD30 Maximum error count reached!
+[test_sensortask[wozi]] PASS test_a_bus_nak_storm_climbs_each_rung_once_per_bus_and_every_reader_recovers
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/2/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/2/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/2/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/2/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/2/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_a_cancelled_main_leaves_no_timer_feeding_the_watchdog
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/3/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NTP Config file tests/_tmp/sensortask_wozi/3/config_NTP.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/3/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/3/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/3/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/3/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] FRAM FRAM Setup failed: FRAM SPI device not found
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] SYSTEM PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SYSTEM FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] CFGMGR_SYSTEM FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] WIFI PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] WIFI PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] WIFI FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] CFGMGR_WIFI FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] DNSSRV PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] DNSSRV PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] DNSSRV FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] NTP PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] NTP PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] NTP FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] CFGMGR_NTP FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] NEOPIXEL PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] NEOPIXEL FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] SCD30 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] SCD30 PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SCD30 FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] SGP40 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] SGP40 PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SGP40 FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] CFGMGR_SGP40 FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] BMP3XX PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] BMP3XX PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] BMP3XX FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] CFGMGR_BMP3XX FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] NOTIFY PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] NOTIFY PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] NOTIFY FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] CFGMGR_NOTIFY FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 0, reading block 1
+[test_sensortask[wozi]] FRAM FRAM not initialized, run setup first!
+[test_sensortask[wozi]] FRAM Read status byte failed!
+[test_sensortask[wozi]] FRAM Read fault in block 1
+[test_sensortask[wozi]] WEBSERVER PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+[test_sensortask[wozi]] WEBSERVER PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] WEBSERVER FRAM history unreadable - RAM-only until reboot
+[test_sensortask[wozi]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SYSTEM boom
+[test_sensortask[wozi]] FRAM FRAM chip declared but not set up - escalating
+[test_sensortask[wozi]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SYSTEM Task FRAM.start_asy_watch_chip ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 100 - FRAM.start_asy_watch_chip
+[test_sensortask[wozi]] FRAM FRAM chip declared but not set up - escalating
+[test_sensortask[wozi]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SYSTEM Task FRAM.start_asy_watch_chip ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 200 - FRAM.start_asy_watch_chip
+[test_sensortask[wozi]] FRAM FRAM chip declared but not set up - escalating
+[test_sensortask[wozi]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SYSTEM Task FRAM.start_asy_watch_chip ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 300 - FRAM.start_asy_watch_chip
+[test_sensortask[wozi]] FRAM FRAM chip declared but not set up - escalating
+[test_sensortask[wozi]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SYSTEM Task FRAM.start_asy_watch_chip ended: returned
+[test_sensortask[wozi]] SYSTEM PrintLog: Uninitialized, call setup first!
+[test_sensortask[wozi]] SYSTEM Task error counter above 300 - reboot triggered!
+[test_sensortask[wozi]] PASS test_a_declared_dead_fram_chip_escalates_to_a_reboot
+[test_sensortask[wozi]] PASS test_a_fresh_filesystem_boot_writes_each_config_file_once
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/5/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/5/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/5/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/5/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/5/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI written by the previous build
+[test_sensortask[wozi]] CFGMGR_WIFI written by the previous build
+[test_sensortask[wozi]] DNSSRV written by the previous build
+[test_sensortask[wozi]] NTP written by the previous build
+[test_sensortask[wozi]] CFGMGR_NTP written by the previous build
+[test_sensortask[wozi]] NEOPIXEL written by the previous build
+[test_sensortask[wozi]] SYSTEM written by the previous build
+[test_sensortask[wozi]] CFGMGR_SYSTEM written by the previous build
+[test_sensortask[wozi]] SCD30 written by the previous build
+[test_sensortask[wozi]] SGP40 written by the previous build
+[test_sensortask[wozi]] CFGMGR_SGP40 written by the previous build
+[test_sensortask[wozi]] BMP3XX written by the previous build
+[test_sensortask[wozi]] CFGMGR_BMP3XX written by the previous build
+[test_sensortask[wozi]] NOTIFY written by the previous build
+[test_sensortask[wozi]] CFGMGR_NOTIFY written by the previous build
+[test_sensortask[wozi]] WEBSERVER written by the previous build
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 0, reading block 1
+[test_sensortask[wozi]] FRAM CRC error in _read_chunk!
+[test_sensortask[wozi]] FRAM Invalid data in block 1
+[test_sensortask[wozi]] WIFI written after the foreign image
+[test_sensortask[wozi]] CFGMGR_WIFI written after the foreign image
+[test_sensortask[wozi]] DNSSRV written after the foreign image
+[test_sensortask[wozi]] NTP written after the foreign image
+[test_sensortask[wozi]] CFGMGR_NTP written after the foreign image
+[test_sensortask[wozi]] NEOPIXEL written after the foreign image
+[test_sensortask[wozi]] SYSTEM written after the foreign image
+[test_sensortask[wozi]] CFGMGR_SYSTEM written after the foreign image
+[test_sensortask[wozi]] SCD30 written after the foreign image
+[test_sensortask[wozi]] SGP40 written after the foreign image
+[test_sensortask[wozi]] CFGMGR_SGP40 written after the foreign image
+[test_sensortask[wozi]] BMP3XX written after the foreign image
+[test_sensortask[wozi]] CFGMGR_BMP3XX written after the foreign image
+[test_sensortask[wozi]] NOTIFY written after the foreign image
+[test_sensortask[wozi]] CFGMGR_NOTIFY written after the foreign image
+[test_sensortask[wozi]] WEBSERVER written after the foreign image
+[test_sensortask[wozi]] PASS test_a_layout_shifted_by_one_chunk_restores_no_neighbours_history
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/6/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/6/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/6/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/6/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/6/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[wozi]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[wozi]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[wozi]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[wozi]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[wozi]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[wozi]] PASS test_a_storm_of_refused_connections_spends_one_slot_and_a_request_serves_once_the_slots_free
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/7/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/7/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/7/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/7/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/7/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 100 - WIFI.start_asy_connect
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 200 - WIFI.start_asy_connect
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 300 - WIFI.start_asy_connect
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task error counter above 300 - reboot triggered!
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 400 - WIFI.start_asy_connect
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/8/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/8/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/8/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/8/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/8/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_a_task_that_keeps_ending_stops_every_feed_once_its_reboot_is_armed
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/9/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/9/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/9/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/9/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/9/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_a_uart_write_hold_off_ends_within_one_window_across_a_wrap_and_after_idles_past_the_horizon
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/10/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/10/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/10/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/10/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/10/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SYSTEM Supervisor ended with exception: planted supervisor fault
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/11/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/11/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/11/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/11/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/11/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_an_exception_escaping_the_supervisor_ends_every_feed
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/12/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/12/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/12/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/12/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/12/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] NTP No reply from NTP server: 192.0.2.1
+[test_sensortask[wozi]] NTP No reply from NTP server: 192.0.2.1
+[test_sensortask[wozi]] NTP No reply from NTP server: 192.0.2.1
+[test_sensortask[wozi]] PASS test_an_ntp_server_that_never_replies_spends_one_slot_and_a_reply_syncs_once_it_answers
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/13/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/13/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/13/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/13/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/13/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_boot_feeds_the_watchdog_exactly_once_per_setup_call
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/14/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/14/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/14/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/14/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/14/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/15/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/15/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/15/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/15/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/15/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_boot_sequence_matches_the_generated_expectation
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/16/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/16/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/16/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/16/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/16/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_build_system_constructs_every_real_module
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/17/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/17/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/17/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/17/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/17/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_build_system_is_independently_callable_and_returns
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/18/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/18/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/18/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/18/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/18/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_build_system_web_host_and_port_are_overridable
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/19/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/19/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/19/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/19/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/19/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_build_system_web_host_and_port_default_to_production_values
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/20/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/20/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/20/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/20/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/20/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_build_system_wires_the_wifi_led_callback_after_both_exist
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/21/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/21/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/21/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/21/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/21/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_collect_level_setters_returns_one_entry_per_logger_in_the_object_graph
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/22/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/22/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/22/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/22/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/22/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_collect_task_starters_and_their_names_include_every_constructed_module
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/23/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/23/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/23/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/23/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/23/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_collect_task_starters_never_touches_start_tasks
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/24/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/24/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/24/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/24/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/24/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_collect_timer_starters_includes_every_constructed_module
+[test_sensortask[wozi]] PASS test_debug_level_survives_a_simulated_reboot_through_build_system
+[test_sensortask[wozi]] CFGMGR_SYSTEM Config file tests/_tmp/sensortask_wozi/26/config_SYSTEM.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/27/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/27/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/27/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/27/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/27/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_dropped_one_second_wake_ups_never_skew_elapsed_values
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/28/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/28/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/28/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/28/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/28/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI written before the command
+[test_sensortask[wozi]] SCD30 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] CFGMGR_WIFI written before the command
+[test_sensortask[wozi]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] DNSSRV written before the command
+[test_sensortask[wozi]] NTP written before the command
+[test_sensortask[wozi]] CFGMGR_NTP written before the command
+[test_sensortask[wozi]] NEOPIXEL written before the command
+[test_sensortask[wozi]] SYSTEM written before the command
+[test_sensortask[wozi]] CFGMGR_SYSTEM written before the command
+[test_sensortask[wozi]] SCD30 written before the command
+[test_sensortask[wozi]] SGP40 written before the command
+[test_sensortask[wozi]] CFGMGR_SGP40 written before the command
+[test_sensortask[wozi]] BMP3XX written before the command
+[test_sensortask[wozi]] CFGMGR_BMP3XX written before the command
+[test_sensortask[wozi]] NOTIFY written before the command
+[test_sensortask[wozi]] CFGMGR_NOTIFY written before the command
+[test_sensortask[wozi]] WEBSERVER written before the command
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/29/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/29/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/29/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/29/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/29/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI written before the command
+[test_sensortask[wozi]] CFGMGR_WIFI written before the command
+[test_sensortask[wozi]] DNSSRV written before the command
+[test_sensortask[wozi]] SCD30 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] NTP written before the command
+[test_sensortask[wozi]] CFGMGR_NTP written before the command
+[test_sensortask[wozi]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] NEOPIXEL written before the command
+[test_sensortask[wozi]] SYSTEM written before the command
+[test_sensortask[wozi]] CFGMGR_SYSTEM written before the command
+[test_sensortask[wozi]] SCD30 written before the command
+[test_sensortask[wozi]] SGP40 written before the command
+[test_sensortask[wozi]] CFGMGR_SGP40 written before the command
+[test_sensortask[wozi]] BMP3XX written before the command
+[test_sensortask[wozi]] CFGMGR_BMP3XX written before the command
+[test_sensortask[wozi]] NOTIFY written before the command
+[test_sensortask[wozi]] CFGMGR_NOTIFY written before the command
+[test_sensortask[wozi]] WEBSERVER written before the command
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/30/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/30/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/30/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/30/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/30/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI written before the command
+[test_sensortask[wozi]] CFGMGR_WIFI written before the command
+[test_sensortask[wozi]] SCD30 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] DNSSRV written before the command
+[test_sensortask[wozi]] NTP written before the command
+[test_sensortask[wozi]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] CFGMGR_NTP written before the command
+[test_sensortask[wozi]] NEOPIXEL written before the command
+[test_sensortask[wozi]] SYSTEM written before the command
+[test_sensortask[wozi]] CFGMGR_SYSTEM written before the command
+[test_sensortask[wozi]] SCD30 written before the command
+[test_sensortask[wozi]] SGP40 written before the command
+[test_sensortask[wozi]] CFGMGR_SGP40 written before the command
+[test_sensortask[wozi]] BMP3XX written before the command
+[test_sensortask[wozi]] CFGMGR_BMP3XX written before the command
+[test_sensortask[wozi]] NOTIFY written before the command
+[test_sensortask[wozi]] CFGMGR_NOTIFY written before the command
+[test_sensortask[wozi]] WEBSERVER written before the command
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/31/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/31/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/31/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/31/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/31/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI written before the command
+[test_sensortask[wozi]] SCD30 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] CFGMGR_WIFI written before the command
+[test_sensortask[wozi]] DNSSRV written before the command
+[test_sensortask[wozi]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] NTP written before the command
+[test_sensortask[wozi]] CFGMGR_NTP written before the command
+[test_sensortask[wozi]] NEOPIXEL written before the command
+[test_sensortask[wozi]] SYSTEM written before the command
+[test_sensortask[wozi]] CFGMGR_SYSTEM written before the command
+[test_sensortask[wozi]] SCD30 written before the command
+[test_sensortask[wozi]] SGP40 written before the command
+[test_sensortask[wozi]] CFGMGR_SGP40 written before the command
+[test_sensortask[wozi]] BMP3XX written before the command
+[test_sensortask[wozi]] CFGMGR_BMP3XX written before the command
+[test_sensortask[wozi]] NOTIFY written before the command
+[test_sensortask[wozi]] CFGMGR_NOTIFY written before the command
+[test_sensortask[wozi]] WEBSERVER written before the command
+[test_sensortask[wozi]] PASS test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/32/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/32/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/32/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/32/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/32/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/33/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/33/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/33/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/33/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/33/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/34/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/34/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/34/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/34/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/34/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/35/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/35/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/35/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/35/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/35/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_every_build_starts_with_every_dma_channel_free
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/36/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/36/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/36/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/36/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/36/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] CFGMGR_WIFI PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_WIFI months of faults
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] DNSSRV PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] DNSSRV months of faults
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] CFGMGR_NTP PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NTP months of faults
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] NEOPIXEL PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NEOPIXEL months of faults
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] CFGMGR_SYSTEM PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SYSTEM months of faults
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SCD30 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SCD30 months of faults
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] CFGMGR_SGP40 PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_SGP40 months of faults
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] CFGMGR_BMP3XX PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_BMP3XX months of faults
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] CFGMGR_NOTIFY PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] CFGMGR_NOTIFY months of faults
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] WEBSERVER PrintLog: Error count reached maximum value!
+[test_sensortask[wozi]] WEBSERVER months of faults
+[test_sensortask[wozi]] PASS test_every_logger_count_stops_at_its_top_and_its_ring_keeps_the_newest_codes_through_a_reboot
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/37/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/37/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/37/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/37/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/37/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_every_logger_is_set_up_by_the_batch_before_any_task_starts
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/38/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/38/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/38/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/38/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/38/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_every_logger_the_boot_constructs_reaches_status_errcount_exactly_once
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/39/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/39/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/39/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/39/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/39/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_every_measurement_starts_none_on_every_sensor
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/40/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/40/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/40/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/40/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/40/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_every_module_and_logger_reaches_the_fan_in_collectors_exactly_once
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/41/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/41/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/41/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/41/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/41/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SYSTEM Task FRAM.start_asy_watch_chip ended: was cancelled
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 100 - FRAM.start_asy_watch_chip
+[test_sensortask[wozi]] PASS test_every_task_starter_runs_under_the_real_supervisor_and_a_killed_one_is_named_in_status
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/42/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/42/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/42/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/42/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/42/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI storm probe
+[test_sensortask[wozi]] WIFI storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[wozi]] DNSSRV storm: the same fault again
+[test_sensortask[wozi]] NTP storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[wozi]] NEOPIXEL storm: the same fault again
+[test_sensortask[wozi]] SYSTEM storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[wozi]] SCD30 storm: the same fault again
+[test_sensortask[wozi]] SGP40 storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[wozi]] BMP3XX storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[wozi]] NOTIFY storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[wozi]] WEBSERVER storm: the same fault again
+[test_sensortask[wozi]] WIFI storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[wozi]] DNSSRV storm: the same fault again
+[test_sensortask[wozi]] NTP storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[wozi]] NEOPIXEL storm: the same fault again
+[test_sensortask[wozi]] SYSTEM storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[wozi]] SCD30 storm: the same fault again
+[test_sensortask[wozi]] SGP40 storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[wozi]] BMP3XX storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[wozi]] NOTIFY storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[wozi]] WEBSERVER storm: the same fault again
+[test_sensortask[wozi]] WIFI storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[wozi]] DNSSRV storm: the same fault again
+[test_sensortask[wozi]] NTP storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[wozi]] NEOPIXEL storm: the same fault again
+[test_sensortask[wozi]] SYSTEM storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[wozi]] SCD30 storm: the same fault again
+[test_sensortask[wozi]] SGP40 storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[wozi]] BMP3XX storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[wozi]] NOTIFY storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[wozi]] WEBSERVER storm: the same fault again
+[test_sensortask[wozi]] WIFI storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[wozi]] DNSSRV storm: the same fault again
+[test_sensortask[wozi]] NTP storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[wozi]] NEOPIXEL storm: the same fault again
+[test_sensortask[wozi]] SYSTEM storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[wozi]] SCD30 storm: the same fault again
+[test_sensortask[wozi]] SGP40 storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[wozi]] BMP3XX storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[wozi]] NOTIFY storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[wozi]] WEBSERVER storm: the same fault again
+[test_sensortask[wozi]] WIFI storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_WIFI storm: the same fault again
+[test_sensortask[wozi]] DNSSRV storm: the same fault again
+[test_sensortask[wozi]] NTP storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NTP storm: the same fault again
+[test_sensortask[wozi]] NEOPIXEL storm: the same fault again
+[test_sensortask[wozi]] SYSTEM storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SYSTEM storm: the same fault again
+[test_sensortask[wozi]] SCD30 storm: the same fault again
+[test_sensortask[wozi]] SGP40 storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_SGP40 storm: the same fault again
+[test_sensortask[wozi]] BMP3XX storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_BMP3XX storm: the same fault again
+[test_sensortask[wozi]] NOTIFY storm: the same fault again
+[test_sensortask[wozi]] CFGMGR_NOTIFY storm: the same fault again
+[test_sensortask[wozi]] WEBSERVER storm: the same fault again
+[test_sensortask[wozi]] WIFI storm: another fault
+[test_sensortask[wozi]] CFGMGR_WIFI storm: another fault
+[test_sensortask[wozi]] DNSSRV storm: another fault
+[test_sensortask[wozi]] NTP storm: another fault
+[test_sensortask[wozi]] CFGMGR_NTP storm: another fault
+[test_sensortask[wozi]] NEOPIXEL storm: another fault
+[test_sensortask[wozi]] SYSTEM storm: another fault
+[test_sensortask[wozi]] CFGMGR_SYSTEM storm: another fault
+[test_sensortask[wozi]] SCD30 storm: another fault
+[test_sensortask[wozi]] SGP40 storm: another fault
+[test_sensortask[wozi]] CFGMGR_SGP40 storm: another fault
+[test_sensortask[wozi]] BMP3XX storm: another fault
+[test_sensortask[wozi]] CFGMGR_BMP3XX storm: another fault
+[test_sensortask[wozi]] NOTIFY storm: another fault
+[test_sensortask[wozi]] CFGMGR_NOTIFY storm: another fault
+[test_sensortask[wozi]] WEBSERVER storm: another fault
+[test_sensortask[wozi]] PASS test_fault_storm_keeps_every_module_within_its_persisted_log_rate
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/43/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/43/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/43/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/43/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/43/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI written by the previous build
+[test_sensortask[wozi]] CFGMGR_WIFI written by the previous build
+[test_sensortask[wozi]] DNSSRV written by the previous build
+[test_sensortask[wozi]] NTP written by the previous build
+[test_sensortask[wozi]] CFGMGR_NTP written by the previous build
+[test_sensortask[wozi]] NEOPIXEL written by the previous build
+[test_sensortask[wozi]] SYSTEM written by the previous build
+[test_sensortask[wozi]] CFGMGR_SYSTEM written by the previous build
+[test_sensortask[wozi]] SCD30 written by the previous build
+[test_sensortask[wozi]] SGP40 written by the previous build
+[test_sensortask[wozi]] CFGMGR_SGP40 written by the previous build
+[test_sensortask[wozi]] BMP3XX written by the previous build
+[test_sensortask[wozi]] CFGMGR_BMP3XX written by the previous build
+[test_sensortask[wozi]] NOTIFY written by the previous build
+[test_sensortask[wozi]] CFGMGR_NOTIFY written by the previous build
+[test_sensortask[wozi]] WEBSERVER written by the previous build
+[test_sensortask[wozi]] WIFI written after the foreign image
+[test_sensortask[wozi]] CFGMGR_WIFI written after the foreign image
+[test_sensortask[wozi]] DNSSRV written after the foreign image
+[test_sensortask[wozi]] NTP written after the foreign image
+[test_sensortask[wozi]] CFGMGR_NTP written after the foreign image
+[test_sensortask[wozi]] NEOPIXEL written after the foreign image
+[test_sensortask[wozi]] SYSTEM written after the foreign image
+[test_sensortask[wozi]] CFGMGR_SYSTEM written after the foreign image
+[test_sensortask[wozi]] SCD30 written after the foreign image
+[test_sensortask[wozi]] SGP40 written after the foreign image
+[test_sensortask[wozi]] CFGMGR_SGP40 written after the foreign image
+[test_sensortask[wozi]] BMP3XX written after the foreign image
+[test_sensortask[wozi]] CFGMGR_BMP3XX written after the foreign image
+[test_sensortask[wozi]] NOTIFY written after the foreign image
+[test_sensortask[wozi]] CFGMGR_NOTIFY written after the foreign image
+[test_sensortask[wozi]] WEBSERVER written after the foreign image
+[test_sensortask[wozi]] PASS test_first_boot_after_a_reflash_reinitialises_every_chunk_without_flood
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/44/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/44/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/44/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/44/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/44/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_forty_days_keep_the_wifi_uptime_and_the_ntp_sync_age_on_the_driven_seconds
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/45/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/45/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/45/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/45/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/45/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 100 - WIFI.start_asy_connect
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 100 - WIFI.start_asy_connect
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 200 - WIFI.start_asy_connect
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 300 - WIFI.start_asy_connect
+[test_sensortask[wozi]] PASS test_forty_days_of_uptime_keep_every_invariant
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/46/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/46/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/46/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/46/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/46/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/47/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/47/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/47/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/47/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/47/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_fram_chunk_layout_is_contiguous_deterministic_and_in_owner_order
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/48/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/48/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/48/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/48/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/48/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_fram_chunks_are_all_successfully_allocated_not_out_of_memory
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/49/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/49/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/49/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/49/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/49/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_is_hotspot_active_wiring_default_sta_phase_still_404s
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/50/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/50/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/50/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/50/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/50/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/51/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/51/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/51/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/51/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/51/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_is_hotspot_active_wiring_dynamic_phase_switch_is_reflected_live
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/52/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/52/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/52/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/52/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/52/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/53/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/53/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/53/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/53/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/53/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_hotspot_mode
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/54/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/54/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/54/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/54/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/54/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_is_hotspot_active_wiring_redirects_when_conn_is_in_hotspot_phase
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/55/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NTP Config file tests/_tmp/sensortask_wozi/55/config_NTP.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/55/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/55/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/55/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/55/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_main_forwards_web_host_and_port_to_build_system
+[test_sensortask[wozi]] PASS test_main_runs_setups_then_tasks_then_timers_then_force_sync_then_supervises_in_order
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/57/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/57/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/57/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/57/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/57/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_neopixel_empty_timer_list_reaches_the_generated_collector
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/58/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/58/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/58/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/58/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/58/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_notify_service_cfgmgr_exists_once_build_system_completes
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/59/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/59/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/59/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/59/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/59/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SYSTEM probe: one entry's chip cost
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_connect ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 100 - WIFI.start_asy_connect
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_uptime ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 200 - WIFI.start_asy_uptime
+[test_sensortask[wozi]] SYSTEM Task WIFI.start_asy_hotspot_timeout ended: returned
+[test_sensortask[wozi]] SYSTEM Task ended - attempting restart, error counter increased to 300 - WIFI.start_asy_hotspot_timeout
+[test_sensortask[wozi]] SYSTEM Task NTP.start_asy_sync ended: returned
+[test_sensortask[wozi]] SYSTEM Task error counter above 300 - reboot triggered!
+[test_sensortask[wozi]] PASS test_one_supervisor_pass_over_dead_tasks_persists_at_most_one_entry_per_end
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/60/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/60/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/60/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/60/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/60/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SGP40 Error in initial setup: CRC check failed while reading data
+[test_sensortask[wozi]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[wozi]] SCD30 Error counter increased to 1
+[test_sensortask[wozi]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[wozi]] SCD30 Error counter increased to 2
+[test_sensortask[wozi]] SCD30 Device recovery after 2 failed cycles: done
+[test_sensortask[wozi]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[wozi]] SCD30 Error counter increased to 3
+[test_sensortask[wozi]] SCD30 I2C bus cleared, status 0
+[test_sensortask[wozi]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[wozi]] SCD30 Error counter increased to 4
+[test_sensortask[wozi]] SCD30 I2C controller re-initialised, status 0
+[test_sensortask[wozi]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[wozi]] SCD30 Error counter increased to 5
+[test_sensortask[wozi]] SCD30 Read failed: CRC check failed while reading data
+[test_sensortask[wozi]] SCD30 Error counter increased to 6
+[test_sensortask[wozi]] SCD30 Maximum error count reached!
+[test_sensortask[wozi]] FAIL test_only_the_api_writes_the_scd30:
+[test_sensortask[wozi]] Traceback (most recent call last):
+[test_sensortask[wozi]]   File "/home/nico/programming/sensors-bench/tests/microtest.py", line 39, in _call
+[test_sensortask[wozi]]   File "/home/nico/programming/sensors-bench/tests/_sensortask_scenarios.py", line 1630, in test
+[test_sensortask[wozi]]   File "/home/nico/programming/sensors-bench/tests/_sensortask_scenarios.py", line 3089, in _scenario_only_the_api_writes_the_scd30
+[test_sensortask[wozi]]   File "/home/nico/programming/sensors-bench/tests/_async_harness.py", line 275, in run
+[test_sensortask[wozi]]   File "/home/nico/programming/sensors-bench/tests/_async_harness.py", line 97, in _drive
+[test_sensortask[wozi]]   File "/home/nico/programming/sensors-bench/tests/_async_harness.py", line 150, in _run_tracked
+[test_sensortask[wozi]]   File "asyncio/core.py", line 1, in run
+[test_sensortask[wozi]]   File "asyncio/core.py", line 1, in run_until_complete
+[test_sensortask[wozi]]   File "asyncio/core.py", line 1, in run_until_complete
+[test_sensortask[wozi]]   File "/home/nico/programming/sensors-bench/tests/_sensortask_scenarios.py", line 3078, in scenario
+[test_sensortask[wozi]] AssertionError: (4, 3, 2)
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/61/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/61/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/61/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/61/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/61/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_read_triggers_follow_the_stagger_on_the_real_sequencer
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/62/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NTP JSON Data in config file tests/_tmp/sensortask_wozi/62/config_NTP.cfg is invalid: syntax error in JSON
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/62/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/62/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/62/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/62/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_resetconfig_over_a_damaged_config_file_boots_next_on_every_default
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/63/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/63/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/63/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/63/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/63/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/64/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/64/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/64/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/64/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/64/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/65/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/65/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/65/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/65/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/65/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_setup_batch_runs_every_unit_in_the_collected_order
+[test_sensortask[wozi]] PASS test_system_put_debug_level_updates_every_logger_in_the_object_graph
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/67/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/67/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/67/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/67/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/67/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_the_fram_manager_is_the_only_error_source_whose_own_log_is_not_fram_backed
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/68/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/68/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/68/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/68/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/68/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_the_unfed_boot_stretch_after_the_last_setup_feed_stays_within_two_seconds
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/69/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/69/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/69/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/69/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/69/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SERVING_DEMAND wozi connections=6 head=2048 body_cap=2048 largest_body=5772 most_pieces=25 chunk=256 demand=61344 budget=72232 routes={'/system': (151, 1), '/sensors': (397, 2), '/networking': (197, 1), '/notification': (147, 1), '/status': (5772, 25), '/measurements': (263, 2)}
+[test_sensortask[wozi]] PASS test_webserver_every_get_route_fits_the_serving_demand_budget_and_sends_its_pieces_uncopied
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/70/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/70/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/70/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/70/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/70/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_measurements_and_sensors_get_include_every_real_sensor
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/71/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/71/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/71/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/71/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/71/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_networking_put_answers_an_unknown_key_invalid
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/72/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NTP Config file tests/_tmp/sensortask_wozi/72/config_NTP.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/72/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/72/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/72/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/72/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] NTP Refusing DNSFallback - not a list of up to three IPv4 addresses
+[test_sensortask[wozi]] PASS test_webserver_networking_put_dns_fallback_stores_a_list_and_refuses_a_malformed_one
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/73/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/73/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/73/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/73/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/73/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_networking_put_hotspot_pw_configures_the_next_hotspot_and_reads_back_masked
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/74/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/74/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/74/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/74/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/74/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_networking_put_ntp_fields_clears_synced_until_the_next_sync
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/75/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/75/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/75/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/75/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/75/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_networking_put_ntp_fields_forces_a_resync
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/76/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/76/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/76/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/76/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/76/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_networking_put_of_the_mask_string_stores_it_as_the_password
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/77/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/77/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/77/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/77/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/77/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/78/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/78/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/78/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/78/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/78/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_light_cmd_led_refuses_a_second_flash_at_once
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/79/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/79/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/79/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/79/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/79/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_flat_field_round_trips_through_the_real_coordinator
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/80/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/80/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/80/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/80/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/80/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/81/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/81/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/81/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/81/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/81/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/82/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/82/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/82/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/82/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/82/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and_t
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/83/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/83/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/83/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/83/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/83/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/84/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/84/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/84/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/84/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/84/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_rejects_fractional_rgb
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/85/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/85/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/85/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/85/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/85/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_rejects_missing_field
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/86/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/86/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/86/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/86/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/86/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_rejects_negative_rgb
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/87/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/87/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/87/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/87/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/87/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_rejects_non_numeric_field
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/88/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/88/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/88/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/88/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/88/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_rejects_non_numeric_t
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/89/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/89/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/89/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/89/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/89/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/90/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/90/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/90/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/90/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/90/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_light_cmd_led_rejects_out_of_range_t
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/91/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/91/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/91/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/91/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/91/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/92/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/92/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/92/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/92/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/92/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_pr_is_fram_backed_when_device_wires_fram
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/93/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/93/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/93/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/93/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/93/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SCD30 Error reading the config snapshot: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] BMP3XX Error reading oversampling/filter config from sensor: [Errno 5] EIO: no ACK from device
+[test_sensortask[wozi]] PASS test_webserver_sensors_get_sends_the_unavailable_marker_for_a_failed_chip_config_read
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/94/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/94/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/94/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/94/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/94/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/95/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/95/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/95/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/95/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/95/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/96/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/96/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/96/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/96/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/96/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_status_answers_the_networking_snapshot_while_wifi_mode_lock_is_held
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/97/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/97/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/97/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/97/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/97/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WEBSERVER Connection refused at the ceiling
+[test_sensortask[wozi]] PASS test_webserver_status_counts_a_refused_connection_in_http_dropped_until_reset_errors
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/98/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/98/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/98/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/98/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/98/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_status_get_reflects_the_real_object_graph
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/99/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/99/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/99/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/99/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/99/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_status_in_ap_mode_reports_no_rssi_and_never_queries_it
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/100/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/100/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/100/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/100/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/100/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_status_keeps_utc_time_through_a_stale_sync_and_flags_it
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/101/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/101/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/101/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/101/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/101/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SYSTEM JSON Data in config file tests/_tmp/sensortask_wozi/102/config_SYSTEM.cfg is invalid: syntax error in JSON
+[test_sensortask[wozi]] PASS test_webserver_status_lists_exactly_the_modules_whose_config_file_was_unreadable_or_damaged
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/103/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/103/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/103/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/103/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/103/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_status_publishes_utc_time_only_after_the_first_ntp_sync
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/104/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/104/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/104/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/104/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/104/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI simulated
+[test_sensortask[wozi]] PASS test_webserver_status_put_reset_errors_clears_a_real_modules_history
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/105/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/105/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/105/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/105/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/105/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] WIFI seeded
+[test_sensortask[wozi]] CFGMGR_WIFI seeded
+[test_sensortask[wozi]] DNSSRV seeded
+[test_sensortask[wozi]] NTP seeded
+[test_sensortask[wozi]] CFGMGR_NTP seeded
+[test_sensortask[wozi]] FRAM seeded
+[test_sensortask[wozi]] NEOPIXEL seeded
+[test_sensortask[wozi]] SYSTEM seeded
+[test_sensortask[wozi]] CFGMGR_SYSTEM seeded
+[test_sensortask[wozi]] SCD30 seeded
+[test_sensortask[wozi]] CFGMGR_SCD30 seeded
+[test_sensortask[wozi]] SGP40 seeded
+[test_sensortask[wozi]] CFGMGR_SGP40 seeded
+[test_sensortask[wozi]] BMP3XX seeded
+[test_sensortask[wozi]] CFGMGR_BMP3XX seeded
+[test_sensortask[wozi]] NOTIFY seeded
+[test_sensortask[wozi]] CFGMGR_NOTIFY seeded
+[test_sensortask[wozi]] WEBSERVER seeded
+[test_sensortask[wozi]] WEBSERVER seeded
+[test_sensortask[wozi]] PASS test_webserver_status_put_reset_errors_clears_nothing_while_storage_is_paused
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/106/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/106/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/106/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/106/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/106/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] SGP40 simulated
+[test_sensortask[wozi]] PASS test_webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/107/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/107/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/107/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/107/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/107/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_system_get_reports_the_real_build_info
+[test_sensortask[wozi]] CFGMGR_SYSTEM tests/_tmp/sensortask_wozi/108/config_SYSTEM.cfg exists but is not a file, cannot write!
+[test_sensortask[wozi]] CFGMGR_SYSTEM tests/_tmp/sensortask_wozi/108/config_SYSTEM.cfg - Config is not valid, cannot read!
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/108/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/108/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/108/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/108/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/108/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SYSTEM tests/_tmp/sensortask_wozi/108/config_SYSTEM.cfg - Config is not valid, cannot read!
+[test_sensortask[wozi]] PASS test_webserver_system_get_sends_the_unavailable_marker_for_an_unreadable_system_store
+[test_sensortask[wozi]] PASS test_webserver_system_put_debug_level_propagates_to_every_logger
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/110/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/110/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/110/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/110/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/110/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_system_put_gmt_dst_offset_applies_without_a_reconnect
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/111/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/111/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/111/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/111/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/111/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_system_put_invalid_cmd_is_rejected_without_side_effects
+[test_sensortask[wozi]] CFGMGR_WIFI Config file tests/_tmp/sensortask_wozi/112/config_WIFI.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SCD30 Config file tests/_tmp/sensortask_wozi/112/config_SCD30.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_SGP40 Config file tests/_tmp/sensortask_wozi/112/config_SGP40.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_BMP3XX Config file tests/_tmp/sensortask_wozi/112/config_BMP3XX.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] CFGMGR_NOTIFY Config file tests/_tmp/sensortask_wozi/112/config_NOTIFY.cfg not found: [Errno 2] ENOENT
+[test_sensortask[wozi]] PASS test_webserver_system_put_reboot_cmd_arms_the_real_reset_timer
+[test_sensortask[wozi]] PASS test_webserver_system_put_reboot_flushes_a_still_pending_config_write_first
+[test_sensortask[wozi]] 100/101 passed, 1 failed, 0 skipped

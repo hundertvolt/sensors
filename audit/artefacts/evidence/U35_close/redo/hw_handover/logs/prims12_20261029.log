@@ -1,0 +1,49 @@
+### prims12 18:56:39
+1793300200.043 Resolved 22 packages in 3ms
+1793300200.047 Audited 20 packages in 0.63ms
+1793300200.075 warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+1793300204.184 SUM prims12 config_file_sizes [16, 17, 18, 52, 60, 134, 151, 151, 168, 183, 205] probe_exists_before False
+1793300208.245 SUM prims12 ring True
+1793300208.418 READY IP=192.168.85.57
+HOST 1793300209.806 late seq 69 rtt_ms 31
+HOST 1793300209.816 late seq 70 rtt_ms 41
+HOST 1793300209.827 late seq 71 rtt_ms 33
+HOST 1793300212.667 late seq 355 rtt_ms 31
+1793300212.744 MARK baseline 918298
+HOST 1793300213.236 late seq 412 rtt_ms 32
+1793300214.179 SUM prims12 baseline write_us 0 irqoff_max_us 234 irqoff_over2ms 0 windows_us [] [('fram_bad', 0), ('fram_reads', 136), ('lag_max', 34), ('lag_over20', 2), ('uart_bad', 9), ('uart_good', 169), ('uart_overruns', 9), ('uart_seq_gap', 9), ('uart_skipped', 634), ('udp_rx', 174)]
+1793300217.478 MARK write1 923038
+HOST 1793300217.477 late seq 836 rtt_ms 213
+HOST 1793300217.487 late seq 837 rtt_ms 205
+HOST 1793300217.496 late seq 838 rtt_ms 197
+HOST 1793300217.507 late seq 839 rtt_ms 187
+1793300218.911 SUM prims12 write1 write_us 207490 irqoff_max_us 37537 irqoff_over2ms 3 windows_us [37537, 35701, 2264] [('fram_bad', 0), ('fram_reads', 123), ('lag_max', 214), ('lag_over20', 2), ('uart_bad', 10), ('uart_good', 146), ('uart_overruns', 8), ('uart_seq_gap', 8), ('uart_skipped', 453), ('udp_rx', 154)]
+1793300222.210 MARK write2 927766
+HOST 1793300222.196 late seq 1308 rtt_ms 81
+HOST 1793300222.206 late seq 1309 rtt_ms 74
+HOST 1793300222.217 late seq 1310 rtt_ms 65
+HOST 1793300222.226 late seq 1311 rtt_ms 55
+1793300223.659 SUM prims12 write2 write_us 70059 irqoff_max_us 35333 irqoff_over2ms 1 windows_us [35333] [('fram_bad', 0), ('fram_reads', 136), ('lag_max', 78), ('lag_over20', 4), ('uart_bad', 11), ('uart_good', 163), ('uart_overruns', 9), ('uart_seq_gap', 9), ('uart_skipped', 539), ('udp_rx', 169)]
+1793300226.946 MARK write3 932507
+HOST 1793300226.946 late seq 1783 rtt_ms 81
+HOST 1793300226.956 late seq 1784 rtt_ms 72
+HOST 1793300226.967 late seq 1785 rtt_ms 64
+HOST 1793300226.976 late seq 1786 rtt_ms 55
+HOST 1793300227.037 late seq 1792 rtt_ms 34
+1793300228.389 SUM prims12 write3 write_us 75636 irqoff_max_us 39379 irqoff_over2ms 1 windows_us [39379] [('fram_bad', 0), ('fram_reads', 134), ('lag_max', 85), ('lag_over20', 3), ('uart_bad', 13), ('uart_good', 162), ('uart_overruns', 9), ('uart_seq_gap', 9), ('uart_skipped', 591), ('udp_rx', 170)]
+1793300231.477 SUM prims12 remove_us 4422 irqoff_max_us 558 windows_us [] probe_exists_after False
+1793300231.479 SUM prims12 mem_free 96608
+1793300231.480 DONE
+1793300231.497 Local directory /home/nico/programming/sensors-bench/build/mountstage/mpy is mounted at /remote
+HOST lost 493 at ['1793300217.517', '1793300217.526', '1793300217.537', '1793300217.547', '1793300217.556', '1793300217.567', '1793300217.577', '1793300217.586', '1793300217.597', '1793300217.607', '1793300217.616', '1793300217.627', '1793300217.637', '1793300217.646', '1793300217.657', '1793300217.667', '1793300217.676', '1793300217.687', '1793300222.236', '1793300222.247', '1793300222.256', '1793300222.266', '1793300226.986', '1793300226.997', '1793300227.007', '1793300227.016', '1793300231.447', '1793300231.457', '1793300231.466', '1793300231.477', '1793300231.487', '1793300231.497', '1793300231.507', '1793300231.516', '1793300231.527', '1793300231.536', '1793300231.546', '1793300231.556', '1793300231.567', '1793300231.576']
+SUM prims12_host sent 2800 echoed 2207 lost 493 rtt_ms p50 5.5 p99 24.3 max 213.2
+host rc=0 18:57:17
+rc=0 18:57:17
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM resets after reset_cause 3 wd_reason 0x1 chip_reset 0x100 region0 ['0xe5', '0xa2', '0x1d5', '0x99d3'] region1 ['0x4', '0x55', '0x0']
+Resolved 22 packages in 3ms
+Audited 20 packages in 0.61ms
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+SUM prims12 probe_left []
