@@ -1,5 +1,27 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 08:59 UTC, 2026-11-07: my 08:35 margin reading is wrong; two zero-wear reads for the uid miss; the harness fix; the address rule goes (new head, same image)
+New code on this branch: a6357cc6, with this relay's commit on top. No src/ change: the image stays.
+- The owner's go (08:42) for both fixes. The first is in: fram_evidence_saved saves /status over REST before it asks
+  for the board fixture, whose reachability exec stopped main.py (tests_hardware/conftest.py, its test, one README
+  line; main line d81a6620, and the address rule's removal 0d875688). Your next runner session should carry no
+  "pre-session /status not saved" note: say so once. Until then, the hand saves before each runner start (08:35) stay.
+- The second waits, because its reason was wrong. The responder does not wait 1 s for a second chunk: it declines the
+  hazard command (id 7) right after its ACK (_accept_set, _set_callback, _reject_wrn: W56), then resyncs (1.5 s quiet
+  drain, then a 1.5 s write hold-off). So the sweep's 3 s leaves 1.5 s, which 122 ms loop holds do not explain, and
+  chunks 2 then 255 has the same shape and never missed. Cause open; no wait changes until it is found.
+- Read (a), now, from files you have: the UART_resp counter the no-reader run added (hazard_noload.txt, if it holds a
+  read before and after), against 23 in each loaded run. One more without readers: under load the responder never
+  handled 0xFE (drained or never seen). Equal: it handled 0xFE as in a pass, and the miss is on the reading end.
+- Read (b), after both chroot legs: your no-reader procedure again with 3 readers on GET /status for the run's length,
+  and the board's console read throughout with host time stamped on each line as it arrives (Board.tail_log or a plain
+  serial read; no exec). The responder's lines at the uid sweep say whether 0xFE was declined ("callback rejected
+  command 7"), refused as a frame or drained, and when against 0x00's. Those lines go in the hand-back.
+- The address finding: the repository is public, and the owner, 08:52: "A simple LAN IP is nothing to be worried
+  about". Nothing is masked or rewritten, and bench-routines' address rule goes in this head (no mask, no per-address
+  check before a commit). Passwords and config files stay as the Never list and the env-file line say.
+The 20:38 order for day 3 is unchanged.
+
 ## 08:35 UTC, 2026-11-07: your 08:30 note - skills carried; the uid miss's margin; the pre-session save never runs
 Skills: cb6a1b78, d2737a05, c55da08e and e5b28b9d read and carried into the main line (int a5d3296b, equal to your
 head outside audit/); the doc, skill and shell gates pass (791 tests, shellcheck clean).
