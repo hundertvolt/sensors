@@ -5,6 +5,7 @@ that have no home in the standalone protocol module itself. See SPECIFICATION.md
 # resolved via buildgen.driver_registry._OVERRIDES.
 
 import asyncio
+import time
 
 from micropython import const
 
@@ -208,10 +209,12 @@ class UARTLinkDriver:
             for value in values:
                 frame[0], frame[1], frame[2], frame[3], frame[4], frame[5] = 1, CMD_SET, 1, 2, 1, _HAZARD_CMD_ID
                 frame[offset] = value
+                self.pr.wrn("TRACE sweep", name, value, time.ticks_ms())
                 if not await self._write_raw(frame):
                     acked.append(None)
                     continue
                 got = await self._read_raw(ack)
+                self.pr.wrn("TRACE sweep got", got, time.ticks_ms())
                 acked.append(got == self._frame and ack[1] == _WIRE_ACK)
                 if got is not None:
                     await asyncio.sleep_ms(self._quiet_ms)  # the peer answered: its own timeout and resync pass first

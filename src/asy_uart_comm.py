@@ -295,6 +295,7 @@ class UARTComm:
         if not await self._send_ack(device, uid):
             await self._fault(device, _ERR_UART_WRITE_FAILED, "ACK for SET failed")
             return _LISTEN_FAILED
+        self.pr.wrn("TRACE acked", time.ticks_ms(), cmd_id, uid, chunks)
         pair = self._pair(await self._call(set_cb, cmd_id))
         if pair is None:
             await self._fault(device, _ERR_CALLBACK, "set_callback returned an unusable result for", cmd_id)
@@ -504,7 +505,9 @@ class UARTComm:
     async def _fault(self, device: "UART", errno: int, *args: object) -> None:
         # Every fault this module reports also resyncs, without exception - one helper so that is a
         # single enforced shape rather than a convention repeated at every call site.
+        t0 = time.ticks_ms()
         await self._err(errno, *args)
+        self.pr.wrn("TRACE fault persisted", errno, time.ticks_diff(time.ticks_ms(), t0), "ms")
         await self._resync(device)
 
     async def _gate(self, role: str) -> bool:
@@ -544,6 +547,7 @@ class UARTComm:
                     continue
             except Exception as e:  # uart_listen() is contracted never to raise; a contract is not an enforcement
                 await self._err(_ERR_UNEXPECTED, "listen loop caught:", e)
+            self.pr.wrn("TRACE backoff", time.ticks_ms(), backoff)
             await asyncio.sleep_ms(backoff)  # cancellable, and never a zero-delay retry
             backoff = min(backoff * _BACKOFF_MULT, self._backoff_max_ms)
 
@@ -557,6 +561,7 @@ class UARTComm:
         cmd = rx[_MSG_CMD]
         exp = _CMD_GET if cmd == _CMD_GET else CMD_SET
         err = self._validate(rx, exp, 1, None, None)
+        self.pr.wrn("TRACE rx", time.ticks_ms(), bytes(rx[:_HEADER_LEN + 1]), "err", err)
         if err:
             await self._fault(device, err, "unexpected frame while listening")
             return _LISTEN_FAILED
@@ -766,7 +771,9 @@ class UARTComm:
     async def _reject_wrn(self, device: "UART", cmd_id: int) -> None:
         # A declined command persists W56 every time (a run of identical codes spends one slot under the
         # central rule) and, like every refusal, resyncs.
+        t0 = time.ticks_ms()
         await self.pr.wrn_s("callback rejected command", cmd_id, wrnno=_WRN_UART_CMD_DECLINED)
+        self.pr.wrn("TRACE W56 persisted", time.ticks_diff(time.ticks_ms(), t0), "ms")
         await self._resync(device)
 
     async def _resync(self, device: "UART") -> None:
@@ -774,7 +781,9 @@ class UARTComm:
             return
         self._in_resync = True
         try:
+            self.pr.wrn("TRACE drain start", time.ticks_ms())
             drained = await self._drain(device) + self._take_discarded()
+            self.pr.wrn("TRACE drain end", time.ticks_ms(), drained)
             # A resync is routine and prints; only a drain that hit its bound (a babbling or misconfigured
             # peer) persists W54. Logged after the drain, which decides which one this is.
             if self._drain_bound_hit:

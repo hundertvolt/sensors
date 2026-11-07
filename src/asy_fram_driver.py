@@ -14,6 +14,7 @@ Fujitsu MB85RS64V (DS501-00015) and MB85RS2MTA (DS501-00032) datasheets.
 # assumption, self-healing without raising (except __init__()/setup()'s one-time setup errors).
 
 import asyncio
+import time
 
 from machine import Pin
 from micropython import const
@@ -136,17 +137,22 @@ class FRAM_SPI(Lockable):
         # holding the bus across the whole block is what lets the byte-level path be synchronous.
         # SPIDevice's own async session takes this same lock for any other caller of the bus.
         self._bus_lock = self._spidev.session_lock
+        self._trace_t = 0
 
     async def __aenter__(self) -> "Self":
         # Driver lock then bus, both for one whole block operation, so the chunk layer's byte-level
         # commands run synchronously under a lock it already holds - a second SPI device then waits
         # ~25 CS rather than ~5 (owner, 2026-09-18; SPECIFICATION.md C.8).
+        t0 = time.ticks_ms()
         await super().__aenter__()
         try:
             await self._bus_lock.acquire()  # explicit: this hold spans __aenter__/__aexit__, which async with cannot express
         except BaseException:
             self.session_lock.release()
             raise
+        self._trace_t = time.ticks_ms()
+        if time.ticks_diff(self._trace_t, t0) > 100:
+            print("TRACE fram wait", self._trace_t, time.ticks_diff(self._trace_t, t0))
         return self
 
     async def __aexit__(
@@ -155,6 +161,9 @@ class FRAM_SPI(Lockable):
         exc_val: BaseException | None,
         exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
     ) -> "Literal[False]":
+        held = time.ticks_diff(time.ticks_ms(), self._trace_t)
+        if held > 100:
+            print("TRACE fram hold", time.ticks_ms(), held)
         try:
             self._bus_lock.release()
         except RuntimeError as e:  # already released somehow - same tolerance, and same C-stack record, as Lockable's own exit
