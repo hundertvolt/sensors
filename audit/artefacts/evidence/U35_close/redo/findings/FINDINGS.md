@@ -839,3 +839,73 @@ existing inventories - (1) the rulings that keep or accept a cost (~79 owner-cit
 plus matching OR rows): their premise at combination, worst-case load and system level; (2) F.3's 37 budget rows and
 Part N's 191 rows: worst-case measurement condition and the real consumers from code; (3) the ~11,000 src/ lines outside
 designfu: OR51's design questions at function, module/integration and system level. Ranked, capped, evidence only.
+
+## 12.102 Owner go (17:31:00): the findings into the specs, the ruling's consequences, the levels check, run through
+Snapshot 47 = 268ced51 (int 18e9d59c + records to 12.101; next PARENT). Relay 17:32 (bench 7b204269): the chip's CRC
+timing read; the bench reports at 17:35 that the owner declined it for now ("No, not now"), nothing ran, the board keeps
+the trace image. Started 17:3x: bfix (writing: (ii) + (i) per DESIGN_FU, docs, the rulings' consequences; the CRC
+change waits for the chip figure), specfund (writing: levels and viewpoints into Parts 0, D, K, decision records,
+CLAUDE.md's question practice), levels1-3 (read-only: rulings, budgets, code). API credits (owner's question, docs via
+the guide agent): a cloud session cannot use them; a local Claude Code CLI signed in with the Console account can.
+
+## 12.103 Owner (17:35:11): push regularly; the bench is off for today
+A snapshot at every milestone (each unit merged into int, each records step worth keeping), only while no CI runs on
+PR #107; no timers. The bench is shut down for the day: the bfix image and the CRC chip read wait for the next bench
+day; nothing is relayed until then.
+
+## 12.104 specfund merged (int b412d1b3); levels pass 1 back (S/u35r/r5/LEVELS_1.md)
+specfund 6deb4c9f + lead fix b412d1b3, int fast-forwarded: Part 0.1 binds every level and viewpoint (owner 17:21:06);
+D.8 = the design questions answered by cost against need at every level; P9 and CLAUDE.md's decision records name the
+facts a decision rests on and send it back when one fails; CLAUDE.md's owner-question bullet (with the "flag, don't
+guess" agreement lost from CLAUDE.md on 2026-10-06 restored, and K.0's two dangling citations repointed). 111
+tests_scripts files that read the two docs: rc=0. Pass 1: of 79 keep/accept statements ~27 carry a runtime cost; four
+premises fail and go back to the owner (with passes 2-3, in the OR51 question format): (1) ResetErrors' gather fan-out
+and the accepted writer starvation rest on a "CPU-bound" curve that fits the FRAM hold; (2) a refused or dropped
+connection awaits its FRAM entry before closing (network <- FRAM; leaner: close first); (3) SCD30's command-path 50 ms
+wait sits inside the I2C bus session, legacy waited outside (bench proof owed); (4) the 256 B piece price was measured
+idle, ~3x under load (doc). Restored by B(ii): OR69.a (1)'s exposure, the in-path persisted entries, OR72.a (2)'s UART
+floor premise. Unverified: udp.poll_idle_ms, stagger.min_read_separation_ms. Slip (levels1): its grep displayed two
+SPEC lines carrying the hotspot password; scrubbed from its scratch. The masked pattern counts: SPECIFICATION.md 3,
+PROJECT_AUDIT_PLAN.md 1, ~20 audit/ files (doc copies beyond the two accepted code sites; for the owner). common_r1's
+filter rule now covers every repo text view; the three running units were told.
+
+## 12.105 levels pass 3 back (S/u35r/r5/LEVELS_3.md): 23 modules, 10 ranked findings
+Back to the owner (a ruling's premise failed): #1 the boot stagger waits on a one-shot Timer + flag in task context,
+where its own sleep fallback does the job; a dropped fire stalls boot to the watchdog; the 07-18 "watchdog is the
+backstop" ruling dates from the old callback chain; #2b = pass 1's (2) (close before the FRAM trace); #6 = pass 1's
+(3) (SCD30 holds the bus across its 50 ms waits; SGP40 and BMP3XX release it). Lean removals with no ruling found
+(owner sees them before any change): #3 NTP's 1 Hz sync-age loop and notification's pause loop, redundant since
+TickSeconds (-2 tasks, -1 of three 1 Hz soft timers, -529 B); #4 await-free _data_lock holds and the lock-less async
+Locked* classes (D.10 two shapes; -703 B); #5 PieceBuffer frozen into the five production images, used only by dev's
+UART (-803 B each); #7 neopixel overlay task -> a direct write (-1 task, -182 B); #9 product code only tests call
+(three VOC port functions, get_last_ntp_sync: OR36; the VOC ones are Sensirion port API, owner's call); #10 captive
+DNS builds strings only debug prints read. Doc only: #2a wifi_mode_lock is held across NTP's and Wi-Fi's FRAM log
+writes; C.8's 9.1 s bound omits them (after B(ii) one term). With the CRC yield (4c): #8 COBS per-run yield.
+Slip (levels3): one unfiltered view of the generated wozi module showed the WifiConfig credential pair; in no file.
+Filter widened (common_r1 :55: hotspot|passw|psk|ssid|wificonfig|credential); bfix and levels2 told.
+
+## 12.106 levels pass 2 back (S/u35r/r5/LEVELS_2.md): F.3's 37 rows and Part N's 191; eight fail
+(1) FRAM-queue rows: feed.supervisor and system.scan_budget are budgeted at a log entry's own write (627-700 ms) and
+checked with no other FRAM user, while the supervisor awaits each entry before its feed (behind a backup block hold,
+3.8-4.6 s measured): a task end during the hourly verify likely resets by watchdog (I); rate.persisted_log names the
+waiter backwards; hold.fram_block's figure is a synthetic idle block, F.3 and Part N disagree (23,148 vs 16,542 us);
+hold.wifi_lock's 9.1 s omits NTP's in-lock FRAM entries; fram.verify_lock_timeout_ms rests on a false premise and
+verify_present() has no src caller (removal). B(ii) closes all. (2) con.routine_stall (21 ms) is crossed on the board:
+streaming a GET holds the loop 104-122 ms per /status after the stall fix (739 ms before), no F.3 row; stall.voc_process
+measured 41.3 ms (3 runs) and its test fails, the row still "owed"; J.6's reply floor would accept a timeout these
+stretches break (latent, dev runs 1,000 ms). (3) lag.loop: board 155 ms after the fix (p99 64 ms), cell "owed".
+(4) web.chunk_bytes: margin vs an idle, stale 105 KB; under serving load the largest free run is 320-704 B against a
+320 B need (1.0-2.2x: near-critical, for the free-heap wrap-up). (5) stall.fram_command is a 3-run worst; raw SPI tails
+7.4-11.0 ms may cross the UART floor 6,944 us (I). (6) hold.scd30_*: idle value; byte-wise CRC in the bus session (+0.3-
+0.4 s per snapshot loaded, I). (7) feed.reset_path omits the unfed flush on escalation (harmless). (8) runner timeout
+margin vs one job alone, run 16 at once. Owed cells with board figures now: stall.crc_byte, uart.gc_pause_worst_ms's
+run, web timeouts' /status part (2,591 ms max). con.watchdog holds (~4.5 s per round vs 6 s, I); the table never
+states the sum. Credential: LEVELS_2.md 0 matches; its two scratch copies deleted.
+
+## 12.107 Owner (17:57:27): go to all five; completeness and prevention; push first (weekly use at 99 %)
+Go: (1) error-log reset sequential; (2) a refused/dropped connection closes before its FRAM entry; (3) SCD30 releases
+the bus across its 50 ms waits (bench check before shipping); (4) boot stagger by plain sleep; (5) the lean removals of
+12.105 (#3, #4, #5, #7, get_last_ntp_sync, #10) plus verify_present(); the three VOC port functions stay. Owed: a
+completeness pass (every occurrence of the 12.100 mechanism: rulings without keep-words, Parts A-M beyond F.3/N, tests,
+twin, build chain) and the prevention check (specfund's rules applied in every brief). Snapshot 48 pushed with CI 47
+still running, on the owner's order. Next steps: S/u35r/r5/NEXT.md.

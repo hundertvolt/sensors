@@ -1254,3 +1254,23 @@ applying the levels, respecting every viewpoint (no separate owner ruling needed
 the general specifications, with the consequences for the 2026-09-18 CRC ruling (and any other ruling whose premise
 failed). Start now and run through; the budget stop is lifted for this line of work, the weekly limit accepted.
 Question: how to use the owner's Claude API credits, here or in another instance, e.g. on the bench.)
+
+## 2026-11-07 17:35:11 UTC - push regularly; the bench shuts down for today
+"Yes, push regularly, save achievements 
+I will shut down the bench for today"
+(Direction: push snapshots regularly so every achievement is saved (at each milestone, never while CI runs; no
+scheduled check-ins). The bench is off for the rest of the day: no relays to act on, the fix image and the chip's CRC
+read wait for the next bench day.)
+
+## 2026-11-07 17:36:44 UTC - no API-credit workaround
+"Okay, no API workaround, just go ahead."
+(Decision: the work stays in this session on the plan; no local Console-billed instance. Go ahead as started.)
+
+## 2026-11-07 17:51:45 UTC - API credits with Remote Control? (question)
+"For my understanding - if I have a completely independent session on a computer (another project) , I can use it with API credits and over remote control?"
+(A question about Claude Code billing and Remote Control for an unrelated project; answered from the docs read at 17:3x.)
+
+## 2026-11-07 17:57:27 UTC - go to all five; completeness; push the findings first (weekly use at 99 %)
+"Go to all, be sure you really found all such occurrences, and it won't happen again. As we are at 99% already, push all finding first."
+(Go for the five changes as one unit after B. Make sure every occurrence of the mechanism is found and that it cannot
+recur. The weekly limit is at 99 %: push every finding now, before anything else.)

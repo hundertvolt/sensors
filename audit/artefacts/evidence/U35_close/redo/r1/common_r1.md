@@ -52,7 +52,7 @@ module"): a downstream fault is an error at its level; the level above that hand
 - The smallest change; no new hardcoded delay check; no module's bytecode grows except by an admitted fix, stated.
 - Never open anything under `/root/.claude/`. Never read `arduino/` (`':!arduino'` in every git grep and git log). Never
   edit `ext/`. No real hardware, no `mpremote`, `picotool`, `nmcli`, `iw`, `iptables`; `tests_hardware` only with
-  `--collect-only` or `--twin`. Never commit credentials; never write the hotspot fallback password's literal; read `devices/*.toml` and generated modules filtered (`grep -v -i -E "hotspot|password|psk"`), never whole.
+  `--collect-only` or `--twin`. Never commit credentials; never write the hotspot fallback password's literal; filter every view or grep of repo text (`devices/*.toml`, generated modules, SPECIFICATION.md, `audit/`, `src/asy_wifi_service.py` included) through `grep -v -i -E "hotspot|passw|psk|ssid|wificonfig|credential"`; never view those whole.
 - Commit on your branch only, never push. Subject `U35: <summary>`; trailers `Co-Authored-By: Claude Opus 5.5
   <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8`. Text outside
   `audit/` cites no audit ID (OR/OF/SF), no lane, unit or plan name. A decision you take gets "(agent, YYYY-MM-DD)".

@@ -1,0 +1,768 @@
+diff --git a/src/asy_print_log.py b/src/asy_print_log.py
+index 67ec04cf..170f59ba 100644
+--- a/src/asy_print_log.py
++++ b/src/asy_print_log.py
+@@ -71,7 +71,8 @@ _MAX_CNT = const(0xFFFF)
+ _WRAP_MAX = const(0x3FFFFFFF)  # the wrapping counters' top, inside the small-int range: compared for equality or by masked difference
+ _RESETS_ALL = const(0x1FFFFFFF)  # one bit per store reset() in flight at once, its lowest-free-bit step inside the small-int range
+ 
+-# Code from the global catalog (buildgen/error_catalog.json): a shared one, logged only for a store unreadable at setup.
++# Codes from the global catalog (buildgen/error_catalog.json), shared ones: a store unreadable at setup, a writer task's end.
++_ERR_UNEXPECTED = const(23)
+ _ERR_LOG_RAM_ONLY = const(28)
+ 
+ # A C-stack overflow is a design defect, never a routine failure: a logger call or an explicit record notes it here, and
+@@ -186,19 +187,12 @@ class PrintLogHistory(PrintLog):
+     async def _read(self) -> tuple[int, tuple[int, ...]] | bool | None:
+         return True
+ 
+-    def _since_counted(self, counted: int) -> int:  # the count a reset begun at `counted` leaves: its calls since, less once a later reset cleared
+-        return min((self._counted - counted) & _WRAP_MAX, self._err_count)
+-
+-    def _since_kept(self, kept: int, bit: int) -> int:  # how many of the newest slots the reset begun at `kept` on `bit` keeps
+-        repeat = 1 if self._resets_repeat & bit else 0
+-        return min((self._kept - kept) & _WRAP_MAX, len(self.history) - repeat) + repeat
+-
+-    async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
+-        # errno == _NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike; a
++    def _record(self, min_e: int, max_e: int, errno: int) -> bool:  # True when the state is due for a FRAM write
++        # errno == _NO_ERR (0) is the shared "nothing to record" sentinel for every entry point; a
+         # negative or over-range code is a defect the catalog check prevents: counted, diagnosed, no slot.
+         self._count()
+         if errno == _NO_ERR:
+-            return
++            return False
+         code = errno + min_e
+         if errno < 0 or code > max_e:
+             self._diag("PrintLog: Error number", errno, "is invalid!")
+@@ -207,15 +201,28 @@ class PrintLogHistory(PrintLog):
+         if not self.initialized:
+             # Return regardless of logging level - don't write stale state to FRAM before setup().
+             self._diag("PrintLog: Uninitialized, call setup first!")
+-            return
+-        if not await self._write():
++            return False
++        return True
++
++    def _since_counted(self, counted: int) -> int:  # the count a reset begun at `counted` leaves: its calls since, less once a later reset cleared
++        return min((self._counted - counted) & _WRAP_MAX, self._err_count)
++
++    def _since_kept(self, kept: int, bit: int) -> int:  # how many of the newest slots the reset begun at `kept` on `bit` keeps
++        repeat = 1 if self._resets_repeat & bit else 0
++        return min((self._kept - kept) & _WRAP_MAX, len(self.history) - repeat) + repeat
++
++    async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
++        if self._record(min_e, max_e, errno) and not await self._write():
+             self._diag("PrintLog: History write failed!")
+ 
+     async def _write(self) -> bool:
+         return True
+ 
++    def _write_later(self) -> None:  # RAM only: nothing to write, so no writer task
++        return
++
+     async def get_log(self, name: str | None = None) -> "ErrorLog":
+-        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded" and report 0, never the
++        # Reverses _record()'s encoding: 0x00/0x80 are "nothing recorded" and report 0, never the
+         # raw byte; else shift back by _NO_ERR/_NO_WRN to recover the code. name=None falls back to
+         # self.name (every real src/ call site relies on this); tests still pass an explicit override.
+         if name is None:
+@@ -234,6 +241,13 @@ class PrintLogHistory(PrintLog):
+                 err_type.append("W")
+         return {name: {"ErrCount": self._err_count, "ErrNum": err_num, "ErrType": err_type}}
+ 
++    def err_q(self, *args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
++        # err_s() for a caller that must not wait on FRAM: printed (the C-stack record first) and recorded now, written by
++        # the store's one writer task (C.7.1).
++        self._line(_LOG_ERR, args, sep, end)
++        if self._record(_NO_ERR, _MAX_ERR, errno):
++            self._write_later()
++
+     async def err_s(self, *args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
+         for arg in args:  # the C-stack record ahead of the FRAM write; _line() repeats it as a no-op
+             report_if_fatal(arg)
+@@ -248,6 +262,11 @@ class PrintLogHistory(PrintLog):
+     async def setup(self) -> None:  # no persistence to load in the pure in-memory case
+         self.initialized = True
+ 
++    def wrn_q(self, *args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:  # as err_q()
++        self._line(_LOG_WARN, args, sep, end)
++        if self._record(_NO_WRN, _MAX_WRN, wrnno):
++            self._write_later()
++
+     async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
+         for arg in args:  # as err_s()
+             report_if_fatal(arg)
+@@ -277,6 +296,8 @@ class PrintLogHistoryStore(PrintLogHistory):
+         self._write_lock = asyncio.Lock()
+         self._write_gen = 0  # one step per _write() call and per reset() write
+         self._written_gen = 0  # the _write_gen whose state the last successful write packed
++        self._write_due = False  # an err_q()/wrn_q() entry the background writer has not yet packed
++        self._writing = False  # that writer's task exists: at most one per store
+ 
+     def _pack_reset(self, dbuf: memoryview, kept: int, counted: int, bit: int) -> None:
+         # The image reset() writes, byte by byte into the chunk's buffer (no tuple, no list): the entries since it began
+@@ -336,6 +357,24 @@ class PrintLogHistoryStore(PrintLogHistory):
+                 self._written_gen = gen
+             return ok
+ 
++    async def _write_behind(self) -> None:
++        try:  # cleanup only: a writer that ends any way leaves the next entry to start one
++            try:
++                while self._write_due:  # an entry logged during a write is packed by the next one
++                    self._write_due = False
++                    if not await self._write():
++                        self._diag("PrintLog: History write failed!")
++            except Exception as e:  # an unsupervised task's top (G.2): only a chunk raising against its contract reaches it
++                await self.err_s("PrintLog: History writer failed:", e, errno=_ERR_UNEXPECTED)
++        finally:
++            self._writing = False
++
++    def _write_later(self) -> None:
++        self._write_due = True
++        if not self._writing:  # created first, flagged after: a refused task allocation leaves no writer claimed
++            asyncio.create_task(self._write_behind())
++            self._writing = True
++
+     async def reset(self) -> bool:  # False when the cleared state could not be written (ResetErrors then answers "Failed")
+         # The state it leaves is written before RAM clears: a pause refusing that write, up front or at the chunk, clears
+         # nothing, as "Failed" says (owner, 2026-10-13, paraphrase); any other failure still clears RAM. No setup() guard: what
+diff --git a/src/asy_uart_comm.py b/src/asy_uart_comm.py
+index cf1e840b..a87e20a6 100644
+--- a/src/asy_uart_comm.py
++++ b/src/asy_uart_comm.py
+@@ -416,7 +416,7 @@ class UARTComm:
+             if result is not None and hasattr(result, "send"):
+                 result = await result  # type: ignore[misc]  # awaitable: `send` checked above
+         except Exception as e:  # caller-supplied code; its runtime behaviour is not statically known
+-            await self._err(_ERR_CALLBACK, "callback raised:", e)
++            self._err(_ERR_CALLBACK, "callback raised:", e)
+             return None
+         return result
+ 
+@@ -424,7 +424,7 @@ class UARTComm:
+         # Writability only: a read-only memoryview passes every type check and fails at its first
+         # assignment, after the peer is acknowledged. The buffer's type is its caller's signature's (D.2).
+         if writable and isinstance(buf, (bytearray, memoryview)) and not _is_writable(buf):
+-            await self._err(_ERR_BAD_ARG, "destination buffer is read-only")
++            self._err(_ERR_BAD_ARG, "destination buffer is read-only")
+             return False
+         return True
+ 
+@@ -434,7 +434,7 @@ class UARTComm:
+         # the call reports success (the rule _prepare_tx() already states for the header fields).
+         if isinstance(cmd_id, int) and 0 <= cmd_id <= _CMD_ID_MAX:
+             return True
+-        await self._err(_ERR_BAD_ARG, "command id", cmd_id, "is not a byte value")
++        self._err(_ERR_BAD_ARG, "command id", cmd_id, "is not a byte value")
+         return False
+ 
+     async def _check_size(self, size: object, *, allow_none: bool) -> bool:
+@@ -446,7 +446,7 @@ class UARTComm:
+                 return True
+         elif isinstance(size, int) and size >= 0:
+             return True
+-        await self._err(_ERR_BAD_ARG, "size", size, "is not a non-negative integer")
++        self._err(_ERR_BAD_ARG, "size", size, "is not a non-negative integer")
+         return False
+ 
+     def _chunk_count(self, total: int) -> int | None:
+@@ -497,14 +497,15 @@ class UARTComm:
+             wait_ms = quiet_ms
+         return total
+ 
+-    async def _err(self, errno: int, *args: object) -> None:
+-        # Every fault persists its errno; a repeat of the newest code is collapsed by the central rule (C.7.1).
+-        await self.pr.err_s("UART error:", *args, errno=errno)
++    def _err(self, errno: int, *args: object) -> None:
++        # Every fault persists its errno, a repeat of the newest code collapsed by the central rule; its FRAM write runs
++        # behind, so no exchange or resync waits on another FRAM user's bus hold (C.7.1, J.5).
++        self.pr.err_q("UART error:", *args, errno=errno)
+ 
+     async def _fault(self, device: "UART", errno: int, *args: object) -> None:
+         # Every fault this module reports also resyncs, without exception - one helper so that is a
+         # single enforced shape rather than a convention repeated at every call site.
+-        await self._err(errno, *args)
++        self._err(errno, *args)
+         await self._resync(device)
+ 
+     async def _gate(self, role: str) -> bool:
+@@ -513,10 +514,10 @@ class UARTComm:
+         if not await self._ready():
+             return False
+         if self._role != role:
+-            await self._err(_ERR_UART_ROLE_REFUSED, "wrong role for this call:", self._role)
++            self._err(_ERR_UART_ROLE_REFUSED, "wrong role for this call:", self._role)
+             return False
+         if self._busy:
+-            await self._err(_ERR_UART_REENTRANT, "already inside a transaction")
++            self._err(_ERR_UART_REENTRANT, "already inside a transaction")
+             return False
+         return True
+ 
+@@ -543,7 +544,7 @@ class UARTComm:
+                     backoff = self._backoff_initial_ms
+                     continue
+             except Exception as e:  # uart_listen() is contracted never to raise; a contract is not an enforcement
+-                await self._err(_ERR_UNEXPECTED, "listen loop caught:", e)
++                self._err(_ERR_UNEXPECTED, "listen loop caught:", e)
+             await asyncio.sleep_ms(backoff)  # cancellable, and never a zero-delay retry
+             backoff = min(backoff * _BACKOFF_MULT, self._backoff_max_ms)
+ 
+@@ -766,7 +767,7 @@ class UARTComm:
+     async def _reject_wrn(self, device: "UART", cmd_id: int) -> None:
+         # A declined command persists W56 every time (a run of identical codes spends one slot under the
+         # central rule) and, like every refusal, resyncs.
+-        await self.pr.wrn_s("callback rejected command", cmd_id, wrnno=_WRN_UART_CMD_DECLINED)
++        self.pr.wrn_q("callback rejected command", cmd_id, wrnno=_WRN_UART_CMD_DECLINED)
+         await self._resync(device)
+ 
+     async def _resync(self, device: "UART") -> None:
+@@ -778,9 +779,9 @@ class UARTComm:
+             # A resync is routine and prints; only a drain that hit its bound (a babbling or misconfigured
+             # peer) persists W54. Logged after the drain, which decides which one this is.
+             if self._drain_bound_hit:
+-                await self.pr.wrn_s("Resynced the link - drain bound reached, the peer never stopped sending", wrnno=_WRN_UART_DRAIN_BOUND)
++                self.pr.wrn_q("Resynced the link - drain bound reached, the peer never stopped sending", wrnno=_WRN_UART_DRAIN_BOUND)
+             else:
+-                self.pr.wrn("Resyncing the link")
++                self.pr.wrn("Resyncing the link, drained", drained, "bytes")
+             self._hold_off_writes()
+             if self._uart is not None:
+                 self._uart.resync_framing()  # inert unless a delimited codec is selected (Part G.2)
+@@ -791,7 +792,7 @@ class UARTComm:
+                 if self._blind_resyncs < _DIAG_RESYNC_STREAK:  # saturates: only the threshold test reads it
+                     self._blind_resyncs += 1
+                 if self._blind_resyncs >= _DIAG_RESYNC_STREAK:
+-                    await self._err(
++                    self._err(
+                         _ERR_UART_LINK_UNINTELLIGIBLE,
+                         "bytes arriving but no frame ever valid - check CRC algorithm, baud rate and payload_size",
+                     )
+@@ -831,7 +832,7 @@ class UARTComm:
+     async def _send_train(self, device: "UART", cmd_id: int, payload: "Readable | PieceBuffer | None", total: int, pull: "_PullCallback | None") -> bool:
+         chunks = self._chunk_count(total)
+         if chunks is None:
+-            await self._err(_ERR_UART_PAYLOAD_TOO_LARGE, "payload of", total, "bytes needs more than", _CHUNKS_MAX, "chunks")
++            self._err(_ERR_UART_PAYLOAD_TOO_LARGE, "payload of", total, "bytes needs more than", _CHUNKS_MAX, "chunks")
+             return False  # rejected before the first frame, never partially sent
+         self._cmd_buf[0] = cmd_id
+         if not await self._write_frame_with_ack(device, CMD_SET, chunks, 1, self._cmd_buf, 1):
+@@ -964,12 +965,12 @@ class UARTComm:
+         await self._await_write_gate()
+         uid = _next_uid(self._uid)
+         if not self._prepare_tx(uid, cmd, chunks, cur_chunk, data, size):
+-            await self._err(_ERR_UART_FRAME_INVALID, "could not build frame", cur_chunk, "of", chunks)
++            self._err(_ERR_UART_FRAME_INVALID, "could not build frame", cur_chunk, "of", chunks)
+             return False
+         self._uid = uid  # only advanced once the frame is genuinely going out
+         buf = self._tx.get_buf()
+         if buf is None:  # Unreachable: _prepare_tx() returned False if the TX buffer were missing - kept to narrow the Optional for the type checker
+-            await self._err(_ERR_ALLOC, "no TX buffer")
++            self._err(_ERR_ALLOC, "no TX buffer")
+             return False
+         if not await device.writefrom(buf, self._frame_size):
+             await self._fault(device, _ERR_UART_WRITE_FAILED, "frame write failed")
+@@ -1079,7 +1080,7 @@ class UARTComm:
+         # A failed RegionBuffer hands its owner None, so every _into entry point checks it
+         # first rather than raising an AttributeError at the worst possible moment.
+         if buf is None:
+-            await self._err(_ERR_ALLOC, "uart_get_into called with no destination buffer")
++            self._err(_ERR_ALLOC, "uart_get_into called with no destination buffer")
+             return None
+         if not await self._check_buffer(buf, writable=True):
+             return None
+@@ -1092,7 +1093,7 @@ class UARTComm:
+         if push is None:
+             # Without it _recv_train has neither a push callback nor a destination, so every chunk
+             # is counted and dropped: the call returns the byte count of an answer nobody received.
+-            await self._err(_ERR_BAD_ARG, "uart_get_stream needs a push callback")
++            self._err(_ERR_BAD_ARG, "uart_get_stream needs a push callback")
+             return None
+         result = await self._run_get(get_id, exp_size, push=push)
+         return None if result is None else result[0]
+@@ -1105,7 +1106,7 @@ class UARTComm:
+         get_cb = self._get_callback if get_callback is None else get_callback
+         set_cb = self._set_callback if set_callback is None else set_callback
+         if get_cb is None or set_cb is None:
+-            await self._err(_ERR_BAD_ARG, "uart_listen needs both callbacks")
++            self._err(_ERR_BAD_ARG, "uart_listen needs both callbacks")
+             return _LISTEN_FAILED
+         bus = self._uart
+         if bus is None:
+@@ -1138,7 +1139,7 @@ class UARTComm:
+             return False
+         total = (0 if buf is None else len(buf)) if size is None else size
+         if total < 0 or (buf is None and total) or (buf is not None and total > len(buf)):
+-            await self._err(_ERR_UART_SIZE_MISMATCH, "size", total, "does not fit the supplied buffer")
++            self._err(_ERR_UART_SIZE_MISMATCH, "size", total, "does not fit the supplied buffer")
+             return False
+         self._busy = True
+         try:
+@@ -1156,7 +1157,7 @@ class UARTComm:
+             # Refused here, not left to _send_train: its no-pull branch means "the payload argument
+             # carries the data", and this entry point has none - so the train went out as
+             # total_size bytes of padding while the call reported success.
+-            await self._err(_ERR_BAD_ARG, "uart_set_stream needs a pull callback")
++            self._err(_ERR_BAD_ARG, "uart_set_stream needs a pull callback")
+             return False
+         if not await self._check_size(total_size, allow_none=False):
+             return False
+diff --git a/src/asy_uart_driver.py b/src/asy_uart_driver.py
+index 8362f334..4e62a6b2 100644
+--- a/src/asy_uart_driver.py
++++ b/src/asy_uart_driver.py
+@@ -673,7 +673,7 @@ class UART(Lockable):
+                 break
+             timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
+         if line is None:
+-            await log.err_s("UART line over the cap, discarded:", size, errno=_ERR_UART_TRANSFER_CAP)
++            log.err_q("UART line over the cap, discarded:", size, errno=_ERR_UART_TRANSFER_CAP)
+             return None
+         return line if line.trim(size) else None
+ 
+diff --git a/tests/test_asy_print_log.py b/tests/test_asy_print_log.py
+index c50b8558..3747d92f 100644
+--- a/tests/test_asy_print_log.py
++++ b/tests/test_asy_print_log.py
+@@ -2,6 +2,7 @@
+ window and persistence across a reboot."""
+ 
+ import asyncio
++import struct
+ from collections import deque
+ from time import ticks_add, ticks_ms
+ 
+@@ -1587,11 +1588,223 @@ def test_report_if_fatal_allocates_and_prints_nothing() -> None:
+     print_log_module._fatal = False  # as at boot: microtest fails a test that leaves it set
+ 
+ 
++# ---------------------------------------------------------------------------
++# err_q()/wrn_q(): the entry, its count and its line at once; the FRAM write in one background writer per store
++# ---------------------------------------------------------------------------
++
++
++class _WriterStore(PrintLogHistoryStore):
++    # Counts the background writer's starts and records the internal-failure prints instead of gating them.
++    def __init__(self, fram: "_CountingFramManager", history_length: int = 3) -> None:
++        super().__init__(fram, history_length=history_length)
++        self.starts = 0
++        self.diags: list[tuple[object, ...]] = []
++
++    async def _write_behind(self) -> None:
++        self.starts += 1
++        await PrintLogHistoryStore._write_behind(self)
++
++    def _diag(self, *args: object) -> None:
++        self.diags.append(args)
++
++
++def _set_up_writer_store(chunk: "_GatedFramChunk") -> "_WriterStore":
++    # A store set up over a blank gated chunk, the gate closed again and its setup write forgotten.
++    store = _WriterStore(_CountingFramManager(chunk))
++    chunk.gate.set()
++    run(store.setup())
++    assert store.initialized is True
++    chunk.gate.clear()
++    chunk.payloads.clear()
++    chunk.writes = 0
++    return store
++
++
++async def _writer_ended(store: "PrintLogHistoryStore") -> None:
++    while store._writing:  # bounded by run()'s own limit
++        await asyncio.sleep(0)
++
++
++def _image(store: "PrintLogHistoryStore") -> bytes:  # the RAM state as the store packs it: the "<H" count, then the ring
++    return struct.pack("<H", store._err_count) + bytes(store.history)
++
++
++def test_err_q_and_wrn_q_record_count_and_print_before_any_await() -> None:
++    chunk = _GatedFramChunk(2 + 3)
++    store = _set_up_writer_store(chunk)
++    store.set_level(2)
++    store.name = "Q"
++
++    async def scenario() -> "tuple[object, list[tuple[object, ...]], int]":
++        with record_prints() as rec:
++            store.err_q("e", 1, errno=3)
++            store.wrn_q("w", wrnno=2)
++        log = await store.get_log()  # reads without yielding: the writer has not run
++        writes = chunk.writes
++        chunk.gate.set()
++        await _writer_ended(store)
++        return log, rec.lines, writes
++
++    log, lines, writes = run(scenario())
++    assert log == {"Q": {"ErrCount": 2, "ErrNum": [0, 3, 2], "ErrType": ["N", "E", "W"]}}, log
++    assert lines == [("Q", "e", 1), ("Q", "w")], lines
++    assert writes == 0
++    assert chunk.payloads == [b"\x02\x00\x00\x03\x82"], chunk.payloads  # once the writer has run
++
++
++def test_an_err_q_entry_survives_a_simulated_reboot_once_its_writer_has_run() -> None:
++    manager, chip = make_fram_manager()
++    run(manager.setup())
++    store = PrintLogHistoryStore(manager, history_length=4)
++    run(store.setup())
++
++    async def scenario() -> None:
++        store.err_q("boom", errno=3)
++        await _writer_ended(store)
++
++    run(scenario())
++    manager2, _chip2 = make_fram_manager(chip=chip)
++    run(manager2.setup())
++    rebooted = PrintLogHistoryStore(manager2, history_length=4)
++    run(rebooted.setup())
++    assert (rebooted._err_count, list(rebooted.history)) == (1, [0, 0, 0, 3])
++
++
++def test_a_burst_starts_one_writer_and_an_entry_logged_during_its_write_lands_too() -> None:
++    chunk = _GatedFramChunk(2 + 3)
++    store = _set_up_writer_store(chunk)
++
++    async def scenario() -> None:
++        store.err_q("e", errno=1)
++        store.err_q("e", errno=2)
++        for _ in range(3):  # the writer starts; its write packs both entries and waits at the gate
++            await asyncio.sleep(0)
++        store.wrn_q("w", wrnno=3)  # during that write
++        chunk.gate.set()
++        await _writer_ended(store)
++
++    run(scenario())
++    assert store.starts == 1
++    assert chunk.payloads == [b"\x02\x00\x00\x01\x02", b"\x03\x00\x01\x02\x83"], chunk.payloads
++    assert chunk.payloads[-1] == _image(store)
++
++
++def test_an_uninitialised_store_records_a_q_entry_but_starts_no_writer() -> None:
++    chunk = _GatedFramChunk(2 + 3)
++    chunk.gate.set()
++    store = _WriterStore(_CountingFramManager(chunk))
++
++    async def scenario() -> None:
++        store.err_q("e", errno=3)
++        for _ in range(3):
++            await asyncio.sleep(0)
++
++    run(scenario())
++    assert (store._err_count, list(store.history), store.starts, chunk.writes) == (1, [0, 0, 3], 0, 0)
++    assert ("PrintLog: Uninitialized, call setup first!",) in store.diags
++
++
++def test_a_failed_background_write_is_diagnosed() -> None:
++    chunk = _GatedFramChunk(2 + 3)
++    store = _set_up_writer_store(chunk)
++    chunk.failing_writes = (1,)
++    chunk.gate.set()
++
++    async def scenario() -> None:
++        store.wrn_q("w", wrnno=2)
++        await _writer_ended(store)
++
++    run(scenario())
++    assert store.diags == [("PrintLog: History write failed!",)], store.diags
++    assert list(store.history) == [0, 0, 0x82]  # the entry stays in RAM for the next write
++
++
++def test_a_reset_racing_a_pending_background_write_leaves_fram_and_ram_agreeing() -> None:
++    # Before the writer runs: the reset writes and clears first, then the writer writes the cleared state.
++    chunk = _GatedFramChunk(2 + 3)
++    store = _set_up_writer_store(chunk)
++    chunk.gate.set()
++
++    async def before() -> bool:
++        store.err_q("e", errno=3)
++        ok = await store.reset()
++        await _writer_ended(store)
++        return ok
++
++    assert run(before()) is True
++    assert (store._err_count, list(store.history)) == (0, [0, 0, 0])
++    assert chunk.payloads[-1] == _image(store), chunk.payloads
++    # During the writer's write: the reset queues behind it, and an entry logged meanwhile is kept by both.
++    chunk.gate.clear()
++
++    async def during() -> bool:
++        store.err_q("e", errno=3)
++        for _ in range(3):  # the writer's write waits at the gate
++            await asyncio.sleep(0)
++        reset = asyncio.create_task(store.reset())
++        for _ in range(3):
++            await asyncio.sleep(0)
++        store.err_q("e", errno=4)
++        chunk.gate.set()
++        ok = await reset
++        await _writer_ended(store)
++        return ok
++
++    assert run(during()) is True
++    assert (store._err_count, list(store.history)) == (1, [0, 0, 4])
++    assert chunk.payloads[-1] == _image(store), chunk.payloads
++
++
++class _NoTasks:
++    # Stands in for asy_print_log's asyncio: any task start fails the test.
++    @staticmethod
++    def create_task(coro: object) -> None:
++        raise AssertionError("a RAM-only history started a task")
++
++
++def test_a_ram_only_history_starts_no_writer() -> None:
++    hist = PrintLogHistory(history_length=2)
++    run(hist.setup())
++    real = print_log_module.asyncio
++    print_log_module.asyncio = _NoTasks()  # type: ignore[assignment]
++    try:
++        hist.err_q("e", errno=3)
++        hist.wrn_q("w", wrnno=2)
++    finally:
++        print_log_module.asyncio = real
++    assert (hist._err_count, list(hist.history)) == (2, [3, 0x82])
++
++
++class _RaisingOnceChunk(_CountingFramChunk):
++    # Its first write raises a non-allocation error (a defect the chunk's contract rules out); later writes land.
++    async def write_into(self, buf: "RegionBuffer") -> bool:
++        if self.writes == 0:
++            self.writes += 1
++            raise ValueError("injected chunk defect")
++        return await _CountingFramChunk.write_into(self, buf)
++
++
++def test_a_writer_whose_write_raises_logs_it_and_the_next_entry_starts_a_writer() -> None:
++    chunk = _RaisingOnceChunk(2 + 3)
++    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
++    store.initialized = True  # whitebox: set up, with no setup write to spend the chunk's one raise
++
++    async def scenario() -> None:
++        store.err_q("e", errno=3)
++        await _writer_ended(store)
++        store.err_q("e", errno=4)
++        await _writer_ended(store)
++
++    run(scenario())
++    assert list(store.history) == [3, code("E", "UNEXPECTED"), 4], list(store.history)
++    assert chunk.last_payload == _image(store)
++
++
+ # ---------------------------------------------------------------------------
+ # DebugLevel 0 prints nothing, ever; a C-stack overflow handed to any entry point is recorded at every level
+ # ---------------------------------------------------------------------------
+ 
+-_ENTRIES = ("err", "wrn", "one", "evt", "all", "err_s", "wrn_s")  # every logging entry point
++_ENTRIES = ("err", "wrn", "one", "evt", "all", "err_s", "wrn_s", "err_q", "wrn_q")  # every logging entry point
+ 
+ 
+ def _call(pr: PrintLogHistory, method: str, *args: object) -> None:
+diff --git a/tests/test_asy_uart_comm.py b/tests/test_asy_uart_comm.py
+index f17c5e0e..218fb3e2 100644
+--- a/tests/test_asy_uart_comm.py
++++ b/tests/test_asy_uart_comm.py
+@@ -533,7 +533,7 @@ def test_get_error_counter_returns_the_shared_envelope() -> None:
+ def test_reset_clears_the_history_and_the_streak_state() -> None:
+     # A reset the caller expects to be total must not leave the escalate-once state behind.
+     comm = _make_comm(name="UART_X")
+-    run(comm._err(code("E", "UART_FRAME_INVALID"), "synthetic"), RUN_LIMIT_S)
++    comm._err(code("E", "UART_FRAME_INVALID"), "synthetic")
+     comm._valid_frames = 5
+     comm._blind_resyncs = 2
+     assert run(comm.get_error_counter(), RUN_LIMIT_S)["UART_X"]["ErrCount"] > 0
+@@ -578,19 +578,19 @@ def test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time() -> N
+     # code: the central newest-entry rule (C.7.1) keeps one slot while ErrCount counts each fault.
+     comm = _make_comm(name="UART_X")
+     for _ in range(21):
+-        run(comm._err(code("E", "UART_FRAME_INVALID"), "again"), RUN_LIMIT_S)
++        comm._err(code("E", "UART_FRAME_INVALID"), "again")
+     assert persisted(comm) == [_e("UART_FRAME_INVALID")], persisted(comm)
+     assert run(comm.get_error_counter(), RUN_LIMIT_S)["UART_X"]["ErrCount"] == 21
+     comm._note_valid_frame()  # the link recovers: nothing is logged for it
+     assert run(comm.get_error_counter(), RUN_LIMIT_S)["UART_X"]["ErrCount"] == 21
+-    run(comm._err(code("E", "UART_NO_ACK"), "a different fault"), RUN_LIMIT_S)
++    comm._err(code("E", "UART_NO_ACK"), "a different fault")
+     assert persisted(comm) == [_e("UART_FRAME_INVALID"), _e("UART_NO_ACK")], persisted(comm)
+ 
+ 
+ def test_a_single_transient_fault_leaves_one_entry_not_a_pair() -> None:
+     # A lone transient followed by a recovery costs one slot, never a matched pair.
+     comm = _make_comm(name="UART_X")
+-    run(comm._err(code("E", "UART_FRAME_INVALID"), "one-off"), RUN_LIMIT_S)
++    comm._err(code("E", "UART_FRAME_INVALID"), "one-off")
+     comm._note_valid_frame()
+     assert run(comm.get_error_counter(), RUN_LIMIT_S)["UART_X"]["ErrCount"] == 1
+ 
+@@ -870,6 +870,54 @@ def test_a_declined_get_does_not_back_off_the_next_answer() -> None:
+     assert [d for d in recorder.delays if d >= initial] == [], recorder.delays
+ 
+ 
++def _second_set_while_the_fram_bus_is_held(set_cb: "CommCallback") -> "tuple[bool, bool]":
++    # Two SETs, ids 1 and 2, while another FRAM user holds the bus the responder's log writes need (an SGP40 backup held
++    # it up to 5.8 s on the bench, 2026-11-07); the hold ends only once the second SET has its answer.
++    pair = run(build_pair(get_callback=echo_get(b""), set_callback=set_cb), RUN_LIMIT_S)
++    manager, _chip = make_fram_manager()
++    run(manager.setup(), RUN_LIMIT_S)
++    pair.responder.pr = make_logger(LogConfig(manager, 10, None), pair.responder.name)
++    run(pair.responder.pr.setup(), RUN_LIMIT_S)
++
++    async def scenario() -> "tuple[bool, bool]":
++        held, released = asyncio.Event(), asyncio.Event()
++
++        async def hold_the_bus() -> None:
++            async with manager.fram:
++                held.set()
++                await released.wait()
++
++        holder = asyncio.create_task(hold_the_bus())
++        await held.wait()
++        listener = pair.responder.start_asy_listen()
++        try:
++            return await pair.initiator.uart_set(1, b"x"), await pair.initiator.uart_set(2, b"y")
++        finally:
++            released.set()
++            await holder
++            listener.cancel()
++
++    return run(scenario(), _LISTENER_RUN_BOUND_S)
++
++
++def test_a_declined_set_resyncs_without_waiting_on_its_fram_log_write() -> None:
++    # The resync runs at once, so the initiator's next SET, one quiet window after its own recovery, is received, not drained.
++    def set_cb(cmd_id: int) -> "tuple[bool, None]":
++        return cmd_id == 2, None
++
++    outcome = _second_set_while_the_fram_bus_is_held(set_cb)
++    assert outcome == (False, True), outcome
++
++
++def test_a_fault_resyncs_without_waiting_on_its_fram_log_write() -> None:
++    # The same through _fault(): an unusable callback result is a CALLBACK fault.
++    def set_cb(cmd_id: int) -> "tuple[bool, None] | None":
++        return (True, None) if cmd_id == 2 else None
++
++    outcome = _second_set_while_the_fram_bus_is_held(set_cb)
++    assert outcome == (False, True), outcome
++
++
+ @_on_poll_rounds
+ def test_a_dead_link_still_doubles_its_backoff() -> None:
+     # A listen that returns no command kind - noise that never validates - backs off, doubling to its cap.
+@@ -1436,6 +1484,20 @@ def test_a_quiet_resync_persists_nothing() -> None:
+     assert pair.initiator._holdoff_active is True  # the resync itself still ran
+ 
+ 
++def test_a_routine_resync_prints_the_bytes_it_drained() -> None:
++    # A frame the drain swallowed shows on the console without a trace image.
++    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
++    pair.fake_a.feed_rx(b"xyz")
++
++    async def scenario() -> None:
++        async with pair.driver_a as device:
++            await pair.initiator._resync(device)
++
++    with record_prints(pair.initiator.pr) as rec:
++        run(scenario(), _STEP_BOUND_S)
++    assert rec.lines == [("UART_A", "Resyncing the link, drained", 3, "bytes")], rec.lines
++
++
+ def test_one_fault_on_a_quiet_line_adds_one_entry() -> None:
+     # The fault persists its errno; the resync it performs prints only.
+     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+diff --git a/tests/test_asy_uart_link_driver.py b/tests/test_asy_uart_link_driver.py
+index db7b7a23..4e24076c 100644
+--- a/tests/test_asy_uart_link_driver.py
++++ b/tests/test_asy_uart_link_driver.py
+@@ -761,9 +761,9 @@ def _recorded_errnos(comm: "asy_uart_comm.UARTComm") -> "list[int]":
+     errnos: list[int] = []
+     real_err = comm._err
+ 
+-    async def err(errno: int, *args: object) -> None:
++    def err(errno: int, *args: object) -> None:
+         errnos.append(errno)
+-        await real_err(errno, *args)
++        real_err(errno, *args)
+ 
+     comm._err = err  # type: ignore[method-assign]
+     return errnos
+diff --git a/tests_scripts/test_code_conventions.py b/tests_scripts/test_code_conventions.py
+index e889711e..4494a1a7 100644
+--- a/tests_scripts/test_code_conventions.py
++++ b/tests_scripts/test_code_conventions.py
+@@ -139,11 +139,11 @@ def starter_names(module: Module) -> list[str]:
+ 
+ 
+ def log_keywords(module: Module) -> list[str]:
+-    # (4) err_s()/wrn_s() take their number as errno=/wrnno=, never positionally.
++    # (4) err_s()/wrn_s() and err_q()/wrn_q() take their number as errno=/wrnno=, never positionally.
+     found = []
+     for node in ast.walk(module.tree):
+-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"err_s", "wrn_s"}:
+-            keyword = "errno" if node.func.attr == "err_s" else "wrnno"
++        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"err_s", "wrn_s", "err_q", "wrn_q"}:
++            keyword = "errno" if node.func.attr.startswith("err") else "wrnno"
+             numbers = [a for a in node.args if (isinstance(a, ast.Constant) and type(a.value) is int) or _NUMBER_NAME.fullmatch(ast.unparse(a).rsplit(".", 1)[-1])]
+             if keyword not in {k.arg for k in node.keywords} or numbers:
+                 found.append(f"{module.path}:{node.lineno}: {node.func.attr}() needs its number as {keyword}=")
+diff --git a/tests_scripts/test_error_catalog.py b/tests_scripts/test_error_catalog.py
+index 8819a4ba..c5e573ba 100644
+--- a/tests_scripts/test_error_catalog.py
++++ b/tests_scripts/test_error_catalog.py
+@@ -29,7 +29,7 @@ _CATALOG_PATH = _REPO / "buildgen" / "error_catalog.json"
+ _MOCK_SAMPLES = "mockdata/samples.json"
+ _TEST_SCOPES = ("tests", "tests_hardware", "tests_scripts", "digital_twin", "scripts")
+ 
+-_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}
++_METHOD_KIND = {"err_s": "E", "wrn_s": "W", "err_q": "E", "wrn_q": "W"}  # each persisting entry point, awaited or not
+ _KEYWORD = {"E": "errno", "W": "wrnno"}
+ _PREFIX = {"E": "_ERR_", "W": "_WRN_"}
+ _CODE_PARAMS = frozenset(_KEYWORD.values())
+diff --git a/tests_scripts/test_fatal_report_sites.py b/tests_scripts/test_fatal_report_sites.py
+index f009d7ea..cd71f21b 100644
+--- a/tests_scripts/test_fatal_report_sites.py
++++ b/tests_scripts/test_fatal_report_sites.py
+@@ -20,8 +20,8 @@ _BROAD = frozenset({"Exception", "BaseException", "RuntimeError"})
+ # shutdown's unbound `pass` handler awaits a stopped task once the supervisor, the record's one reader, has stopped.
+ _EXEMPT = frozenset({("src/asy_print_log.py", "PrintLog.report_unretrieved")})
+ _EXEMPT_PASS = frozenset({("src/asy_system_service.py", "SystemService._shutdown_sequence")})
+-# Each logger entry point, whose first step records an overflow among its arguments; `_err` is UARTComm's err_s() forwarder.
+-_LOGGER_METHODS = frozenset({"err", "err_s", "wrn", "wrn_s", "one", "evt", "all", "_err"})
++# Each logger entry point, whose first step records an overflow among its arguments; `_err` is UARTComm's err_q() forwarder.
++_LOGGER_METHODS = frozenset({"err", "err_s", "err_q", "wrn", "wrn_s", "wrn_q", "one", "evt", "all", "_err"})
+ 
+ Function = ast.FunctionDef | ast.AsyncFunctionDef
+ 
+diff --git a/tests_scripts/test_fault_or_warning_never_both.py b/tests_scripts/test_fault_or_warning_never_both.py
+index 6d62b83f..d048cc9d 100644
+--- a/tests_scripts/test_fault_or_warning_never_both.py
++++ b/tests_scripts/test_fault_or_warning_never_both.py
+@@ -16,7 +16,7 @@ if TYPE_CHECKING:
+     from collections.abc import Iterator
+ 
+ _REPO = Path(__file__).resolve().parent.parent
+-_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}
++_METHOD_KIND = {"err_s": "E", "wrn_s": "W", "err_q": "E", "wrn_q": "W"}  # each persisting entry point, awaited or not
+ _KEYWORD = {"E": "errno", "W": "wrnno"}
+ _PREFIX = {"E": "_ERR_", "W": "_WRN_"}
+ 
+diff --git a/tests_scripts/test_task_tops.py b/tests_scripts/test_task_tops.py
+index 0295dc7c..b9dff4d0 100644
+--- a/tests_scripts/test_task_tops.py
++++ b/tests_scripts/test_task_tops.py
+@@ -100,12 +100,13 @@ def _edit(src: Path, name: str, old: str, new: str) -> None:
+ 
+ 
+ def _logs(stmt: ast.stmt, name: str) -> bool:
+-    # `await self.pr.err_s(..., <name>, ...)` as a statement of its own.
++    # `await self.pr.err_s(..., <name>, ...)` as a statement of its own; a logger's own writer task awaits self.err_s().
+     if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Await) and isinstance(stmt.value.value, ast.Call)):
+         return False
+     call = stmt.value.value
+     func = call.func
+-    logger = isinstance(func, ast.Attribute) and func.attr == "err_s" and isinstance(func.value, ast.Attribute) and func.value.attr == "pr" and _is_self(func.value.value)
++    own = isinstance(func, ast.Attribute) and (_is_self(func.value) or (isinstance(func.value, ast.Attribute) and func.value.attr == "pr" and _is_self(func.value.value)))
++    logger = own and func.attr == "err_s"
+     return logger and any(isinstance(a, ast.Name) and a.id == name for a in call.args)
+ 
+ 

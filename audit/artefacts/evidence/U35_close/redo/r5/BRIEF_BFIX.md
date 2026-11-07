@@ -1,48 +1,63 @@
-# Fix unit: three flash-tier test faults the bench read on day 2 (lead, 2026-11-06)
+# R5 unit bfix: the FRAM hold fixed at its source, the UART independent of FRAM timing (lead, 2026-11-07)
 
 ## Read first
 `S/u35r/r1/common_r1.md` (binding; labels `bfix_`). S =
-`/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. `tests_hardware/README.md` for the
-flash tier's fixtures and helpers.
+`/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Then `S/u35r/r5/DESIGN_FU.md` (the
+design: item 4's (ii), (i) and docs; item 5's trims), `S/u35r/findings/FINDINGS.md` 12.96-12.101, and the owner's
+entries from 2026-11-07 16:45:25 on in `S/u35r/recovered/owner_rulings_after_LN118.md`. The candidate for (i):
+`git -C S/wt-uartq diff` (uncommitted, on 2f6d1453; int 18e9d59c differs from it only outside `src/` and `tests/`).
 
-## The bench's report (2026-11-06 07:05 UTC, relayed by the owner; read from the code and numbers, not measured)
-1. `flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off[crc16]`: 2 of 22 frames intact in the
-   3 ms window. Under CRC16, at about 21 ms a frame (the script's own comment), the reader drains about 2.6 B/ms against
-   11.5 B/ms on the wire, so the 512 B ring fills in about 57 ms, around the window's start. A continuous sender is
-   outside the ring's sizing (the commit that set 512 B ruled it out); the earlier 8,192 B ring hid it. `[none]` passes.
-2. `flash/test_uart_crossover.py::test_get_and_set_and_a_multi_chunk_train_cross_the_jumper[none]` and `[cobs]`: the
-   largest free block grew by 768 and 880 B against an exact-equality "nothing allocated" check; `[crc16]` passes.
-   Likely a collection inside the search on the new layout.
-3. `flash/test_watchdog_starvation.py`'s `closing_reset` hard-resets and waits only for USB; the session-end block in
-   `tests_hardware/conftest.py` (`save_errcount(dut_ip, "session-end")`, :494) then makes one strict `GET /status`
-   while the board boots: a teardown error that skips the SCD30 end snapshot, the board-state check and the session-end
-   FRAM dump, so those session-end checks have not run on either bench day.
+## Owner rulings behind this unit (verbatim)
+- 16:45:25: "... only option B stays - what would any setting of FRAM or UART ever have cross dependencies? ..."
+- 16:47:31: "Especially keep in mind: all gaps closed, (really) agreed on features implemented, and from there on minimal,
+  efficient and lean changes."
+- 17:31:00: "Probably applying this this already answers the open questions about the checksum from, and respecting,
+  multiple points of view. These findings are fundamental. They must flow into and be applied to the general specs, as
+  well as the consequences about the ruling. This, as well as all necessary scans and checks, can start immediately and
+  run through."
 
-## Your work (worktree `S/wt-bfix`, branch `audit/bfix`, at int `8ea29293`; create it; commit locally, never push)
-1. The stream in the frame-loss test stays within what the receiver drains in each CRC mode outside the
-   interrupts-off window (paced from the mode's own per-frame cost), so a lost frame can only come from the window the
-   test is about. Never an unchecked read: the CRC path is part of what the test proves.
-2. The "nothing allocated" check reads `after >= before` (a retained allocation can only shrink the largest block; a
-   collection can only grow it), unless the script already collects before measuring. Its message says so.
-3. `closing_reset` leaves the board serving, through the harness's existing wait, before the next step reads it.
-   No new helper where one exists.
+## Your work (worktree `S/wt-bfix`, branch `audit/bfix` from int `18e9d59c`; create it; commit locally, never push)
+1. (ii) in `src/asy_fram_manager.py`, by removal, as DESIGN_FU item 4 says: the CRC once per write, outside every FRAM
+   lock; a read releases the lock before its check; a compare reads the other block and compares with `==`, the CRC only
+   on a mismatch; `check_length`, the slice machinery and their state go. The compare's buffer: reuse one that exists if
+   it fits, else one transient per compare (boot reads and the verify cadence only), never per log entry. Stored chunks
+   stay readable (T3).
+2. (i): apply the candidate (`git -C S/wt-uartq diff | git apply`), then its trims: the writer's coroutine and task
+   allocation never makes a logging call raise (a `MemoryError` there leaves the entry in RAM; the next call writes
+   it); `_err` stays a coroutine that no longer awaits FRAM, so its call sites stay as they are. The UART only.
+3. The CRC's per-byte yield: leave `src/asy_crc_checks.py` as it is until the lead messages you the chip's figure
+   (bench, tonight). The rule then (owner 17:31, every level): the yield's purpose stays (no CRC stalls other tasks past
+   `con.routine_stall`); its per-byte granularity goes. If 264 x the measured per-byte stretch is under that bound, the
+   yield goes (2 lines); otherwise one yield per 64 bytes. The lead sends figure and form; tests for either then.
+4. Tests first, seen red on `18e9d59c` where they pin a change (DESIGN_FU's T1-T3 and its UART tests): rounds held per
+   block operation at most 2 and equal for an 8-byte and a 264-byte chunk; an `err_s()` started during a 264-byte write
+   plus verify completes within a fixed round count; a golden chunk image from today's code reads back valid and a new
+   write is byte-identical; a declined SET and a fault each resync on time while the store's chunk write is held shut;
+   an `err_q()` whose task creation raises `MemoryError` returns and the next entry writes. The mock and twin
+   bus-hazard tiers get T2's shape. Rounds, never wall-clock checks.
+5. Docs, current state: F.3's `hold.fram_block` row with its real consumers (every FRAM-backed logger, the SGP40
+   backup, the supervisor through SYSTEM) and the new hold; the driver's "a second SPI device" comment says who waits;
+   C.7.1 (the two logging forms; the UART uses the `_q` form); Part G's logging row; Part J's recovery (the receiver
+   resyncs without waiting on its log write; an entry logged just before a reset may not reach FRAM). The rulings'
+   consequences: the CRC paragraph that quotes "pure wall clock time" (Part I) and `hold.fram_block`'s 2026-09-26 "keep"
+   each name the fact they rested on that did not hold (both run under a lock every FRAM user waits on; both measured
+   idle on the smallest case) and the rule now in force (owner, 2026-11-07). `UART_C_PORT_CHANGELOG.md`: one Class B entry.
+6. Unit specfund edits SPECIFICATION.md Parts 0, D and K and CLAUDE.md at the same time: touch none of those.
 
 ## Never
-No hardware: `tests_hardware` runs only with `--collect-only` or `--twin`. Never weaken what a test proves: no
-retry, no skip, no wider bound than the reasoning above gives. Never edit `src/`, `ext/`, or any `tests_hardware`
-file but the three named (another unit is writing other files there); never read `arduino/`; never open
-`/root/.claude/`.
+No hardware. Never read `arduino/`; never edit `ext/`; never open `/root/.claude/`. No `gc.collect()`, no new delay, no
+per-frame or per-entry allocation in the steady state. Read `devices/*.toml` and generated modules filtered (common_r1).
+Never print, copy or write any Wi-Fi credential or the hotspot fallback password.
 
 ## Checks
-`S/u35/lead/lint_direct.sh`; the three mypy passes; the three files with `--collect-only`, and `--twin` where they run
-there; the tests_scripts files that read `tests_hardware/` (grep for them).
+Each touched test file at both GC stages while fixing; `lint_direct.sh`; the three mypy passes; then the gate as
+common_r1 says, under `S/u35/lead/heavy.lock` holding the line `bfix` (wait while it exists; `rm` it, literal path,
+its own command, after). Report the frozen size and `imageFreeBytes` against 18e9d59c.
 
 ## Limits
-Write only `tests_hardware/flash/test_uart_crossover.py`, its device script(s) if the pacing lives there,
-`tests_hardware/flash/test_watchdog_starvation.py` and `tests_hardware/conftest.py`. One commit. Budget about 0.5 % of
-the week. Hand back by 09:15 UTC.
+Write only the files above and their tests. One commit, plus one small one for item 3 if its figure arrives after the
+gate (then that commit's touched tests at both GC stages). Budget about 2 % of the week. Hand back by 23:00 UTC.
 
 ## Hand-back
-`S/u35r/r5/HANDBACK_BFIX.md`, at most 15 lines, and return its path: per item the change (file:line) and the reasoning
-in one line, each check with its result, and the `PYTEST_K` expression the bench reruns. Last line: "nothing of mine is
-running".
+`S/u35r/r5/HANDBACK_BFIX.md`, at most 30 lines, as common_r1 says; plus the module sizes, `imageFreeBytes`, and the
+lines added and removed in `src/`.
