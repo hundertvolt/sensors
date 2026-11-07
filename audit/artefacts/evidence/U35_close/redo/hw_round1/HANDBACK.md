@@ -42834,3 +42834,16 @@ Feed gaps over 6,000 ms per device job: dev 20,574 and 9,029; klkizi 9,980, 9,01
 Against yesterday's legs (16 jobs): trixie 16 failed, noble 6; no scenario name failing today failed in either leg yesterday.
 logs/day3_20261107/chroot_evidence/trixie/ (test.log, env.log, lint.log, typecheck.log, test_sh_archive/ with each scenarios[<device>].log)
 status: failures confirmed; cause not traced. Inferred: host contention remains at 4 jobs, as the failing set changes run to run and nothing else ran on the host; not ruled out: the backgrounded tests_scripts tier (pytest, Chromium) beside the 4 jobs. The ~9,0xx ms gaps with would_have_triggered_count 1 may be deliberate watchdog scenarios: not checked one by one.
+
+12:24:30 UTC 2026-11-07 step lead-20:38 item 3, noble leg: fresh noble arm64 chroot (ports mirror), clean clone of f0238c4b, README's recipe, TEST_PARALLELISM=4, TESTS_SCRIPTS_TIMEOUT_S=2400; 10:23-12:22
+env 0 (66 min), lint 0, typecheck 0, test 1 (33 min); gcc 13.3.0, Node v24.22.2; "== Test parallelism: 4 (TEST_PARALLELISM override)"
+scripts/test.sh: L0 FAIL, L1 PASS, L2 FAIL; tests_scripts 6,971 passed, 1 failed: test_test_sh.py::test_the_timeout_interrupts_the_files_process_once ("the interpreter got 0 SIGINTs"); tests 5,832 passed, 14 failed, all scenario-harness, all six devices:
+ arzi, grkizi: every_admitted_connection_is_actually_served_a_complete_correct_response (round 1: a GET answered 400 Bad request), realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully (IncompleteRead)
+ dev: above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds (IncompleteRead), static_site_is_served_over_real_http (shared boot 2), erasefram_on_a_silent_chip_stops_short_and_the_device_feeds_on (gap 7,196 ms)
+ klkizi, schlafzi: a_command_right_after_the_first_answer_resets_cleanly (watchdog starved, gaps 8,403 and 8,513 ms), survives_bus_and_api_load_while_ntp_is_unreachable_with_concurrent_config_writes (readers timed out)
+ wozi: failed_config_snapshot_is_sent_as_unavailable (TimeoutError), survives_bus_and_api_load... (a reader never ended), reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup (TimeoutError)
+Feed gaps over 6,000 ms: arzi 9,026, 7,172, 6,511; dev 9,036, 7,196, 7,177, 7,166; grkizi 9,025, 7,182, 6,498; klkizi 12,532, 9,025, 8,403; schlafzi 11,436, 9,026, 8,513; wozi 17,131 (wtc 4), 9,028.
+Names that recur across legs: survives_bus_and_api_load_while_ntp_is_unreachable_with_concurrent_config_writes (5 device jobs in today's two legs); every_admitted_connection_is_actually_served_a_complete_correct_response (noble yesterday and today); static_site_is_served_over_real_http and failed_config_snapshot_is_sent_as_unavailable (trixie yesterday, noble today). My 10:28 line "no failing name recurs" held for trixie against yesterday only.
+Missed: the lead's 10:24 vmstat log during this leg. The relay landed at 10:25:09, after my last fetch before the leg; I fetched next at 12:23. No host log exists for this leg. The trixie chroot was removed at 10:27 after its logs were copied, so step 3 needs it rebuilt.
+logs/day3_20261107/chroot_evidence/noble/ (test.log, env.log, lint.log, typecheck.log, test_sh_archive/)
+status: failures confirmed; cause not traced; no host-load reading for it.
