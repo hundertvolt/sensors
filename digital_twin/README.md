@@ -829,8 +829,7 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     45 s bound.
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only; the *host* (this script's own
-    `_run_11_soak()`, plain CPython) drives warm-up cycles until no cycle has set a new `MEM_SAMPLE`
-    floor for 20 cycles (`l2.soak_plateau_cycles`; at most 100, `l2.soak_warmup_cycles`), then 80
+    `_run_11_soak()`, plain CPython) drives 100 warm-up cycles (`l2.soak_warmup_cycles`), then 80
     measured cycles, each walking every `GET` route of the device's API reference and `/` directly
     over HTTP (see "Run 11's calibrated numbers" below), checks zero HTTP failures and
     `would_have_triggered_count == 0`, then parses the twin's own captured
@@ -955,10 +954,11 @@ scale, not an unbounded leak. Confirmed 2026-09-14: `gc.mem_free()` plateaus for
 enough idle wall clock, wozi's curve flattening well inside 40 cycles' worth and dev's needing
 roughly 2.5x that, reproduced with the UART tasks fully disabled — so it is settling proportional
 to module count, not UART traffic. 100 gives every device room to finish before the measured
-window starts. It is now the warm-up's bound, not its length: the warm-up ends once no cycle has set
-a new `MEM_SAMPLE` floor for 20 cycles (`_SOAK_PLATEAU_CYCLES`), so a device settles for as long as
-it needs and no longer; `dev` ran 84 and 63 cycles in all at the two GC stages (2026-10-15), against
-the fixed 120 before.
+window starts, and every boot runs all 100: the settle has no end a short window can see. On
+`grkizi` at `-1` (2026-11-07) free memory falls about 70 KB over the warm-up and still 5-7 KB across
+the 80 measured cycles after it, inside a 12-14 KB tolerance; a warm-up that ended at an apparent
+plateau (no new `MEM_SAMPLE` low for 20 cycles) stopped one CI boot at cycle 44, mid-settle, and its
+first quarter sat 17.6 KB above its last against a 14.1 KB tolerance on a tree with no leak.
 
 **The memory-trend tolerance is self-calibrating, and a scaling law is why.** The original
 calibration — five 100-cycle soaks, 25-sample quarters, trend deltas of +2623, +796, -410, +1729,
