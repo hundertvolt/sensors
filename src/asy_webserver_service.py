@@ -141,6 +141,7 @@ _UNAVAILABLE_TEXT = '{"error":"' + UNAVAILABLE + '"}'  # a failed /status source
 
 # @tunable web.max_pending_fragments = 16
 _MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
+_FLAT_MAX = const(4)  # a flat dump's most members and longest string: at most 224 B however escaped (owner, 2026-11-06)
 # Shipped defaults: buildgen reads each from here and passes it in ServingLimits/StaticSite.
 # @tunable web.max_content_length = 2048
 _DEFAULT_MAX_CONTENT_LENGTH = const(2048)  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
@@ -217,9 +218,11 @@ class _PieceWriter:
             self._group = [b"".join(self._group)]
 
     def add_value(self, value: object) -> None:
-        # Exactly json.dumps(value)'s text, never built as one string: dicts, lists and tuples are
-        # walked and only their keys and scalars dumped, with json.dumps()'s own ", "/": ".
-        if isinstance(value, dict):
+        # Exactly json.dumps(value)'s text, never one string past a piece: a scalar or a small flat container (_flat())
+        # is dumped whole, any other dict, list or tuple walked, only its keys and scalars dumped, with ", "/": ".
+        if not isinstance(value, (dict, list, tuple)) or _flat(value):
+            self.add(json.dumps(value))
+        elif isinstance(value, dict):
             self.add("{")
             for index, (key, item) in enumerate(value.items()):
                 # json.dumps() quotes a non-str key's own JSON text (True -> "true"), never str(key).
@@ -233,8 +236,11 @@ class _PieceWriter:
                     self.add(", ")
                 self.add_value(item)
             self.add("]")
-        else:
-            self.add(json.dumps(value))
+
+    async def add_value_yielding(self, value: object) -> None:
+        # One top-level value of an answer, then a yield: no answer holds the loop past its largest value (Part I.3).
+        self.add_value(value)
+        await asyncio.sleep(0)
 
     def flush(self) -> None:
         if self._group:
@@ -248,6 +254,13 @@ def _drained(pieces: list[bytes]) -> "Iterator[bytes]":
     pieces.reverse()
     while pieces:
         yield pieces.pop()
+
+
+def _flat(value: dict[object, object] | list[object] | tuple[object, ...]) -> bool:
+    # At most _FLAT_MAX members, all _short(), keys included.
+    if isinstance(value, dict):
+        return len(value) <= _FLAT_MAX and all(_short(key) and _short(item) for key, item in value.items())
+    return len(value) <= _FLAT_MAX and all(_short(item) for item in value)
 
 
 def _index_by_name(items: "Iterable[_Named]") -> "dict[str, _Named]":
@@ -901,7 +914,7 @@ class WebserverService:
             await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return
-        writer.add_value(_shape_errcount_entry(raw, name))
+        await writer.add_value_yielding(_shape_errcount_entry(raw, name))
 
     async def _write_guarded(self, writer: _PieceWriter, fct: "StatusSourceFct", name: str) -> None:
         try:  # caller-supplied callback, could misbehave - degrades this one key instead of letting
@@ -911,7 +924,7 @@ class WebserverService:
             await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return
-        writer.add_value(value)
+        await writer.add_value_yielding(value)
 
     async def _write_status_source(self, writer: _PieceWriter, key: str) -> None:
         source = self._status_sources.get(key)
@@ -992,6 +1005,11 @@ def _shaped_error_handler(status_code: int) -> "Callable[[object], tuple[Respons
     return handler
 
 
+def _short(item: object) -> bool:
+    # A scalar, and a string one at most _FLAT_MAX characters.
+    return not isinstance(item, (dict, list, tuple)) and not (isinstance(item, str) and len(item) > _FLAT_MAX)
+
+
 async def _stream_dict_response(result: "Mapping[str, object]", chunk_bytes: int) -> Response:
     # Memory-bounded streaming for any GET route whose response scales with device configuration
     # (SPECIFICATION.md Part I.3): the same bytes the old per-key json.dumps() fragments produced,
@@ -1001,7 +1019,7 @@ async def _stream_dict_response(result: "Mapping[str, object]", chunk_bytes: int
     writer.add("{")
     for index, (key, value) in enumerate(result.items()):
         writer.add(("," if index else "") + json.dumps(key) + ":")
-        writer.add_value(value)
+        await writer.add_value_yielding(value)
     writer.add("}")
     writer.flush()
     return _pieces_response(pieces)

@@ -1109,3 +1109,57 @@ Merging during run 11: a fetch is safe, but merging waits until run 11 ends, bec
 Needing your check first: a reflash, a wear-gated run or anything outside the plan. That includes config_flush_during_link_traffic: it needs a cleared: line in WEAR.txt and your OK, even if a relay asks for it.
 Hand-backs: I'll keep pushing them as now. The runner's own push during run 11 stays as it is.
 Run 11 is still going and should finish around 16:20 UTC."
+
+## 2026-11-06 17:27:03 UTC - the /status stall fix (understanding question, no ruling yet)
+"Now for my understanding. The block relaxation would probably be done with a asyncio.sleep(0) in each iteration?"
+
+## 2026-11-06 17:32:33 UTC - the /status stall fix (direction: generalize the yield into the shared piecewise builder; investigate, don't build yet)
+"First of all, that pattern is good. We  have other places where a lengthy API response is built in pieces, and the pattern should apply there as well. But as far as I know, that piecewise building already is implemented in a function used by all such places. So the far most elegant solution would be to put that asyncio sleep into that function, make it generalize. And I fully agree with your judgement that the correct places for the async sleep is a middle position - not thousands of iterations, but fine grained enough for the required gain. Don't build this yet, check what is already existing and if my idea works out"
+
+## 2026-11-06 17:41:11 UTC - the /status stall fix (agreed: the yield in the shared piece writer; question on a lighter construction)
+"Agreed on this part. Now about a more lightweight construction on top of it - even non blocking, 500 to 800ms CPU time is heavy, also wrt response time of the API. You already suggested to make it more lightweight.  Would we lose anything there, or does it actually reduce complexity and is only work to do now?"
+
+## 2026-11-06 17:56:47 UTC - the /status stall fix (go: the yield and the flat rule together)
+"Do the CPU time improvement together with the asyncio sleep in one go as you suggested"
+
+## 2026-11-06 19:15:43 UTC - bench day 2 order (stall-fix reruns first, the trixie chroot leg stopped)
+"Option a"
+(Option A as put at 19:05: stop the trixie chroot leg now and reflash first, the five reruns get the remaining bench time; the chroot leg is
+repeated another time. The reflash itself still needs the owner's OK asked by the runner in its own session.)
+
+## 2026-11-06 after 20:24:58 UTC (relayed by the runner, read here 20:34:44) - bench day 2 ends now
+"okay, but don't start anything after this for today"
+(Said to the runner, not here, after it said the reflash and reruns would take about an hour; the latest decision, so it supersedes the
+19:15:43 order for today: no reflash, no reruns, no noble rerun. Day 3 resumes when the owner restarts the sessions.)
+
+## 2026-11-06 21:43:14 UTC - a working-practice skill for the lead and the bench (go for a new unit)
+"Look through the work you did yourself and the work the bench did. Find generic points which were repetitive, which quickly flooded your content, which would have needed filtering, which always use the same or similar commands, maybe only differing by parameters, tools you need to call, common workflows, and anything alike. Scan for opportunities making your life easier, by better sized or formatted or selected inputs, by easing tools and calls, by reducing having to think about similar or recurring issues allover again.
+
+Check the documents for such workflows, many sessions left traces above best project practice there. 
+
+Collect such issues and topics, write them up, condense and harmonize them. Then write a skill usable for yourself as well as the bench, making everyday work within this project much easier, faster and efficient.
+
+Test that skill thoroughly, and don't forget to push it to the bench branch."
+
+## 2026-11-06 22:20:01 UTC - the work-routines skill: split allowed; wider topics to consider
+"If it is useful / efficient, you may for sure split it up into different skills, whatever fits best 
+Did you also think about repo setup, installation, rp2 REPL flash, communication and control, compilation, local and remote log filtering, bench config, live watcher, notifier, event trigger skills which would have been or are or will be useful? 
+Also think about repo and filesystem management and cleanup"
+
+## 2026-11-07 07:24:42 UTC - project docs: go to clean them up (CLAUDE.md, BACKLOG.md's chroot list, the stale recipes)
+"You may absolutely clean up these docs, "nothing new to install" are no quotes of my words, anyhow"
+(Answer to the report's one decision: shorten BACKLOG.md's clean-chroot list and, read as plural "these docs", CLAUDE.md's
+restatements of SPECIFICATION.md too. Owner-attributed decisions stay in CLAUDE.md under its decision-record rule; only restated
+detail moves to pointers.)
+
+## 2026-11-07 07:39:04 UTC - bench branch: push everything, relay the skills; the bench may adapt and repair them and reports back
+"Once you are done, push all updates to the bench branch, and explicitly relay the presence of the new skills. The bench shall use them, but also be allowed to adapt and repair them in case something does not fit or is missing, and shall communicate such things back to you."
+
+## 2026-11-07 08:36:41 UTC - pushes: when was the last, are the bench results and the skills in
+"When did you push last time? Are the latest bench results and the skills already in?"
+(Time is the first date -u reading after the message. A question, not a ruling. Answer: last push 08:35:44 to the bench
+branch; the audit branch was at snapshot 44 (2026-11-06 16:55:42), without the stall fix, the skills, the doc cleanup or
+the day-3 findings; snapshot 45 built and pushed in reply. Also relayed, said to the bench at about 08:08, not here: "You
+absolutely can scan through your work styles and calls from this session and compare them to the newly added skills - if
+you find something missing or could be improved, go ahead adding things. But cross check with the main session in order
+not to break anything.")

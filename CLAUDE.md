@@ -148,17 +148,9 @@ Three standing practices:
   interrupts off loses no frame (owner, 2026-10-05; SPECIFICATION.md F.5.8). **Only the bench device
   carries the link: `dev` wires two
   instances across its permanent crossover jumper** (owner, 2026-09-11, UART promotion 'Target
-  variant. dev, two instances'). The protocol's own wire constants and
-  recovery timings live in `src/asy_uart_comm.py` as `const()` values. **Construction is
-  buildgen-driven, like every other driver**: `devices/dev.toml` declares the two instances as
-  `driver = "uart_link"` (`role = "initiator"`/`"responder"`, one on each of
-  `[bus.uart0]`/`[bus.uart1]`) — `src/asy_uart_link_driver.py`'s `UARTLinkDriver` wraps one role's
-  `UARTComm` plus the bench-only banner/echo application logic and transfer/failure counters (none
-  of which belong in the standalone protocol module itself); resolved via
-  `buildgen/driver_registry.py`'s `_OVERRIDES` table like `fram`/`neopixel`/`notification`, since it
-  isn't a `SensorReader`/`SensorReaderConfig` subclass either — but unlike those three it is not a
-  singleton (`SINGLETON_SERVICE_DRIVERS` excludes it), since a device wires exactly one initiator +
-  one responder. **The exerciser is test machinery inside a product module, a deliberate exception**
+  variant. dev, two instances'). Its construction from `devices/dev.toml`'s two `driver =
+  "uart_link"` instances: SPECIFICATION.md J.9 and L.4. **The exerciser is test machinery inside a
+  product module, a deliberate exception**
   (owner, 2026-10-22, asked whether its hazard mode, test code inside the product module, stays:
   "the link module is a necessity for testing, and it's testing code inside a module, but for a
   good reason, and the guard from being included in real deployed firmware is the fact that the
@@ -295,24 +287,19 @@ Three standing practices:
   so an aliased `open` or a command passed through a local is beyond it (SPECIFICATION.md D.3).
 - **No test may inflict avoidable wear on real hardware — the host's own SSD included, not just the
   target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). FRAM writes are
-  not wear (owner, 2026-09-26: 'FRAM writes do not count as wear.'). On the *target* this is already
-  institutionalized and stays that way: every operation that spends a limited-endurance write cycle
-  is a default-off, explicitly-opted-into marker with a tracked budget — `flash_cycle`
-  (`--allow-flash-cycle`, "reflashes the board (flash wear)"), `persistence_write`
-  (`--allow-persistence-write`) for any real write to a limited-endurance store — the SCD30's own
-  on-chip NVM **and** the RP2040's flash filesystem, which every accepted config-persisting `PUT`
-  writes through `asy_config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
-  deliberately outside the gate, and FRAM is out of scope (effectively unbounded endurance here) —
-  `scd30_extra_write` (`--allow-scd30-extra-write`) AND-gated on top for the up to 12 further SCD30
-  NVM writes its four tests own (with both flags up to 13 owned writes per session on `dev`'s SCD30,
-  and at most one start command; owner, 2026-10-21: "option a", asked "Cap the SCD30 NVM writes the
-  extra-write flag admits?", option (a) keeping what the tests carry), plus `soak_duration`
-  (`--soak-duration`)/`multi_day_rollover`
-  (`--allow-multi-day-rollover`) (`tests_hardware/conftest.py`,
-  `tests_hardware/README.md`). Because that gate DESELECTS rather than skips, the hardware verdict
-  (`scripts/_hardware_verdict.py`, reading the run record) lists every deselected test with the gate
-  flag that deselected it: "clean" there means "everything that ran, passed", not "everything
-  ran". **The gate covers the write a test OWNS, not one it is merely reached through** (owner's
+  not wear (owner, 2026-09-26: 'FRAM writes do not count as wear.'). On the target every operation
+  that spends a limited-endurance write cycle sits behind a default-off marker with a tracked budget:
+  `flash_cycle` (`--allow-flash-cycle`, "reflashes the board (flash wear)"), `persistence_write`
+  (`--allow-persistence-write`) for any real write to the SCD30's on-chip NVM or the RP2040's flash
+  filesystem (a dispatch-only PUT persists nothing and is outside the gate), `scd30_extra_write`
+  (`--allow-scd30-extra-write`) AND-gated on top for the up to 12 further SCD30 NVM writes its four
+  tests own (with both flags up to 13 owned writes per session on `dev`'s SCD30, and at most one
+  start command; owner, 2026-10-21: "option a", asked "Cap the SCD30 NVM writes the extra-write flag
+  admits?", option (a) keeping what the tests carry), and `soak_duration` (`--soak-duration`) and
+  `multi_day_rollover` (`--allow-multi-day-rollover`); their budgets: `tests_hardware/README.md`. The
+  gate deselects rather than skips, so the hardware verdict (`scripts/_hardware_verdict.py`) lists
+  every deselected test with its flag: "clean" there means "everything that ran, passed", not
+  "everything ran". **The gate covers the write a test OWNS, not one it is merely reached through** (owner's
   clarification, 2026-09-18): a persisting write that *is* the thing under test is optional and
   belongs behind the marker, while one that is a shared **prerequisite** — a fixture forcing a mode
   many tests then exercise, a recovery path — stays unmarked and allowed, since gating it would
@@ -325,14 +312,12 @@ Three standing practices:
   keep wear as low as it can go", never "spend zero";
   `tests_scripts/test_persistence_write_marker_completeness.py`
   pins the prerequisite set by name so a new one is triaged against that rule rather than joining it
-  silently. **The same lens applies to host I/O**: a
-  test must not generate mass filesystem churn, and an invariant gets proven *structurally* — assert
-  the property the current code must hold — rather than by brute-forcing a scale large enough to
-  reproduce a symptom. `tests/test_tmp_scratch.py` is the example: it records the `os` calls of a full
-  `TmpScratch` lifecycle and asserts none reads the shared root, where building 400,000 directories to
-  show the same cost 396 MB of disk writes per run (`/proc/diskstats`). When a test seems to need
-  brute-force scale, that is the signal to find
-  the invariant instead.
+  silently. **The same lens applies to host I/O**: a test must not generate mass filesystem churn,
+  and an invariant is proven *structurally* — assert the property the current code must hold —
+  never by brute-forcing a scale large enough to reproduce a symptom. `tests/test_tmp_scratch.py` is
+  the example: it records a full `TmpScratch` lifecycle's `os` calls and asserts none reads the
+  shared root, where building 400,000 directories to show the same cost 396 MB of disk writes per
+  run (`/proc/diskstats`).
 - **A session needs the project owner's go-ahead, given directly in that session's own
   conversation (owner, 2026-09-25), before running anything against real hardware** (any `mpremote` command, `nmcli`/
   `iw`/`iptables` call, `picotool`, or `tests_hardware/`'s own suite runners) — a go-ahead given to
@@ -363,49 +348,31 @@ Three standing practices:
 - **Memory-safety discipline: design for zero `MemoryError`s first, catch→degrade→restart→watchdog
   as a last-resort backstop, `gc`-default-first, always applied — not only once something has
   already broken.** Any new function/module that holds, builds, or grows an allocation whose size
-  isn't a small, provably-fixed constant follows the same standing ladder every existing module
-  already mostly follows: the code itself must run stable, with no memory issues, under all
-  scenarios including worst case, *before* any exception handling around it is credited as the
-  fix; catching `(OSError, MemoryError)` and degrading locally is a backstop for genuinely
-  unavoidable, uncontrollable conditions, not an accepted outcome of ordinary or hammering load — a
-  caught `MemoryError` that merely didn't crash anything is still a design defect to fix at its
-  source, never a passing test result; never let it bubble into an unguarded crash of an otherwise-
-  healthy request/task; trust `asy_system_service.py`'s task supervisor to restart a task that still
-  dies (already confirmed to catch `MemoryError` too — it's a direct `Exception` subclass, not
-  nested under `OSError`); let the hardware watchdog be the final backstop once restarts alone
-  aren't keeping up. **Standing rule, every test, not only new stress/hammer ones, digital-twin runs
-  and real hardware alike (owner, 2026-09-26: 'The firmware must be rock solid without the
-  threshold, and the threshold is finally applied to move it even further into the stable region,
-  but must be tested and verified by itself.')**: the whole suite must pass with `gc.threshold(-1)`
-  (MicroPython's own real default) and with zero `MemoryError`s — caught-and-logged included — and
-  with no `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or
-  the test's own setup propping the result up, *before* it's ever run again with the project's
-  chosen `gc.threshold(32768)` enabled (which the full suite must then also still pass). **Both
-  halves are machine-checked, not left to whoever reads the log**: the twin tier checks each run's
-  log (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own
-  output and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
-  about. Don't relax that to "only on a failing file". **Every memory gate — the unit tier, the twin
-  tier, the `tests_scripts` twin boots, the JS live twins and cross-browser smoke, and the flash and
-  bench real-hardware gates — matches `MemoryError` OR `memory allocation failed`, the second being
-  the half that matters** — `src/` logs `str(e)`, not
-  the class, so a real caught-and-degraded allocation failure never contains the word
-  "MemoryError" at all (SPECIFICATION.md Part I.4(e) has the full account and the `py/runtime.c`
-  citation). Matching the class name alone catches only crashes, which is the case the bar is
-  *not* about; don't narrow any gate back to it. The hardware pair reads one shared
-  `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS` (the JS gates `tests_js/_memory_markers.js`), and
-  `tests_scripts/test_memory_error_gate_agreement.py` keeps them all agreeing — and keeps the
-  suite's own deliberate injections worded clear of what they grep for, since a message borrowing
-  the interpreter's own wording would fail every file it runs in on a healthy tree. **One structural
-  exception (owner, 2026-09-18): the boot-confined placement reset** —
-  `gc.collect()` between the units of the two one-time lists, both run by `SystemService`
-  (`run_setups()` and `start_tasks()`'s starter loop), and nowhere else, mechanically
-  confined by `scripts/_check_gc_collect_sites.py` (aliases included; `scripts/lint.sh` runs it) and
-  `tests_scripts/test_gc_collect_sites.py` on the *sites* and by
-  `tests_scripts/test_digital_twin_boot_contiguity.py` on the *effect* (it boots all six generated
-  devices and asserts the survivors still land low, with a suppressed control arm asserting the
-  bound would otherwise break); it is placement
-  discipline for the survivors those lists create, not a threshold and not a fix for a failing
-  allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). **Outside
+  isn't a small, provably-fixed constant must run stable under all scenarios, worst case included,
+  *before* any exception handling around it is credited as the fix. Catching `(OSError, MemoryError)`
+  and degrading locally is a backstop for genuinely unavoidable conditions: a caught `MemoryError`
+  that merely didn't crash anything is a design defect to fix at its source, never a passing result,
+  and never bubbles into an unguarded crash of an otherwise-healthy request or task; the task
+  supervisor restarts a task that still dies, and the hardware watchdog is the final backstop.
+  **Standing rule, every test, digital-twin runs and real hardware alike (owner, 2026-09-26: 'The
+  firmware must be rock solid without the threshold, and the threshold is finally applied to move it
+  even further into the stable region, but must be tested and verified by itself.')**: the whole
+  suite passes at `gc.threshold(-1)` (MicroPython's own default) with zero `MemoryError`s,
+  caught-and-logged included, and no `gc.collect()` or other nonstandard `gc` setting propping it up,
+  *before* it runs again at the project's `gc.threshold(32768)` (set once by the boot entry, checked),
+  which it must also pass: `scripts/test.sh` is the (e) stage, `GC_THRESHOLD=32768 scripts/test.sh`
+  the (f) stage, plus CI's `unit-tests` and `unit-tests-gc-threshold`. The threshold is defence in
+  depth on an already-safe design, kept because on silicon it carries the boot placement gain into
+  the run phase, and never the fix for a memory-pressure issue: that is relieved at the design level
+  (chunking, reused buffers, streaming — a REST GET whose answer grows with configuration streams
+  through `_stream_dict_response()`). **Every memory gate matches `MemoryError` OR `memory
+  allocation failed`** — `src/` logs `str(e)`, so a caught allocation failure never names the class;
+  no gate narrows back to the class name or to failing files only (a degrade-and-pass is the case the
+  bar is about), and an injection a test makes on purpose is worded clear of both markers.
+  **One structural exception (owner, 2026-09-18): the boot-confined placement reset** —
+  `gc.collect()` between the units of `SystemService`'s two one-time lists (`run_setups()` and
+  `start_tasks()`'s starter loop) and nowhere else in the firmware: placement discipline for the
+  survivors those lists create, not a threshold and not a fix for a failing allocation. **Outside
   the firmware** — tests, the twin, device scripts and tools — `gc.collect()` sets a baseline for a
   memory measurement or keeps an automatic collection out of a timing window about to be measured,
   nothing else: never inside a timed window or a watchdog-sensitive stretch, never as a recovery
@@ -413,36 +380,16 @@ Three standing practices:
   paraphrase, where `gc.collect()` may still stand: "gc.collect is allowed IN TESTS for getting a
   clean baseline for memory measurement tests"; asked, paraphrase, whether to remove the three test
   collects that set no baseline: "a (and be sure they don't do it to get an actual memory baseline
-  or something different which makes sense technically!)"). The one collection inside a timed window is the one being timed:
-  `tests_hardware/device_scripts/loop_stretch_timing.py` measures `gc.collect()` itself, the pause
-  F.3 bounds (SPECIFICATION.md I.4). The collection is complete when the call returns, so the
-  reading may follow in the next statement (owner, 2026-09-26, on the finding that `gc.collect()`
-  completes before it returns: "interesting, if that holds a real verification, my assumption that
-  it needs time was wrong and you can replace it with the facts you found"; verified at v1.29.0,
-  SPECIFICATION.md I.4(f.1)). The twin's Run 11 memory sampler is the one twin exception. `scripts/_check_gc_collect_sites.py` names
-  every allowed site, a `gc.threshold()` set, `gc.disable()` and `gc.enable()` included. **Both stages are
-  runnable and both are run**: `scripts/test.sh` is the (e) stage at MicroPython's own reactive
-  `-1`, and `GC_THRESHOLD=32768 scripts/test.sh` is the (f) stage with the value the firmware's boot
-  entry sets (set once, checked) — every file, with zero `MemoryError`s at each, plus CI's own `unit-tests` and
-  `unit-tests-gc-threshold` jobs. The (e) run is what proves the design stands on its own; the
-  threshold is defence in depth on top of it, never a substitute for it. It is also not redundant:
-  on silicon it is what carries the boot placement gain into the run phase (largest free block 80 % of
-  free four seconds after the task-starter list with `gc.threshold(32768)` set, against 12 % at the
-  reactive default — `dev` board, MicroPython v1.29.0, 2026-09-19; HEAP_FRAGMENTATION_MEASUREMENTS.md
-  archive §7H.3), so keep it — but that is a layout benefit, not what makes the system
-  stable. A threshold (or a
-  `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
-  system further from a stability threshold — it is forbidden as the fix itself for a design that
-  still needs one big contiguous allocation somewhere, or for any other memory-pressure issue; the
-  right fix is a design-level technique that relieves the pressure directly — chunking, reusing/
-  pre-allocating buffers instead of churning same-shaped objects, or streaming. A REST GET route
-  whose response dict can grow with device configuration/registration count (not a small, fixed
-  handful of keys) streams it via `asy_webserver_service.py`'s `_stream_dict_response()` instead of
-  returning the dict directly for Microdot to `json.dumps()` in one shot — the canonical example of
-  this "relieve the pressure, don't paper over it" fix. Full research findings, the allocation-site
-  catalog every `src/` and generated module is classified in (I.2; `tests_scripts/test_memory_catalog.py`
-  keeps every module in it and every run-phase long-lived allocation listed), and the full scheme:
-  SPECIFICATION.md Part I (I.4 for the standing scheme itself).
+  or something different which makes sense technically!)"). The one collection inside a timed window
+  is the one being timed (`tests_hardware/device_scripts/loop_stretch_timing.py`), and the twin's
+  Run 11 memory sampler is the one twin exception. The collection is complete when the call returns,
+  so the reading may follow in the next statement (owner, 2026-09-26, on the finding that
+  `gc.collect()` completes before it returns: "interesting, if that holds a real verification, my
+  assumption that it needs time was wrong and you can replace it with the facts you found").
+  `scripts/_check_gc_collect_sites.py` (run by `scripts/lint.sh`) names every allowed site, a
+  `gc.threshold()` set, `gc.disable()` and `gc.enable()` included. The gates and their agreement
+  check, the measured placement gain and the allocation-site catalog: SPECIFICATION.md Part I (I.4
+  the standing scheme, I.4(e) the markers, I.4(f.1) the reset).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
   per-module error logs (`GET /status`'s `errcount`, its FRAM-backed subset)
   BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (owner,
@@ -653,97 +600,46 @@ Three standing practices:
   pin bump). **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
 - **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
-  device-TOML-to-firmware-module generator, SPECIFICATION.md Part L.4), `toolchain/`,
-  `scripts/`, `tests_scripts/` and `tests_hardware/`, plus the generated `build/generated_src/` in
-  ruff and the main mypy pass (`lint.sh` and `typecheck.sh` generate it first, so a finding there is
-  fixed in `buildgen/`, never suppressed in the output) — `tests_hardware/` in full for ruff; only its
-  `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
-  `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
-  is host-side pytest code that goes through `host_typecheck.ini`'s dedicated pass below instead
-  (see that file's own docstring). A new file in a scope joins ruff and mypy (and, if
-  MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22; owner-reviewed, 2026-11-06), and so does
-  every new generator, validator or host module (owner, 2026-09-10, `fc6afbe`: 'add all build
-  scripts to the full CI'). `buildgen/` follows the same split as `digital_twin/`: ruff
-  checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since
-  it's genuinely CPython-target host tooling — it parses TOML via the real stdlib `tomllib` and
-  walks driver source via the real stdlib `ast`, never imports `src/` itself (real MicroPython-only
-  names like `machine`/`neopixel` aren't available under plain CPython there). The legacy tree
-  (`legacy/`) is never in any lint, type or CI scope (legacy rule above). All eight stay fully clean,
-  every one being fully-reviewed, freely-editable code (`tests_scripts/test_lint_type_scopes.py`
-  checks the scopes). `digital_twin/`'s own
-  type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
-  `scripts/typecheck.sh` regardless of its own args — as is `host_typecheck.ini`'s
-  build-chain pass) rather than folded into the main
-  `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
-  one file per run, so this package's own hardware fakes and the real `typings/` board stubs can
-  never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
-  `neopixel.py`/`rp2.py` (a straight `Duplicate module named "machine"` collision with
-  `tests/machine.py` otherwise, and the same for `rp2` against `tests/rp2.py`) and
-  `digital_twin/launch.py`/`run_generic_integration.py`/`run_device_script.py`/every
-  `tests/test_digital_twin_*.py` and `tests/_digital_twin_construction_scenarios.py` (attr-defined
-  noise on every twin-only API the real board stub doesn't declare, e.g.
-  `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`)
-  are therefore excluded from the main `[tool.mypy]` pass and checked by the twin pass instead, whose
-  `files` in `digital_twin/typecheck.ini` names them. Every file excluded from one pass is checked by
-  another: `tests/network.py`, `tests_scripts/conftest.py` and `tests_hardware/bench/conftest.py`
-  are each checked alone by `typecheck.sh` after the three passes, since each shares a module name
-  with another file of its pass — SPECIFICATION.md Part B.15 has the full account of all three
-  passes.
-- **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
-  to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
-  flavored stubs — see SPECIFICATION.md Part E.1 ("Why not pytest"). `scripts/test.sh` builds that
-  interpreter on first run (`toolchain/setup_toolchain.py`'s `setup` — building/verifying the
-  Unix port is just part of what `setup`/`test` already do, there's no separate `unix`
-  subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
-  file; see SPECIFICATION.md Part E.3 for the full rationale and the minimal `test_*`-function runner
-  (`tests/microtest.py`) used in place of CPython's `unittest`. This is specifically about `src/`'s
-  own MicroPython-target code — `tests_scripts/` (pytest, real CPython) covers the host-only build
-  tooling instead (`scripts/build_frozen_html.sh`, `scripts/build_website.sh`, `scripts/
-  build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
-  above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
-  runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts`, which it
-  **launches first but backgrounds** so that single-process tier overlaps the whole MicroPython loop
-  rather than serializing in front of it (SPECIFICATION.md Part E.1 has the account,
-  including the `devices/*.toml` ordering constraint that
-  concurrency creates). `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
-  the host-side build chain it exercises, plus `tests_hardware/`'s own host-CPython pytest code —
-  **is** linted and type-checked (owner, 2026-09-10, `fc6afbe`: 'add all build scripts to the full
-  CI'), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`
-  one: all of it is genuinely CPython-target host tooling needing mypy's real bundled typeshed, not
-  the MicroPython-stub-replaced one `custom_typeshed_dir` installs for `src/` (`tomllib` alone
-  doesn't exist in that stub subset). Same "two resolution universes can't coexist in one run"
-  isolation `digital_twin/typecheck.ini` already establishes for its own, different reason.
-  `pyproject.toml`'s per-file block is the list, each entry with its reason: the test suites
-  (`tests/`, `tests_scripts/`, `tests_hardware/`) share the test rules, MicroPython-run code and host
-  code each carry the rules whose reasons hold only there (SPECIFICATION.md Part D.6 names both
-  groups), and `tests_scripts/test_ruff_exemptions_live.py` fails on an entry that no longer fires.
+  device-TOML-to-firmware-module generator, SPECIFICATION.md Part L.4), `toolchain/`, `scripts/`,
+  `tests_scripts/` and `tests_hardware/`, plus the generated `build/generated_src/` in ruff and the
+  main mypy pass (`lint.sh` and `typecheck.sh` generate it first, so a finding there is fixed in
+  `buildgen/`, never suppressed in the output). A new file in a scope joins ruff and mypy (and, if
+  MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22; owner-reviewed,
+  2026-11-06), and so does every new generator, validator or host module (owner, 2026-09-10,
+  `fc6afbe`: 'add all build scripts to the full CI'). The legacy tree (`legacy/`) is never in any
+  lint, type or CI scope (legacy rule above). All eight stay fully clean
+  (`tests_scripts/test_lint_type_scopes.py` checks the scopes). mypy runs three passes, because it
+  resolves each module name to one file per run: the main `[tool.mypy]` pass over MicroPython-target
+  code against the board stubs (`tests_hardware/` only by its `device_scripts/`),
+  `digital_twin/typecheck.ini` over the twin and its hardware fakes, and `host_typecheck.ini` over
+  the CPython host tooling. Every file excluded from one pass is checked by another, and
+  `typecheck.sh` checks `tests/network.py`, `tests_scripts/conftest.py` and
+  `tests_hardware/bench/conftest.py` alone after the three: SPECIFICATION.md Part B.15.
+- **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — the actual
+  runtime, not CPython with MicroPython-flavoured stubs (SPECIFICATION.md Part E.1, "Why not
+  pytest"). `scripts/test.sh` builds it on first run through `toolchain/setup_toolchain.py`'s
+  `setup`, cached under `$PICO_TOOLCHAIN_DIR`, and runs each `tests/test_*.py` file in its own
+  process with `tests/microtest.py` as the runner (E.3). The host-side build chain (`scripts/`,
+  `toolchain/`, `buildgen/`) and `tests_hardware/`'s host code are CPython, tested by
+  `tests_scripts/` under pytest, which `scripts/test.sh` launches first and backgrounds (E.1), and
+  linted and type-checked like everything else (owner, 2026-09-10, `fc6afbe`: 'add all build
+  scripts to the full CI'), through `host_typecheck.ini`'s pass. `pyproject.toml`'s per-file block
+  lists every ruff exemption with its reason, MicroPython-run and host code each in their own group
+  (SPECIFICATION.md Part D.6); `tests_scripts/test_ruff_exemptions_live.py` fails on an entry that no
+  longer fires.
 - **`scripts/test.sh --coverage` reports line coverage and never gates** — no threshold exists
   anywhere and none is planned (owner, 2026-09-25); its test result does gate (SPECIFICATION.md Part
-  E.5.3). The pipeline, what it traces and its outputs: SPECIFICATION.md Part E.5, which README.md's
-  "Test coverage" section also points at rather than restating.
-  **Three Unix-port binaries are built, not one.** The first two split on
-  `MICROPY_PY_SYS_SETTRACE` (owner, 2026-09-21): `build-standard`, built **without** it, is
-  the test rig every plain run uses, while `build-settrace` carries the flag and is `--coverage`'s
-  alone; `ports/rp2`'s firmware build never gets it either way. The third, `build-lwip` (owner,
-  2026-09-30), is the settrace-free standard variant built over loopback lwIP with the firmware's
-  own patched `modlwip.c` (SPECIFICATION.md B.14.4); it runs `tests/lwip_host/` alone, and not under
-  `--coverage`. `scripts/test.sh` picks by mode and directory, and `build_unix_port()` and
-  `build_unix_lwip_port()` in `toolchain/setup_toolchain.py` build all three. **Why the flag cannot
-  simply stay compiled in, the measured 4-5x allocation inflation it causes, and why the build
-  directory's name does not identify its build flavour: SPECIFICATION.md Part E.5.2** — the
-  operational consequences are that every runner asks the binary through `scripts/_unix_port.sh`
-  (it reports `standard`, `settrace` or `lwip`), whose `ensure` reruns setup when the binary is
-  missing or reports another flavour, the `toolchain-record.json` is missing, or an input hash in it
-  differs from this tree's file, so don't re-diagnose a long-lived toolchain dir rebuilding its Unix
-  ports once as a bug; and that
-  any allocation figure taken under `--coverage` is inflated, coverage being line coverage only.
-  CI (`.github/workflows/ci.yml`) runs the instrumented rerun
-  as its own job, `unit-tests-coverage` — separate from `unit-tests` because `timeout-minutes` gates
-  a whole job rather than its real step, so it would otherwise cancel a suite that had already
-  passed. There each report's markdown summary goes to the run's GitHub Actions Job Summary and its
-  HTML report uploads as a downloadable build artifact; locally `--coverage` only prints the output
-  paths, and nothing
-  opens automatically.
+  E.5.3), and the pipeline and its outputs are Part E.5. **Three Unix-port binaries are built**:
+  `build-standard`, without `MICROPY_PY_SYS_SETTRACE`, is the rig every plain run uses, and
+  `build-settrace`, with it, is `--coverage`'s alone (owner, 2026-09-21); `build-lwip` (owner,
+  2026-09-30), the standard variant over loopback lwIP with the firmware's own patched `modlwip.c`
+  (B.14.4), runs `tests/lwip_host/` alone. The firmware never carries the settrace flag. Every runner
+  asks the binary its flavour through `scripts/_unix_port.sh`, whose `ensure` reruns setup when the
+  binary is missing or reports another flavour, the `toolchain-record.json` is missing, or an input
+  hash in it differs from this tree's file, so a long-lived toolchain dir rebuilding its Unix ports
+  once is not a bug; an allocation figure taken under `--coverage` is inflated 4-5x (Part E.5.2). CI
+  runs the instrumented rerun as its own job, `unit-tests-coverage`, since `timeout-minutes` gates a
+  whole job and would otherwise cancel a suite that had already passed.
 - **A third party's momentary outage must never read as a red test result** (owner, 2026-09-26).
   `uv run` builds the whole `dev` group first, and `actionlint-py` downloads its binary inside its
   own build backend, so one bad response there would fail a lane on a healthy tree. Every CI job
@@ -771,105 +667,65 @@ Three standing practices:
   `web-cross-browser-smoke` stay success-gated, each job's comment stating why;
   `tests_scripts/test_ci_workflow.py` fails on an edge that has neither.
 - **Known hang cause: any test double for `uart.poller`, or an equivalent fake-stream object, is a
-  bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** A real `select.poll()`
-  asks each registered stream object for a file
-  descriptor (`MP_STREAM_GET_FILENO`) and, on any non-error answer, polls that descriptor instead of
-  the object's own `ioctl()` (`extmod/modselect.c`, SPECIFICATION.md F.7): a fake answering 0 has a
-  real poll watch fd 0, the test process's stdin, which never turns ready on GitHub Actions runners,
-  so a wait with `timeout_ms=-1` hangs forever. Both machine fakes answer
-  `EINVAL` as rp2 does, and `tests/machine.py` counts a real poll's queries of a fake UART, which
-  fails the test that made them in its after-each check. Don't re-diagnose this symptom as a new code
-  bug if it recurs elsewhere.
+  bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** A real poll watches the
+  descriptor a fake's fileno query answers — fd 0, the test's stdin, for a fake answering 0, which
+  never turns ready on GitHub Actions runners — so a `timeout_ms=-1` wait hangs forever
+  (SPECIFICATION.md F.7). Both machine fakes answer `EINVAL` as rp2 does, and `tests/machine.py` fails
+  the test whose real poll queried a fake UART. Don't re-diagnose this symptom as a new code bug.
 - **Known hang cause #2: `tests/microtest.py`'s `run()` always ends with `sys.exit()`** (0 on an
-  all-pass run, 1 on any failure). MicroPython's asyncio has no parent/child task tracking, so
-  `Task.cancel()` on the one task a test awaits never reaches the sibling tasks a real task graph (a
-  generated module's `build_system()`/`start_tasks()`) spawns with `create_task()`; they stay parked
-  in the one process-wide task queue every test function of a file shares, and without the forced exit
-  the process hangs after its closing "P/T passed, F failed, S skipped" line, easy to mistake for an
-  unrelated infra issue. `digital_twin/launch.py`'s tracked task list with cancel-all in `finally`
-  fits only its own small, self-spawned graph; keep the forced exit.
-- **Known segfault cause: a nested `asyncio.run()` while any other task is still parked
-  in the shared task queue segfaults the MicroPython Unix port** - it does not raise the
-  `RuntimeError: asyncio.run() cannot be called from a running event loop` CPython would. `run()`
-  is `run_until_complete(create_task(coro))` on the same task queue — no fresh loop is installed
-  (mechanism: SPECIFICATION.md Part F.1) — so the nested call re-enters the scheduler under the task
-  that is still running; it is deterministic and uncatchable, so
-  `microtest.py`'s own `except Exception` never sees it and the file simply dies mid-run with no
-  summary line. **Rule: a test helper that drives a coroutine (`tests/_async_harness.py`'s
-  `run()`/`run_timed()`, the one `asyncio.run()` caller in `tests/`, and anything calling a
-  `hazard_pair()`-style builder that runs its own setup) must only ever be called from synchronous
-  test-function scope, never from inside a coroutine** - build the fixture at the top of the test,
-  then pass it into the one coroutine `run()` drives. The harness refuses a nested call with a
-  `RuntimeError` naming that fix, and `tests_scripts/test_microtest.py` fails on any other
-  `asyncio.run()` in `tests/`. Don't re-diagnose a test file that segfaults partway through with no
-  closing `P/T passed` line as a memory bug in the code under test. **The same family's second
-  crash**: awaiting a finished task again, after another task awaited it and the loop's queued
-  handler call cleared its data, raises `None` in 1.29.0's C asyncio (`extmod/modasyncio.c`,
-  `task_iternext()`) and segfaults the Unix port (SPECIFICATION.md F.1); the harness's reap and
-  `cancel()` pass over such a task, so a file dying with `Segmentation fault` in a reap is this, not
-  a memory bug.
+  all-pass run, 1 on any failure). MicroPython's asyncio has no parent/child task tracking, so the
+  sibling tasks a generated module's task graph spawns stay parked in the file's one task queue, and
+  without the forced exit the process hangs after its closing "P/T passed" line (SPECIFICATION.md
+  E.3, E.8); keep it.
+- **Known segfault cause: a nested `asyncio.run()` while any other task is still parked segfaults
+  the MicroPython Unix port**, deterministically and uncatchably, instead of raising CPython's
+  `RuntimeError` (mechanism: SPECIFICATION.md Part F.1). **Rule: a test helper that drives a
+  coroutine (`tests/_async_harness.py`'s `run()`/`run_timed()`, the one `asyncio.run()` caller in
+  `tests/`, and anything calling a `hazard_pair()`-style builder that runs its own setup) must only
+  ever be called from synchronous test-function scope, never from inside a coroutine** - build the
+  fixture at the top of the test, then pass it into the one coroutine `run()` drives. The harness
+  refuses a nested call with a `RuntimeError` naming that fix, and `tests_scripts/test_microtest.py`
+  fails on any other `asyncio.run()` in `tests/`. Awaiting a finished task again after its data was
+  cleared segfaults the same way (F.1), so the harness's reap and `cancel()` pass over such a task.
+  Don't re-diagnose a file that dies with no closing `P/T passed` line, or with `Segmentation fault`
+  in a reap, as a memory bug in the code under test.
 - **Known intermittent-`MemoryError` cause #2: don't re-diagnose a "heap is locked" `MemoryError` at
-  twin shutdown as a project memory bug.** A real SIGINT landing inside a `gc_collect()` leaves the
-  Unix port's heap permanently locked (a stuck `GC_COLLECT_FLAG`, every later allocation failing on a
-  mostly free heap), and its recovery is `gc.collect()`, not `micropython.heap_unlock()`
-  (SPECIFICATION.md Part F.6). The next bullet's `unix_kbd_intr` override
-  (`toolchain/micropython_overrides.py`, SPECIFICATION.md Part B.14.1)
-  closes it in every binary this tooling builds, so the twin's heap-unwedge helper was retired
-  (owner, 2026-09-26); if it recurs, check the override is applied first — Part F.6 keeps the
-  mechanism and how to restore the helper.
+  twin shutdown as a project memory bug.** It is a SIGINT that landed inside `gc_collect()`
+  (SPECIFICATION.md Part F.6); the `unix_kbd_intr` override (next bullet) closes it in every binary
+  this tooling builds, so the twin's heap-unwedge helper was retired (owner, 2026-09-26). If it
+  recurs, check the override is applied first; Part F.6 keeps the mechanism and how to restore the
+  helper.
 - **Known intermittent `digital-twin-e2e` shutdown flake: don't re-diagnose a shutdown-only exit
   code 1 at `gc.threshold=32768` (with or without a garbled traceback) as a new project bug before
   confirming the SIGINT-delivery override is still actually being applied.** The Unix port's default
-  SIGINT handling calls `nlr_raise()` directly from the async signal handler, unsafe at any point in
-  interpreter execution, and can corrupt VM state (an impossible traceback such as `TypeError: 'frame'
-  object isn't iterable`) beyond what a userspace `gc.collect()` repairs:
-  `toolchain/micropython_overrides.py`'s `apply_unix_kbd_intr_override()` forces the port's own safe,
-  deferred SIGINT-delivery path (`MICROPY_ASYNC_KBD_INTR=0`) for every build, without editing the
-  fetched checkout (SPECIFICATION.md Part B.14: the
-  mechanism, why a plain `-D` can't do this, and the re-verification checklist for a MicroPython
-  version bump). A twin that serves on past its SIGINT is a different MicroPython defect, an
-  interrupt lost at an `async with` body's end, which is why twins end through their stop file
-  (SPECIFICATION.md Part F.6.1).
+  SIGINT handling raises from the signal handler and can corrupt VM state;
+  `toolchain/micropython_overrides.py`'s `apply_unix_kbd_intr_override()` forces the deferred path
+  (`MICROPY_ASYNC_KBD_INTR=0`) for every build (SPECIFICATION.md Part B.14: the mechanism and the
+  re-verification checklist for a MicroPython version bump). A twin that serves on past its SIGINT
+  is a different MicroPython defect, which is why twins end through their stop file (Part F.6.1).
 - **Known intermittent-`MemoryError` cause: every test file runs with an explicit `-X heapsize`**, a
-  Unix-port-only test-harness setting unrelated to the real rp2040's own RAM budget: `scripts/test.sh`
-  runs each `tests/test_*.py` file as one Unix-port process for all its test functions, sharing one
-  heap, so a file whose heaviest tests each build a whole generated object graph needs more than the
-  2MB default. SPECIFICATION.md Part E.3.1 holds the value's reason and Part N's `l1.unix_heapsize`
-  row the value. Don't re-diagnose a flaky `MemoryError` in a
+  Unix-port test-harness setting unrelated to the rp2040's RAM: each file is one process sharing one
+  heap, and its heaviest tests build whole generated object graphs (SPECIFICATION.md Part E.3.1 the
+  reason, Part N's `l1.unix_heapsize` row the value). Don't re-diagnose a flaky `MemoryError` in a
   heavy test file as a new code bug before checking the flag is still in place — and don't raise it
   as a fix (owner, 2026-09-17); a per-file heap override hiding a symptom is never used (owner,
   2026-09-17, `1e2c001`, paraphrase).
-- **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
-  (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
-  **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose
-  `ports/rp2/datetime_patch.c` overrides this with `shared/timeutils`' pure, TZ-agnostic epoch
-  arithmetic. `src/`'s `time.mktime(time.gmtime())` "current UTC timestamp" idiom is therefore only
-  a true no-op round trip under `TZ=UTC`; not a production bug — real hardware has no `$TZ` concept.
-  `scripts/test.sh` exports `TZ=UTC` before invoking the Unix-port binary for exactly this reason.
-  Don't diagnose a consistent (not intermittent) failure in a live-clock assertion as a new code bug
-  before checking the runner's `$TZ`.
-- **Two suites that both bind real ports must never run at the same time.** `scripts/test.sh`'s
-  MicroPython tier serves real HTTP and a real port-53 DNS server, and so do `npm test`'s live-tier
-  twins, so running them concurrently makes a test connect to the *other* suite's listener. It does
-  not look like contention: a 200/404 mix
-  (`AssertionError: [200, 404, 200, 404, 'rejected', 'rejected']`), an empty body where stub content
-  was expected, a 404 for a page that plainly exists - exactly what a broken static mount or a bad
-  merge would produce. Run the two tiers one after the
-  other; don't re-diagnose this pattern as a code or merge defect. **A per-port lock enforces it**
-  (`scripts/_port_lock.sh`, and `tests_js/_port_lock.js` for the live tier): `scripts/test.sh`
-  holds 53, `scripts/run_digital_twin_ci.sh` 53 and 18080, `scripts/run_unix_port_integration.sh`
-  and every live-tier twin 53, each lock a directory
-  `${XDG_RUNTIME_DIR:-/tmp}/sensors-port-<port>.lock/` holding `pid` and `runner`. A runner's
-  children inherit its locks through the owner chain (`SENSORS_PORT_LOCK_OWNER`,
-  `SENSORS_PORT_LOCKS_HELD`), a dead holder's lock is taken over, and an unrelated second suite
-  fails at once (a shell runner exits 1) with `port <port> is held by <runner> (pid <pid>) - run the
-  suites one after the other (CLAUDE.md)`. The lock root follows `XDG_RUNTIME_DIR`, so suites in
-  separate network namespaces, which cannot collide on a port, pass separate runtime directories
-  and do not refuse each other. `scripts/test.sh`'s own
-  backgrounded `tests_scripts/` tier is a deliberate non-instance: its HTTP ports are ephemeral
-  (`_free_port()` binds port 0), and the one fixed port a booted twin also wants - captive DNS on
-  53 - is `SO_REUSEADDR` and degrades to "not connected" after its retries rather than failing the
-  boot (`asy_udp_socket.py`), so the two tiers overlap safely.
+- **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()` reads its
+  input as local time through the host's libc and `$TZ`, unlike rp2's TZ-agnostic epoch arithmetic,
+  so `src/`'s `time.mktime(time.gmtime())` idiom round-trips only under UTC; `scripts/test.sh`
+  exports it. Don't diagnose a consistent (not intermittent) failure in a live-clock assertion as a
+  new code bug before checking the runner's `$TZ`.
+- **Two suites that both bind real ports run one after the other, never together.** `scripts/test.sh`'s
+  MicroPython tier and `npm test`'s live-tier twins both serve real HTTP and a real port-53 DNS
+  server, so run together a test reaches the *other* suite's listener: a 200/404 mix
+  (`AssertionError: [200, 404, 200, 404, 'rejected', 'rejected']`), an empty body, a 404 for a page
+  that plainly exists — what a broken static mount or a bad merge would produce; don't re-diagnose
+  it as either. A per-port lock enforces it (`scripts/_port_lock.sh`, `tests_js/_port_lock.js`): an
+  unrelated second suite fails at once with `port <port> is held by <runner> (pid <pid>) - run the
+  suites one after the other (CLAUDE.md)`. Which runner holds which port, the owner chain and the
+  lock directory: SPECIFICATION.md Part E.1. `scripts/test.sh`'s own backgrounded `tests_scripts/`
+  tier overlaps it safely: its HTTP ports are ephemeral, and a booted twin's captive DNS on 53
+  degrades to "not connected" rather than failing the boot.
 - **Tuned values carry `@tunable` and a Part N row, both changed in the same change** (owner,
   2026-09-25: 'updated on changing parameters or whenever such parameter is added').
 - **`ruff format` is not used anywhere** (agent, 2026-07-13; owner-reviewed, 2026-11-06) — line breaks are hand-chosen throughout this
@@ -927,45 +783,30 @@ Three standing practices:
   after it.** An auto-merged test file next to an `--ours`-resolved source file raises no conflict,
   then fails against source that lacks the feature it pins.
 - **A merge that touches `uv.lock` can silently bypass the tool pins — always re-verify after
-  one.** `uv.lock` is a plain text file, so git merges it line by line: a branch that pins the
-  tools and a branch that only refreshes versions produce a lock carrying **one side's
-  `specifier = "=="` metadata and the other side's resolved `[[package]] version` blocks**. That
-  file is self-contradictory, and neither guard catches it — `uv lock --check` compares
-  `pyproject.toml` against the lock's *manifest* section only, never the manifest against the
-  *resolved* versions, so it exits 0; and `uv sync` installs from the resolved blocks, so the venv
-  silently gets a version the pin forbids, which under `select = ["ALL"]` is exactly the unchosen-rule
-  hard-fail the pin exists to prevent. **After any merge that touches `uv.lock`, run `uv sync` and
-  check the installed `ruff --version`/`mypy --version` against `pyproject.toml`'s pins**, rather
-  than trusting `uv lock --check`; re-run `uv lock` to rewrite the file if they disagree.
-  `tests_scripts/test_tool_pins.py` fails on exactly that disagreement, each pinned tool's
-  manifest specifier against its resolved version.
-- **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
-  `micropython-stdlib-stubs`). Published by the same project as
-  [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
-  distribution channel, not a separate/alternative stub source. **The post-releases are pinned
-  exactly in `toolchain/versions.toml`'s `[stubs]` (`board`, `stdlib`) and move with every
-  MicroPython bump** (owner, 2026-10-02, paraphrase: the stub version moves with every MicroPython
-  bump, enforced by a check): `scripts/typecheck.sh` refuses a pin whose X.Y.Z is not
-  `[micropython] ref`'s, or a `ref` that isn't a plain `vX.Y.Z` tag, and fails with a clear,
-  actionable error (not a silent fallback) when a pinned release does not exist upstream (stub
-  releases can lag a new MicroPython release). The installed versions are checked against the pins,
-  printed (`== MicroPython stubs: board <version>, stdlib <version> (for firmware <X.Y.Z>)`) and
-  recorded in `typings/.stub-spec`; a missing or different record wipes `typings/` before the
-  install.
-  Installed into `typings/` (gitignored) — **deliberately not** a
-  `pyproject.toml` `[dependency-groups]` entry, because these stubs must fully replace mypy's
-  typeshed for MicroPython/CPython stdlib-name collisions (`time`, `math`, `select`, `errno`, ...
-  — see `[tool.mypy]`'s `custom_typeshed_dir`), and doing that against the same venv that also
-  holds mypy/ruff/pytest's own dependencies breaks type-checking of those. Keep this isolation if
-  you touch the stub setup — it's load-bearing, not incidental.
+  one.** Git merges the lock line by line, so a pinning branch and a version-refreshing branch can
+  leave one side's `specifier = "=="` next to the other side's resolved `[[package]] version`;
+  `uv lock --check` compares only `pyproject.toml` with the lock's manifest and exits 0, and
+  `uv sync` installs the resolved version the pin forbids. **After any merge that touches
+  `uv.lock`, run `uv sync` and check the installed `ruff --version`/`mypy --version` against
+  `pyproject.toml`'s pins**, re-running `uv lock` if they disagree; `tests_scripts/test_tool_pins.py`
+  fails on exactly that disagreement.
+- **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs`, which pulls in
+  `micropython-stdlib-stubs` (PyPI, published by
+  [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs)). **The post-releases
+  are pinned exactly in `toolchain/versions.toml`'s `[stubs]` (`board`, `stdlib`) and move with
+  every MicroPython bump** (owner, 2026-10-02, paraphrase: the stub version moves with every
+  MicroPython bump, enforced by a check): `scripts/typecheck.sh` refuses a pin whose X.Y.Z is not
+  `[micropython] ref`'s or a `ref` that isn't a plain `vX.Y.Z` tag, fails by name when a pinned
+  release does not exist upstream, and records the installed versions in `typings/.stub-spec` (a
+  missing or different record wipes `typings/` first). They install into `typings/` (gitignored),
+  not the dev group: they replace mypy's typeshed (`[tool.mypy]`'s `custom_typeshed_dir`), which
+  would break type-checking of the venv's own tools. Keep that isolation.
 - **`scripts/typecheck.sh`'s combined `mypy src tests` run resolves every `from machine import X`
-  project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board stub.**
-  The board stub's `Timer` class has no zero-argument constructor overload, so a `src`-only (or a
-  standalone `tests_hardware/device_scripts`) run raises `call-overload` errors at every bare
-  `Timer()`, which is valid on rp2 and modelled correctly by `tests/machine.py`: a gap in the
-  third-party `micropython-rp2-rpi_pico_w-stubs` package, not a driver bug, listed with its removal
-  trigger in SPECIFICATION.md Part B.15 — worth knowing if a `src`-only type-check run is ever added.
-  The 1.29 stub's `I2C.deinit()`/`SPI.deinit()` are silent no-ops on rp2 (SPECIFICATION.md Part F.5.1).
+  to `tests/machine.py`'s fake, not the `typings/machine.pyi` board stub.** The stub's `Timer` lacks
+  the zero-argument constructor rp2 has, so a `src`-only (or standalone
+  `tests_hardware/device_scripts`) run reports `call-overload` at every bare `Timer()`: a gap in the
+  third-party stubs, not a driver bug, listed with its removal trigger in SPECIFICATION.md Part B.15.
+  The 1.29 stub's `I2C.deinit()`/`SPI.deinit()` are silent no-ops on rp2 (Part F.5.1).
 - **`scripts/typecheck.sh` repairs the stub package's two verified defects after installing it** —
   `asyncio.Future`, privatised to `_Future` with the `asyncio/futures.pyi` that re-exported it
   dropped, and `builtins.pyi`'s commented-out `NotImplemented` (SPECIFICATION.md Part F.5.5). Both are
@@ -977,22 +818,25 @@ Three standing practices:
 
 ## Build-environment verification
 
-Every change touching the dev-tooling/build-environment setup (`pyproject.toml`, `uv.lock`,
-`scripts/`, `toolchain/`, `.github/`, `package.json`) gets a line in BACKLOG.md's running list of
-changes since the clean-chroot legs were last satisfied, so the owner's next run knows what it
-covers. The verification is a periodic check the owner runs by hand, not a gate that blocks a
-session's push (owner, 2026-09-18): both targets, Ubuntu 24.04 "noble" (GCC 13.x, the documented OS)
-and Debian trixie (GCC 14.x, what the bench Pi4 runs) (owner, 2026-09-11), plus the separate
-full-installer leg for a change to `toolchain/setup_toolchain.py` or `toolchain/versions.toml`. A
-session whose sandbox can build a chroot runs it too, and never takes its own sandbox's green run as
-the verification: a sandbox's preinstalled Python, `uv` and build tools mask real gaps. The recipe
-and what counts as passing: README.md, "Build-environment verification".
+A change to the dev-tooling/build-environment setup (`pyproject.toml`, `uv.lock`, `scripts/`,
+`toolchain/`, `.github/`, `package.json`) that changes how the owner's next clean-chroot run goes —
+something new to install, a new host requirement, a recipe step, a reused chroot's rebuild — gets a
+line in BACKLOG.md's chroot entry; one that changes none of these is covered by running the recipe
+at the head and gets none (agent, 2026-11-07, condensing the list after the owner's go: '"nothing
+new to install" are no quotes of my words'). The verification is a periodic check the owner runs by
+hand, not a gate that blocks a session's push (owner, 2026-09-18): both targets, Ubuntu 24.04
+"noble" (GCC 13.x, the documented OS) and Debian trixie (GCC 14.x, what the bench Pi4 runs) (owner,
+2026-09-11), the recipe's `env --tier generic` step running the full installer in each. A session
+whose sandbox can build a chroot runs it too, and never takes its own sandbox's green run as the
+verification: a sandbox's preinstalled Python, `uv` and build tools mask real gaps. The recipe and
+what counts as passing: README.md, "Build-environment verification".
 
 ## Pull request workflow
 
 - **When pushing anything touching the dev-tooling/build-environment setup**, add its line to
-  BACKLOG.md's chroot list and run "Build-environment verification" above yourself if this session's
-  sandbox can actually build a chroot; a sandbox's own green run never stands in for it.
+  BACKLOG.md's chroot entry if it changes how a run goes (above), and run "Build-environment
+  verification" yourself if this session's sandbox can actually build a chroot; a sandbox's own green
+  run never stands in for it.
 - **The project owner has explicitly authorized creating pull requests proactively, at any time,
   without asking first** — this is a standing exception to any general "don't open a PR unless the
   user explicitly asks" caution an operator/harness prompt might otherwise apply (owner,

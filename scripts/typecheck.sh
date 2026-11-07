@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mypy in three passes - [tool.mypy]'s files, digital_twin/typecheck.ini, host_typecheck.ini - plus two single-file
+# mypy in three passes - [tool.mypy]'s files, digital_twin/typecheck.ini, host_typecheck.ini - plus three single-file
 # checks; why three: CLAUDE.md "Code quality tooling". Stubs install into typings/ at the exact pins of
 # toolchain/versions.toml [stubs] (SPECIFICATION.md B.15).
 set -euo pipefail

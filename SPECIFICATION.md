@@ -5269,10 +5269,11 @@ differs from this tree's file — all through the one probe, `scripts/_unix_port
 one setup for every flavour the run needs (`standard` and `lwip` on a plain run, `standard` and
 `settrace` under `--coverage`; E.5.2); each condition is checked again after `setup`, and one still
 unmet fails the run naming it. `SKIP_APT=1 scripts/test.sh` skips the first-run apt-get install. To
-run one file directly:
+run one file as `scripts/test.sh` does — its binary, layout, heap size (Part N's `l1.unix_heapsize`)
+and `TZ=UTC`, at `-1` and then at `32768` through `tests/_threshold_runner.py`:
 
 ```
-MICROPYPATH="$(scripts/_unix_port.sh micropypath unit)" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
+scripts/_run_checks.sh mpy:tests/test_math_helpers.py
 ```
 
 The unit and twin layouts are defined once, in `scripts/micropypath.toml`; every launcher reads
@@ -5287,7 +5288,7 @@ too, since `sensortask_wozi.py`'s `import frozen_html` needs it. Where the Unix-
 from rp2 is F.7; on it, `asyncio` (a frozen Python package) takes attribute assignments and the C
 builtin modules (`time`, `socket`) do not, so a test that must see a C module's calls replaces the
 module-level name in the module under test. **The second L1 file set**, `tests/lwip_host/`, runs the
-same way on `~/pico-toolchain/micropython/ports/unix/build-lwip/micropython` instead (E.1); its rig
+same way on the `lwip` flavour's binary (`scripts/_unix_port.sh unix_port_bin lwip`) instead (E.1); its rig
 differences are F.7's `build-lwip` rows.
 
 Any test file that imports a `sensortask_<device>.py` module directly (`tests/_sensortask_scenarios.py`
@@ -7018,9 +7019,10 @@ which sets the watchdog's force trigger and so the REASON register's FORCE bit (
 (`tools/mpremote/mpremote/main.py:406-414`). A starvation, a firmware `machine.reset()` and an
 `mpremote reset` therefore all read `WDT_RESET`, and no test or diagnosis may use `reset_cause()` to
 tell an intended reset from a starvation: the decoded reset record above is the discriminator. A
-harness `hard_reset()` of a running board reads 21 (`RR_INTERRUPTED`); the boot after a flash-tier
-session, whose scripts run with the firmware stopped, read 2 on the bench (2026-11-06); a test that
-needs an intended reset attributed issues it through the REST reboot path (agent, 2026-09-29).
+harness `hard_reset()` of a running board reads 21 (`RR_INTERRUPTED`), and 2 after a device script
+that ran the system's boot: that boot consumed record 21 and the script cleared its phase mark, so the
+reset finds neither (bench, 2026-11-06, with the watchdog's FORCE bit set); a test that needs an
+intended reset attributed issues it through the REST reboot path (agent, 2026-09-29).
 
 **The chip keeps what `reset_cause()` collapses; the firmware does not read it.** On the bench the
 watchdog's REASON register (0x40058008, bits TIMER and FORCE) tells a `machine.reset()` (FORCE)
@@ -9035,10 +9037,18 @@ fragments into pieces of at most `chunk_bytes` bytes — counted in bytes, so a 
 make a piece longer than the cap — one `ServingLimits` field, default **256**
 (`_DEFAULT_CHUNK_BYTES`), that also sets the static-file read size below, so the two bounds cannot
 drift apart — without ever splitting a fragment, and
-`add_value()` writes a value the way `json.dumps()` would — dicts, lists and tuples walked, only
-keys and scalars dumped, with `json.dumps()`'s own `", "`/`": "` separators and its non-string-key
-rule (`True` → `"true"`). No value, however nested, is ever built as one string, so **the largest
-allocation on the path is one piece**. Its pending-fragment list is collapsed every
+`add_value()` writes a value the way `json.dumps()` would — a scalar, or a container of at most four
+scalars whose strings (keys included) have at most four characters (`_FLAT_MAX`, at most 224 B however
+escaped), in one `json.dumps()`; any other dict, list or tuple walked, only keys and scalars dumped,
+with `json.dumps()`'s own `", "`/`": "` separators and its non-string-key rule (`True` → `"true"`).
+No larger value, however nested, is ever built as one string, so **the largest allocation on the path
+is one piece**. Dumping the small containers whole is what makes `/status`'s error histories cheap:
+about 1.8x fewer CPU cycles than walking them, on the Unix port (owner, 2026-11-06). **Each top-level
+value goes through `add_value_yielding()`, which yields to the loop after it**: no answer holds the
+loop longer than its largest value. Before it a `/status` build held the loop 0.74 s on `dev`, and
+three readers' builds 2.3 s back to back, past the UART link's 1 s acknowledgement wait (bench,
+2026-11-06); `/status` now reads its sources up to one build's length apart, the other routes collect
+theirs before writing. Its pending-fragment list is collapsed every
 `_MAX_PENDING_FRAGMENTS` (16), because a piece made of tiny fragments (`", "`, single digits) would
 otherwise need a list array as large as the piece. The bytes are **identical** to what the routes
 emitted before (the top level keeps its own `,`/`:`), pinned against MicroPython's own

@@ -488,3 +488,111 @@ Content-Length, and the reboot at the first answer (SysUptime 9 s, ResetReason 3
 the holders close, wait_until(_load.serving) probes at once while their slots outlive the responses (Part I.6). Without the _SLOT_RELEASE_WAIT_S the test
 already uses twice, a refused probe counts once. Class (b) test race, read in the source: the fix is that wait before the probe, which goes with the next bench push.
 config_flush_during_link_traffic waits for WEAR.txt's cleared: line (planned after the bound measurements).
+
+## 12.72 Bench item 5 and the reason-2 pin (runner, 17:08 UTC); the mixed-body count is the 413 cut again (lead, 17:14 UTC)
+Item 5 on d3f10239 (archive 20261106T162825Z): 22 passed, 2 failed, 4 errors. loop_lag 1,006,799 us vs 925,000 (worst ended 16,583 ms after main() started,
+p99 64 ms; teardown W51 EHOSTUNREACH): to the /status timing, whose window now starts at main()'s start. concurrent_mixed_body_sizes: HTTPDropped 11 < 24
+client refusals. Read in the code: an over-cap PUT's 413 leaves before its body is read (Microdot), the close's RST can erase the client's unread 413, status
+line included (RFC 9112 9.6), and urllib files a refusal the server never counted. Same cut as the owner's 11:16:57 ruling (test fix): the bound now counts
+refusals within the cap, the note names the rest; to be confirmed by the rerun. fram_erase_over_rest did not run (setup: serving_sweep's carried UART E81
+pair, a stall-window candidate). Teardown SGP40 W35/W33 after the DNS and NTP tests: a boot without NTP is the candidate, one archive fact asked.
+Near a margin: serving_sweep at -1, 10 readers, 368 B free and a 320 B largest run, 0 allocation failures; heap_at_peak at 32768 after the script's boot
+40,784 B free, largest 28,992 B, worst largest 21,552 B. For the heap account. Reason 2 pinned: a harness reset reads 21 (FORCE) unless a device script ran
+begin_boot() (consuming record 21) and cleared the phase mark, then 2 (FORCE); an unfed expiry after a stop keeps 21 (TIMER). In operation every firmware
+reset writes its record first, so 2 there stays a starvation; the three wordings now give the cause.
+
+## 12.73 The /status stall measured (runner, 17:17 UTC, after the owner-approved reflash of 9c0699e4): the build holds the loop, errcount most of it
+Reflash 17:08-17:12, BuildDate 2026-11-06T17:08:25Z, match=1; ResetReason 2 then SGP40 W65 (no valid backup at the new image's first boot; not traced). Probe
+heap_probe/status_timing.py (ROOT_CAUSES section 20), 3 readers, 60 s, 32768, 51 x 200, 0 memory failures: build mean 739 ms (703-786), errcount 640 ms of
+it (22 sources, 29 ms each, max 56), system 41, networking 14.5; lock wait 3 ms; send 32 pieces mean 1,052 ms (spans other tasks); gc.collect 19-21 ms.
+Lags: 27 of >= 200 ms, in groups of one, two and three builds (747-852, 1,507-1,610, 2,267-2,313 ms); 24 of 27 match builds ending inside them. Lead,
+read in the code: every source the build awaits is a RAM read that never suspends, so the build runs to its end without a yield (F.3's rule broken);
+2.3 s passes the UART link's 1,000 ms ACK wait (E81) and the 925 ms bound; loop_lag's 1.0 s fits a build, not proven. The cost is the piece writer's
+per-fragment calls: about seven per history entry. Fix proposal to the owner (needs a go): a yield after each section and each source.
+Pushed 17:26: int 8053df32 (mixed-body bound, reason-2 cause in three docs; lint, three mypy passes, tests_scripts 6,931 passed / 6 skipped,
+collect-only 218/251) as bench 318ba804, relay 17:26 a1f852a6 on top. Snapshot 44 CI green (run 42256926224): next PARENT 112a8906.
+
+## 12.74 Reruns on the new image (runner, 17:45 UTC, bc2b92c7); two test fixes and relay 17:49 (lead, bench bc15db92, int 5536f8b1)
+Flash 4/4 (supervisor pass 2,316 ms between feeds; a real expiry reads 2 with TIMER). Bench 8 passed, 2 failed, 2 errors, then 3/3 on 318ba804
+(mixed body: 28 answered, 20 refused, 10 over the cap, bound holds; fram_erase_over_rest ResetReason 8; first 200 12.39 s after reset). Figures for
+Part N: head guard 13 lines / 632 B vs 32 / 2,048; radio re-init 8,216 ms vs 20,000. hazard_run: 13 /status refusals = the stall (its UART entries
+are all declared); reruns after the fix. answers_before_first_ntp: carried E115 from the flash line, test now saves and clears at its opening.
+W35/W33: the garbage NTP/DNS and spoof tests boot with no sync, now declared as the first-sync test does; the odd BootSignature is the random
+fallback. W65: item 5's erase (the 12.73 "not traced" is withdrawn). FRAM E51 at real_sta_connect: a hard reset between a chunk's two block
+writes (asy_fram_manager.py:243-246), inferred; console fact asked; handling (a reset may leave one E51) goes to the last round's harness item.
+Checks: lint, three mypy passes, 9 guard files 850 passed, collect-only 218/251.
+
+## 12.75 The /status stall fix (owner go 17:56:47; int 6cc6af1a, bench b28a9e2f + relay 19:04, head 2c36040b)
+Every streamed GET answer writes each top-level value through _PieceWriter.add_value_yielding() (one yield after it); a dict/list/tuple of at
+most 4 scalars, no string over 4 characters keys included (_FLAT_MAX), is one json.dumps() (at most 224 B). The 4-character limit is a
+technical necessity: without it two g3 memory tests (a 600-char string, the 253-char NTP host) would pass the piece cap. Unix port: 4.6/6.0 ms
+to 2.6/3.4 ms (gc -1/32768), about 1.8x (the 2.3x first quoted was the prototype without the string check); board estimate 0.74 to ~0.45 s.
+Bytecode +345 B; imageFreeBytes 59,916 to 59,540. Gate yfG green (rebuild, lint, m1-m3, test e/f, four twin runs, npm, coll 218/251, 247/251).
+Reruns asked after the owner's reflash OK: /status probe, loop_lag, hazard_run (13 refusals), serving_sweep and heap_at_peak (interleaving).
+Runner's noble chroot leg (bc2b92c7, 17:47-18:57): the recipe installs no Node, so the host tier cannot pass as written (66 E-lines; the recipe
+text gets the Node step in the last round). Six twin scenario failures, one per device in the first shared boot, each with a feed gap of
+7,567-7,628 ms (of 8,000; would_have_triggered 0): inferred one host pause (16 jobs on 4 cores, microSD), not proven; the trixie leg repeats it.
+
+## 12.76 Trixie chroot leg; day 2 closed without the reflash (runner, 20:3x; ROOT_CAUSES 21, bench ddecc1b0)
+The 19:15 order was not carried out (the runner did not fetch); the owner then said "okay, but don't start anything after this for today".
+Board idle on the 17:08:25Z image; the stall fix (b28a9e2f) is on the branch, not flashed. Trixie (gcc 14.2.0, bc2b92c7, Node v24.22.2):
+tests_scripts 6,931 passed, so Node is the whole of noble's 66. MicroPython tier 5,827 passed, 16 failed: feed gaps above 6,000 ms on all six
+first boots (6,854-7,980 ms; noble 7,567-7,628), later up to 15,309 ms (arzi bus fault); dev loop_lag_under_combined_load 1,399 ms vs 925.
+Reading (inferred): test.sh's own comment names this hazard as not closed - a twin budget in wall-clock measures host speed. The runner
+reports 16 jobs on 4 cores; the band puts a Pi4 at 2x (8), so either its speed probe read the fast band or 16 was set: the log's
+"== Test parallelism" line decides. Then a low-parallelism run on the new head separates load from code (day 3, after the reruns).
+E51: no console saved, so the torn-write reading stays inferred; its handling stays with the last round's harness item.
+
+## 12.77 Work-practice skills (owner go 21:43:14, scope widened 22:20:01; int f4b6775f, bench 2ef970b2 + relay 23:15, head 3dc93e54)
+Surveys of the bench record, the docs and the lead's scratch (S/u35/skill/survey_*.md, WRITEUP.md). Built: three skills under
+.claude/skills/ (work-routines 139 lines + 36-line symptom table, bench-routines 132, tree-care 57) and six private scripts/ helpers
+(_run_checks.sh, _log_verdict.py, _errcount_digest.py, _failed_tests.py, _preflight.sh, _tidy.sh) with 13 tests; /logs/ git-ignored;
+BACKLOG chroot-list line. Evaluation: 3 rounds, 16 agent runs with and without (eval/benchmark.md): correctness equal, mechanical tasks
+8-23 % fewer tokens and up to 40 % fewer tool calls, planning tasks about even; 12 defects found by the runs and 5 by the gate, all fixed.
+Gate on f7847acc: unit and twin tiers green at both stages; tests_scripts red on 4 rules the helpers broke -> fixed, tests_scripts rerun
+on f4b6775f 6966 passed. Lint clean, three mypy passes clean. Not built: a /status watcher (perturbs the board), timed notifiers (owner
+rule). Proposals left to the owner: CLAUDE.md about 240 lines restating SPECIFICATION.md; BACKLOG.md chroot list about 450 lines.
+
+## 12.78 Doc cleanup; the bench may fix the skills (owner go 07:24:42, 07:39:04; int dbe46072, bench bd11c5b9 + relay 07:49, head 7cd1a24a)
+BACKLOG.md 1,038 to 462 lines (chroot entry to what changes a run; the resolved ISL29125/W12 items out, S3b names the open
+Overrange run); CLAUDE.md 1,023 to 867, no rule, tag or owner quote lost (checked mechanically); one agent-named change: a
+build-environment change gets a BACKLOG line only when it changes how a chroot run goes. README's recipe runs env --tier
+generic and puts its Node on PATH (the installer leg folds in; first chroot run is day 3's noble leg). SPEC E.3's one-file
+command is _run_checks.sh mpy:FILE; typecheck.sh header says three. bench-routines carries the owner's 07:39 ruling and a
+`skill:` hand-back block. Gate: doc checks, then tests_scripts 6966 passed / 6 skipped; decision-vocab allowlist -8.
+
+## 12.79 Bench day 3 started (its note 08:00); relay 08:09 (int 1461960b, bench c500e7c3)
+Skill fix 105a9fd6 (BuildDate is GET /system's build, not /status) verified against src and carried into int as 1461960b;
+int equals the bench head outside audit/. Fact 1: the Pi4 probes 120 ms, the 4x band (16 jobs); my 20:38 relay took
+test.sh's "the bench Pi4's class" comment on the mid band at its word, but README and Part N already had the Pi4 at
+~139 ms - the comment is stale; correct it, README's "16 jobs, green" and Part N's band rows from step 3's legs. Fact 2:
+the arzi bus-fault scenario alone on this idle host (dbe46072): PASS 3.2 s, 10 feeds, largest gap 1,037 ms, wdt 0 - the
+bench's 15,309 ms is ~15x host stretch (inferred load); trixie's host tier ran the browser tests beside the MicroPython
+tier, noble's failed at once for want of Node (untested difference). Image 1,304 B larger on the bench with identical
+firmware inputs: the ARM compiler is the host's unpinned apt package (here 13.2.1, as on CI; trixie a GCC 14 build) -
+inferred; the bench reads its toolchain record's compilers and the .data/.bss sizes (here 18,080 / 51,352) to confirm
+whether the RAM heap differs. Not near a margin (58,236 B headroom). Held: any test.sh/README change until the legs report.
+
+## 12.80 The bench's 16 skill proposals (its note 08:11) cross-checked; relay 08:15 (bench 85af49cf)
+The owner, to the bench at about 08:08 (relayed by the bench, not said here): "You absolutely can scan through your
+work styles and calls from this session and compare them to the newly added skills - if you find something missing or
+could be improved, go ahead adding things. But cross check with the main session in order not to break anything."
+Clashes: (2) narrowing work-routines' copy-paste line would change an owner rule's scope - keep it; results stay in the
+hand-back, no tool named, the 14:35 instruction quoted. (7) "rc 0 only means the step ran" is round1.sh's, not the tier
+runners' (they exit with _require_clean_hardware_run.sh's verdict) - HANDOVER. (3) a '192.168.' count flags 45
+legitimate tracked lines - check the bench's own addresses. Wording for 1, 5, 6, 8-11, 13, 15, 16; 4, 12, 14 as proposed.
+Status from the bench: reflash 08:02 (FC 1 today); /status longest loop hold 122 ms (yesterday 747-2,313 ms); compiler
+confirmed (arm-none-eabi-gcc 14.2.1 on the bench), .data +128 B, .bss equal: the bench image's heap is 128 B smaller.
+
+## 12.81 Bench reruns on the stall fix's image (its note 08:30); relay 08:35 (bench 2c971f8b, int a5d3296b)
+Reruns: /status loop hold 122 ms (3 readers); loop_lag 155,249 us vs 925,000 (was 1,006,799), teardown E46/W63 (inferred:
+the closing reset cuts the test's FRAM load) and WEBSERVER W51 (_WRN_HTTP_SOCKET_ERROR, untraced); serving_sweep -1 pass,
+lowest free 7,744 B, largest run 704 B; heap_at_peak 32768 pass, 21,600 B. Hazard under readers' load: the 13 /status
+refusals gone; FieldSweep uid [T,F,F] vs [T,T,F]. Code trace: the sweep waits 3 x 1,000 ms after an ACK; the responder
+needs 1,000 ms chunk wait + FRAM log + 1,500 ms quiet drain = 2,500 ms + delays: 500 ms slack; a frame inside the drain
+is drained as noise -> no ACK. ACK window (8 s) and hold-off (~4 s) not the limit. Inferred; chunks 2->255 is the same
+shape and passed. Fix candidate: widen _QUIET_TIMEOUTS (src/, new image, owner's OK). Pre-session /status save: never
+works on a running board since 0c0ad52c (2026-10-15): the board fixture's is_reachable() runs mpremote exec (stops
+main.py) before session_start_evidence's REST save; FRAM logs still kept, pre-session RAM fields lost; its unit test
+calls the function directly. Workaround relayed: save /status by hand before each runner start. Fix: host-side, no image.
+Skills: 4 bench commits read and carried (cb6a1b78, d2737a05, c55da08e, e5b28b9d), gates 791 passed, shellcheck clean.

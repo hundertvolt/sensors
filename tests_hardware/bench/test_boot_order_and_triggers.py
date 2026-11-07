@@ -12,7 +12,7 @@ import evidence
 import http_client
 import pytest
 import serial
-from error_log_helpers import assert_no_task_ended
+from error_log_helpers import assert_no_task_ended, reset_all_error_logs
 from harness import SRC_DIR, Board, boot_lines, device_toml, kick_then_reset, restore_board_to_serving
 from soak_durations import SOAK_DURATION_SECONDS
 
@@ -54,9 +54,10 @@ _SPACING_WINDOW_S = 60.0
     ("NTP", "E", "NTP_NO_REPLY"),
     ("SGP40", "W", "SGP_WRITTEN_NO_TS"),
 )
-def test_webserver_answers_before_the_first_ntp_sync_completes(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
+def test_webserver_answers_before_the_first_ntp_sync_completes(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # With the first sync held off by the block, a 200 whose own NTPSynced reads false shows the webserver answering
     # before that sync completed, however fast a sync would have been (agent, 2026-11-06).
+    reset_all_error_logs(dut_ip, request.node.name)  # its task-ended check reads the whole log: an earlier session's entry stays out
     stop = threading.Event()
     log: list[tuple[float, str]] = []
     answers: list[tuple[float, http_client.HttpResponse]] = []

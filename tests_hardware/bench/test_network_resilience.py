@@ -262,7 +262,7 @@ def test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage(board: Boa
 _GARBAGE_PAYLOAD = b"\xff" + b"not an NTP or DNS wire-format packet, on purpose"[:47]
 
 
-@pytest.mark.provokes_log("every garbage reply is rejected as unsynchronised (leap indicator 3)", ("NTP", "W", "NTP_UNSYNC_REPLY"))
+@pytest.mark.provokes_log("every garbage reply is rejected as unsynchronised (leap indicator 3); its boot with no sync leaves SGP40's backup undated", ("NTP", "W", "NTP_UNSYNC_REPLY"), ("SGP40", "W", "SGP_WRITTEN_NO_TS"), ("SGP40", "W", "SGP_RESTORED_NO_TS"))
 def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     lines, answered = _garbage_window(board, bench, dut_ip, 123)
@@ -276,7 +276,7 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     reset_all_error_logs(dut_ip, request.node.name)
 
 
-@pytest.mark.provokes_log("a garbage DNS reply fails the lookup as silence would, which NTP logs as NTP_DNS", ("NTP", "E", "NTP_DNS"))
+@pytest.mark.provokes_log("a garbage DNS reply fails the lookup as silence would, which NTP logs as NTP_DNS; its boot with no sync leaves SGP40's backup undated", ("NTP", "E", "NTP_DNS"), ("SGP40", "W", "SGP_WRITTEN_NO_TS"), ("SGP40", "W", "SGP_RESTORED_NO_TS"))
 def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     reset_all_error_logs(dut_ip, request.node.name)
     lines, answered = _garbage_window(board, bench, dut_ip, 53)
@@ -303,7 +303,7 @@ _NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - inside _par
 _SPOOF_YEAR = time.gmtime(_NTP_SPOOF_INJECTED_UNIX_TIME).tm_year
 
 
-@pytest.mark.provokes_log("the real reply is held back and the spoof refused, so the attempt ends without a reply", ("NTP", "E", "NTP_NO_REPLY"))
+@pytest.mark.provokes_log("the real reply is held back and the spoof refused, so the attempt ends without a reply; its capture reset boots with no sync and leaves SGP40's backup undated", ("NTP", "E", "NTP_NO_REPLY"), ("SGP40", "W", "SGP_WRITTEN_NO_TS"), ("SGP40", "W", "SGP_RESTORED_NO_TS"))
 def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A connect()'d client socket takes datagrams from its true peer only: a spoof it took would set the RTC to its
     # Transmit Timestamp (2050-01-01), readable as GET /status's UTCTime. An earlier test may have left NTP unsynced:
@@ -711,9 +711,12 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     assert len(statuses) >= _MAX_CONNECTIONS, f"only {len(statuses)} of {len(sizes)} PUTs were answered at all - too few to say anything about the cap ({len(refused)} refused)"
     assert 200 in statuses and 413 in statuses, f"the run never saw both verdicts, so the cap was never exercised under concurrency: {sorted(set(map(str, statuses)))}"
     wait_until(lambda: _load.serving(dut_ip), timeout_s=_QUICK_RECOVERY_TIMEOUT_S, poll_interval_s=_QUICK_POLL_S, description="webserver serving normally again after the concurrent mixed-body load cleared")
-    _assert_ceiling_traced(dut_ip, len(refused), "the concurrent mixed-body storm")
+    # An over-cap PUT's 413 goes out before its body is read, so the close's RST can erase it, status line too (RFC 9112
+    # 9.6): the client files a refusal the server never counted, so only the refusals within the cap bound HTTPDropped.
+    within = [i for i in refused if sizes[i] <= cap]
+    _assert_ceiling_traced(dut_ip, len(within), f"the concurrent mixed-body storm's refusals within the cap ({len(refused) - len(within)} more over it)")
     assert_no_task_ended(dut_ip, "client misbehaviour")
-    result_note(f"{len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
+    result_note(f"{len(answered)} answered, {len(refused)} refused at the connection ceiling ({len(refused) - len(within)} over the cap), 0 answered wrongly")
 
 
 @pytest.mark.provokes_log(
