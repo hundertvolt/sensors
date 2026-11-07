@@ -1,0 +1,6 @@
+        body = _LINK_BOARD.format(resumes=True).replace('"counter": 2 if failed else 0', '"counter": 5 if failed else 0')
+        assert '"counter": 5 if failed' in body, "the fake board's counter is no longer where this case raises it"
+E       assert "codes logged: {'fixture_link_logger': ['E81', 'E81', '+3 past the ring']}" in "first failed transfer after the pull: 2 s; Failures 0 -> 2; codes logged: {'fixture_link_logger': ['E81', 'E81']}; transfers resumed after the replug: 3 s\n"
+E        +  where "first failed transfer after the pull: 2 s; Failures 0 -> 2; codes logged: {'fixture_link_logger': ['E81', 'E81']}; transfers resumed after the replug: 3 s\n" = read_text()
+FAILED tests_scripts/test_manual_runner_summary.py::test_codes_the_ring_no_longer_holds_are_counted_not_dropped
+1 failed, 1 passed, 12 deselected in 0.50s

@@ -1,0 +1,35 @@
+U23 lead: the hotspot-window event line follows the arm's result
+
+_hotspot_client_absent() printed "No client connected - hotspot timer
+started" before _arm_hotspot_timer() ran, so a failed arm also claimed a
+started timer, just before its own "Could not start hotspot timer:" error
+line. The started line now prints only after a successful arm. A failed
+arm prints nothing more: its persisted TIMER entry is the record (agent,
+2026-10-13; owner, 2026-09-25: "Change, don't flag, if not according.").
+
+Every other timer arm in the file was checked for the same shape, a
+started or armed claim printed before the result is known. None has it,
+so none changed: the silent mode's period arm in _run_silent_mode(), the
+uptime tick's retry in _connect_loop() and its first arm in
+start_uptime_timer() print no claim, and _arm_hotspot_timer() itself
+prints only its failure.
+
+Test (tests/test_asy_wifi_service.py, 264 -> 265, seen failing first on
+16d8fae's code, where the failed tick printed the started line and then
+the error): test_the_window_started_line_follows_a_successful_arm_only
+records the console lines of three no-client ticks at the event level,
+with OSError and with MemoryError. The failed arm prints only its error
+line, the arm with room prints the started line once, and a tick with
+the window already running prints nothing.
+
+Runs, each file in its own unshare -n, TZ=UTC, nice 19:
+tests/test_asy_wifi_service.py 265/265 at -1 (19.6 s), at 32768 (21.5 s)
+and under settrace (20.7 s), each within 0.1 s of 16d8fae's; the twin
+file tests/test_digital_twin_wifi_modes.py 1/1 at -1 (101.2 s) and at
+32768 (101.6 s); no memory marker in any output. The checks are clean:
+ruff on the 8 scopes, the four mypy passes on a cold cache, and
+test_comment_block_cap, test_decision_vocabulary, test_code_conventions
+and test_error_catalog.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

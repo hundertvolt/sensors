@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Read-only verify-row checks against b4b7557 (git show/grep/ls-tree/diff only).
+cd /home/user/sensors || exit 1
+T=b4b7557; B=b1fecfb
+g() { git grep -n "$@" ':!arduino'; }
+h() { echo; echo "### $*"; }
+h "2g GEN.003/005 codegen positional + no S105/S106 generated entry + no _HOTSPOT_PW_DEFAULT"
+git show $T:buildgen/codegen.py | grep -n "WifiConfig({_lit(device_table\['hostname'\])}" | cut -c1-200
+g '_HOTSPOT_PW_DEFAULT' $T -- buildgen src tests_scripts build pyproject.toml; echo "rc(_HOTSPOT_PW_DEFAULT)=$?"
+git show $T:pyproject.toml | grep -n 'generated_src' | cut -c1-200
+git show $T:pyproject.toml | grep -n 'S106\|S105' | cut -c1-200
+h "2g TOOL.031 allowed-unused-imports"
+git show $T:pyproject.toml | grep -n 'allowed-unused-imports' | cut -c1-200
+g 'allowed-unused-imports\|allowed_unused' $T -- tests_scripts/test_ruff_exemptions_live.py | cut -c1-200
+h "2g TSC.047 test_buildgen_generate positional"
+g -i 'hotspot' $T -- tests_scripts/test_buildgen_generate.py | cut -c1-220
+h "7 HW_BENCH.038"
+g '# noqa' $T -- tests_hardware/conformance.py; echo "rc(noqa conformance)=$?"
+git ls-tree --name-only $T -- tests_hardware/isl29125_conformance.py; echo "ls-tree isl29125_conformance done"
+h "9 HW_BENCH.100"
+g '# noqa' $T -- tests_hardware/manual/runner.py; echo "rc(noqa manual/runner)=$?"
+git show $T:pyproject.toml | grep -n 'manual_bus_electrical' | cut -c1-200
+h "10-12 HW_DEV.062-064"
+for f in fram_error_log_roundtrip.py fram_error_log_reset_race_seed_and_race.py fram_error_log_reset_race_verify.py; do g 'noqa' $T -- tests_hardware/device_scripts/$f; echo "rc(noqa $f)=$?"; git ls-tree --name-only $T -- tests_hardware/device_scripts/$f; done
+h "13 HW_DEV.090"
+g 'lambda\|noqa' $T -- tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py; echo "rc=$?"
+h "14 HW_DEV.107"
+git show $T:tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py | grep -n 'for _ in range(64):\|fact("constructed", len(timers))\|noqa'
+h "15 HW_DEV.112"
+git ls-tree -r --name-only $T -- tests_hardware | grep -E 'wifi_reconnect_after_failed_attempts_repro|wifi_service_reconnect_repro'; echo "rc(ls-tree repro)=$?"
+g 'wifi_reconnect_after_failed_attempts_repro\|wifi_service_reconnect_repro' $T -- pyproject.toml; echo "rc(pyproject repro)=$?"
+h "18 HW_BENCH.103"
+git show $T:tests_hardware/manual/manual_sensor_accuracy.py | sed -n 11p
+git show $B:tests_hardware/manual/manual_sensor_accuracy.py | sed -n 11p
+git diff --quiet $B $T -- tests_hardware/manual/manual_sensor_accuracy.py; echo "diff-quiet manual_sensor_accuracy rc=$?"
+h "19 SCR.009"
+git diff --quiet $B $T -- scripts/micropypath.toml; echo "diff-quiet micropypath.toml rc=$?"
+h "24 SCR.070"
+g 'def visit_' $T -- scripts/_strip_type_checking.py; echo "rc=$?"
+h "31 SRC_SENS.038"
+git show $T:src/asy_bmp3xx_driver.py | grep -n 'datasheets/' | cut -c1-200
+git show $B:src/asy_bmp3xx_driver.py | grep -n 'datasheets/' | cut -c1-200
+git diff --quiet $B $T -- src/asy_bmp3xx_driver.py; echo "diff-quiet asy_bmp3xx_driver rc=$?"
+h "35 TEST_UNIT.037"
+g 'noqa' $T -- tests/test_asy_fram_driver.py; echo "rc(noqa)=$?"
+h "41 TEST_UNIT.332"
+git show $T:tests/test_website_build_integration.py | sed -n 13p
+g 'noqa' $T -- tests/test_website_build_integration.py; echo "rc(noqa)=$?"
+h "45 TOOL.020"
+git show $T:.github/workflows/ci.yml | grep -o 'uses: [^ ]*' | sort | uniq -c
+git show $T:.github/workflows/ci.yml | grep -n 'submodules' ; echo "rc(submodules)=$?"
+for f in .github/actions/setup-micropython-toolchain/action.yml .github/actions/uv-sync/action.yml; do git show $T:$f | grep -o 'uses: [^ ]*'; done
+h "60 SCR.025"
+git show $T:scripts/lint.sh | grep -n 'generated_src\|no-respect-gitignore'
+git show $T:.github/workflows/ci.yml | grep -n 'ruff check\|no-respect-gitignore'
+h "63 SCR.010"
+git diff --quiet $B $T -- scripts/_require_python.sh; echo "diff-quiet _require_python.sh rc=$?"
+git show $T:.github/actions/uv-sync/action.yml | grep -n '_require_python'
+h "65 SCR.036"
+git diff $B $T -- scripts/test.sh | grep -n '^[-+]' | grep -i 'unix_port\|probe\|flavour' ; echo "rc(probe lines in diff)=$?"
+git show $T:scripts/test.sh | grep -n '_unix_port' | cut -c1-160
+h "66 SCR.072"
+git diff --quiet $B $T -- scripts/build_frozen_html.sh; echo "diff-quiet build_frozen_html.sh rc=$?"
+h "67 SCR.071"
+git diff --quiet $B $T -- scripts/build_website.sh; echo "diff-quiet build_website.sh rc=$?"
+h "75 TOOL.046"
+git show $T:toolchain/setup_toolchain.py | grep -n '^NETWORK_ATTEMPTS\|backoff_s: float = ' | cut -c1-200
+git show $T:scripts/uv_sync_retried.sh | grep -n 'tunable\|attempts=\|step' | cut -c1-160
+h "76 TOOL.052"
+git show $T:.github/workflows/ci.yml | grep -n -i 'picotool' | cut -c1-200
+git diff --stat $B $T -- scripts/setup_cross_browser_toolchain.sh | tail -1
+h "81 TSC.021"
+g 'noqa' $T -- tests_scripts/test_bench_harness_helpers.py; echo "rc(noqa)=$?"
+h "82 TSC.027"
+g 'noqa' $T -- tests_scripts/test_bench_no_task_ended_completeness.py; echo "rc(noqa)=$?"
+h "90 SRC_CORE.016"
+g 'type: ignore' $T -- src/asy_system_service.py; echo "rc(type: ignore)=$?"
+h "95 TSC.168"
+git show $T:tests_scripts/test_js_coverage_report_dir.py | sed -n 40,50p
+h "96 TSC.175"
+g 'def bench_device(\|def devices_with(' $T -- tests_scripts/_devices.py
+h "99 TWIN.011"
+git show $T:digital_twin/_fram_chip.py | grep -n 'datasheets/' | cut -c1-200
+git diff --quiet $B $T -- digital_twin/_fram_chip.py; echo "diff-quiet _fram_chip rc=$?"
+h "100 TWIN.025"
+git show $T:digital_twin/machine.py | grep -n 'datasheets/' | cut -c1-200
+git diff $B $T -- digital_twin/machine.py | grep '^[-+]' | grep -c 'datasheets/'
+h "103 TWIN.057"
+g 'noqa' $T -- digital_twin/unix_port_poll_prewarm.py; echo "rc(noqa)=$?"
+h "107 TWIN.144"
+g 'noqa: E402' $T -- tests/test_digital_twin_sensortask_integration.py | cut -c1-160
+g 'noqa: E402' $T -- tests/test_digital_twin_sensortask_integration.py | grep -v 'E402 - '; echo "rc(E402 without reason)=$?"
+h "109 TWIN.164"
+git ls-tree -r --name-only $T -- tests | grep -E 'webserver_concurrency|_webserver_concurrency_scenarios'; echo "rc(ls-tree wrappers)=$?"
+h "110 WEB.072"
+git show $T:.nvmrc
+git show $T:package.json | grep -n '"engines"\|"node":\|@types/node'
+h "122 SCR.038"
+git diff --stat $B $T -- scripts/_pytest_run_record.py tests_scripts/conftest.py | tail -2
+h "140 SCR.061"
+git diff --quiet $B $T -- scripts/run_digital_twin_ci.sh; echo "diff-quiet run_digital_twin_ci.sh rc=$?"
+git show $T:.github/workflows/ci.yml | grep -n 'run_digital_twin_ci.sh' | cut -c1-200
+h "147 WEB.077"
+git show $T:tsconfig.node.json | grep -n '_summary_reporter'

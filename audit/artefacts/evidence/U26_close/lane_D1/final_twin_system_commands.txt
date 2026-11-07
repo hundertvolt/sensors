@@ -1,0 +1,57 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+......FF.FF.                                                             [100%]
+=================================== FAILURES ===================================
+E   harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:
+    FACT command="resetconfig"
+    FACT hung_store="CFGMGR_WIFI"
+    FACT answer="Valid"
+    HANG 1413
+    FACT no_reset_after_ms=16000
+    DONE
+    digital_twin/run_device_script.py: the watchdog would have reset the board 2 time(s)
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_hardware/twin_board.py:71: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:
+E   harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:
+    FACT command="reboot"
+    FACT hung_store="CFGMGR_WIFI"
+    FACT answer="Valid"
+    HANG 1387
+    FACT no_reset_after_ms=16000
+    DONE
+    digital_twin/run_device_script.py: the watchdog would have reset the board 2 time(s)
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_hardware/twin_board.py:71: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:
+E   AssertionError: the reset did not land inside the erase: {'state': 'reset_after_1000', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'E', 'E', 'E'], 'ErrCount': 3, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}, 'answer': 'Valid', 'erase': {'ms': 1049, 'ok': True, 'max_gap_ms': 5}, 'reset': {'code': 8, 'feeds': 1099, 'max_gap_ms': 1097, 'loads': [0, 0, 0]}}
+      FACT state="reset_after_1000"
+      FACT layout={"allocated": 1140, "size": 262144}
+      FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]
+      FACT seeded_system={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}
+      FACT answer="Valid"
+      ERASE START
+      FACT erase={"ms": 1049, "ok": true, "max_gap_ms": 5}
+      FACT reset={"code": 8, "feeds": 1099, "max_gap_ms": 1097, "loads": [0, 0, 0]}
+      digital_twin/run_device_script.py: machine reset: kind=reset
+      
+    assert ('ERASE START' in ['FACT state="reset_after_1000"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_B... "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}', 'FACT answer="Valid"', 'ERASE START', ...] and 'erase' not in {'state': 'reset_after_1000', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CF...eeded_system': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', ...], 'ErrCount': 3, 'ErrNum': [0, 0, 0, 0, 0, 0, ...]}, ...})
+     +  where ['FACT state="reset_after_1000"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_B... "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}', 'FACT answer="Valid"', 'ERASE START', ...] = <built-in method splitlines of str object at 0x32312170>()
+     +    where <built-in method splitlines of str object at 0x32312170> = 'FACT state="reset_after_1000"\nFACT layout={"allocated": 1140, "size": 262144}\nFACT seeded=["BMP3XX", "CFGMGR_BMP3XX..."feeds": 1099, "max_gap_ms": 1097, "loads": [0, 0, 0]}\ndigital_twin/run_device_script.py: machine reset: kind=reset\n'.splitlines
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_hardware/flash/test_system_commands.py:247: AssertionError: the reset did not land inside the erase: {'state': 'reset_after_1000', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'E', 'E', 'E'], 'ErrCount': 3, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}, 'answer': 'Valid', 'erase': {'ms': 1049, 'ok': True, 'max_gap_ms': 5}, 'reset': {'code': 8, 'feeds': 1099, 'max_gap_ms': 1097, 'loads': [0, 0, 0]}}
+E   AssertionError: the reset did not land inside the erase: {'state': 'reset_after_2000', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'E', 'E', 'E'], 'ErrCount': 3, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}, 'answer': 'Valid', 'erase': {'ms': 1054, 'ok': True, 'max_gap_ms': 4}, 'reset': {'code': 8, 'feeds': 1099, 'max_gap_ms': 1106, 'loads': [0, 0, 0]}}
+      FACT state="reset_after_2000"
+      FACT layout={"allocated": 1140, "size": 262144}
+      FACT seeded=["BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_ISL29125", "CFGMGR_NOTIFY", "CFGMGR_NTP", "CFGMGR_SGP40", "CFGMGR_SYSTEM", "CFGMGR_WIFI", "DNSSRV", "ISL29125", "NEOPIXEL", "NOTIFY", "NTP", "SCD30", "SGP40", "SYSTEM", "UART_init", "UART_resp", "WEBSERVER", "WIFI"]
+      FACT seeded_system={"ErrType": ["N", "N", "N", "N", "N", "N", "N", "E", "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}
+      FACT answer="Valid"
+      ERASE START
+      FACT erase={"ms": 1054, "ok": true, "max_gap_ms": 4}
+      FACT reset={"code": 8, "feeds": 1099, "max_gap_ms": 1106, "loads": [0, 0, 0]}
+      digital_twin/run_device_script.py: machine reset: kind=reset
+      
+    assert ('ERASE START' in ['FACT state="reset_after_2000"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_B... "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}', 'FACT answer="Valid"', 'ERASE START', ...] and 'erase' not in {'state': 'reset_after_2000', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CF...eeded_system': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', ...], 'ErrCount': 3, 'ErrNum': [0, 0, 0, 0, 0, 0, ...]}, ...})
+     +  where ['FACT state="reset_after_2000"', 'FACT layout={"allocated": 1140, "size": 262144}', 'FACT seeded=["BMP3XX", "CFGMGR_B... "E", "E"], "ErrCount": 3, "ErrNum": [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}', 'FACT answer="Valid"', 'ERASE START', ...] = <built-in method splitlines of str object at 0x3247d440>()
+     +    where <built-in method splitlines of str object at 0x3247d440> = 'FACT state="reset_after_2000"\nFACT layout={"allocated": 1140, "size": 262144}\nFACT seeded=["BMP3XX", "CFGMGR_BMP3XX..."feeds": 1099, "max_gap_ms": 1106, "loads": [0, 0, 0]}\ndigital_twin/run_device_script.py: machine reset: kind=reset\n'.splitlines
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_hardware/flash/test_system_commands.py:247: AssertionError: the reset did not land inside the erase: {'state': 'reset_after_2000', 'layout': {'allocated': 1140, 'size': 262144}, 'seeded': ['BMP3XX', 'CFGMGR_BMP3XX', 'CFGMGR_ISL29125', 'CFGMGR_NOTIFY', 'CFGMGR_NTP', 'CFGMGR_SGP40', 'CFGMGR_SYSTEM', 'CFGMGR_WIFI', 'DNSSRV', 'ISL29125', 'NEOPIXEL', 'NOTIFY', 'NTP', 'SCD30', 'SGP40', 'SYSTEM', 'UART_init', 'UART_resp', 'WEBSERVER', 'WIFI'], 'seeded_system': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'E', 'E', 'E'], 'ErrCount': 3, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 125, 126, 127]}, 'answer': 'Valid', 'erase': {'ms': 1054, 'ok': True, 'max_gap_ms': 4}, 'reset': {'code': 8, 'feeds': 1099, 'max_gap_ms': 1106, 'loads': [0, 0, 0]}}
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]
+FAILED tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]
+FAILED tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[1000]
+FAILED tests_hardware/flash/test_system_commands.py::test_a_reset_mid_erase_leaves_every_chunk_old_or_blank[2000]
+4 failed, 8 passed in 108.99s (0:01:48)

@@ -1,0 +1,30 @@
+      1             "src/zz_plant.py:10 Gate._late(): `t1 - t2` is arithmetic on a tick value",
+      1             "src/zz_plant.py:11 check(): `t - limit` is arithmetic on a tick value",
+      1             "src/zz_plant.py:5 late(): `t0 += 5` is arithmetic on a tick value",
+      1             "src/zz_plant.py:7 late(): `-t1` is arithmetic on a tick value",
+      1             "src/zz_plant.py:7 wait(): `start + 100` is arithmetic on a tick value",
+      1         key = f"generated:sensortask_{device}.py"
+      1 >       assert findings == ["src/zz_plant.py:6 elapsed(): `now - t0` is arithmetic on a tick value", _UNLISTED], findings
+      1 >       assert findings == ["src/zz_plant.py:8 outer.inner(): `t0 * 2` is arithmetic on a tick value", _UNLISTED], findings
+      1 >       assert findings == [f"{key}:{line} zz_plant(): `time.ticks_ms() - t0` is arithmetic on a tick value", f"{key}: reads ticks but is not in _KNOWN_TICKS_USERS"], findings
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != "src/zz_plant.py:10 arm(): `time.ticks_add(t, 1 << 29)` adds a delta of 536870912 ms, at or past ticks_diff()'s 2**29 horizon"
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != "src/zz_plant.py:6 Gate.check(): `self._t0` tests a tick value's truth, false at the valid tick 0"
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'digital_twin/unixport/zz_plant.py:6 stamp(): `now > t0` orders a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'digital_twin/zz_plant.py:6 stamp(): `now > t0` orders a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'digital_twin/zz_reader.py:2 stale(): `stamp._zz_stamp >= limit` orders a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'generated:sensortask_arzi.py:242 zz_plant(): `time.ticks_ms() - t0` is arithmetic on a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/asy_base_classes.py: listed in _KNOWN_TICKS_USERS but reads no ticks'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/asy_base_classes.py: reads ticks but binds no tick value - the scan judges nothing there'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/zz_plant.py:11 check(): `stamps[0] > limit` orders a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/zz_plant.py:5 _age(): `t0 > limit` orders a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/zz_plant.py:5 late(): `t0 += 5` is arithmetic on a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/zz_plant.py:6 elapsed(): `now - t0` is arithmetic on a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/zz_plant.py:7 wait(): `start + 100` is arithmetic on a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/zz_plant.py:8 outer.inner(): `t0 * 2` is arithmetic on a tick value'
+      1 E         At index 0 diff: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value' != 'src/zz_plant.py:9 Gate.expired(): `time.ticks_ms() >= self._deadline` orders a tick value'
+      1 E         Left contains one more item: 'digital_twin/machine.py:85 _BoundedLog._ordered(): `self._items[self._head:] + self._items[:self._head]` is arithmetic on a tick value'
+      1 E         Left contains one more item: 'digital_twin/unixport/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      1 E         Left contains one more item: 'digital_twin/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      1 E         Left contains one more item: 'generated:sensortask_arzi.py: reads ticks but is not in _KNOWN_TICKS_USERS'
+      1 E         Left contains one more item: 'src/asy_base_classes.py: listed in _KNOWN_TICKS_USERS but reads no ticks'

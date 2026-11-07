@@ -1,0 +1,52 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+__________ test_every_compiled_image_boots_and_serves_like_its_source __________
+
+images = {'arzi': (<buildgen.generate.GeneratedDevice object at 0x7fd34f5505d0>, PosixPath('/tmp/pytest-of-root/pytest-10327/im....generate.GeneratedDevice object at 0x7fd34efe8e10>, PosixPath('/tmp/pytest-of-root/pytest-10327/image_klkizi0')), ...}
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10327/test_every_compiled_image_boot0')
+
+    def test_every_compiled_image_boots_and_serves_like_its_source(images: "dict[str, tuple[GeneratedDevice, Path]]", micropython_bin: Path, tmp_path: Path) -> None:
+        # The boots run side by side, each on its own port with its own runner files, and report per device.
+        ports = dict(zip(sorted(images), _distinct_free_ports(len(images)), strict=True))
+    
+        def boot(device: str) -> "tuple[str, list[str]]":
+            generated, stage = images[device]
+            run = tmp_path / device
+            run.mkdir()
+            return device, _boot_generated_device(stage, generated, micropython_bin, run, ports[device], image=True)
+    
+        with ThreadPoolExecutor(max_workers=_BOOTS_AT_ONCE) as pool:
+            failures = {device: found for device, found in pool.map(boot, sorted(images)) if found}
+>       assert failures == {}, "\n\n".join(f"{device}:\n" + "\n".join(found) for device, found in failures.items())
+E       AssertionError: wozi:
+E         twin session aborted: RuntimeError: digital twin subprocess exited early with code 1 before ever serving - see its output in the failures below
+E         subprocess exited with code 1:
+E         digital_twin/run_generic_integration.py: UDP port 123 is held by another NTP responder - this run's takes it once freed
+E         digital_twin/run_generic_integration.py starting - device='wozi' module='sensortask_wozi' host='127.0.0.1' port=50275 state=StatePaths(fram=None, scd30=None, mem_backup=None) config_dir='/tmp/pytest-of-root/pytest-10327/test_every_compiled_image_boot0/wozi/config/' online_ntp=False injections=Injections(seed=None, faults=[], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=15.0, gc_threshold=32768, mem_sample_interval_ms=None, stop_file='/tmp/pytest-of-root/pytest-10327/test_every_compiled_image_boot0/wozi/stop')
+E         Traceback (most recent call last):
+E           File "digital_twin/run_generic_integration.py", line 878, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "digital_twin/run_generic_integration.py", line 743, in main
+E           File "digital_twin/run_generic_integration.py", line 702, in load_module
+E           File "/tmp/pytest-of-root/pytest-10327/image_wozi0/sensortask_wozi.py", line 20, in <module>
+E         ImportError: no module named 'asy_ntp_client'
+E         
+E         the twin did not end on its stop file - it served out its whole 15 s bound
+E       assert {'wozi': ['tw... 15 s bound']} == {}
+E         
+E         Left contains 1 more item:
+E         {'wozi': ['twin session aborted: RuntimeError: digital twin subprocess exited '
+E                   'early with code 1 before ever serving - see its output in the '
+E                   'failures below',
+E                   'subprocess exited with code 1:\n'
+E                   'digital_twin/run_generic_integration.py: UDP port 123 is held by '...
+E         
+E         ...Full output truncated (26 lines hidden), use '-vv' to show
+
+tests_scripts/test_stripped_image_boots.py:113: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_stripped_image_boots.py::test_every_compiled_image_boots_and_serves_like_its_source
+1 failed, 1 passed in 6.31s

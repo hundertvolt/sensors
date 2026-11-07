@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "tests/test_sensortask.py", line 11, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests/_sensortask_scenarios.py", line 27, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests/_generated_module.py", line 29, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx1/tests/_generated_tree.py", line 80, in require_fresh
+RuntimeError: build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py

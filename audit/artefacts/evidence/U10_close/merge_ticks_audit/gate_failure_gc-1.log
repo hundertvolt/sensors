@@ -1,0 +1,10 @@
+[test_ticks_rollover] PASS test_ticks_diff_correct_when_now_has_wrapped_past_t0
+[test_ticks_rollover] FAIL test_every_known_ticks_user_is_actually_covered_by_this_audit:
+[test_ticks_rollover] Traceback (most recent call last):
+[test_ticks_rollover]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/microtest.py", line 27, in run
+[test_ticks_rollover]   File "tests/test_ticks_rollover.py", line 126, in test_every_known_ticks_user_is_actually_covered_by_this_audit
+[test_ticks_rollover] AssertionError: asy_udp_socket.py no longer measures elapsed time - update _KNOWN_TICKS_USERS
+[test_ticks_rollover] 6/7 passed, 1 failed, 0 skipped
+[test_ntp_wifi_dns_integration] PASS test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch
+[test_ntp_wifi_dns_integration] 9/9 passed, 0 failed, 0 skipped
+== Running tests/test_tmp_scratch.py

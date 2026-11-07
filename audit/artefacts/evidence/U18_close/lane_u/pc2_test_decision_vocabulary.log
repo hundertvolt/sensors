@@ -1,0 +1,33 @@
+FF....                                                                   [100%]
+=================================== FAILURES ===================================
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_decision_vocabulary_names_its_actor_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           tests/test_asy_udp_socket.py: A wait with no deadline is a listen that may never be answered (the captive DNS)
+E       assert not [('tests/test_asy_udp_socket.py', 'A wait with no deadline is a listen that may never be answered (the captive DNS)')]
+
+tests_scripts/test_decision_vocabulary.py:89: AssertionError
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           buildgen/web_tag.py	Escaping a literal '"' inside a quoted value is deliberately unsupported (see mo
+E           src/asy_wifi_service.py	A new getter picks one shape deliberately, never by copying its nearest neighbou
+E           tests/test_asy_udp_socket.py	"0.0.0.0", or a deliberately unreachable address - rather than a fresh loopback
+E           tests/test_asy_wifi_service.py	while _run_sta_mode()'s caller has independently decided a retry is needed - the
+E       assert not [('buildgen/web_tag.py', 'Escaping a literal \'"\' inside a quoted value is deliberately unsupported (see mo'), ('src/...('tests/test_asy_wifi_service.py', "while _run_sta_mode()'s caller has independently decided a retry is needed - the")]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+2 failed, 4 passed in 8.28s

@@ -1,0 +1,21 @@
+== test_uv_sync_retried_sh
+E                         echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+E                       echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+             errors=None, newline=None):
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_no_ci_file_carries_a_retry_loop_of_its_own[.github/workflows/ci.yml]
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_no_ci_file_carries_a_retry_loop_of_its_own[.github/actions/setup-micropython-toolchain/action.yml]
+FAILED tests_scripts/test_uv_sync_retried_sh.py::test_no_ci_file_carries_a_retry_loop_of_its_own[.github/actions/uv-sync/action.yml]
+3 failed, 4 passed in 0.18s
+real	0m0.439s
+== test_mpremote_connect_sh
+5 passed in 0.25s
+real	0m0.497s
+== test_require_clean_hardware_run_sh
+20 passed in 2.45s
+real	0m2.668s
+== test_hardware_runners
+58 passed in 6.96s
+real	0m7.192s

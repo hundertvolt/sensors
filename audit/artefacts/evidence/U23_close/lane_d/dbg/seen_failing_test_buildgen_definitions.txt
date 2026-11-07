@@ -1,0 +1,6 @@
+# lane D's seen-failing copy (u23/laneD/dbg/head_tree_seen_failing_test_buildgen_definitions.py, 07:41) against 8fff76f/tests_scripts/test_buildgen_definitions.py (hunk @@ -1101,3 +1101,85 @@)
+The one change: four of lane D's new cases appended after the file's last line, with their helpers (resolution_decimals(),
+_STATUS_SOURCES, _placed_fields()): test_every_code_tone_block_equals_its_catalog_tables_tones,
+test_every_status_path_resolves_in_the_generated_status_source, test_a_number_field_is_float_exactly_where_its_schema_is and
+test_every_field_shows_the_decimals_its_source_states, each as it landed in 411bbb8's file (absent from 68c7a87's).
+It stood in the 8fff76f export (head_tree/) and failed lane D's first two timing runs there (the scan record's slip).

@@ -1,0 +1,19 @@
+test_decision_vocabulary	1 failed, 5 passed in 8.54s
+    FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+test_citations	15 passed in 10.50s
+test_comment_block_cap	1 failed, 608 passed in 4.95s
+    FAILED tests_scripts/test_comment_block_cap.py::test_each_pending_header_is_still_missing
+test_tunables_register	1 failed, 14 passed in 4.05s
+    FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+test_legacy_paths	3 passed in 1.91s
+test_import_placement	7 passed in 7.52s
+test_code_conventions	25 passed in 3.03s
+test_error_catalog	40 passed in 5.63s
+test_host_annotations	12 passed in 2.26s
+test_lint_ceilings	19 passed in 9.21s
+test_mypy_any_baseline	7 passed in 0.07s
+test_memory_error_gate_agreement	14 passed in 3.30s
+test_shell_conventions	77 passed in 0.60s
+test_mpremote_connect_sh	6 passed in 0.12s
+test_no_variant_literals	1 failed, 18 passed in 9.37s
+    FAILED tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal

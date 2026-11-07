@@ -1,0 +1,55 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s
+
+10:22:05 AM [vite] Internal server error: Failed to resolve import "./_expected_display.js" from "tests_js/expected-display.test.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/tests_js/expected-display.test.js:4:33
+  2  |  // tier's independent oracle for what the page shows.
+  3  |  import { describe, expect, it } from "vitest";
+  4  |  import { expectedDisplay } from "./_expected_display.js";
+     |                                   ^
+  5  |  
+  6  |  describe("expectedDisplay", () => {
+      at TransformPluginContext._formatLog (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/node_modules/vite/dist/node/chunks/node.js:8766:39)
+      at TransformPluginContext.error (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/node_modules/vite/dist/node/chunks/node.js:8763:14)
+      at normalizeUrl (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/node_modules/vite/dist/node/chunks/node.js:26593:18)
+      at file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/node_modules/vite/dist/node/chunks/node.js:26663:30
+      at async Promise.all (index 1)
+      at TransformPluginContext.transform (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/node_modules/vite/dist/node/chunks/node.js:26629:4)
+      at EnvironmentPluginContainer.transform (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/node_modules/vite/dist/node/chunks/node.js:8545:14)
+      at loadAndTransform (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/node_modules/vite/dist/node/chunks/node.js:20157:26)
+      at viteTransformMiddleware (file:///tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/node_modules/vite/dist/node/chunks/node.js:20377:20)
+ ❯ |chromium| tests_js/expected-display.test.js (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/expected-display.test.js [ tests_js/expected-display.test.js ]
+Error: Failed to import test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/tests_js/expected-display.test.js
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5822:5
+ ❯ collectTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5798:3
+ ❯ startTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6480:17
+
+Caused by: TypeError: Failed to fetch dynamically imported module: http://localhost:63315/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/tests_js/expected-display.test.js?import&browserv=1791886925362
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  10:22:04
+   Duration  1.19s (worker 100%)
+
+== Summary: npm test ==
+Commit: f40c66a (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 1
+Failed:
+  - tests_js/expected-display.test.js: module error: Failed to import test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s/tests_js/expected-display.test.js
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing:
+  - npm test: no test case ran
+Result: FAIL
+Exit code: 1

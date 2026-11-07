@@ -1,0 +1,6 @@
+PASS test_every_train_crosses_intact_while_the_heap_churns
+one-runner done fails 0
+
+real	0m1.630s
+user	0m0.443s
+sys	0m0.058s

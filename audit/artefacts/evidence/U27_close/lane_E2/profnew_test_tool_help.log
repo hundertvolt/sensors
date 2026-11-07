@@ -1,0 +1,6 @@
+....................                                                     [100%]
+============================= slowest 3 durations ==============================
+0.26s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/build_firmware.py]
+0.21s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[toolchain/setup_toolchain.py]
+0.17s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/cross_browser_smoke.mjs]
+20 passed in 3.08s

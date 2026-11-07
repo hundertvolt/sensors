@@ -1,0 +1,14 @@
+E         Use -v to get more diff
+
+tests_scripts/test_port_bands.py:64: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_port_bands.py::test_every_row_names_an_owner_that_still_exists
+1 failed, 16 passed in 2.05s
+E       AssertionError: assert ['_webserver_..._integration'] == []
+E         
+E         Left contains 2 more items, first extra item: '_webserver_concurrency_scenarios'
+E         
+E         Full diff:
+E         - []
+E         + [
+E         +     '_webserver_concurrency_scenarios',

@@ -1,0 +1,45 @@
+== SFF errcount (before _twin_process/suite change), 8 failed 77 passed:
+test_the_shutdown_line_yields_every_field_and_one_uart_entry_per_instance: AttributeError 'ShutdownLine' object has no attribute 'wdt_timeout_ms'
+test_a_shutdown_line_missing_a_field_fails_naming_it[wdt_timeout_ms|gc_block_bytes]: DID NOT RAISE ValueError
+test_a_shutdown_line_after_no_gc_summary_fails_naming_it: DID NOT RAISE ValueError
+test_a_feed_gap_above_three_quarters_of_the_watchdog_timeout_is_a_near_reset[6000|6300]: no attribute 'feed_gap_verdict'
+test_a_run_whose_feed_gap_came_near_the_watchdog_fails_unless_it_starves_it_by_design[False|True]: _check_run_log() unexpected keyword 'starves_watchdog'
+== SFF tests/test_digital_twin_run_generic_integration.py @-1 (before runner change): 30/35 passed, 5 failed
+test_every_test_only_flag_is_off_by_default_and_parses_when_named: TypeError TestFlags() takes 5 positional arguments but 7 were given
+test_the_flash_stall_flag_puts_every_flush_at_its_datasheet_maximum: no attribute '_test_flash_stall_max'
+test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_one_train_past_its_cap: no attribute '_test_uart_over_cap'
+test_the_rebound_report_announces_itself_once_when_first_entered_then_never_returns: no attribute '_test_report_then_hang'
+test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_registers: AssertionError (no wdt_timeout_ms / gc_block_bytes)
+== SFF test_twin_runner_test_flags.py (before runner change):
+FAILED tests_scripts/test_twin_runner_test_flags.py::test_a_flag_defaulting_on_or_an_unguarded_call_is_caught
+1 failed, 3 passed in 0.37s
+== SFF tests_scripts/test_digital_twin_scenarios.py (before harness change): 2 failed 38 passed
+test_a_boot_whose_feed_gap_came_near_the_watchdog_fails_unless_it_starves_it_by_design[False]: AssertionError: [] (no feed-gap failure)
+test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing: assert (0, ['ran']) == (1, [])
+== SFF test_digital_twin_ci_suite_ceiling.py (before routes): test_the_route_set_is_every_get_route_of_the_devices_api_reference: no attribute '_get_routes'; test_run_11b_bursts_over_every_get_route_of_the_device: RunContext() unexpected keyword 'routes'
+== SFF test_digital_twin_ci_suite_soak.py (before routes/logs/lock/plateau): 9 failed 11 passed
+test_a_missing_api_reference_prints_the_block_and_fails: BuildError reading devices/fixture_device.toml (no reference check first)
+test_the_logs_default_to_the_devices_own_directory: no attribute '_logs_dir'
+test_a_held_product_port_fails_the_suite_at_once_naming_it: main() ran the passes (assert None == 1)
+test_the_warm_up_ends_once_the_sampled_floor_holds_for_its_window / test_a_floor_that_never_holds_warms_up_to_the_bound (+4 fixture users): RunContext() unexpected keyword 'routes'
+== BITES (scratch copy u27/laneS/bite, nothing committed):
+Run 10 wait reverted to _wait_exit(..., starves_watchdog=True): test_run_10_ends_each_hang_run_on_the_runners_line...[True]: assert ['duration'] == ['SIGINT']
+Run 10 reverted to the old call (no exemption): ...[True|False]: 'no feed gap came near the watchdog timeout - the largest feed gap 12010 ms is above 75% of the 8000 ms'
+Run 11 warm-up never ending early: test_the_warm_up_ends_once_the_sampled_floor_holds_for_its_window: (see next line)
+E       assert 100 == (30 + 20)
+== SFF Run 9 (before the event-ended watch): test_run_9_ends_its_watch...[3-90.0]: AssertionError: [90.0] (the fixed 90 s sleep); [2-0.0]: no 'NTP failed' check (attribute _NTP_UNREACHABLE_FAILURES missing)
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_the_devices_previous_logs_are_archived_before_any_build_and_three_runs_kept
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_the_suite_and_the_harness_run_at_both_gc_stages_or_the_one_given[args0-suite_stage0-harness_stages0]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_the_suite_and_the_harness_run_at_both_gc_stages_or_the_one_given[args1-suite_stage1-harness_stages1]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_only_and_repeat_reach_the_suite_alone
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_the_crc16_rerun_runs_only_for_a_device_wiring_a_uart_link_pair[dev]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_a_missing_device_or_a_bad_option_exits_2_before_any_tool_runs[no-device]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_a_missing_device_or_a_bad_option_exits_2_before_any_tool_runs[no-value]
+FAILED tests_scripts/test_run_digital_twin_ci_sh.py::test_a_missing_device_or_a_bad_option_exits_2_before_any_tool_runs[bad-value]
+8 failed, 10 passed in 3.31s
+== BITES runner guards (lock after a tool, harness exit dropped, harness site path): 6 failed, 12 passed in 6.97s
+micropypath.test.js before _micropypath.js: Failed to import test file (module missing), 1 failed
+OF-147 grep execFileSync("uv" in live commands: 2 hits before (_live_twin_command.js:235, _live_matrix_command.js:159), 0 after
+== JS frame/smoke (scratch u27/laneS/js/smoke_lock.sh): planted live holder of 53 -> smoke exits 1 "port 53 is held by planted holder (pid 1)" before any twin (old smoke: no lock, grep acquirePortLock empty); probe on an empty toolchain -> throws "MicroPython Unix port not built ... (the probe said: error: no MicroPython Unix port at ...)"; probe on S/u27tc names its build-standard binary
+== Timer drop knob L1 (before the knob): 106/109, FAIL periodic-heals ('the knob is off by default'), FAIL one-shot-dropped (AssertionError), FAIL reset_test_state restores the knob
+== BITES knob (scratch): hard callbacks dropped too -> one-shot/hard test FAIL; the dropped callback still called (if, not elif) -> both knob tests FAIL

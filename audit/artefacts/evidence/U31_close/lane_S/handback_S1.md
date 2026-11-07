@@ -1,0 +1,17 @@
+U31 lane S block S1 FINAL
+Commits on audit/u31-s (S/wt-u31s, from aba11d5): 83d86ce = <LED> (neopixel `_frame_ms`), 602bb5c (notification service in ms). Nothing pushed.
+Steps: applied: step 17's M.SRC_SENS.023/.027/.028 (83d86ce) and .031/.034/.037 (602bb5c); step 34's U31 part (`_make_driver` sets `_frame_ms`); step 36 (U31 part; config-failure parts already landed, e.g. `test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slot` :1448). Already landed: steps 44 and 45's U31 part and check 35 (each file imports the shared FastAsyncSleep; the real waits left there are U35's driven-time work).
+Deviation (agent, 2026-10-21): <LED> also holds the five integration builders' writes (`_frame_ms = 10`, `_FRAME_MS`): the main mypy pass flags any write of the removed `neopixel_dt`.
+Decisions (agent, 2026-10-21): (1) `_YieldOnlyAsyncio` offers only `sleep_ms`, so a float sleep in the driver fails under the driven clock. (2) `interv: float = _CFG_FAIL_INTERVAL_S` (const(600) is an int; mypy inferred int, asy_notification_service.py:275).
+Seen failing first (unchanged source): test_asy_neopixel_driver.py:147 AttributeError `_frame_ms` + 16 "`_YieldOnlyAsyncio` has no attribute 'sleep'"; test_asy_notification_service.py:1318, :1326 AttributeError `_next_sleep_ms`; test_ticks_rollover.py::test_next_sleep_ms_crosses_the_ticks_wrap; the builders' writes mypy attr-defined at 6 sites. Bite: a float `_next_sleep_ms` fails "AssertionError: 100.0"/"59950.0" and 13 loop tests.
+Red checks owed to the lead:
+- tests_scripts/test_tunables_register.py: Part N edit (relayed under "## S"): notify.min_sleep_ms, l1.asy_notification_service_next_sleep_min_ms, SPEC :11436 / :11437 ('600.0' vs '600') / :11663.
+- test_import_placement.py::test_the_pending_list_only_shrinks: delete allow-list rows tests_scripts/test_import_placement.py:55-56 (the two `test_next_sleep_s_*` 'time' entries).
+- mypy main: tests/test_neopixel_wifi_integration.py:59 `pixel.neopixel_dt = 0.01` waits on W (-> `pixel._frame_ms = 10`).
+Facts owed: lead: SPEC:11431 (`led.refresh_hz` row) still names `neopixel_dt`, now `_frame_ms` (int); W: the :59 line; C: `_sensortask_scenarios.py:2247`'s ramp sum unchanged (each frame still records 50/1000 s; not run).
+Times -1/32768 (base): neopixel 9.51/9.50 (9.46/9.51); notification 19.04/19.07 (19.04/19.08); notif_neopixel 6.58/6.43 (6.42/6.43); notif_scd30 4.59/4.52 (4.48/4.48); notif_scd30_sgp40 4.15/4.21 (4.17/4.20); notif_sgp40 2.92/2.98 (2.93/3.21); ticks_rollover 3.82/3.79 (3.72/4.05); notif_fram 0.30/0.37 (no base); all within 10 %, 0 memory markers.
+Other checks passed: ruff; 10 doc/convention checks; readers of both src files (lock_order, memory_catalog, readiness_gates, task_inventory, buildgen_* parse, const_mirrors, config_schemas, setter_contract, ticks_wrap_scan); boot contiguity 36/36.
+Silent-failure scan (both src files, classes 1-7): nothing new (round(interv*1000) safe: checked_float refuses NaN/inf, asy_config_manager.py:162; 1000 // freq raises at 0 as 1.0/freq did). Modes: values unchanged; flash settle rounds instead of truncating (at most 1 ms later).
+Runs: boot contiguity first rc=1 on a stale build/generated_src after the src edit (root-caused; rebuild rc 0), then rc=0 twice. Logs S/u31/laneS/.
+State for S2: head 602bb5c, nothing uncommitted, generated tree rebuilt. S2 (i2c, bmp3xx) and S3 left; nothing half-done.
+nothing of mine is running

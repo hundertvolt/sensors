@@ -1,0 +1,117 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u32w
+
+ ❯ |chromium| tests_js/definitions-mockdata-coverage.test.js (11 tests | 7 failed) 649ms
+   ❯ definitions and mockdata agree (11)
+     × every readonly field arzi's definitions name resolves in its composed mock data 158ms
+     × every readonly field dev's definitions name resolves in its composed mock data 83ms
+     × every readonly field grkizi's definitions name resolves in its composed mock data 73ms
+     × every readonly field klkizi's definitions name resolves in its composed mock data 89ms
+     × every readonly field schlafzi's definitions name resolves in its composed mock data 87ms
+     × every readonly field wozi's definitions name resolves in its composed mock data 72ms
+     ✓ reports a field whose mockdata is genuinely absent 1ms
+     ✓ reports a nested path that stops on a group instead of a leaf 0ms
+     ✓ reads a maintenance field by its path and reports one whose instance is absent 0ms
+     ✓ takes a list of names as a leaf and still reports a list that holds a sub-object 1ms
+     × takes a task-end record as a leaf, as it takes a time struct 84ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field arzi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field dev's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field grkizi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field klkizi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field schlafzi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field wozi's definitions name resolves in its composed mock data
+AssertionError: expected [ 'status/system/LastTaskEnd' ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-arzi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-dev-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-grkizi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-klkizi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-schlafzi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-wozi-s-definitions-name-resolves-in-its-composed-mock-data.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/system/LastTaskEnd",[39m
+[31m+ ][39m
+
+ ❯ tests_js/definitions-mockdata-coverage.test.js:102:56
+    100|         const defs = /** @type {import("../js/definitions.js").SiteDef…
+    101|         const data = composeMockData(defs, /** @type {import("../js/de…
+    102|         expect(unrenderableReadonlyFields(defs, data)).toEqual([]);
+       |                                                        ^
+    103|     });
+    104|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5294:63
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5648:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > takes a task-end record as a leaf, as it takes a time struct
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---takes-a-task-end-record-as-a-leaf--as-it-takes-a-time-struct.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/system/LastTaskEnd (an object, not a leaf)",[39m
+[31m+ ][39m
+
+ ❯ tests_js/definitions-mockdata-coverage.test.js:149:139
+    147|         };
+    148|         expect(unrenderableReadonlyFields(defs, { status: { system: { …
+    149|         expect(unrenderableReadonlyFields(defs, { status: { system: { …
+       |                                                                                                                                           ^
+    150|     });
+    151| });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=b1173ecb:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 4 passed (11)
+   Start at  09:03:12
+   Duration  1.87s (tests 72%, worker 18%, import 9%, setup 1%)
+
+== Summary: npm test ==
+Commit: 6e4d3b3 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 4 · failed 7 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field arzi's definitions name resolves in its composed mock data: expected [ 'status/system/LastTaskEnd' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field dev's definitions name resolves in its composed mock data: expected [ 'status/system/LastTaskEnd' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field grkizi's definitions name resolves in its composed mock data: expected [ 'status/system/LastTaskEnd' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field klkizi's definitions name resolves in its composed mock data: expected [ 'status/system/LastTaskEnd' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field schlafzi's definitions name resolves in its composed mock data: expected [ 'status/system/LastTaskEnd' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field wozi's definitions name resolves in its composed mock data: expected [ 'status/system/LastTaskEnd' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > takes a task-end record as a leaf, as it takes a time struct: expected [ Array(1) ] to deeply equal []
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

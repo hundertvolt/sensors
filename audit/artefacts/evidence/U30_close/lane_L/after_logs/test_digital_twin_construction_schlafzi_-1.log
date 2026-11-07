@@ -1,0 +1,5 @@
+PASS test_boot_sequence_matches_the_generated_expectation
+PASS test_build_system_boots_against_the_real_twin_buses_without_exception
+PASS test_irq_pins_are_shared_by_chip_fake_and_driver
+PASS test_load_device_returns_the_devices_own_generated_module
+4/4 passed, 0 failed, 0 skipped

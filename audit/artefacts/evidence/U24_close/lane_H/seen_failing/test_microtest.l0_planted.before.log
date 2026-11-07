@@ -1,0 +1,132 @@
+FFFFFFFF                                                                 [100%]
+=================================== FAILURES ===================================
+______ test_a_planted_violation_is_found_and_its_clean_form_is_not[async] ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo0')
+case = 'async'
+
+    @pytest.mark.parametrize("case", sorted(_PLANTED))
+    def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
+        filename, source, scan = _PLANTED[case]
+        (tmp_path / filename).write_text(source)
+>       assert scan(tmp_path), f"the planted {case} violation passed the scan"
+E       AssertionError: the planted async violation passed the scan
+E       assert []
+E        +  where [] = <function _trailer_problems at 0x7f40b17ba2a0>(PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo0'))
+
+tests_scripts/test_microtest.py:277: AssertionError
+___ test_a_planted_violation_is_found_and_its_clean_form_is_not[asyncio_run] ___
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo1')
+case = 'asyncio_run'
+
+    @pytest.mark.parametrize("case", sorted(_PLANTED))
+    def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
+        filename, source, scan = _PLANTED[case]
+        (tmp_path / filename).write_text(source)
+>       assert scan(tmp_path), f"the planted {case} violation passed the scan"
+E       AssertionError: the planted asyncio_run violation passed the scan
+E       assert []
+E        +  where [] = <function <lambda> at 0x7f40b17ba840>(PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo1'))
+
+tests_scripts/test_microtest.py:277: AssertionError
+______ test_a_planted_violation_is_found_and_its_clean_form_is_not[bound] ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo2')
+case = 'bound'
+
+    @pytest.mark.parametrize("case", sorted(_PLANTED))
+    def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
+        filename, source, scan = _PLANTED[case]
+        (tmp_path / filename).write_text(source)
+>       assert scan(tmp_path), f"the planted {case} violation passed the scan"
+E       AssertionError: the planted bound violation passed the scan
+E       assert []
+E        +  where [] = <function _trailer_problems at 0x7f40b17ba2a0>(PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo2'))
+
+tests_scripts/test_microtest.py:277: AssertionError
+_____ test_a_planted_violation_is_found_and_its_clean_form_is_not[builder] _____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo3')
+case = 'builder'
+
+    @pytest.mark.parametrize("case", sorted(_PLANTED))
+    def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
+        filename, source, scan = _PLANTED[case]
+        (tmp_path / filename).write_text(source)
+>       assert scan(tmp_path), f"the planted {case} violation passed the scan"
+E       AssertionError: the planted builder violation passed the scan
+E       assert []
+E        +  where [] = <function _public_double_problems at 0x7f40b17bab60>(PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo3'))
+
+tests_scripts/test_microtest.py:277: AssertionError
+___ test_a_planted_violation_is_found_and_its_clean_form_is_not[fake_class] ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo4')
+case = 'fake_class'
+
+    @pytest.mark.parametrize("case", sorted(_PLANTED))
+    def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
+        filename, source, scan = _PLANTED[case]
+        (tmp_path / filename).write_text(source)
+>       assert scan(tmp_path), f"the planted {case} violation passed the scan"
+E       AssertionError: the planted fake_class violation passed the scan
+E       assert []
+E        +  where [] = <function _public_double_problems at 0x7f40b17bab60>(PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo4'))
+
+tests_scripts/test_microtest.py:277: AssertionError
+___ test_a_planted_violation_is_found_and_its_clean_form_is_not[json_loads] ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo5')
+case = 'json_loads'
+
+    @pytest.mark.parametrize("case", sorted(_PLANTED))
+    def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
+        filename, source, scan = _PLANTED[case]
+        (tmp_path / filename).write_text(source)
+>       assert scan(tmp_path), f"the planted {case} violation passed the scan"
+E       AssertionError: the planted json_loads violation passed the scan
+E       assert []
+E        +  where [] = <function <lambda> at 0x7f40b17bb2e0>(PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo5'))
+
+tests_scripts/test_microtest.py:277: AssertionError
+___ test_a_planted_violation_is_found_and_its_clean_form_is_not[scratch_key] ___
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo6')
+case = 'scratch_key'
+
+    @pytest.mark.parametrize("case", sorted(_PLANTED))
+    def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
+        filename, source, scan = _PLANTED[case]
+        (tmp_path / filename).write_text(source)
+>       assert scan(tmp_path), f"the planted {case} violation passed the scan"
+E       AssertionError: the planted scratch_key violation passed the scan
+E       assert []
+E        +  where [] = <function _duplicate_scratch_keys at 0x7f40b17bb100>(PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo6'))
+
+tests_scripts/test_microtest.py:277: AssertionError
+_____ test_a_planted_violation_is_found_and_its_clean_form_is_not[trailer] _____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo7')
+case = 'trailer'
+
+    @pytest.mark.parametrize("case", sorted(_PLANTED))
+    def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
+        filename, source, scan = _PLANTED[case]
+        (tmp_path / filename).write_text(source)
+>       assert scan(tmp_path), f"the planted {case} violation passed the scan"
+E       AssertionError: the planted trailer violation passed the scan
+E       assert []
+E        +  where [] = <function _trailer_problems at 0x7f40b17ba2a0>(PosixPath('/tmp/pytest-of-root/pytest-8057/test_a_planted_violation_is_fo7'))
+
+tests_scripts/test_microtest.py:277: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_microtest.py::test_a_planted_violation_is_found_and_its_clean_form_is_not[async]
+FAILED tests_scripts/test_microtest.py::test_a_planted_violation_is_found_and_its_clean_form_is_not[asyncio_run]
+FAILED tests_scripts/test_microtest.py::test_a_planted_violation_is_found_and_its_clean_form_is_not[bound]
+FAILED tests_scripts/test_microtest.py::test_a_planted_violation_is_found_and_its_clean_form_is_not[builder]
+FAILED tests_scripts/test_microtest.py::test_a_planted_violation_is_found_and_its_clean_form_is_not[fake_class]
+FAILED tests_scripts/test_microtest.py::test_a_planted_violation_is_found_and_its_clean_form_is_not[json_loads]
+FAILED tests_scripts/test_microtest.py::test_a_planted_violation_is_found_and_its_clean_form_is_not[scratch_key]
+FAILED tests_scripts/test_microtest.py::test_a_planted_violation_is_found_and_its_clean_form_is_not[trailer]
+8 failed, 13 deselected in 0.16s

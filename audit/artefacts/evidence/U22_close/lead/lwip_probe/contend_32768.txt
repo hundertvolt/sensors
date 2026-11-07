@@ -1,0 +1,11 @@
+rounds 3000 threshold 32768 by elapsed <1ms,<2,<5,<10,<20,<50,<100,>=100: [0, 430, 594, 1372, 599, 5, 0, 0]
+slow round 41205 us: on-CPU 6841 us, involuntary 1 voluntary 1 collection False
+slow round 28722 us: on-CPU 7024 us, involuntary 1 voluntary 1 collection False
+slow round 25732 us: on-CPU 7001 us, involuntary 1 voluntary 1 collection True
+slow round 24144 us: on-CPU 3917 us, involuntary 0 voluntary 1 collection False
+slow round 24059 us: on-CPU 4521 us, involuntary 1 voluntary 1 collection True
+slow round 17858 us: on-CPU 6187 us, involuntary 1 voluntary 1 collection False
+slow round 17696 us: on-CPU 6344 us, involuntary 1 voluntary 1 collection False
+slow round 17357 us: on-CPU 6741 us, involuntary 1 voluntary 1 collection False
+rounds with an involuntary switch: 2791 max on-CPU us of any round: 14939
+rc=0

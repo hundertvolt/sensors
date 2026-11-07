@@ -1,0 +1,330 @@
+
+######## SubagentHandback 2026-10-13T06:58:44.749Z
+WIP 68c7a87  (branch audit/u23-d, worktree scratchpad/wt-u23d, on 8fff76f; not pushed)
+
+D1 contents: rows 1, 2, 3, 4, 5, 6, 10, 11, 17, 19, 21.1, 21.2, 21.7, 21.12, 21.13, 36, 37, 43, 46, 51, 68, 70, X1 (classification + GET rule; the failure-shape keys come after D1), X2, X4, X5, X6. Row 41's (k) confirm half is in D1 (per-device emission test); (b), (g), (h), (m) come after D1. Everything I committed is in files_D.txt (checked with comm).
+
+## Website-input changes (the lead rebuilds before any full-graph or browser run)
+1. Generated definitions, every device:
+   - top level: `defaultDecimals: 2` (tag `web.default_decimals = 2`, buildgen/definitions.py:38-39).
+   - `clearable: true` on DNSFallback. `ignoredWhenSet: "AmbPres"` on SCD30 Altitude. `resolution: 0.01` and derived `decimals: 2` on SCD30 TempOffset.
+   - `codeTones {"0":"neutral","1":"good","2":"warn","3":"warn"}` on ISL29125 CalLight. State gets no codeTones.
+   - `statusPath ["notification","PauseTime"]` on PauseTime. `confirm: true` on SystemCmd and ResetErrors.
+   - `path` on every maintenance field: `[<resolved>, BackupTS|RestoreTS]` and `["UARTLINK", Transfers|Failures]`.
+   - SCD30 measurement decimals: CO2 0; Temp, Hum, WetBulb, DewPoint 1. BMP3XX gets none, SGP40 none, ISL29125 unchanged.
+   - `defaultValue` removed from ContMeas and Calibrate.
+   - Status rows: new UnixTime ("Device Clock", unit s, after UTCTime); notification TS is now "Last Cycle Time" with a description; ResetReason description gains "; click it for its meaning."; DNSFallback has a new description.
+2. js/definitions.js, which is bundled into the frozen site.
+3. The generated module: `"UnixTime": utc_now()` and `from asy_base_classes import [ValueRef, ]utc_now` on every device.
+4. buildgen/error_catalog.json: CalLight gains tones.
+5. API references (build/generated_src/api/*.json): new facts resolution, ignoredWhenSet and statusPath; ContMeas is off GET /sensors.
+6. Unchanged: mockdata/samples.json (M's X7 adds UnixTime), html/, and every other js/ file.
+
+I regenerated build/generated_src in my worktree with scripts/_generate_sensortask_modules.py. I did not touch frozen_modules/ or build/generated_html/.
+
+## Green on 68c7a87 (all at nice 19; port-binding runs inside unshare -n ns.sh)
+- **pytest:**
+  - Lane files: test_buildgen_web_tag 158, test_buildgen_definitions 369, test_buildgen_generate 330, test_api_reference 89, test_error_catalog 38, test_definitions_js_mirrors 5.
+  - Pre-commit set: decision_vocabulary 6, citations 15, comment_block_cap 453, legacy_paths 3, import_placement 7, code_conventions 23, host_annotations 12, lint_ceilings 19, mypy_any_baseline 7, memory_error_gate_agreement 13, no_variant_literals 19.
+- **ruff:** clean over buildgen, src, tests, tests_scripts.
+- **mypy** (cold cache, temporary typings symlink, now removed):
+  - main pass, no args: 187 files clean.
+  - main pass, `src tests tests_hardware/device_scripts`: 174 files clean.
+  - host_typecheck.ini: 199 files clean, after one typing fix in my new api tests.
+- **MicroPython** (-1 and 32768, zero MemoryError / "memory allocation failed" lines):
+  - test_asy_api_response 32/32
+  - test_asy_base_classes 188/188
+  - test_asy_system_service 167/167 (26.6 s / 34.0 s)
+  - test_asy_webserver_service 218/218 (24.7 s / 25.1 s)
+- **vitest:** definitions.test.js 43/43, definitions-shape-corpus 133/133, lint-ceilings 4/4. `npm run lint` clean.
+- **Neighbouring files checked green:** generated-definitions-render 48, templates 45, mock-server 100, app 8.
+- **ESLint:** validateDefinitions complexity drops from 37 to 18; the new file maximum is 18. The tree maximum is still 41 (js/mock-server.js:557), so no ceiling moves on my side.
+
+## Red, and why (none worked around)
+1. **tests_scripts/test_buildgen_error_contract.py::test_every_rule_in_buildgen_has_exactly_one_row:** `{'web.ignored-when-set-unknown': ['buildgen/web_tag.py:465'], 'web.key-needs-number': ['buildgen/definitions.py:332', 'buildgen/web_tag.py:221']}`.
+   - Cause: two new rule ids with no honest existing id to reuse (an unknown sibling; resolution off a number field). The file is in nobody's set.
+   - Paste these two rows into `_ROWS` just before `    # buildgen/validate.py: [device]`. I verified them in a scratch copy (3 passed):
+     ```
+         "web.key-needs-number": _web_row('# @web MeasInterval section=sensors submitGroup=self kind=string label="Measurement Interval" unit="s" resolution=1'),
+         "web.ignored-when-set-unknown": _web_row("ignoredWhenSet=NoSuchField", old="ignoredWhenSet=AmbPres", where="/scd30.Altitude"),
+     ```
+   - The other 179 contract cases pass, including web.schema-field-untagged; that is why the sibling check runs after the untagged check.
+   - Fact for X: SPECIFICATION.md L.5's rule-id list (around :9235-9243) gains both ids.
+2. **test_tunables_register.py:** `buildgen/definitions.py:39: web.default_decimals is tagged but has no SPECIFICATION.md Part N row`. Listed in the plan, until X.
+   - Fact for X: `web.default_decimals = 2`, site buildgen/definitions.py:38-39, basis owner 2026-10-02 "But only for the website, the API delivers full resolution."
+3. **source-constants.test.js:**
+   - `no const POLL_BACKOFF_MAX_MS in source`: until S1, listed.
+   - `no const STANDARD_CODES in source`: until M1. This one is not in the plan's list. M must write `const STANDARD_CODES = {<int>: "<text>", ...};` for readObjectConst to read it.
+4. **`npm run typecheck`:** fails because FieldDef no longer has defaultValue, per the contract. Not in the plan's list.
+   - tests_js/render.test.js(513,134), owned by C (row 21.29).
+   - tests_js/live-backend-put-matrix.test.js(54,40) and (65,56), owned by S (row 79).
+5. **tests_js/definitions-mockdata-coverage.test.js (C, row 62):** 6 device cases fail.
+   - `status/system/UnixTime` is unresolved until M1's samples.
+   - Maintenance fields are now read by path, but its local groupValuesFrom() still flattens `${sensorKey}_${fieldKey}`.
+6. **tests_js/mock-data-compose.test.js:** 12 cases fail, and this file is in no lane's set. Someone needs to own it.
+   - `status/system/UnixTime: no value` until M1's samples.
+   - `status/sensors/SGP40_*` and `UARTLINK_*: no value`, plus unnamed `status.sensors.SGP40.BackupTS` etc.
+   - Cause: `groupValues()` (:41-43) flattens `${name}_${leaf}`, and `namedKeys()` (:110) uses `f.path?.[0] ?? f.key`. It needs the same read-by-path rule as row 62.
+7. **tests_js/main.test.js:137 (S, row 63):** `expect(fetchStub).not.toHaveBeenCalled()` sees the landing section's `/measurements` GET.
+   - Root cause: at HEAD 8fff76f this case already fails when run alone (`-t "uses an inlined"` gives 1 failed). It passes in the full file only because earlier tests leave the queue busy. Routing loadDefinitions through the queue (row 17) changes that queue state.
+   - Fix: S asserts that definitions.json is never fetched, and stops the page in afterEach.
+8. **tests_js/render.test.js** "renders On (the schema defaultValue)…" (C, row 21.29).
+
+## Deviations and decisions made on the owner's behalf (agent, 2026-10-13; all conservative and reversible, all in the commit message)
+- **The two new rule ids above.** Invalid resolution values reuse existing rules:
+  - not a number: tag.not-a-number
+  - nan or inf: tag.non-finite-number
+  - 0 or less: web.value-not-in-set
+  - more than 100 decimals: web.decimals-range
+- **The ignoredWhenSet sibling check** is a public `web_tag.check_ignored_when_set()`, called by `_DriverTags` after the untagged check.
+  - A sibling must be tagged in the same file, section and group. A hidden sibling is refused, because the page could not evaluate the warning.
+  - I rewrote test_a_hidden_schema_field_stays_off_the_website in place to hide FRCWindow instead of AmbPres.
+- **readIntConst** also accepts `export const`, a superset of the contract regex. Without it, the D1 definitions test could not read DEFAULT_TIMEOUT_MS from HEAD's poll-manager.js.
+- **The definitions.test.js 404 case** now stubs the device's real JSON envelope (`_shaped_error_handler`).
+  - Finding for S: HEAD's `pollManager.request()` parses a non-ok body before checking ok. A non-JSON 404, as the `python3 -m http.server` preview serves, is reported as "not valid JSON" instead of "HTTP 404".
+- **The status-table shape check is new.** test_error_catalog had no status-row check at HEAD, so the CalLight "tone accepted" test failed on the missing tones, not on a rejection.
+- **The retired defaultValue** is refused through web.unknown-key; there is no separate retired rule.
+- **A-16 (datasheets/bmp3xx read for BMP384, BMP388 and BMP390):** BMP3XX keeps the site default of 2 decimals.
+  - Pressure: resolution 0.016-2.64 Pa, relative accuracy 3/8/9 Pa (0.03-0.09 hPa).
+  - Temperature: 0.005 °C at x1, RMS noise 0.003-0.005 °C.
+  - So 0.01 hPa and 0.01 °C are at or above the chip's resolution, and 2 fits.
+  - SCD30 values are confirmed from its datasheet Tables 1-3 (repeatability 10 ppm, 0.1 °C, 0.1 %RH) and Interface Description 1.4.7 (0.01 °C tick) and 1.4.8 (Altitude disregarded while a pressure is set).
+- **buildgen/ is not D.15-ordered at HEAD,** so I made no whole-file reorder there. js/definitions.js and tests_js/_source_constants.js are written in D.15 order. The src/ files pass test_code_conventions.
+
+## Seen failing first (records in scratchpad/u23/laneD/)
+- test_buildgen_web_tag: 37 new cases failed; the ContMeas and Calibrate pins are guards.
+- test_buildgen_definitions: 63 new cases failed on HEAD.
+- Corpus: 42 new cases disagreed with HEAD's _shape_problems(); 43 failed in JS (groups:[null] threw a TypeError).
+- test_error_catalog: the CalLight tone test failed.
+- test_buildgen_generate: 12 failed.
+- test_api_reference: 8 failed. The GET-rule tests failed at the intermediate step: classification done, GET rule still the HEAD one, 12 failed.
+- test_definitions_js_mirrors: 2 failed.
+- definitions.test.js: 4 failed.
+- source-constants.test.js: failed to import with the module absent, then 2 names missing.
+- MicroPython: api_response failed with `_UNKNOWN_DESCR not found`; base_classes, system_service and webserver failed with `ImportError: can't import name UNAVAILABLE`.
+
+## Runs
+Every run I started was in the foreground and has exited; there is no background process (ps shows none for wt-u23d). Entries over a minute are in RUNS.md and marked done:
+- the -1 webserver run (actually 25 s)
+- the error-contract run
+- the mypy batch
+- the 32768 batch of four files
+
+Vitest wrote failure screenshots to `.vitest/` (gitignored), and its cache lives in `node_modules/.vite`.
+
+I am stopped at D1 and will resume on the API base hash.
+
+######## SubagentHandback 2026-10-13T08:25:14.949Z
+## U23 lane D: final report
+
+**Commits.** Branch `audit/u23-d` in worktree `scratchpad/wt-u23d`, on API base 3d29af9 (it already contains D1 68c7a87). Not pushed.
+- **411bbb8** "U23 lane D: final - ResetErrors waits for every reset, the reference's failure shapes, the status clock scenario".
+- **3c23b1b** "U23 lane D: the default-decimals test site carries its tunable tag". This is the lead's relay.
+
+Every file I staged is in `u23/files_D.txt` (checked with comm). The temporary typings symlink is removed, and no lane D process is left. RUNS.md lines are marked done.
+
+**Expected reds on 3c23b1b; none was worked around:**
+- `test_buildgen_error_contract`: the new rule `api.wire-text-not-string` has no row yet. You need to paste the row given below.
+- `test_tunables_register`: there is no Part N row for `web.default_decimals` yet (lane X). Two sites are now tagged.
+- `test_citations`: `js/api-contract.js: tests_scripts/test_js_api_mirrors.py`, which is lane M's.
+- `source-constants.test.js`: `POLL_BACKOFF_MAX_MS` stays red until S1.
+- `lint-ceilings.test.js`: "complexity sits at its measured maximum" fails because no function sits at the ceiling any more (ruling A-26, the lead's).
+- `npm run typecheck`: four errors, all in other lanes' files:
+  - `render.test.js` (513,134): `defaultValue`, lane C.
+  - `render.test.js` (1051,9): `"partial-result"`, lane C/M.
+  - `live-backend-put-matrix.test.js` (54,40) and (65,56): `defaultValue`, lane S.
+
+### Relays answered
+1. **readObjectConst on M's one-line STANDARD_CODES: yes, it reads it.** On the base, `source-constants.test.js` passes all 3 readObjectConst cases, including "reads the mock's envelope code table". The only red is the `POLL_BACKOFF_MAX_MS` case, which waits for S1.
+2. **OF-111:** nothing written (ruling A-11).
+3. **`tests_js/mock-data-compose.test.js`, needs for M:**
+   - `groupValues()` (:41-43) flattens maintenance fields to `${name}_${leaf}`, and `namedKeys()` (:110) uses `f.path?.[0] ?? f.key`.
+   - Maintenance fields now carry `path` (`["SGP40","BackupTS"]`, `["UARTLINK","Transfers"]`), so both must read by path on the nested `/status` body.
+   - The `UnixTime` sample has landed in `mockdata/samples.json`.
+   - Lane C's `definitions-mockdata-coverage` needs the same read-by-path rule.
+4. **X facts:** repeated in the "Facts owed" section below.
+5. **Lead relay (test_buildgen_definitions.py:364):** that literal is the `web.default_decimals` value. It now has `# @tunable web.default_decimals = 2` on its own line above it (now line :377). The register reads it as a site: the only remaining problem is the missing Part N row. The file is green (392 passed, 4.5 s).
+6. **The two reds you reported as caused by D1 are fixed in 411bbb8; both were seen failing first:**
+   - `test_digital_twin_generated_boot.py`: before the fix, 8 failed and 4 passed. After the fix, 13 passed in 21.5 s, run in its own netns.
+     - The sensors flattening and its comment are gone; fields are now resolved by `path` on the nested object.
+     - A new pure, no-boot test reads a maintenance field by path and rejects the flattened, other-instance and marker bodies.
+   - `_source_constants.js:15` now reads "(an `export` in front also reads)". `test_decision_vocabulary` passed with the file tracked and staged (6 passed). No allow-list row was added.
+
+### Step table (lane D rows)
+
+| row | status | where |
+|---|---|---|
+| 1, 2 | applied (D1) | `codegen.py:384` import of `utc_now`; `:643` `"UnixTime": utc_now()` |
+| 3 | applied (D1) | `definitions.py:64,93` `confirm`; `:86` `statusPath` |
+| 4 | applied (D1) | `definitions.py:39-40` tag and constant; emitted after `defaultPollIntervalMs` |
+| 5 | applied (D1) | CalLight tones 0 neutral / 1 good / 2 warn / 3 warn; `_StatusRow.tone`; the catalog test accepts `tone` in CalLight only |
+| 6 | applied (D1) | UnixTime row at `:699`; maintenance `path` for SGP40 and UARTLINK |
+| 7 | applied (411bbb8) | `_sensortask_scenarios.py:2339` key list; `:2564-2582` null before sync, then within 1 s of `time.mktime(time.gmtime())` |
+| 10, 11 | applied (D1) | corpus 73 → 133 cases; `_shape_problems()` mirror with `_MAX_POLL_INTERVAL_MS` |
+| 17 | applied (D1) | `js/definitions.js:422` goes through `pollManager.request()` |
+| 19 | applied (D1) | `asy_ntp_client.py:124` |
+| 21.1, 21.2, 21.7, 21.12, 21.13 | applied (D1) | as specified |
+| 36, 37 | applied (D1) | A-16: BMP3XX keeps 2 decimals after reading its datasheets (reasons in the D1 commit) |
+| 41 | applied: (k) in D1; (b), (g), (h), (m) in 411bbb8 | `test_buildgen_definitions.py` |
+| 43, 46, 51, 68, 70 | applied (D1) | |
+| X1 | applied: classification and GET rule in D1; `unavailableMarker` / `unknownCodeText` in 411bbb8 | `api_reference.py` |
+| X2 | applied (D1) | |
+| X3 | applied (411bbb8) | `asy_webserver_service.py:824` `_put_status` |
+| X4, X5, X6 | applied (D1) | |
+
+- No step was "already landed".
+- Nothing in lane D was deferred as "nothing at U23".
+
+### Deviations and decisions (all logged in the commit messages as agent, 2026-10-13)
+- **The new rule `api.wire-text-not-string`.** I did not reuse `api.result-word-not-string`, because that rule's fix text names the result words.
+- **The reset-failure log reuses an existing code.** A raise during ResetErrors is logged under the existing E14 CALLBACK code, not a new one.
+- **D.15 member order:** no whole-file reorder was applied to `buildgen/` or the `tests_scripts` files, because they were not D.15-ordered at HEAD. The check is machine-run only over `src/`, and the src files pass `test_code_conventions`. My new helpers sit beside the helpers they extend.
+- **Efficiency in place of raised bounds:**
+  - `test_buildgen_definitions.py` caches one generation per device. One cache holds the definitions as JSON text, so every caller parses its own copy; the other holds the generated module source. This makes the file faster than at HEAD.
+  - `definitions.test.js`'s single-flight case uses `vi.waitFor(..., { interval: 1 })` instead of vitest's default 50 ms poll. The test still fails on HEAD code, because the first wait demands exactly 1 request in flight.
+- **`test_api_reference.py` grew about 0.5-0.7 s (75 → 98 tests) and was not made cheaper.** Each added case is at its floor: about 10 ms for the pure tests, and about 0.1 s for each mutation row, which is one build of a mutated tree, the same as the file's existing rows. I found no cheaper form that keeps the same strength.
+- **Earlier D1 deviations stand** (listed at D1): the two D1 rule ids, the sibling check placement, `readIntConst` also reading `export const`, the 404 case stubbing the JSON envelope, and the new status-table shape check.
+
+### Files outside my set that I needed
+- **`tests_scripts/test_buildgen_error_contract.py` (the lead's).** Paste this row just before the `"api.envelope-codes-malformed"` row. I verified it in a scratch copy (2 passed):
+  ```
+      "api.wire-text-not-string": Row("batch", f"[{_DEVICE}.UNAVAILABLE] ", edits=(("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', "UNAVAILABLE = const(5)"),)),
+  ```
+- **`SPECIFICATION.md` (lane X):** see the facts below.
+- **`tests_js/mock-data-compose.test.js` (M) and `definitions-mockdata-coverage.test.js` (C):** need the read-by-path rule (relay 3 above).
+- **`tests_js/main.test.js:137` (S):** order-dependent; reported at D1.
+- **`render.test.js` and `live-backend-put-matrix.test.js`:** the `typecheck` lines listed above.
+
+### Facts owed
+- **X, tunables.** Added: `web.default_decimals = 2`.
+  - Sites: `buildgen/definitions.py:39-40` (`_DEFAULT_DECIMALS = 2`) and `tests_scripts/test_buildgen_definitions.py:377` (`2`).
+  - Basis: owner, 2026-10-02: "maintain a reasonable number of digits per value ... But only for the website, the API delivers full resolution. Configured in the website config file, derived or defined from the value sourcing modules".
+  - No tag was renamed or withdrawn.
+- **X, SPEC L.5 rule ids:** `web.key-needs-number`, `web.ignored-when-set-unknown`, `api.wire-text-not-string`.
+- **X, SPEC A.8 reference.**
+  - Field facts: `resolution`, `ignoredWhenSet`, `statusPath`.
+  - Page-only keys: `label`, `description`, `onLabel`, `offLabel`, `decimals`, `clearable`, `codeTones`, `confirm`. `defaultValue` is classified nowhere.
+  - GET routes exclude dispatch fields and always-executed toggles (`ContMeas`).
+  - New top-level keys: `"unavailableMarker": {"error": "unavailable"}` and `"unknownCodeText": "Unknown error"`, both read from `src/` by AST, placed between `resultWords` and `routes`.
+- **X, SPEC H.5:** `defaultDecimals`, `clearable`, `ignoredWhenSet`, `resolution`, derived `decimals`, `codeTones`, `confirm`, `statusPath`, and maintenance `path`.
+  - Decimals rule (A-17): the tag's value, else the resolution's digits, else the site default. A derived or default count lies in 0..3.
+  - SCD30: CO2 0; Temp, Hum, WetBulb and DewPoint 1; TempOffset 2 (derived).
+- **API end states:**
+  - `GET /status` `system.UnixTime`: Unix seconds (int), or `null` before the first sync.
+  - `PUT /status {"ResetErrors": true}`: every source's reset and this service's own run concurrently, and all are awaited.
+    - The answer is `"Failed"` if any reset raised or returned False, else `"Valid"`.
+    - Each raise is logged once, after the resets, to WEBSERVER as E14 ("Error log reset failed: <name> <exc>").
+    - Any other key or value answers `"Invalid"` (unchanged).
+  - The marker is unchanged on the wire. It is sent per module on `/sensors`, and per field on the flat routes `GET /networking`, `/notification` and `/system`.
+- **Allow-list / Any-baseline lines:** none added or removed.
+- **ESLint maxima:**
+  - `js/definitions.js`: complexity 18 (was 37), max-depth 3.
+  - `definitions.test.js`: max-nested-callbacks 4 (D1 measurement).
+  - No raises. The tree maximum is not mine.
+- **Y facts:**
+  - DNSFallback has a Clear button and the new description.
+  - SystemCmd and ResetErrors ask for confirmation on the website only; the API stays single command (owner, 2026-10-01).
+  - New Device Clock row; the notification TS row is now "Last Cycle Time"; the ResetReason description gains "click it for its meaning".
+- **Website inputs changed since D1:** only the API references (`build/generated_src/api/*.json` gain the two keys), so regenerate. Definitions, `js/`, `html/`, the generated module and the catalog are unchanged since D1. `tests_js/definitions.test.js` is a test-only change.
+
+### Tests run since the resume (all at nice 19; port-binding and browser runs each in their own `unshare -n` ns.sh)
+
+**MicroPython, both GC stages plus settrace, on the final `src/` and `tests/`.** 34 runs after and 30 runs before:
+- Every run exited with rc 0.
+- No run printed `MemoryError` or "memory allocation failed".
+- "Before" is a `git archive 8fff76f` export.
+
+| file | tests before → after | -1 | 32768 | settrace |
+|---|---|---|---|---|
+| test_asy_api_response | 31 → 32 | 0.3 → 0.3 s | 0.5 → 0.5 s | 0.3 → 0.3 s |
+| test_asy_base_classes | 187 → 188 | 0.5 → 0.4 s | 0.6 → 0.6 s | 1.1 → 0.9 s |
+| test_asy_system_service | 167 → 167 | 26.6 → 26.4 s | 34.6 → 33.1 s | 36.3 → 35.4 s |
+| test_asy_webserver_service | 217 → 220 | 25.4 → 21.8 s | 25.4 → 22.7 s | 55.0 → 50.8 s |
+| test_asy_webserver_connections | after only, 23 | 1.2 s | 1.4 s | – |
+| test_setter_microdot_integration | after only, 40 | 3.9 s | 4.1 s | – |
+| test_sensortask_arzi | 89 → 89 | 43.7 → 42.6 s | 60.4 → 57.7 s | 84.4 → 82.2 s |
+| test_sensortask_dev | 89 → 89 | 71.8 → 69.4 s | 98.8 → 93.9 s | 123.7 → 119.7 s |
+| test_sensortask_grkizi | 89 → 89 | 44.1 → 43.0 s | 60.7 → 58.1 s | 84.7 → 82.1 s |
+| test_sensortask_klkizi | 89 → 89 | 43.3 → 43.0 s | 60.9 → 60.2 s | 86.0 → 79.8 s |
+| test_sensortask_schlafzi | 89 → 89 | 44.3 → 44.3 s | 59.8 → 59.9 s | 87.7 → 81.3 s |
+| test_sensortask_wozi | 89 → 89 | 49.8 → 49.3 s | 67.4 → 66.0 s | 97.0 → 91.3 s |
+
+The worst case is `test_sensortask_dev` at 119.7 s under settrace, against the 240 s bound.
+
+**pytest (CPython; GC stages do not apply).** Before → after, pytest-reported time from an interleaved A/B run, two rounds:
+
+| file | tests | time |
+|---|---|---|
+| test_buildgen_definitions | 250 → 392 | 6.7–10.1 → 4.2–7.4 s (before the cache: 7.6–8.2 s) |
+| test_buildgen_generate | 330 → 330 | 19.1–21.3 → 18.5–19.4 s |
+| test_api_reference | 75 → 98 | 7.0–7.4 → 7.7–8.1 s |
+| test_error_catalog | 33 → 38 | 14.1–14.9 → 14.4–15.6 s |
+| test_buildgen_web_tag | 129 → 158 | 0.64 → 0.74 s |
+| test_definitions_js_mirrors | 3 → 5 | 0.06 → 0.16 s |
+| test_digital_twin_generated_boot | 12 → 13 | 22.2 → 21.5 s |
+
+Final results:
+- Green: web_tag 158, definitions 392, generate 330, api_reference 98, error_catalog 38, js_mirrors 5, generated_boot 13.
+- Green: decision_vocabulary 6, comment_block_cap 455, legacy_paths 3, import_placement 7, code_conventions 23, host_annotations 12, lint_ceilings 19, mypy_any_baseline 7, memory_error_gate_agreement 13, no_variant_literals 19.
+- Expected reds: error_contract (1 failed / 181 passed), citations (1 / 14) and tunables (1 / 14), as explained at the top.
+- ruff is clean over all eight scopes.
+- mypy (cold cache) is clean: main pass 187 files; `src tests tests_hardware/device_scripts` 174 files; host pass 201 files.
+
+**vitest (before → after):**
+
+| file | tests | time |
+|---|---|---|
+| definitions.test.js | 39 → 43 | test time 19 → 22 ms (129 ms before the interval fix); Duration 1.66 → 1.20–1.35 s |
+| definitions-shape-corpus | 73 → 133 | 11 → 14 ms; Duration 0.99 → 1.13 s |
+| source-constants.test.js | new, 7 (6 pass, POLL_BACKOFF red) | Duration 1.40 s |
+
+`npm run lint` is clean.
+
+**Seen failing first** (records are in `scratchpad/u23/laneD/`):
+- X3: 2 failed with status 500 (`seen_failing_X3.txt`).
+- Row 7: `KeyError 'UnixTime'` against the HEAD-generated modules (`dbg/row7.py`).
+- Row 41: (g) and (m) failed, 12 cases on the HEAD export (statusPath missing; `KeyError defaultDecimals`). (b) and (h) are guards that already pass at HEAD.
+- Failure shapes: 9 failed in `test_api_reference`.
+- generated_boot: 8 failed.
+- The cache and the vitest interval changes alter no behaviour. The single-flight case was seen failing at D1.
+
+### Every run started, with its exit confirmed (nothing is left running)
+- **After batch** (background, pid 22420): 34 runs, rc 0, exited 07:40.
+- **Before batch** (background, pid 31228 with batch.py 31230): 30 runs, rc 0, exited 08:21.
+- **test_buildgen_definitions timings:**
+  - After, before the cache: 3 runs, rc 0.
+  - On the HEAD export: 2 runs, rc 1. Root cause: that export still carried my seen-failing test copy, saved to `dbg/`. After restoring HEAD's file, 2 runs gave rc 0.
+  - After the cache: 2 runs, rc 0.
+- **pytest sets:** final3 (19 files), before (6), A/B (16), final4 (5), final5 (5). All exited; the reds are as listed above.
+- **Other runs:** generated_boot after and before, rc 0. `test_api_reference --durations`, rc 0. ruff and three mypy passes, rc 0.
+- **npm:** lint rc 0; typecheck rc 1 (the four lines above), run twice.
+- **vitest:** 9 runs. lint-ceilings rc 1, source-constants rc 1, all others rc 0.
+- Every run of a minute or longer is in RUNS.md, marked done.
+
+### Files the lead must run on the merged tree
+1. Regenerate `build/generated_src`, because the API references gain two keys. Then run M's `api-reference-agreement.test.js`.
+2. tests_scripts:
+   - `test_buildgen_error_contract.py`, after pasting the row.
+   - `test_api_reference.py`, `test_buildgen_definitions.py`.
+   - `test_digital_twin_generated_boot.py`, in netns.
+   - `test_tunables_register.py`, after X writes the Part N row.
+   - The whole tests_scripts tier.
+3. MicroPython at both GC stages: `test_asy_webserver_service.py` and the six `test_sensortask_<device>.py` (the shared scenario changed), plus the D1 files api_response, base_classes and system_service.
+4. tests_js: `definitions.test.js`, `source-constants.test.js`, `definitions-shape-corpus.test.js`, `lint-ceilings.test.js`. Then, after T, C, S and M: `mock-data-compose`, `definitions-mockdata-coverage`, `render`, `templates`, `main`.
+
+### Silent-failure scan findings
+1. **A raising ResetErrors source** (class 4 and 7; mode "a raising ResetErrors source"). Before, one raise ended `gather` at once: the other resets ran on unawaited (`extmod/asyncio/funcs.py` v1.29.0 only cancels on external cancel), the answer was a 500, and nothing was logged. **Covered by X3 (411bbb8).**
+2. **The unavailable marker** (class 7; mode "the unavailable marker"). The flat routes send it per field (`_get_settings_flat`: `result[field] = values`); `/sensors` sends it per module.
+   - The reference now states its shape (X1).
+   - Consumers must test each field's own value. **Covered by T/C rows 21.15–21.17 and 21.20, and M's rows 21.26–21.28.**
+3. **`src/asy_webserver_service.py:642`** detects the marker by the key test `"error" in values` (class 3). **New, low.** It is inherently safe today: no tagged schema field is named `error` (checked with git grep).
+   - Proposed smallest fix: the generator refuses a tagged field named `error`.
+   - Not done at U23, because no step owns the line. To park in the register.
+4. **UnixTime null before sync** (class 4; mode "device reboot"). Inherently safe: rp2's RTC starts at its reset epoch, so the value is gated on the first sync. **Covered by rows 2 and 7.**
+5. **A non-JSON 404** (class 7; mode "failing GET episode"). HEAD's `request()` parses the body before checking ok, so a non-JSON 404 reads as "invalid JSON". Reported to S at D1. **Covered if row 21.10 checks ok first; otherwise new.**
+6. **Loader stalled body read:** covered by S (M.WEB.002).
+7. **ContMeas has no GET value** (always-executed toggle): the unset display is T's (row 21.15).
+
+Key paths:
+- worktree: `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d`
+- evidence and timings: `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/laneD/` (`batch/results.tsv`, `ab_summary.tsv`, `final3_*`, `final5_*`, `seen_failing_*`)

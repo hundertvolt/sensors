@@ -1,0 +1,76 @@
+def test_overlay_write_deferred_while_ramp_holds_the_overlay_lock() -> None:
+    import gc
+    import time as _t
+
+    driver = _make_driver(led_overl_bri=99)
+    pix = _pixel(driver)
+    rec_w = []
+    rec_s = []
+    marks = {}
+    base = [_t.ticks_us()]
+
+    def stamp():
+        return _t.ticks_diff(_t.ticks_us(), base[0])
+
+    real_write = pix.write
+
+    def write():
+        real_write()
+        rec_w.append((stamp(), pix.writes[-1][0]))
+
+    pix.write = write
+
+    class _ProbeAsyncio:
+        Event = asyncio.Event
+        Lock = asyncio.Lock
+        ThreadSafeFlag = asyncio.ThreadSafeFlag
+        CancelledError = asyncio.CancelledError
+        TimeoutError = asyncio.TimeoutError
+        get_event_loop = staticmethod(asyncio.get_event_loop)
+        wait_for_ms = staticmethod(asyncio.wait_for_ms)
+
+        @staticmethod
+        async def sleep_ms(ms):
+            a = stamp()
+            await asyncio.sleep_ms(ms)
+            rec_s.append((a, ms, stamp() - a - ms * 1000))
+
+    async def scenario():
+        tasks = await _start_all_tasks(driver)
+        asy_neopixel_driver.asyncio = _ProbeAsyncio
+        base[0] = _t.ticks_us()
+        ramp = asyncio.create_task(driver.request_signal(10, 0, 0, 0.1))
+        await asyncio.sleep(0.02)
+        marks["mid"] = stamp()
+        locked = driver._overlay_lock.locked()
+        driver.on()
+        await asyncio.sleep(0)
+        early = (99, 99, 99) in [w[0] for w in pix.writes]
+        marks["s2"] = stamp()
+        await asyncio.sleep(0.2)
+        marks["check"] = stamp()
+        await ramp
+        await cancel_all(tasks, settle_yields=1)
+        return locked, early
+
+    locked = early = None
+    try:
+        locked, early = run(scenario())
+    finally:
+        asy_neopixel_driver.asyncio = asyncio
+        ok = pix.writes[-1][0] == (99, 99, 99)
+        ramp_ws = [w for w in rec_w if w[1][0] > 0 and w[1][1] == 0]
+        first_red = ramp_ws[0][0] if ramp_ws else None
+        last_red_i = max(i for i, w in enumerate(rec_w) if w[1][0] > 0 and w[1][1] == 0) if ramp_ws else None
+        ramp_end = rec_w[last_red_i + 2][0] if last_red_i is not None and len(rec_w) > last_red_i + 2 else None
+        restore = [w[0] for w in rec_w if w[1] == (99, 99, 99)]
+        late = [s[2] for s in rec_s]
+        deadline = marks.get("s2", 0) + 200000
+        print("PROBE thr=%d ok=%s locked=%s early=%s first_red=%s ramp_end=%s restore=%s s2=%s check=%s margin_us=%s sum_late_us=%d max_late_us=%d late_us=%s writes=%d" % (
+            gc.threshold(), ok, locked, early, first_red, ramp_end, restore[0] if restore else None, marks.get("s2"), marks.get("check"),
+            (deadline - ramp_end) if ramp_end is not None else None, sum(late), max(late) if late else 0, late, len(rec_w)))
+    assert locked is True
+    assert early is False
+    assert pix.writes[-1][0] == (99, 99, 99)
+
+

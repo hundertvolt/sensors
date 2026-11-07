@@ -1,0 +1,12 @@
+FAIL test_a_backup_write_cut_after_every_transaction_restores_the_old_or_the_new_backup:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_fram_crash_points.py", line 214, in test_a_backup_write_cut_after_every_transaction_restores_the_old_or_the_new_backup
+AssertionError: cut after 37 of 80: restored None with set()
+FAIL test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_history:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_fram_crash_points.py", line 176, in test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_history
+AssertionError: cut after 37 of 80: restored (0, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) with set(), neither the old (1, (0, 0, 0, 0, 0, 0, 0, 0, 0, 125)) nor the new (2, (0, 0, 0, 0, 0, 0, 0, 0, 125, 126))
+PASS test_an_erase_cut_inside_its_blanking_pass_or_its_first_and_last_units_restores_each_ring_or_blanks_it
+1/3 passed, 2 failed, 0 skipped

@@ -1,0 +1,29 @@
+{
+    // Shared by both tsc passes: strict plus every further check TypeScript offers, each verified clean before it was
+    // switched on (mypy --strict's mirror); the passes differ only in lib, types and files. Off: isolatedDeclarations
+    // (it needs declaration emit, which allowJs excludes) and noPropertyAccessFromIndexSignature (ESLint's dot-notation).
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ES2022",
+        "moduleResolution": "bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "noEmit": true,
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "erasableSyntaxOnly": true,
+        // skipLibCheck covers third-party node_modules declarations only (vitest's and playwright's fail checking: Node
+        // types in a browser file, and more); the project's own declarations are a checked .ts file.
+        "skipLibCheck": true
+    }
+}

@@ -1,0 +1,3 @@
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/laneG/of187/test_bite_slope.py", line 553, in test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+AssertionError: 72 B retained per supervised death: [756224, 755008, 754752, 754816, 754912, 754976, 755040, 755104, 755232, 755296]
+0/1 passed, 1 failed, 0 skipped

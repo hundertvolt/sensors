@@ -1,0 +1,15 @@
+.F.................                                                      [100%]
+=================================== FAILURES ===================================
+___________ test_every_not_yet_cleaned_entry_still_carries_a_literal ___________
+
+    def test_every_not_yet_cleaned_entry_still_carries_a_literal() -> None:
+        found = collect_findings()
+        stale = sorted(path for path in _NOT_YET_CLEANED if path not in found)
+>       assert not stale, f"these files are clean now - remove their _NOT_YET_CLEANED entries: {stale}"
+E       AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['scripts/test.sh']
+E       assert not ['scripts/test.sh']
+
+tests_scripts/test_no_variant_literals.py:124: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal
+1 failed, 18 passed in 10.77s

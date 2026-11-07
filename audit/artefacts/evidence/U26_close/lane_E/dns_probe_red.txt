@@ -1,0 +1,12 @@
+E       AttributeError: module 'dns_probe_under_test' has no attribute 'answer_count'
+
+tests_scripts/test_dns_probe.py:46: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_dns_probe.py::test_build_query_packs_the_asked_qtype_and_qclass_in[1]
+FAILED tests_scripts/test_dns_probe.py::test_build_query_packs_the_asked_qtype_and_qclass_in[28]
+FAILED tests_scripts/test_dns_probe.py::test_build_query_packs_the_asked_qtype_and_qclass_in[255]
+FAILED tests_scripts/test_dns_probe.py::test_answer_count_reads_ancount_and_is_none_on_a_short_packet[\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00-2]
+FAILED tests_scripts/test_dns_probe.py::test_answer_count_reads_ancount_and_is_none_on_a_short_packet[\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00-0]
+FAILED tests_scripts/test_dns_probe.py::test_answer_count_reads_ancount_and_is_none_on_a_short_packet[\x00\x00\x00\x00\x00\x00\x00-None]
+FAILED tests_scripts/test_dns_probe.py::test_answer_count_reads_ancount_and_is_none_on_a_short_packet[-None]
+7 failed, 1 passed in 0.10s

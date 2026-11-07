@@ -1,0 +1,412 @@
+..........................................FFF..FFFFFFFFFFFF..........FFF [ 18%]
+FFFFFFFFF.............F.....FFFFFFF......FFFFFF......................... [ 36%]
+........FFFFFFF.F.......FFF...........FFF..FFF.......................... [ 54%]
+....FFF.FFF.......................................................FF...F [ 73%]
+FFFFFFFFFFFFFFF..........FFFFFFFFF.FFFFFFFFFFF..FFFF...........F........ [ 91%]
+.................................                                        [100%]
+=================================== FAILURES ===================================
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:249: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:249: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:249: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:266: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:266: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:280: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:289: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:289: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:289: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:289: Failed: DID NOT RAISE BuildError
+E   AttributeError: 'int' object has no attribute 'items'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:780: AttributeError: 'int' object has no attribute 'items'
+E   AttributeError: 'str' object has no attribute 'items'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:780: AttributeError: 'str' object has no attribute 'items'
+E   AttributeError: 'list' object has no attribute 'items'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:780: AttributeError: 'list' object has no attribute 'items'
+E   buildgen.errors.BuildError: [fixture.hostname] [device].hostname is 33 characters - network.hostname() caps at 32, so [device].name may be at most 19
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:162: buildgen.errors.BuildError: [fixture.hostname] [device].hostname is 33 characters - network.hostname() caps at 32, so [device].name may be at most 19
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:327: Failed: DID NOT RAISE BuildError
+E   buildgen.errors.BuildError: [fixture/bus.i2c1.sda_pin] bus.i2c1.sda_pin=GP22 has no I2C function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.i2c1.sda_pin] bus.i2c1.sda_pin=GP22 has no I2C function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.i2c0.sda_pin] bus.i2c0.sda_pin=GP28 has no I2C function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.i2c0.sda_pin] bus.i2c0.sda_pin=GP28 has no I2C function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.spi0.miso_pin] bus.spi0.miso_pin=GP20 has no SPI function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.spi0.miso_pin] bus.spi0.miso_pin=GP20 has no SPI function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.spi0.sck_pin] bus.spi0.sck_pin=GP22 has no SPI function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.spi0.sck_pin] bus.spi0.sck_pin=GP22 has no SPI function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.spi1.sck_pin] bus.spi1.sck_pin=GP26 has no SPI function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.spi1.sck_pin] bus.spi1.sck_pin=GP26 has no SPI function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.spi1.sck_pin] bus.spi1.sck_pin=GP26 has no SPI function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.spi1.sck_pin] bus.spi1.sck_pin=GP26 has no SPI function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.spi1.sck_pin] bus.spi1.sck_pin=GP26 has no SPI function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.spi1.sck_pin] bus.spi1.sck_pin=GP26 has no SPI function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.uart1.tx_pin] bus.uart1.tx_pin=GP20 has no UART function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.uart1.tx_pin] bus.uart1.tx_pin=GP20 has no UART function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.uart1.tx_pin] bus.uart1.tx_pin=GP20 has no UART function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.uart1.tx_pin] bus.uart1.tx_pin=GP20 has no UART function on the Pico W
+E   buildgen.errors.BuildError: [fixture/bus.uart0.tx_pin] bus.uart0.tx_pin=GP28 has no UART function on the Pico W
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:577: buildgen.errors.BuildError: [fixture/bus.uart0.tx_pin] bus.uart0.tx_pin=GP28 has no UART function on the Pico W
+E   AssertionError: 1
+    assert ('spi0', 'csn') == None
+     +  where ('spi0', 'csn') = <built-in method get of dict object at 0x7f355d868ac0>(1)
+     +    where <built-in method get of dict object at 0x7f355d868ac0> = {0: ('spi0', 'miso'), 1: ('spi0', 'csn'), 2: ('spi0', 'sck'), 3: ('spi0', 'mosi'), ...}.get
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:484: AssertionError: 1
+E   AssertionError: Regex pattern did not match.
+      Expected regex: 'bus\\.spi0\\.miso_pin=GP1 has no SPI bus-wire function'
+      Actual message: "[fixture/bus.spi0.miso_pin] bus.spi0.miso_pin=GP1 is spi0's CSN pin, not its MISO pin - pins transposed?"
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:494: AssertionError: Regex pattern did not match.
+E   AssertionError: Regex pattern did not match.
+      Expected regex: 'has no entry in buildgen\\.buildspec.*\\(SPECIFICATION\\.md L\\.6\\.6\\)'
+      Actual message: "[bogus2dev/bogus2] bogus2: driver 'bogus2' resolves via buildgen.driver_registry but has no entry in buildgen.buildspec's REQUIRED_TOML_FIELDS/ALLOWED_INSTANCE_FIELDS - a new driver needs a buildspec.py entry added by hand (see buildspec.py's own module docstring)"
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:579: AssertionError: Regex pattern did not match.
+E   AssertionError: assert (None, 'trigger_sec') == ('instance.fi...'trigger_sec')
+      
+      At index 0 diff: None != 'instance.field-unknown'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:626: AssertionError: assert (None, 'trigger_sec') == ('instance.fi...'trigger_sec')
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:634: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:634: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:648: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:648: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:648: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:648: Failed: DID NOT RAISE BuildError
+E   AssertionError: assert (None, 'timeout') == ('bus.i2c-tim...x', 'timeout')
+      
+      At index 0 diff: None != 'bus.i2c-timeout-max'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:705: AssertionError: assert (None, 'timeout') == ('bus.i2c-tim...x', 'timeout')
+E   AssertionError: assert (None, 'timeout') == ('bus.i2c-tim...e', 'timeout')
+      
+      At index 0 diff: None != 'bus.i2c-timeout-range'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:713: AssertionError: assert (None, 'timeout') == ('bus.i2c-tim...e', 'timeout')
+E   AssertionError: assert (None, 'timeout') == ('bus.i2c-tim...e', 'timeout')
+      
+      At index 0 diff: None != 'bus.i2c-timeout-range'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:713: AssertionError: assert (None, 'timeout') == ('bus.i2c-tim...e', 'timeout')
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:721: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:721: Failed: DID NOT RAISE BuildError
+E   AssertionError: Regex pattern did not match.
+      Expected regex: 'bus\\.i2c1 \\(i2c\\) frequency 1000001 Hz'
+      Actual message: "[fixture/sgp40.frequency] bus.i2c1.frequency=1000001 does not satisfy sgp40's requirement '# @requires bus.frequency<=400000'"
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:721: AssertionError: Regex pattern did not match.
+E   TypeError: _check_instance_name_collisions() takes 1 positional argument but 2 were given
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:888: TypeError: _check_instance_name_collisions() takes 1 positional argument but 2 were given
+E   TypeError: _check_instance_name_collisions() takes 1 positional argument but 2 were given
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:902: TypeError: _check_instance_name_collisions() takes 1 positional argument but 2 were given
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:911: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:911: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:911: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:911: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:921: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:937: Failed: DID NOT RAISE BuildError
+E   buildgen.errors.BuildError: [dev/notification.signal_sink] internal: target.driver_info unresolved by wiring-reference-check time
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:655: buildgen.errors.BuildError: [dev/notification.signal_sink] internal: target.driver_info unresolved by wiring-reference-check time
+E   buildgen.errors.BuildError: [dev/sgp40.temperature_source] internal: driver_info unresolved by default-provider-check time
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:685: buildgen.errors.BuildError: [dev/sgp40.temperature_source] internal: driver_info unresolved by default-provider-check time
+E   buildgen.errors.BuildError: [dev/sgp40.temperature_source] internal: default-selection check reached with a non-table wiring value
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/buildgen/validate.py:724: buildgen.errors.BuildError: [dev/sgp40.temperature_source] internal: default-selection check reached with a non-table wiring value
+E   AssertionError: assert (None, None) == ('instance.fi...f [118, 119]')
+      
+      At index 0 diff: None != 'instance.field-not-in-set'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1142: AssertionError: assert (None, None) == ('instance.fi...f [118, 119]')
+E   AssertionError: assert (None, None) == ('instance.fi...f [118, 119]')
+      
+      At index 0 diff: None != 'instance.field-not-in-set'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1142: AssertionError: assert (None, None) == ('instance.fi...f [118, 119]')
+E   AssertionError: assert (None, None) == ('instance.fi...f [118, 119]')
+      
+      At index 0 diff: None != 'instance.field-not-in-set'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1142: AssertionError: assert (None, None) == ('instance.fi...f [118, 119]')
+E   AssertionError: assert (None, None) == ('instance.fi...thin 1..3600')
+      
+      At index 0 diff: None != 'instance.field-out-of-range'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1158: AssertionError: assert (None, None) == ('instance.fi...thin 1..3600')
+E   AssertionError: assert (None, None) == ('instance.fi...thin 1..3600')
+      
+      At index 0 diff: None != 'instance.field-out-of-range'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1158: AssertionError: assert (None, None) == ('instance.fi...thin 1..3600')
+E   AssertionError: assert (None, None) == ('instance.fi...thin 1..3600')
+      
+      At index 0 diff: None != 'instance.field-out-of-range'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1158: AssertionError: assert (None, None) == ('instance.fi...thin 1..3600')
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1339: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1348: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1357: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1373: Failed: DID NOT RAISE BuildError
+E   AssertionError: assert {} == {'conn': ['fr...fram_target']}
+      
+      Right contains 4 more items:
+      {'conn': ['fram_target', 'led_target'],
+       'ntp': ['fram_target'],
+       'sysfunct': ['fram_target'],
+       'webserver': ['fram_target']}
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1381: AssertionError: assert {} == {'conn': ['fr...fram_target']}
+E   assert None == 'wiring.default-key-missing'
+     +  where None = BuildError("[fixture/sgp40.temperature_source] sgp40's wiring.temperature_source default sub-table is missing required key(s) ['temperature'] for _DefaultTemperatureSource").rule
+     +    where BuildError("[fixture/sgp40.temperature_source] sgp40's wiring.temperature_source default sub-table is missing required key(s) ['temperature'] for _DefaultTemperatureSource") = <ExceptionInfo BuildError("[fixture/sgp40.temperature_source] sgp40's wiring.temperature_source default sub-table is missing required key(s) ['temperature'] for _DefaultTemperatureSource") tblen=6>.value
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1394: assert None == 'wiring.default-key-missing'
+E   AssertionError: assert (None, 'poll_...rt_link_resp') == ('bus.uart-ti...rt_link_resp')
+      
+      At index 0 diff: None != 'bus.uart-timeout-floor'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1777: AssertionError: assert (None, 'poll_...rt_link_resp') == ('bus.uart-ti...rt_link_resp')
+E   AssertionError: assert (None, 'rxbuf...rt_link_init') == ('bus.uart-rx...rt_link_init')
+      
+      At index 0 diff: None != 'bus.uart-rxbuf-floor'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1788: AssertionError: assert (None, 'rxbuf...rt_link_init') == ('bus.uart-rx...rt_link_init')
+E   AssertionError: assert (None, 'baudr...rt_link_resp') == ('instance.ua...rt_link_resp')
+      
+      At index 0 diff: None != 'instance.uart-baud-mismatch'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1834: AssertionError: assert (None, 'baudr...rt_link_resp') == ('instance.ua...rt_link_resp')
+E   AssertionError: assert (None, 'poll_...rt_link_init') == ('bus.uart-po...rt_link_init')
+      
+      At index 0 diff: None != 'bus.uart-poll-wait-range'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1848: AssertionError: assert (None, 'poll_...rt_link_init') == ('bus.uart-po...rt_link_init')
+E   AssertionError: assert (None, 'poll_...rt_link_init') == ('bus.uart-po...rt_link_init')
+      
+      At index 0 diff: None != 'bus.uart-poll-wait-range'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1848: AssertionError: assert (None, 'poll_...rt_link_init') == ('bus.uart-po...rt_link_init')
+E   AssertionError: assert (None, 'uart_link_init') == ('instance.ua...rt_link_init')
+      
+      At index 0 diff: None != 'instance.uart-timeout-max'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1860: AssertionError: assert (None, 'uart_link_init') == ('instance.ua...rt_link_init')
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1869: Failed: DID NOT RAISE BuildError
+E   AssertionError: Regex pattern did not match.
+      Expected regex: 'bus\\.uart1: poll_idle_ms 536870912 is outside 2 … 536870911'
+      Actual message: "[fixture/uart_link_resp.poll_idle_ms] bus.uart1: uart_link_resp's 1000ms reply timeout is below the 536870937ms its polls need (2 x poll_wait_ms 2 + poll_idle_ms 536870912 + 21ms GC pause) - every request would time out on a sound link (Part J.6)"
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1869: AssertionError: Regex pattern did not match.
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1881: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1881: Failed: DID NOT RAISE BuildError
+E   AssertionError: Regex pattern did not match.
+      Expected regex: 'bus\\.uart0 \\(uart\\) baudrate 7812501'
+      Actual message: '[fixture/uart_link_init.rxbuf] bus.uart0: rxbuf 512 is below the 5468 bytes uart_link_init needs (one 53-byte frame, or baudrate 7812501 over poll_wait_ms 2 + 5ms jitter, whichever is larger)'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1881: AssertionError: Regex pattern did not match.
+E   AssertionError: Regex pattern did not match.
+      Expected regex: 'bus\\.uart0 \\(uart\\) rxbuf 31'
+      Actual message: '[fixture/uart_link_init.rxbuf] bus.uart0: rxbuf 31 is below the 80 bytes uart_link_init needs (one 53-byte frame, or baudrate 115200 over poll_wait_ms 2 + 5ms jitter, whichever is larger)'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1892: AssertionError: Regex pattern did not match.
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1892: Failed: DID NOT RAISE BuildError
+E   AssertionError: Regex pattern did not match.
+      Expected regex: 'bus\\.uart0 \\(uart\\) rxbuf 0'
+      Actual message: '[fixture/uart_link_init.rxbuf] bus.uart0: rxbuf 0 is below the 80 bytes uart_link_init needs (one 53-byte frame, or baudrate 115200 over poll_wait_ms 2 + 5ms jitter, whichever is larger)'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1892: AssertionError: Regex pattern did not match.
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1892: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1892: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1892: Failed: DID NOT RAISE BuildError
+E   AssertionError: assert None == 'bus.uart-rxbuf-floor'
+     +  where None = BuildError('[fixture/uart_link_init.rxbuf] bus.uart0: rxbuf 32 is below the 80 bytes uart_link_init needs (one 53-byte frame, or baudrate 115200 over poll_wait_ms 2 + 5ms jitter, whichever is larger)').rule
+     +    where BuildError('[fixture/uart_link_init.rxbuf] bus.uart0: rxbuf 32 is below the 80 bytes uart_link_init needs (one 53-byte frame, or baudrate 115200 over poll_wait_ms 2 + 5ms jitter, whichever is larger)') = <ExceptionInfo BuildError('[fixture/uart_link_init.rxbuf] bus.uart0: rxbuf 32 is below the 80 bytes uart_link_init needs (one 53-byte frame, or baudrate 115200 over poll_wait_ms 2 + 5ms jitter, whichever is larger)') tblen=4>.value
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:1907: AssertionError: assert None == 'bus.uart-rxbuf-floor'
+E   assert None == 'instance.uart-link-pair'
+     +  where None = BuildError("[fixture] a device wires exactly one uart_link initiator and one responder (RP2040 has only two UART peripherals) - found 0 initiator(s) [] and 1 responder(s) ['uart_link_resp']").rule
+     +    where BuildError("[fixture] a device wires exactly one uart_link initiator and one responder (RP2040 has only two UART peripherals) - found 0 initiator(s) [] and 1 responder(s) ['uart_link_resp']") = <ExceptionInfo BuildError("[fixture] a device wires exactly one uart_link initiator and one responder (RP2040 has only two UART peripherals) - found 0 initiator(s) [] and 1 responder(s) ['uart_link_resp']") tblen=4>.value
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2005: assert None == 'instance.uart-link-pair'
+E   AssertionError: Regex pattern did not match.
+      Expected regex: "bus\\.uart0 is claimed by both 'uart_link_init' and 'uart_link_resp' - a UART is point-to-point"
+      Actual message: "[fixture/uart_link_resp] bus 'uart0': ['uart_link_init', 'uart_link_resp'] are all 'uart_link'-family instances with no address field - their hardware address is fixed, so they can't be told apart on the same bus"
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2013: AssertionError: Regex pattern did not match.
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2022: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2022: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2022: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2022: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2022: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2031: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2047: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2082: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2082: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2082: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2089: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2089: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2096: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2106: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2114: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2126: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2126: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2126: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2143: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2143: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2143: Failed: DID NOT RAISE BuildError
+E   Failed: DID NOT RAISE BuildError
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2150: Failed: DID NOT RAISE BuildError
+E   AssertionError: Regex pattern did not match.
+      Expected regex: 'bus\\.uart0\\.tx_pin=GP7 has no UART bus-wire function'
+      Actual message: '[fixture/bus.uart0.tx_pin] bus.uart0.tx_pin=GP7 has no UART function on the Pico W'
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20v/tests_scripts/test_buildgen_validate.py:2222: AssertionError: Regex pattern did not match.
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hotspot_time_outside_its_timer_range_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hotspot_time_outside_its_timer_range_is_rejected[-1]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hotspot_time_outside_its_timer_range_is_rejected[35792]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hotspot_failure_count_below_one_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hotspot_failure_count_below_one_is_rejected[-3]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_ntp_retry_cap_past_the_small_int_range_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hardware_family_that_is_no_non_empty_string_is_rejected[]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hardware_family_that_is_no_non_empty_string_is_rejected[5]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hardware_family_that_is_no_non_empty_string_is_rejected[family2]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_hardware_family_that_is_no_non_empty_string_is_rejected[True]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_device_wiring_that_is_not_a_table_is_rejected[1]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_device_wiring_that_is_not_a_table_is_rejected[fram]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_device_wiring_that_is_not_a_table_is_rejected[value2]
+FAILED tests_scripts/test_buildgen_validate.py::test_the_hostname_and_password_bounds_come_from_the_wifi_schemas
+FAILED tests_scripts/test_buildgen_validate.py::test_the_ntp_check_tick_comes_from_the_ntp_client
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[i2c1-sda_pin-22-pins0]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[i2c0-sda_pin-28-pins1]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[spi0-miso_pin-20-pins2]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[spi0-sck_pin-22-pins3]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[spi1-sck_pin-26-pins4]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[spi1-mosi_pin-27-pins5]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[spi1-miso_pin-28-pins6]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[uart1-tx_pin-20-pins7]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[uart1-rx_pin-21-pins8]
+FAILED tests_scripts/test_buildgen_validate.py::test_newly_legal_pin_is_accepted[uart0-tx_pin-28-pins9]
+FAILED tests_scripts/test_buildgen_validate.py::test_pin_table_agrees_with_micropython_pin_macros
+FAILED tests_scripts/test_buildgen_validate.py::test_an_spi_chip_select_gpio_is_no_bus_wire_pin
+FAILED tests_scripts/test_buildgen_validate.py::test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause
+FAILED tests_scripts/test_buildgen_validate.py::test_a_trigger_sec_key_is_refused_as_unknown
+FAILED tests_scripts/test_buildgen_validate.py::test_a_non_singleton_instance_without_name_ext_is_rejected[scd30]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_non_singleton_instance_without_name_ext_is_rejected[sgp40]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_irq_pull_up_that_is_no_bool_is_rejected[yes]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_irq_pull_up_that_is_no_bool_is_rejected[false]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_irq_pull_up_that_is_no_bool_is_rejected[1]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_irq_pull_up_that_is_no_bool_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_bus_timeout_above_the_bound_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_bus_timeout_not_positive_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_bus_timeout_not_positive_is_rejected[-1]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_i2c_frequency_outside_the_silicon_range_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_i2c_frequency_outside_the_silicon_range_is_rejected[-1]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_i2c_frequency_outside_the_silicon_range_is_rejected[1000001]
+FAILED tests_scripts/test_buildgen_validate.py::test_instance_name_collision_via_distinct_drivers_same_resolved_name
+FAILED tests_scripts/test_buildgen_validate.py::test_instance_name_collision_check_fails_loud_if_resolved_name_still_unset
+FAILED tests_scripts/test_buildgen_validate.py::test_a_driver_named_like_another_logger_is_a_collision[NTP-the mandatory NTP module]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_driver_named_like_another_logger_is_a_collision[DNSSRV-the mandatory DNSSRV module]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_driver_named_like_another_logger_is_a_collision[CFGMGR_SCD30-scd30's config store]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_driver_named_like_another_logger_is_a_collision[CFGMGR_WIFI-the mandatory WIFI module's config store]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_config_store_logger_colliding_with_a_driver_name_is_named
+FAILED tests_scripts/test_buildgen_validate.py::test_a_settings_group_repeating_a_key_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_wiring_reference_check_fails_loud_if_target_driver_info_still_unset
+FAILED tests_scripts/test_buildgen_validate.py::test_default_provider_params_check_fails_loud_if_driver_info_still_unset
+FAILED tests_scripts/test_buildgen_validate.py::test_default_value_selection_check_fails_loud_for_a_non_table_wiring_value
+FAILED tests_scripts/test_buildgen_validate.py::test_bmp3xx_address_outside_legal_set_rejected[80]
+FAILED tests_scripts/test_buildgen_validate.py::test_bmp3xx_address_outside_legal_set_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_bmp3xx_address_outside_legal_set_rejected[120]
+FAILED tests_scripts/test_buildgen_validate.py::test_bmp3xx_trigger_s_outside_legal_range_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_bmp3xx_trigger_s_outside_legal_range_rejected[3601]
+FAILED tests_scripts/test_buildgen_validate.py::test_bmp3xx_trigger_s_outside_legal_range_rejected[-1]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_warn_signal_off_the_notification_instance_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_an_unknown_warn_signal_is_refused_at_validation
+FAILED tests_scripts/test_buildgen_validate.py::test_a_source_field_its_producer_lacks_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_a_producer_whose_result_is_no_namedtuple_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_device_wiring_is_recorded_per_consumer
+FAILED tests_scripts/test_buildgen_validate.py::test_a_required_keyword_only_default_parameter_is_enforced
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_rxbuf_below_one_polls_arrivals_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_pair_whose_baud_rates_differ_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_poll_wait_ms_outside_one_to_nine_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_poll_wait_ms_outside_one_to_nine_is_rejected[10]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_link_timeout_above_the_ticks_horizon_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_idle_poll_outside_its_range_is_rejected[1]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_idle_poll_outside_its_range_is_rejected[536870912]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_baudrate_outside_the_silicon_range_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_baudrate_outside_the_silicon_range_is_rejected[-9600]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_baudrate_outside_the_silicon_range_is_rejected[7812501]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_buffer_outside_the_port_range_is_rejected[31-rxbuf]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_buffer_outside_the_port_range_is_rejected[31-txbuf]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_buffer_outside_the_port_range_is_rejected[0-rxbuf]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_buffer_outside_the_port_range_is_rejected[0-txbuf]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_buffer_outside_the_port_range_is_rejected[32767-rxbuf]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_buffer_outside_the_port_range_is_rejected[32767-txbuf]
+FAILED tests_scripts/test_buildgen_validate.py::test_the_uart_buffer_edges_pass_the_range_check
+FAILED tests_scripts/test_buildgen_validate.py::test_uart_link_responder_with_no_initiator_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_uart_link_pair_on_one_bus_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_crc_mode_outside_the_legal_set_is_rejected[crc8]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_crc_mode_outside_the_legal_set_is_rejected[16]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_crc_mode_outside_the_legal_set_is_rejected[CRC16]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_crc_mode_outside_the_legal_set_is_rejected[crc3]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_crc_mode_outside_the_legal_set_is_rejected[crc4]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_pair_whose_crc_modes_differ_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_the_crc_trailer_counts_in_the_rxbuf_floor
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_rx_ring_that_is_no_power_of_two_is_rejected[768]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_rx_ring_that_is_no_power_of_two_is_rejected[8191]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_rx_ring_that_is_no_power_of_two_is_rejected[3]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_rx_ring_outside_the_dma_ring_sizes_is_rejected[65536]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_rx_ring_outside_the_dma_ring_sizes_is_rejected[1]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_rx_ring_below_its_floor_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_the_rx_ring_floor_follows_the_flash_hold_read_from_source
+FAILED tests_scripts/test_buildgen_validate.py::test_an_unstated_rx_ring_is_read_from_the_driver_source
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_transfer_cap_outside_its_range_is_rejected[47]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_transfer_cap_outside_its_range_is_rejected[12193]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_transfer_cap_outside_its_range_is_rejected[0]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_transfer_cap_must_be_an_int[12192]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_transfer_cap_must_be_an_int[12192.0]
+FAILED tests_scripts/test_buildgen_validate.py::test_a_uart_transfer_cap_must_be_an_int[True]
+FAILED tests_scripts/test_buildgen_validate.py::test_an_unstated_transfer_cap_is_read_from_the_protocol_source
+FAILED tests_scripts/test_buildgen_validate.py::test_uart_pin_with_no_uart_function_rejected
+107 failed, 286 passed in 44.79s

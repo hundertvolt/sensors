@@ -1,0 +1,14 @@
+browser 153.0.8010.12
+  connection 1 at 193 ms
+goto: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ url about:blank at 202 ms
+after 8 s: url chrome-error://chromewebdata/, connections 1
+close after one reset: settled (7 ms), connections 1
+context.close: settled
+rc=0
+browser 141.0.7390.37
+  connection 1 at 163 ms
+goto: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ url about:blank at 168 ms
+after 8 s: url chrome-error://chromewebdata/, connections 1
+close after one reset: settled (6 ms), connections 1
+context.close: settled
+rc=0

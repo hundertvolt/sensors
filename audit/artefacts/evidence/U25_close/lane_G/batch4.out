@@ -1,0 +1,10 @@
+bite bh_pause rc=1 :: 0/1 passed, 1 failed, 0 skipped
+FAIL test_a_timed_storage_pause_ends_by_itself_on_the_next_uptime_pass:
+bite bh_erase rc=0 :: 1/1 passed, 0 failed, 0 skipped
+bite bh_scd30 rc=1 :: 0/1 passed, 1 failed, 0 skipped
+FAIL test_no_scd30_write_reaches_the_chip_while_a_system_command_runs:
+bite bh_gc rc=1 :: 0/1 passed, 1 failed, 0 skipped
+FAIL test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call:
+test_digital_twin_fram_crash_points.-1 rc=0 wall=32.29 mem=0 :: 3/3 passed, 0 failed, 0 skipped
+test_digital_twin_fram_crash_points.32768 rc=0 wall=53.84 mem=0 :: 3/3 passed, 0 failed, 0 skipped
+BATCH-DONE

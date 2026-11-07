@@ -1,0 +1,310 @@
+FFFFFFFFFFFFFFFFFF                                                       [100%]
+=================================== FAILURES ===================================
+_ test_the_notification_status_publishes_why_its_signals_were_not_evaluated[arzi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
+        # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
+        source = _module_source(device_toml(device), src_dir, repo_root / "ext")
+        status = _section(_generate(repo_root, src_dir, device), "status")
+        group = next((g for g in _groups(status) if g["key"] == "notificationX"), None)
+>       assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
+E       AssertionError: arzi declares a notification, yet its status lists no notification group
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:344: AssertionError
+_ test_the_notification_status_publishes_why_its_signals_were_not_evaluated[dev] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
+        # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
+        source = _module_source(device_toml(device), src_dir, repo_root / "ext")
+        status = _section(_generate(repo_root, src_dir, device), "status")
+        group = next((g for g in _groups(status) if g["key"] == "notificationX"), None)
+>       assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
+E       AssertionError: dev declares a notification, yet its status lists no notification group
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:344: AssertionError
+_ test_the_notification_status_publishes_why_its_signals_were_not_evaluated[grkizi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
+        # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
+        source = _module_source(device_toml(device), src_dir, repo_root / "ext")
+        status = _section(_generate(repo_root, src_dir, device), "status")
+        group = next((g for g in _groups(status) if g["key"] == "notificationX"), None)
+>       assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
+E       AssertionError: grkizi declares a notification, yet its status lists no notification group
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:344: AssertionError
+_ test_the_notification_status_publishes_why_its_signals_were_not_evaluated[klkizi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
+        # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
+        source = _module_source(device_toml(device), src_dir, repo_root / "ext")
+        status = _section(_generate(repo_root, src_dir, device), "status")
+        group = next((g for g in _groups(status) if g["key"] == "notificationX"), None)
+>       assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
+E       AssertionError: klkizi declares a notification, yet its status lists no notification group
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:344: AssertionError
+_ test_the_notification_status_publishes_why_its_signals_were_not_evaluated[schlafzi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
+        # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
+        source = _module_source(device_toml(device), src_dir, repo_root / "ext")
+        status = _section(_generate(repo_root, src_dir, device), "status")
+        group = next((g for g in _groups(status) if g["key"] == "notificationX"), None)
+>       assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
+E       AssertionError: schlafzi declares a notification, yet its status lists no notification group
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:344: AssertionError
+_ test_the_notification_status_publishes_why_its_signals_were_not_evaluated[wozi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
+        # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
+        source = _module_source(device_toml(device), src_dir, repo_root / "ext")
+        status = _section(_generate(repo_root, src_dir, device), "status")
+        group = next((g for g in _groups(status) if g["key"] == "notificationX"), None)
+>       assert group is not None, f"{device} declares a notification, yet its status lists no notification group"
+E       AssertionError: wozi declares a notification, yet its status lists no notification group
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:344: AssertionError
+_ test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[arzi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+        sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
+        sections.pop("notification", None)
+>       assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
+E       AssertionError: arzi declares a notification, yet its definitions have no notification section
+E       assert 'notification' in {'measurements': {'key': 'measurements', 'label': 'Measurements', 'description': 'Live sensor readings, refreshed auto... {'key': 'system', 'label': 'System', 'rest': {'get': '/system', 'put': '/system'}, 'pollGroup': 'settings', ...}, ...}
+
+tests_scripts/test_zz_bite_defs.py:497: AssertionError
+_ test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[dev] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+        sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
+        sections.pop("notification", None)
+>       assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
+E       AssertionError: dev declares a notification, yet its definitions have no notification section
+E       assert 'notification' in {'measurements': {'key': 'measurements', 'label': 'Measurements', 'description': 'Live sensor readings, refreshed auto... {'key': 'system', 'label': 'System', 'rest': {'get': '/system', 'put': '/system'}, 'pollGroup': 'settings', ...}, ...}
+
+tests_scripts/test_zz_bite_defs.py:497: AssertionError
+_ test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[grkizi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+        sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
+        sections.pop("notification", None)
+>       assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
+E       AssertionError: grkizi declares a notification, yet its definitions have no notification section
+E       assert 'notification' in {'measurements': {'key': 'measurements', 'label': 'Measurements', 'description': 'Live sensor readings, refreshed auto... {'key': 'system', 'label': 'System', 'rest': {'get': '/system', 'put': '/system'}, 'pollGroup': 'settings', ...}, ...}
+
+tests_scripts/test_zz_bite_defs.py:497: AssertionError
+_ test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[klkizi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+        sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
+        sections.pop("notification", None)
+>       assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
+E       AssertionError: klkizi declares a notification, yet its definitions have no notification section
+E       assert 'notification' in {'measurements': {'key': 'measurements', 'label': 'Measurements', 'description': 'Live sensor readings, refreshed auto... {'key': 'system', 'label': 'System', 'rest': {'get': '/system', 'put': '/system'}, 'pollGroup': 'settings', ...}, ...}
+
+tests_scripts/test_zz_bite_defs.py:497: AssertionError
+_ test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[schlafzi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+        sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
+        sections.pop("notification", None)
+>       assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
+E       AssertionError: schlafzi declares a notification, yet its definitions have no notification section
+E       assert 'notification' in {'measurements': {'key': 'measurements', 'label': 'Measurements', 'description': 'Live sensor readings, refreshed auto... {'key': 'system', 'label': 'System', 'rest': {'get': '/system', 'put': '/system'}, 'pollGroup': 'settings', ...}, ...}
+
+tests_scripts/test_zz_bite_defs.py:497: AssertionError
+_ test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[wozi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+        sections = {_str(s["key"]): s for s in _sections(_generate(repo_root, src_dir, device))}
+        sections.pop("notification", None)
+>       assert "notification" in sections, f"{device} declares a notification, yet its definitions have no notification section"
+E       AssertionError: wozi declares a notification, yet its definitions have no notification section
+E       assert 'notification' in {'measurements': {'key': 'measurements', 'label': 'Measurements', 'description': 'Live sensor readings, refreshed auto... {'key': 'system', 'label': 'System', 'rest': {'get': '/system', 'put': '/system'}, 'pollGroup': 'settings', ...}, ...}
+
+tests_scripts/test_zz_bite_defs.py:497: AssertionError
+______________ test_the_warn_fields_are_the_signal_catalogs[arzi] ______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_warn_fields_are_the_signal_catalogs(repo_root: Path, src_dir: Path, device: str) -> None:
+        # Guard: each wired warn signal's threshold field carries buildgen.signals' values, in catalog order.
+        model = build_model(device_toml(device), src_dir)
+        notification = next((spec for spec in model.instances.values() if spec.driver == "notificationX"), None)
+>       assert notification is not None, f"{device} declares a notification the model does not build"
+E       AssertionError: arzi declares a notification the model does not build
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:732: AssertionError
+______________ test_the_warn_fields_are_the_signal_catalogs[dev] _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_warn_fields_are_the_signal_catalogs(repo_root: Path, src_dir: Path, device: str) -> None:
+        # Guard: each wired warn signal's threshold field carries buildgen.signals' values, in catalog order.
+        model = build_model(device_toml(device), src_dir)
+        notification = next((spec for spec in model.instances.values() if spec.driver == "notificationX"), None)
+>       assert notification is not None, f"{device} declares a notification the model does not build"
+E       AssertionError: dev declares a notification the model does not build
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:732: AssertionError
+_____________ test_the_warn_fields_are_the_signal_catalogs[grkizi] _____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_warn_fields_are_the_signal_catalogs(repo_root: Path, src_dir: Path, device: str) -> None:
+        # Guard: each wired warn signal's threshold field carries buildgen.signals' values, in catalog order.
+        model = build_model(device_toml(device), src_dir)
+        notification = next((spec for spec in model.instances.values() if spec.driver == "notificationX"), None)
+>       assert notification is not None, f"{device} declares a notification the model does not build"
+E       AssertionError: grkizi declares a notification the model does not build
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:732: AssertionError
+_____________ test_the_warn_fields_are_the_signal_catalogs[klkizi] _____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_warn_fields_are_the_signal_catalogs(repo_root: Path, src_dir: Path, device: str) -> None:
+        # Guard: each wired warn signal's threshold field carries buildgen.signals' values, in catalog order.
+        model = build_model(device_toml(device), src_dir)
+        notification = next((spec for spec in model.instances.values() if spec.driver == "notificationX"), None)
+>       assert notification is not None, f"{device} declares a notification the model does not build"
+E       AssertionError: klkizi declares a notification the model does not build
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:732: AssertionError
+____________ test_the_warn_fields_are_the_signal_catalogs[schlafzi] ____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_warn_fields_are_the_signal_catalogs(repo_root: Path, src_dir: Path, device: str) -> None:
+        # Guard: each wired warn signal's threshold field carries buildgen.signals' values, in catalog order.
+        model = build_model(device_toml(device), src_dir)
+        notification = next((spec for spec in model.instances.values() if spec.driver == "notificationX"), None)
+>       assert notification is not None, f"{device} declares a notification the model does not build"
+E       AssertionError: schlafzi declares a notification the model does not build
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:732: AssertionError
+______________ test_the_warn_fields_are_the_signal_catalogs[wozi] ______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24b/src')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", _NOTIFICATION_DEVICES)
+    def test_the_warn_fields_are_the_signal_catalogs(repo_root: Path, src_dir: Path, device: str) -> None:
+        # Guard: each wired warn signal's threshold field carries buildgen.signals' values, in catalog order.
+        model = build_model(device_toml(device), src_dir)
+        notification = next((spec for spec in model.instances.values() if spec.driver == "notificationX"), None)
+>       assert notification is not None, f"{device} declares a notification the model does not build"
+E       AssertionError: wozi declares a notification the model does not build
+E       assert None is not None
+
+tests_scripts/test_zz_bite_defs.py:732: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_publishes_why_its_signals_were_not_evaluated[arzi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_publishes_why_its_signals_were_not_evaluated[dev]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_publishes_why_its_signals_were_not_evaluated[grkizi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_publishes_why_its_signals_were_not_evaluated[klkizi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_publishes_why_its_signals_were_not_evaluated[schlafzi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_publishes_why_its_signals_were_not_evaluated[wozi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[arzi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[dev]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[grkizi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[klkizi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[schlafzi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status[wozi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_warn_fields_are_the_signal_catalogs[arzi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_warn_fields_are_the_signal_catalogs[dev]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_warn_fields_are_the_signal_catalogs[grkizi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_warn_fields_are_the_signal_catalogs[klkizi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_warn_fields_are_the_signal_catalogs[schlafzi]
+FAILED tests_scripts/test_zz_bite_defs.py::test_the_warn_fields_are_the_signal_catalogs[wozi]
+18 failed, 381 deselected in 2.54s

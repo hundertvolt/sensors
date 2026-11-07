@@ -1,0 +1,36 @@
+BMP3XX Could not start timer: [Errno 12] ENOMEM
+BMP3XX Read trigger timer not armed: [Errno 12] ENOMEM
+SYSTEM Task 1 ended: returned
+BMP3XX Could not start timer: [Errno 12] ENOMEM
+BMP3XX Read trigger timer not armed: [Errno 12] ENOMEM
+SYSTEM Task 1 ended: returned
+ISL29125 Could not start timer: [Errno 12] ENOMEM
+ISL29125 Read trigger timer not armed: [Errno 12] ENOMEM
+SYSTEM Task 1 ended: returned
+ISL29125 Could not start timer: [Errno 12] ENOMEM
+ISL29125 Read trigger timer not armed: [Errno 12] ENOMEM
+SCD30 Could not start timer: [Errno 12] ENOMEM
+SCD30 Read trigger timer not armed: [Errno 12] ENOMEM
+SYSTEM Task 1 ended: returned
+SCD30 Could not start timer: [Errno 12] ENOMEM
+SCD30 Read trigger timer not armed: [Errno 12] ENOMEM
+SGP40 Could not start timer: [Errno 12] ENOMEM
+SGP40 Read trigger timer not armed: [Errno 12] ENOMEM
+SYSTEM Task 0 ended: returned
+SGP40 Could not start timer: [Errno 12] ENOMEM
+SGP40 Read trigger timer not armed: [Errno 12] ENOMEM
+SYSTEM Task 0 ended: returned
+PASS test_a_reader_whose_trigger_cannot_arm_ends_restarts_and_reads_once_the_pool_frees
+SYSTEM Could not arm reset timer, stopping watchdog feed instead: [Errno 12] ENOMEM
+PASS test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead
+PASS test_mempause_with_the_pool_empty_answers_and_pauses
+SYSTEM Could not arm uptime timer: [Errno 12] ENOMEM
+NTP Could not start NTP timer: [Errno 12] ENOMEM
+NTP Could not arm NTP sync age timer: [Errno 12] ENOMEM
+WIFI Could not arm WiFi uptime timer: [Errno 12] ENOMEM
+NTP Could not start NTP timer: [Errno 12] ENOMEM
+NTP NTP check timer not armed
+SYSTEM Uptime timer not armed - one-second sleep instead, re-arm retried
+SYSTEM Task 1 ended: returned
+PASS test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees
+4/4 passed, 0 failed, 0 skipped

@@ -1,0 +1,8 @@
+PASS test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp
+PASS test_recovers_and_triggers_normally_after_a_prior_fault
+FAIL test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_own_log:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u22p/tests/microtest.py", line 35, in run
+  File "tests/test_notification_sgp40_integration.py", line 240, in test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_own_log
+AssertionError: 
+2/3 passed, 1 failed, 0 skipped

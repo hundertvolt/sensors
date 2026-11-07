@@ -1,0 +1,124 @@
+......F.....FF........                                                   [100%]
+=================================== FAILURES ===================================
+_________________ test_an_own_feed_outside_the_sequence_fails __________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-11656/test_an_own_feed_outside_the_s0/src')
+
+    def test_an_own_feed_outside_the_sequence_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "                    no_fail = False\n", "                    no_fail = False\n                    self._own_feed()\n")
+>       findings = src_findings(src_copy)
+                   ^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_watchdog_feed_sites.py:296: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_watchdog_feed_sites.py:119: in src_findings
+    trees = {p.name: ast.parse(p.read_text(encoding="utf-8"), filename=p.name) for p in sorted(src.glob("*.py"))}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_scripts/test_watchdog_feed_sites.py:119: in <dictcomp>
+    trees = {p.name: ast.parse(p.read_text(encoding="utf-8"), filename=p.name) for p in sorted(src.glob("*.py"))}
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+source = '"""Generic system-housekeeping service shared by every generated sensortask_<device>.py: uptime, boot signature, rese...))\n        try:\n            await self._never.wait()\n        finally:\n            self._supervisor_task.cancel()\n'
+filename = 'asy_system_service.py', mode = 'exec', type_comments = False
+feature_version = -1
+
+    def parse(source, filename='<unknown>', mode='exec', *,
+              type_comments=False, feature_version=None):
+        """
+        Parse the source into an AST node.
+        Equivalent to compile(source, filename, mode, PyCF_ONLY_AST).
+        Pass type_comments=True to get back type comments where the syntax allows.
+        """
+        flags = PyCF_ONLY_AST
+        if type_comments:
+            flags |= PyCF_TYPE_COMMENTS
+        if isinstance(feature_version, tuple):
+            major, minor = feature_version  # Should be a 2-tuple.
+            assert major == 3
+            feature_version = minor
+        elif feature_version is None:
+            feature_version = -1
+        # Else it should be an int giving the minor version for 3.x.
+>       return compile(source, filename, mode, flags,
+                       _feature_version=feature_version)
+E         File "asy_system_service.py", line 523
+E           if task is not None:
+E       IndentationError: unexpected indent
+
+/usr/lib/python3.11/ast.py:50: IndentationError
+_________________ test_a_feed_inside_the_supervisor_scan_fails _________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-11656/test_a_feed_inside_the_supervi0/src')
+
+    def test_a_feed_inside_the_supervisor_scan_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "                    no_fail = False\n", "                    no_fail = False\n                    self.feed_watchdog()\n")
+>       findings = src_findings(src_copy)
+                   ^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_watchdog_feed_sites.py:341: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_watchdog_feed_sites.py:119: in src_findings
+    trees = {p.name: ast.parse(p.read_text(encoding="utf-8"), filename=p.name) for p in sorted(src.glob("*.py"))}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_scripts/test_watchdog_feed_sites.py:119: in <dictcomp>
+    trees = {p.name: ast.parse(p.read_text(encoding="utf-8"), filename=p.name) for p in sorted(src.glob("*.py"))}
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+source = '"""Generic system-housekeeping service shared by every generated sensortask_<device>.py: uptime, boot signature, rese...))\n        try:\n            await self._never.wait()\n        finally:\n            self._supervisor_task.cancel()\n'
+filename = 'asy_system_service.py', mode = 'exec', type_comments = False
+feature_version = -1
+
+    def parse(source, filename='<unknown>', mode='exec', *,
+              type_comments=False, feature_version=None):
+        """
+        Parse the source into an AST node.
+        Equivalent to compile(source, filename, mode, PyCF_ONLY_AST).
+        Pass type_comments=True to get back type comments where the syntax allows.
+        """
+        flags = PyCF_ONLY_AST
+        if type_comments:
+            flags |= PyCF_TYPE_COMMENTS
+        if isinstance(feature_version, tuple):
+            major, minor = feature_version  # Should be a 2-tuple.
+            assert major == 3
+            feature_version = minor
+        elif feature_version is None:
+            feature_version = -1
+        # Else it should be an int giving the minor version for 3.x.
+>       return compile(source, filename, mode, flags,
+                       _feature_version=feature_version)
+E         File "asy_system_service.py", line 523
+E           if task is not None:
+E       IndentationError: unexpected indent
+
+/usr/lib/python3.11/ast.py:50: IndentationError
+_____________________ test_a_dropped_escalation_feed_fails _____________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-11656/test_a_dropped_escalation_feed0/src')
+
+    def test_a_dropped_escalation_feed_fails(src_copy: Path) -> None:
+>       _edit(src_copy / "asy_system_service.py", "                self.feed_watchdog()\n                self._force_watchdog_starve = True\n", "                self._force_watchdog_starve = True\n")
+
+tests_scripts/test_watchdog_feed_sites.py:347: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = PosixPath('/tmp/pytest-of-root/pytest-11656/test_a_dropped_escalation_feed0/src/asy_system_service.py')
+old = '                self.feed_watchdog()\n                self._force_watchdog_starve = True\n'
+new = '                self._force_watchdog_starve = True\n'
+
+    def _edit(path: Path, old: str, new: str) -> None:
+        text = path.read_text(encoding="utf-8")
+>       assert text.count(old) == 1, f"{path.name}: the anchor is not unique: {old!r}"
+E       AssertionError: asy_system_service.py: the anchor is not unique: '                self.feed_watchdog()\n                self._force_watchdog_starve = True\n'
+E       assert 0 == 1
+E        +  where 0 = <built-in method count of str object at 0x5c3a1c0>('                self.feed_watchdog()\n                self._force_watchdog_starve = True\n')
+E        +    where <built-in method count of str object at 0x5c3a1c0> = '"""Generic system-housekeeping service shared by every generated sensortask_<device>.py: uptime, boot signature, rese...))\n        try:\n            await self._never.wait()\n        finally:\n            self._supervisor_task.cancel()\n'.count
+
+tests_scripts/test_watchdog_feed_sites.py:257: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_an_own_feed_outside_the_sequence_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_feed_inside_the_supervisor_scan_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_dropped_escalation_feed_fails
+3 failed, 19 passed in 12.23s

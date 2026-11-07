@@ -1,0 +1,38 @@
+===== test_comment_block_cap
+........................................................................ [ 13%]
+........................................................................ [ 26%]
+........................................................................ [ 39%]
+........................................................................ [ 52%]
+........................................................................ [ 65%]
+........................................................................ [ 78%]
+........................................................................ [ 92%]
+...........................................                              [100%]
+547 passed in 3.99s
+===== test_comment_block_cap rc=0 time=4.382261966
+===== test_decision_vocabulary
+.F....                                                                   [100%]
+=================================== FAILURES ===================================
+E   AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+        tests_hardware/bench/test_bus_concurrency_under_api_load.py	Same accepted real-pass pattern as test_network_resilience.py's flapping test -
+        tests_hardware/bench/test_hotspot_role_reversal.py	content deliberately not asserted, see below
+        tests_hardware/bench/test_memory_stress_bench.py	A success here means the server accepted, processed and answered with valid JSON
+        tests_hardware/bench/test_memory_stress_bench.py	Deliberately only cleared AFTER the assertions above have already captured/repor
+        tests_hardware/bench/test_network_resilience.py	A connect()'d client socket that only accepts datagrams from its true peer must
+        tests_hardware/bench/test_network_resilience.py	Always runs, even on a failed assertion above - this test's own last hard_reset(
+        tests_hardware/bench/test_network_resilience.py	Before Part I.6 the content cap was 4096 and max_body_length was microdot's own
+        tests_hardware/bench/test_network_resilience.py	Length/type-only schema (see this test's own module comment above) - accepted as
+        tests_hardware/bench/test_network_resilience.py	This opens several times max_connections' worth of connections, so most are refu
+        tests_hardware/bench/test_network_resilience.py	never leave a deliberately-provoked fault in the live error history
+        tests_hardware/bench/test_network_resilience.py	never leave a deliberately-provoked fault in the live error history
+        tests_hardware/bench/test_network_resilience.py	the one deliberately-provoked failed attempt above did legitimately log somethin
+        tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	PauseTime is dispatch-only, so GET /notification has nothing to read back - but
+    assert not [('tests_hardware/bench/test_bus_concurrency_under_api_load.py', "Same accepted real-pass pattern as test_network_resi.../test_network_resilience.py', "Always runs, even on a failed assertion above - this test's own last hard_reset("), ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_decision_vocabulary.py:94: AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+1 failed, 5 passed in 8.44s
+===== test_decision_vocabulary rc=1 time=8.687329252
+===== test_citations
+...............                                                          [100%]
+15 passed in 10.60s
+===== test_citations rc=0 time=10.868607112

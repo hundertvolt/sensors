@@ -47,14 +47,14 @@ driver = "scd30"
 name_ext = "a"
 bus = "i2c0"
 irq_pin = 8
-trigger_sec = 2
+trigger_s = 2
 
 [[instance]]
 driver = "scd30"
 name_ext = "b"
 bus = "i2c1"
 irq_pin = 9
-trigger_sec = 5
+trigger_s = 5
 
 [[instance]]
 driver = "bmp3xx"
@@ -95,7 +95,7 @@ relative_humidity = 35
 driver = "fram"
 bus = "spi0"
 cs_pin = 1
-max_size = 0x4000
+max_size = 0x40000
 
 [[instance]]
 driver = "neopixel"

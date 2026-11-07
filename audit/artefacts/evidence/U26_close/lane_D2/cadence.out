@@ -1,0 +1,2 @@
+sgp40_sample_cadence.py gc=-1 rc=0 t=603.340869412s memerr=0 facts=8 done=1
+sgp40_sample_cadence.py gc=32768 rc=0 t=603.904077898s memerr=0 facts=8 done=1

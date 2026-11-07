@@ -1,0 +1,116 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/laneS/head_tree
+
+ ❯ |chromium| tests_js/main.test.js (8 tests | 4 failed) 762ms
+   ❯ startApp (production entry) (8)
+     ✓ loads definitions.json (no device segment, no mock install) and renders the landing section 16ms
+     ✓ marks the landing section current in the nav drawer 4ms
+     × returns a stop handle that ends the live landing section's polling and the device watch 401ms
+     × shows the error banner (and does not throw) when definitions.json fails to load 111ms
+     × shows a clear error banner (not a crash) when definitions.json is torn/truncated JSON 127ms
+     ✓ uses an inlined definitions element instead of fetching, when a real device build provides one 4ms
+     × shows a clear error banner (not a crash) when the inlined definitions element holds corrupted JSON 96ms
+     ✓ falls back to fetching definitions.json when no inlined element is present (dev/preview mode) 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/main.test.js > startApp (production entry) > returns a stop handle that ends the live landing section's polling and the device watch
+TypeError: stopApp is not a function
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/main.test.js/startApp--production-entry----returns-a-stop-handle-that-ends-the-live-landing-section-s-polling-and-the-device-watch.png
+
+ ❯ tests_js/main.test.js:134:9
+    132|         await vi.waitFor(() => expect(requestedUrls(fetchStub).filter(…
+    133|
+    134|         stopApp();
+       |         ^
+    135|         await new Promise((resolve) => {
+    136|             setTimeout(resolve, 100);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDHb8Zj7.js?v=4be9235a:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |chromium| tests_js/main.test.js > startApp (production entry) > shows the error banner (and does not throw) when definitions.json fails to load
+AssertionError: expected 'false' to be 'true' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/main.test.js/startApp--production-entry----shows-the-error-banner--and-does-not-throw--when-definitions-json-fails-to-load.png
+
+Expected: [32m"[7mtru[27me"[39m
+Received: [31m"[7mfals[27me"[39m
+
+ ❯ tests_js/main.test.js:153:54
+    151|         stop = await startApp(elements);
+    152|
+    153|         expect(elements.errorBannerEl.dataset.shown).toBe("true");
+       |                                                      ^
+    154|         expect(elements.errorBannerEl.textContent).toMatch(/HTTP 404/);
+    155|         expect(elements.mainEl.querySelector(".section-heading")).toBe…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDHb8Zj7.js?v=4be9235a:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |chromium| tests_js/main.test.js > startApp (production entry) > shows a clear error banner (not a crash) when definitions.json is torn/truncated JSON
+AssertionError: expected 'false' to be 'true' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/main.test.js/startApp--production-entry----shows-a-clear-error-banner--not-a-crash--when-definitions-json-is-torn-truncated-JSON.png
+
+Expected: [32m"[7mtru[27me"[39m
+Received: [31m"[7mfals[27me"[39m
+
+ ❯ tests_js/main.test.js:164:54
+    162|         stop = await startApp(elements);
+    163|
+    164|         expect(elements.errorBannerEl.dataset.shown).toBe("true");
+       |                                                      ^
+    165|         expect(elements.errorBannerEl.textContent).toMatch(/not valid …
+    166|         expect(elements.mainEl.querySelector(".section-heading")).toBe…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDHb8Zj7.js?v=4be9235a:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |chromium| tests_js/main.test.js > startApp (production entry) > shows a clear error banner (not a crash) when the inlined definitions element holds corrupted JSON
+AssertionError: expected 'false' to be 'true' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/main.test.js/startApp--production-entry----shows-a-clear-error-banner--not-a-crash--when-the-inlined-definitions-element-holds-corrupted-JSON.png
+
+Expected: [32m"[7mtru[27me"[39m
+Received: [31m"[7mfals[27me"[39m
+
+ ❯ tests_js/main.test.js:195:54
+    193|         stop = await startApp({ ...elements, inlinedDefinitionsEl: inl…
+    194|
+    195|         expect(elements.errorBannerEl.dataset.shown).toBe("true");
+       |                                                      ^
+    196|         expect(elements.mainEl.querySelector(".section-heading")).toBe…
+    197|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDHb8Zj7.js?v=4be9235a:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 4 passed (8)
+   Start at  09:01:57
+   Duration  3.04s (worker 48%, tests 48%, import 4%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 4 · failed 4 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/main.test.js > startApp (production entry) > returns a stop handle that ends the live landing section's polling and the device watch: stopApp is not a function
+  - tests_js/main.test.js > startApp (production entry) > shows the error banner (and does not throw) when definitions.json fails to load: expected 'false' to be 'true' // Object.is equality
+  - tests_js/main.test.js > startApp (production entry) > shows a clear error banner (not a crash) when definitions.json is torn/truncated JSON: expected 'false' to be 'true' // Object.is equality
+  - tests_js/main.test.js > startApp (production entry) > shows a clear error banner (not a crash) when the inlined definitions element holds corrupted JSON: expected 'false' to be 'true' // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

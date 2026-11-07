@@ -1,0 +1,13 @@
+ruff rc=0 0.1s
+mypy_noargs rc=0 10.6s
+mypy_ci rc=0 9.5s
+mypy_twin rc=0 2.3s
+mypy_host rc=0 7.8s
+test_comment_block_cap rc=0 4.6s
+test_decision_vocabulary rc=0 8.9s
+test_code_conventions rc=0 4.4s
+test_error_catalog rc=0 26.7s
+done
+heavy before twin e: 2
+heavy before twin f: 0
+all done

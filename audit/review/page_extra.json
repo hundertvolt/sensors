@@ -1,0 +1,88 @@
+{
+ "go_summary": "Before execution starts, I read your answers here, record each one, fold every change you ask for into the plan and answer your questions. Then the 41 software units run in order with no stops for you. Choosing not yet keeps everything as it is.",
+ "replies": {
+  "hand-run-hardware-rows": "These are one-time measurements, not regular tests; anything worth repeating already becomes a gated test. Kept: read time per driver (100 reads each; the only measured basis for the minimum spacing between sensor reads), the longest LED ramp (sets the deadline the LED request waits for), and the recovery-step failure counts (read from the default run's output, so free). Dropped: the NTP-outage check (your twin NTP responder covers it in automated tests) and the image without the 100 ms hotspot settle (2 flashes to see whether a harmless wait could go; the wait stays).",
+  "idle-poll-rate": "A task waiting for traffic that may never come (the captive DNS listener) checks its socket in a loop; at the 20 ms rate it wakes 50 times a second for nothing. The UART driver already uses a slower idle rate, and this applies the same pattern. Defined as one named value in the module and entered in the specification's settings table with its reason; unit tests check that a wait with a deadline sleeps 20 ms and one without sleeps 100 ms. Correction: the 100 ms is a reasoned choice (5x fewer idle wake-ups, at most 100 ms extra on the first answer after silence), not yet measured; its measurement in the twin and on the bench is still owed.",
+  "reproducible-image": "The date is an input to the build. Every real build stamps its actual UTC time into the build info; the reproducibility check builds twice with the same fixed date and compares everything else byte for byte. So two real builds of one commit differ only in that one build-info line, and a check proves that changing only the date changes only that line.",
+  "toml-build-metadata": "They live in each device's own file under devices/, in its [device] section: 'bench = true' only in dev.toml (tells the hardware test runners which board is on the bench), and 'hardware_family = \"arzi-neu\"' in the klkizi, grkizi and schlafzi files (tells the tests these three are the same hardware; a test checks they differ only in name and hostname). The build checks both keys but never puts them into the firmware. You answered it in the conversation (5 October); see 'Answered in the conversation' below.",
+  "uart-flash-erase-overrun": "It happens on any flash write, not only Reset to defaults: saving a changed setting, the one-time boot repair, the first write of defaults, and the deletes. Each write erases at least one 4 KB block with interrupts off, 45 ms typically and up to 400 ms (W25Q16JV datasheet); the UART's receive buffer holds 32 bytes, about 2.8 ms at 115200 baud. Only boards with a UART link are affected, today only dev. You answered it in the conversation (5 October); see 'Answered in the conversation' below."
+ },
+ "open_extra": [
+  {
+   "id": "toml-test-keys",
+   "kind": "decision",
+   "topic": "device-config-and-buildgen",
+   "title": "Where the two test-only board keys live",
+   "question": "Keep the two test-only keys in the device files?",
+   "context": "'bench = true' (dev only) and 'hardware_family' (the three identical 'neu' boards) are read by the test tooling and checked by the build, but never put into the firmware.",
+   "options": [
+    {
+     "label": "Keep in the device files",
+     "consequence": "Every fact about a board stays in its one file, as you set earlier. Nothing else changes."
+    },
+    {
+     "label": "Move to a test-side file",
+     "consequence": "The device files hold only firmware facts, but board facts are then split across two places that must agree."
+    }
+   ],
+   "recommended": "Keep in the device files",
+   "members": [],
+   "refs": [
+    "devices/dev.toml",
+    "OR78.a",
+    "toml-build-metadata"
+   ]
+  },
+  {
+   "id": "uart-no-frame-loss",
+   "kind": "decision",
+   "topic": "uart-link",
+   "title": "No UART frame lost during a flash write",
+   "question": "How should the UART avoid losing frames during flash writes?",
+   "context": "A flash erase keeps interrupts off for 45-400 ms; the UART's 32-byte receive buffer fills in 2.8 ms, so a frame arriving then is lost. You preferred not losing frames at all, if the effort is adequate.",
+   "options": [
+    {
+     "label": "DMA receive ring",
+     "consequence": "The RP2040's DMA copies incoming bytes into a RAM ring without the CPU, so reception continues with interrupts off. No frame lost, no wiring or wire-format change. Moderate effort: the driver's receive path is rebuilt on MicroPython's DMA support, with tests and a bench test that saves settings during traffic and expects zero lost frames. MicroPython's own UART interrupt must be kept from competing with the DMA; that is proven on the bench first."
+    },
+    {
+     "label": "Hardware flow control",
+     "consequence": "The UART pauses the sender in hardware when its buffer fills. Two more wires per link, and the Arduino side must honour it."
+    },
+    {
+     "label": "Pause the link around flash writes",
+     "consequence": "A workaround: covers only transfers the device starts itself; the peer can still send during a write."
+    }
+   ],
+   "recommended": "DMA receive ring",
+   "members": [],
+   "refs": [
+    "datasheets/pico w/Winbond_W25Q16JV_Datasheet_RevF.pdf (tSE, tPP)",
+    "SPECIFICATION.md Part J",
+    "uart-flash-erase-overrun"
+   ]
+  }
+ ],
+ "answered_in_chat": {
+  "toml-test-keys": {
+   "choice": "Keep in the device files",
+   "at": "2026-10-05",
+   "note": ""
+  },
+  "uart-no-frame-loss": {
+   "choice": "DMA receive ring",
+   "at": "2026-10-05",
+   "note": "Keep a strict eye on how it integrates with heap allocation and fragmentation; add hammering and concurrent load tests to the usual unit tests; test the interrupts-off situation without writing the flash."
+  },
+  "dynamic-import-scope": {
+   "choice": "Firmware graph only, named exceptions",
+   "at": "2026-10-05",
+   "note": ""
+  },
+  "voc-literal-port": {
+   "choice": "Keep it literal",
+   "at": "2026-10-05",
+   "note": ""
+  }
+ }
+}

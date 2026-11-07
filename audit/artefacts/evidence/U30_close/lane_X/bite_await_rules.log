@@ -1,0 +1,9 @@
+== unbitten
+6 passed in 4.25s
+== bite 3: self is class-or-subclass in the depth pass
+FAILED tests_scripts/test_await_depth.py::test_an_inherited_method_resolves_on_the_class_that_runs_it
+1 failed, 5 passed in 4.71s
+== bite 4: wait_for does not start a chain
+FAILED tests_scripts/test_await_depth.py::test_the_walk_reaches_every_kind_of_task_top
+FAILED tests_scripts/test_await_depth.py::test_a_wait_for_starts_its_own_chain_after_its_two_frames
+2 failed, 4 passed in 4.54s

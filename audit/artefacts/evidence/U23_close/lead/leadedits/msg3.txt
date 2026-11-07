@@ -1,0 +1,10 @@
+U23 lead: pin the mock's DNS label and fallback-list bounds to their src/ sources
+
+js/mock-server.js copies DNS_LABEL_MAX (src/asy_dns_client.py) and _DNS_FALLBACK_MAX
+(src/asy_ntp_client.py) into its host-name and IPv4-list shape rules, and no test read either
+source, so a src/ change would have left the mock accepting what the server refuses. The mirror
+test now reads both by ast, with a planted mismatch on each side of each pin, all four seen red
+before the pins existed; the mock's comment names the src/ constant it copies.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

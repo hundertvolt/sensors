@@ -1,0 +1,41 @@
+SKIP WebKit: binary not found (run scripts/setup_cross_browser_toolchain.sh)
+SKIP Firefox: binary not found (run scripts/setup_cross_browser_toolchain.sh)
+SKIP Edge: binary not found (run scripts/setup_cross_browser_toolchain.sh)
+
+arzi: probing sensors / SCD30 / MeasInt
+connections per page load (arzi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS arzi Chromium (desktop)
+connections per page load (arzi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS arzi Chromium (mobile)
+
+dev: probing sensors / SCD30 / MeasInt
+connections per page load (dev Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS dev Chromium (desktop)
+connections per page load (dev Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS dev Chromium (mobile)
+
+grkizi: probing sensors / SCD30 / MeasInt
+connections per page load (grkizi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS grkizi Chromium (desktop)
+connections per page load (grkizi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS grkizi Chromium (mobile)
+
+klkizi: probing sensors / SCD30 / MeasInt
+connections per page load (klkizi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS klkizi Chromium (desktop)
+connections per page load (klkizi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS klkizi Chromium (mobile)
+
+schlafzi: probing sensors / SCD30 / MeasInt
+connections per page load (schlafzi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS schlafzi Chromium (desktop)
+connections per page load (schlafzi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS schlafzi Chromium (mobile)
+
+wozi: probing sensors / SCD30 / MeasInt
+connections per page load (wozi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS wozi Chromium (desktop)
+connections per page load (wozi Chromium): 2, plus 0 speculative and 1 for its data requests
+PASS wozi Chromium (mobile)
+
+12/12 cross-browser smoke checks passed.

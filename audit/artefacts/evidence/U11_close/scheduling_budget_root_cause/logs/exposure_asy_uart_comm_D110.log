@@ -1,0 +1,191 @@
+ok   test_a_boot_drain_that_hits_its_bound_persists_nothing 0/62 sleeps=2153 clean=602ms
+ok   test_a_bus_cleared_after_construction_is_refused_at_every_entry_point 0/14 sleeps=14 clean=16ms
+ok   test_a_callback_asking_for_an_impossible_size_is_rejected 0/61 sleeps=781 clean=542ms
+ok   test_a_callback_returning_a_non_buffer_payload_is_rejected 0/66 sleeps=393 clean=271ms
+ok   test_a_callback_returning_the_wrong_shape_is_treated_like_a_raise 0/0 sleeps=0 clean=0ms
+ok   test_a_cancelled_transaction_still_releases_the_re_entrancy_flag 0/37 sleeps=37 clean=37ms
+ok   test_a_changed_chunks_total_is_rejected 0/0 sleeps=0 clean=0ms
+FLIP test_a_clean_write_round_trip_is_acknowledged 8/29 k=[18, 19, 22, 23, 25, 26, 27, 28] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 742, in test_a_clean_write_round_trip_is_acknowledged
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 742, in test_a_clean_write_round_trip_is_acknowledged  k=[18, 19, 22, 23, 25, 26, 27, 28]
+ok   test_a_codec_that_failed_its_allocation_refuses_construction 0/0 sleeps=0 clean=4ms
+ok   test_a_declared_size_larger_than_its_buffer_is_refused_before_the_train 0/7 sleeps=7 clean=8ms
+ok   test_a_declined_set_is_a_distinct_outcome_just_like_a_declined_get 0/68 sleeps=136 clean=96ms
+ok   test_a_drain_that_cannot_run_clears_the_previous_drains_verdict 0/0 sleeps=0 clean=0ms
+ok   test_a_drain_that_hits_its_bound_persists_the_drain_warning 0/61 sleeps=2172 clean=618ms
+ok   test_a_failed_buffer_allocation_degrades_every_entry_point 0/7 sleeps=7 clean=8ms
+ok   test_a_first_chunk_with_the_wrong_size_is_rejected 0/0 sleeps=0 clean=0ms
+ok   test_a_fram_backed_log_reads_back_through_a_second_logger 0/77 sleeps=230 clean=289ms
+ok   test_a_frame_of_the_wrong_kind_is_rejected_at_each_read_site 0/0 sleeps=0 clean=0ms
+FLIP test_a_get_round_trip_returns_the_answer 18/43 k=[16, 17, 18, 19, 20, 21, 23, 24, 25, 28, 29, 31, 32, 33, 34, 35, 36, 37] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1195, in test_a_get_round_trip_returns_the_answer
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1195, in test_a_get_round_trip_returns_the_answer  k=[16, 17, 18, 19, 20, 21, 23, 24, 25, 28, 29, 31, 32, 33, 34, 35, 36, 37]
+ok   test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching 0/15 sleeps=15 clean=17ms
+FLIP test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success 1/64 k=[21] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 807, in test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 807, in test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success  k=[21]
+ok   test_a_malformed_ack_is_rejected 0/0 sleeps=0 clean=0ms
+ok   test_a_missing_ack_at_each_train_position_aborts_and_resyncs 0/63 sleeps=1191 clean=814ms
+ok   test_a_missing_ack_bounds_the_wait_and_resyncs 0/68 sleeps=470 clean=270ms
+ok   test_a_multi_bit_command_is_rejected_rather_than_falling_through 0/0 sleeps=0 clean=0ms
+FLIP test_a_multi_chunk_payload_arrives_byte_identical 25/54 k=[18, 19, 21, 22, 23, 26, 27, 29, 30, 31, 35, 36, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 50, 51, 52] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1153, in test_a_multi_chunk_payload_arrives_byte_identical
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1153, in test_a_multi_chunk_payload_arrives_byte_identical  k=[18, 19, 21, 22, 23, 26, 27, 29, 30, 31, 35, 36, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 50, 51, 52]
+SKIPLONG test_a_negative_expected_size_is_refused_not_read_as_dont_care clean=5022ms sleeps=4498
+ok   test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising 0/14 sleeps=14 clean=16ms
+ok   test_a_non_integer_command_id_returns_a_sentinel_instead_of_raising 0/14 sleeps=14 clean=29ms
+ok   test_a_non_integer_payload_size_is_refused_instead_of_raising 0/0 sleeps=0 clean=0ms
+ok   test_a_non_integer_size_returns_a_sentinel_instead_of_raising 0/13 sleeps=13 clean=17ms
+ok   test_a_non_integer_timeout_is_refused_instead_of_raising 0/0 sleeps=0 clean=0ms
+ok   test_a_none_bus_is_recorded_distinctly_and_never_raises 0/0 sleeps=0 clean=0ms
+ok   test_a_partially_failed_allocation_refuses_construction_outright 0/0 sleeps=0 clean=0ms
+FLIP test_a_payload_can_be_streamed_from_a_pull_callback 20/44 k=[17, 18, 19, 20, 22, 23, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 38, 39, 40, 42] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1402, in test_a_payload_can_be_streamed_from_a_pull_callback
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1402, in test_a_payload_can_be_streamed_from_a_pull_callback  k=[17, 18, 19, 20, 22, 23, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 38, 39, 40, 42]
+FLIP test_a_payload_can_be_streamed_into_a_push_callback 16/44 k=[17, 19, 20, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1416, in test_a_payload_can_be_streamed_into_a_push_callback
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1416, in test_a_payload_can_be_streamed_into_a_push_callback  k=[17, 19, 20, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38]
+FLIP test_a_payload_less_command_still_produces_two_chunks 8/29 k=[19, 20, 21, 22, 23, 26, 27, 28] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1081, in test_a_payload_less_command_still_produces_two_chunks
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1081, in test_a_payload_less_command_still_produces_two_chunks  k=[19, 20, 21, 22, 23, 26, 27, 28]
+ok   test_a_payload_longer_than_the_region_is_rejected 0/0 sleeps=0 clean=0ms
+FLIP test_a_peer_answering_a_different_question_is_refused 1/65 k=[19] first=AssertionError: ['E81'] @ File "tests/test_asy_uart_comm.py", line 1898, in test_a_peer_answering_a_different_question_is_refused
+     kind: AssertionError: ['E81'] @ File "tests/test_asy_uart_comm.py", line 1898, in test_a_peer_answering_a_different_question_is_refused  k=[19]
+FLIP test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault 1/64 k=[126] first=AssertionError: ('bool', ['E81']) @ File "tests/test_asy_uart_comm.py", line 2148, in test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault
+     kind: AssertionError: ('bool', ['E81']) @ File "tests/test_asy_uart_comm.py", line 2148, in test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault  k=[126]
+ok   test_a_pull_callback_returning_a_wrong_shape_is_guarded 0/65 sleeps=385 clean=269ms
+ok   test_a_pull_callback_short_filling_a_non_final_chunk_aborts_locally 0/61 sleeps=363 clean=272ms
+ok   test_a_push_callback_failing_mid_train_aborts 0/65 sleeps=389 clean=274ms
+ok   test_a_quiet_resync_persists_nothing 0/76 sleeps=152 clean=168ms
+FLIP test_a_raising_message_callback_does_not_kill_the_listen_loop 22/46 k=[17, 18, 19, 20, 22, 23, 25, 26, 27, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45] first=AssertionError: the loop must survive its owner's raise @ File "tests/test_asy_uart_comm.py", line 1677, in test_a_raising_message_callback_does_not_kill_the_listen_loop
+     kind: AssertionError: the loop must survive its owner's raise @ File "tests/test_asy_uart_comm.py", line 1677, in test_a_raising_message_callback_does_not_kill_the_listen_loop  k=[17, 18, 19, 20, 22, 23, 25, 26, 27, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]
+ok   test_a_re_entrant_callback_is_refused_instead_of_deadlocking 0/36 sleeps=36 clean=22ms
+FLIP test_a_read_only_destination_is_refused_before_the_train_starts 7/37 k=[18, 19, 23, 24, 25, 26, 28] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1550, in test_a_read_only_destination_is_refused_before_the_train_starts
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1550, in test_a_read_only_destination_is_refused_before_the_train_starts  k=[18, 19, 23, 24, 25, 26, 28]
+FLIP test_a_received_train_that_cannot_be_right_sized_is_reported_not_over_reported 9/31 k=[18, 19, 20, 22, 23, 25, 26, 27, 28] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 2024, in test_a_received_train_that_cannot_be_right_sized_is_reported_not_over_reported
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 2024, in test_a_received_train_that_cannot_be_right_sized_is_reported_not_over_reported  k=[18, 19, 20, 22, 23]
+     kind: AssertionError: the final ACK was already on the wire, so the sender is right @ File "tests/test_asy_uart_comm.py", line 2025, in test_a_received_train_that_cannot_be_right_sized_is_reported_not_over_reported  k=[25, 26, 27, 28]
+ok   test_a_received_uid_of_0xff_is_rejected 0/0 sleeps=0 clean=0ms
+FLIP test_a_recovered_link_counts_every_later_fault 1/61 k=[894] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1600, in test_a_recovered_link_counts_every_later_fault
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1600, in test_a_recovered_link_counts_every_later_fault  k=[894]
+ok   test_a_refused_argument_is_logged_with_its_own_errno 0/14 sleeps=14 clean=16ms
+ok   test_a_rejected_command_is_distinguishable_from_a_link_fault 0/63 sleeps=378 clean=271ms
+ok   test_a_rejected_get_callback_reports_a_distinct_outcome 0/63 sleeps=376 clean=270ms
+ok   test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time 0/0 sleeps=0 clean=0ms
+ok   test_a_repeatedly_declined_command_does_not_refill_the_history 0/64 sleeps=883 clean=718ms
+ok   test_a_repeating_fault_spends_one_slot 0/63 sleeps=1192 clean=1885ms
+FLIP test_a_responder_still_answers_a_get_while_the_role_gate_is_active 10/35 k=[17, 18, 19, 23, 24, 25, 26, 28, 29, 30] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1334, in test_a_responder_still_answers_a_get_while_the_role_gate_is_active
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1334, in test_a_responder_still_answers_a_get_while_the_role_gate_is_active  k=[17, 18, 19, 23, 24, 25, 26, 28, 29, 30]
+ok   test_a_responder_that_cannot_acknowledge_a_set_reports_and_resyncs 0/65 sleeps=129 clean=94ms
+SKIPLONG test_a_responder_that_never_finishes_its_rounds_fails_the_exchange clean=5021ms sleeps=4531
+ok   test_a_responder_without_a_message_callback_is_still_constructible 0/16 sleeps=16 clean=17ms
+ok   test_a_responder_without_callbacks_is_refused_at_construction 0/0 sleeps=0 clean=0ms
+ok   test_a_resync_is_not_re_entrant 0/16 sleeps=16 clean=17ms
+FLIP test_a_right_sizing_copy_that_fails_returns_the_sentinel_not_the_padding 11/36 k=[19, 20, 21, 23, 24, 25, 26, 28, 29, 30, 32] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1975, in test_a_right_sizing_copy_that_fails_returns_the_sentinel_not_the_padding
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1975, in test_a_right_sizing_copy_that_fails_returns_the_sentinel_not_the_padding  k=[19, 20, 21, 23, 24, 25, 26, 28, 29, 30, 32]
+ok   test_a_scratch_allocation_that_fails_during_construction_refuses_the_object 0/0 sleeps=0 clean=0ms
+ok   test_a_set_callback_asking_for_more_than_this_train_carries_is_refused 0/71 sleeps=141 clean=97ms
+ok   test_a_set_callback_returning_an_unusable_result_is_treated_like_a_raise 0/62 sleeps=554 clean=386ms
+ok   test_a_set_declaring_a_single_chunk_is_rejected 0/0 sleeps=0 clean=0ms
+ok   test_a_short_middle_chunk_is_rejected 0/0 sleeps=0 clean=0ms
+ok   test_a_single_transient_fault_leaves_one_entry_not_a_pair 0/0 sleeps=0 clean=1ms
+ok   test_a_stale_ack_uid_is_rejected 0/0 sleeps=0 clean=0ms
+ok   test_a_stale_data_chunk_is_rejected_by_its_uid 0/0 sleeps=0 clean=0ms
+SKIPLONG test_a_stall_the_test_declares_is_not_a_failure clean=5022ms sleeps=4573
+ok   test_a_stream_without_its_pull_callback_sends_nothing 0/13 sleeps=13 clean=16ms
+ok   test_a_stream_without_its_push_callback_reports_failure_not_a_byte_count 0/14 sleeps=14 clean=16ms
+ok   test_a_streamed_total_size_must_be_declared 0/15 sleeps=15 clean=16ms
+SKIPLONG test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs clean=5545ms sleeps=5263
+SKIPLONG test_a_write_that_never_reaches_the_peer_fails_the_same_way clean=5270ms sleeps=4948
+ok   test_a_zero_chunk_train_is_rejected 0/0 sleeps=0 clean=0ms
+FLIP test_all_three_expected_size_modes 2/62 k=[57, 85] first=AssertionError: exp_size=0 payload=b'' @ File "tests/test_asy_uart_comm.py", line 1170, in test_all_three_expected_size_modes
+     kind: AssertionError: exp_size=0 payload=b'' @ File "tests/test_asy_uart_comm.py", line 1170, in test_all_three_expected_size_modes  k=[57]
+     kind: AssertionError: exp_size=3 payload=b'abc' @ File "tests/test_asy_uart_comm.py", line 1170, in test_all_three_expected_size_modes  k=[85]
+ok   test_an_ack_is_sent_even_while_the_write_hold_off_is_active 0/17 sleeps=17 clean=17ms
+FLIP test_an_answer_buffer_the_heap_cannot_serve_fails_before_the_first_data_ack 1/66 k=[19] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1957, in test_an_answer_buffer_the_heap_cannot_serve_fails_before_the_first_data_ack
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1957, in test_an_answer_buffer_the_heap_cannot_serve_fails_before_the_first_data_ack  k=[19]
+FLIP test_an_answer_that_exactly_fills_its_train_is_handed_back_uncopied 8/35 k=[18, 19, 23, 24, 25, 26, 28, 29] first=AssertionError: None @ File "tests/test_asy_uart_comm.py", line 1753, in test_an_answer_that_exactly_fills_its_train_is_handed_back_uncopied
+     kind: AssertionError: None @ File "tests/test_asy_uart_comm.py", line 1753, in test_an_answer_that_exactly_fills_its_train_is_handed_back_uncopied  k=[18, 19, 23, 24, 25, 26, 28, 29]
+FLIP test_an_answer_the_train_could_never_carry_is_refused_at_its_header 1/65 k=[19] first=AssertionError: ['E81'] @ File "tests/test_asy_uart_comm.py", line 1740, in test_an_answer_the_train_could_never_carry_is_refused_at_its_header
+     kind: AssertionError: ['E81'] @ File "tests/test_asy_uart_comm.py", line 1740, in test_an_answer_the_train_could_never_carry_is_refused_at_its_header  k=[19]
+ok   test_an_empty_chunk_is_legal_only_as_a_two_chunk_trains_last 0/0 sleeps=0 clean=0ms
+FLIP test_an_empty_payload_is_a_distinct_outcome_from_failure 8/35 k=[18, 19, 20, 23, 24, 25, 26, 29] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1178, in test_an_empty_payload_is_a_distinct_outcome_from_failure
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1178, in test_an_empty_payload_is_a_distinct_outcome_from_failure  k=[18, 19, 20, 23, 24, 25, 26, 29]
+ok   test_an_expected_size_the_train_could_never_deliver_is_rejected_early 0/0 sleeps=0 clean=0ms
+ok   test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused 0/0 sleeps=0 clean=0ms
+ok   test_an_immutable_destination_is_refused_before_the_train_starts 0/15 sleeps=15 clean=17ms
+ok   test_an_incoming_trains_buffer_that_the_heap_cannot_serve_ends_the_transfer 0/66 sleeps=132 clean=95ms
+ok   test_an_into_destination_of_none_returns_the_sentinel 0/8 sleeps=8 clean=9ms
+ok   test_an_into_destination_that_is_too_small_is_refused 0/66 sleeps=391 clean=270ms
+SKIPLONG test_an_out_of_range_command_id_is_refused_not_truncated clean=5018ms sleeps=4497
+ok   test_an_oversize_payload_is_rejected_before_the_first_frame 0/15 sleeps=15 clean=16ms
+ok   test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one 0/0 sleeps=0 clean=0ms
+FLIP test_both_halves_of_each_pair_move_identical_bytes 29/81 k=[19, 23, 25, 27, 29, 31, 35, 51, 55, 61, 67, 69, 73, 91, 95, 97, 101, 103, 105, 109, 113, 137, 139, 143, 147, 149, 153, 155, 157] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1348, in test_both_halves_of_each_pair_move_identical_bytes
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1348, in test_both_halves_of_each_pair_move_identical_bytes  k=[19, 23, 25, 27, 29, 31, 35]
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1350, in test_both_halves_of_each_pair_move_identical_bytes  k=[51, 55, 61, 67, 69, 73]
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1358, in test_both_halves_of_each_pair_move_identical_bytes  k=[91, 95, 97, 101, 103, 105, 109, 113]
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1359, in test_both_halves_of_each_pair_move_identical_bytes  k=[137, 139, 143, 147, 149, 153, 155, 157]
+FLIP test_both_sync_and_async_callbacks_work 12/37 k=[17, 19, 20, 24, 25, 26, 27, 28, 29, 30, 31, 32] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1246, in test_both_sync_and_async_callbacks_work
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1246, in test_both_sync_and_async_callbacks_work  k=[17, 19, 20, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+ok   test_chunk_counts_at_the_payload_size_boundaries 0/0 sleeps=0 clean=0ms
+ok   test_clear_cancels_first_and_drains_exactly_once 0/28 sleeps=28 clean=28ms
+ok   test_clear_with_nothing_in_flight_takes_the_lock_and_drains 0/78 sleeps=155 clean=168ms
+ok   test_construction_performs_no_bus_call 0/0 sleeps=0 clean=0ms
+ok   test_every_internal_buffer_read_rechecks_rather_than_indexing_none 0/15 sleeps=15 clean=17ms
+ok   test_every_public_entry_point_converges_on_its_own_sentinel 0/63 sleeps=944 clean=1478ms
+ok   test_every_public_method_is_gated_before_setup 0/0 sleeps=0 clean=0ms
+ok   test_get_error_counter_returns_the_shared_envelope 0/0 sleeps=0 clean=0ms
+ok   test_header_fields_land_at_their_documented_offsets 0/0 sleeps=0 clean=0ms
+ok   test_invalid_role_is_refused_and_has_no_default 0/0 sleeps=0 clean=0ms
+FLIP test_listening_clears_the_hold_off 13/36 k=[17, 18, 19, 23, 24, 25, 27, 29, 30, 31, 32, 33, 34] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 849, in test_listening_clears_the_hold_off
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 849, in test_listening_clears_the_hold_off  k=[17, 18, 19, 23, 24, 25, 27, 29, 30]
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 850, in test_listening_clears_the_hold_off  k=[31, 32, 33, 34]
+ok   test_logger_injection_uses_both_routes 0/0 sleeps=0 clean=0ms
+ok   test_maximum_payload_size_against_the_default_rxbuf_is_refused 0/0 sleeps=0 clean=1ms
+ok   test_non_positive_timeout_is_refused 0/0 sleeps=0 clean=0ms
+ok   test_one_fault_hitting_the_drain_bound_adds_the_errno_and_w54 0/61 sleeps=2161 clean=617ms
+ok   test_one_fault_on_a_quiet_line_adds_one_entry 0/63 sleeps=251 clean=269ms
+ok   test_only_a_rise_in_the_drivers_unacked_count_is_reported 0/62 sleeps=920 clean=1315ms
+ok   test_out_of_range_header_fields_are_rejected_not_truncated 0/0 sleeps=0 clean=0ms
+ok   test_padding_is_zero_filled_from_the_preallocated_buffer 0/0 sleeps=0 clean=0ms
+ok   test_payload_size_boundaries_are_accepted_and_refused 0/0 sleeps=0 clean=1ms
+ok   test_payload_size_is_immutable_after_construction 0/0 sleeps=0 clean=0ms
+ok   test_payload_size_is_never_silently_clamped 0/0 sleeps=0 clean=0ms
+ok   test_reset_clears_the_history_and_the_streak_state 0/0 sleeps=0 clean=0ms
+ok   test_reset_errors_keeps_the_valid_frame_count 0/66 sleeps=586 clean=637ms
+ok   test_rxbuf_too_small_for_one_poll_interval_is_refused 0/0 sleeps=0 clean=1ms
+ok   test_setup_drains_a_partial_frame_left_over_from_before 0/68 sleeps=135 clean=151ms
+ok   test_size_always_matches_the_bytes_actually_copied 0/0 sleeps=0 clean=0ms
+ok   test_starter_lists_match_the_role 0/0 sleeps=0 clean=0ms
+ok   test_the_ack_frame_is_byte_exact 0/15 sleeps=15 clean=16ms
+ok   test_the_drain_ends_once_the_line_is_quiet 0/77 sleeps=153 clean=168ms
+ok   test_the_drain_is_bounded_against_a_peer_that_never_stops 0/62 sleeps=2138 clean=619ms
+ok   test_the_drain_reads_into_the_scratch_buffer 0/73 sleeps=145 clean=167ms
+ok   test_the_get_answer_echoes_the_requested_command_id 0/32 sleeps=32 clean=22ms
+ok   test_the_hold_off_deadline_survives_the_ticks_rollover 0/0 sleeps=0 clean=0ms
+ok   test_the_hold_off_window_derives_from_timeout 0/0 sleeps=0 clean=0ms
+ok   test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one 0/0 sleeps=0 clean=0ms
+FLIP test_the_legacy_bsec_command_set_still_runs_end_to_end 24/64 k=[29, 57, 71, 85, 113, 127, 141, 155, 169, 183, 197, 211, 225, 239, 267, 323, 337, 351, 365, 379, 393, 407, 435, 449] first=AssertionError: None @ File "tests/test_asy_uart_comm.py", line 2236, in test_the_legacy_bsec_command_set_still_runs_end_to_end
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 2239, in test_the_legacy_bsec_command_set_still_runs_end_to_end  k=[85]
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 2242, in test_the_legacy_bsec_command_set_still_runs_end_to_end  k=[323, 337, 351, 365, 379, 393, 407]
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 2243, in test_the_legacy_bsec_command_set_still_runs_end_to_end  k=[435]
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 2244, in test_the_legacy_bsec_command_set_still_runs_end_to_end  k=[449]
+     kind: AssertionError: None @ File "tests/test_asy_uart_comm.py", line 2236, in test_the_legacy_bsec_command_set_still_runs_end_to_end  k=[29]
+     kind: AssertionError: None @ File "tests/test_asy_uart_comm.py", line 2238, in test_the_legacy_bsec_command_set_still_runs_end_to_end  k=[57, 71]
+     kind: AssertionError: a 221-byte answer must arrive byte-identical @ File "tests/test_asy_uart_comm.py", line 2240, in test_the_legacy_bsec_command_set_still_runs_end_to_end  k=[113, 127, 141, 155, 169, 183, 197]
+     kind: AssertionError: and identically without a declared size @ File "tests/test_asy_uart_comm.py", line 2241, in test_the_legacy_bsec_command_set_still_runs_end_to_end  k=[211, 225, 239, 267]
+ok   test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success 0/0 sleeps=0 clean=0ms
+ok   test_the_listen_loop_survives_a_raising_callback 0/66 sleeps=458 clean=291ms
+ok   test_the_module_constructs_no_timer_at_all 0/0 sleeps=0 clean=4ms
+ok   test_the_next_uid_prediction_is_correct_at_the_wrap_boundary 0/0 sleeps=0 clean=0ms
+FLIP test_the_owned_listen_loop_delivers_a_received_payload 8/31 k=[18, 19, 22, 23, 25, 26, 27, 28] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1651, in test_the_owned_listen_loop_delivers_a_received_payload
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1651, in test_the_owned_listen_loop_delivers_a_received_payload  k=[18, 19, 22, 23, 25, 26, 27, 28]
+ok   test_the_role_gate_refuses_the_wrong_direction 0/15 sleeps=15 clean=16ms
+ok   test_the_role_is_immutable_after_construction 0/0 sleeps=0 clean=0ms
+FLIP test_the_two_spellings_the_boards_own_uart_script_used_still_work 2/65 k=[22, 29] first=AssertionError: None @ File "tests/test_asy_uart_comm.py", line 2258, in test_the_two_spellings_the_boards_own_uart_script_used_still_work
+     kind: AssertionError: None @ File "tests/test_asy_uart_comm.py", line 2258, in test_the_two_spellings_the_boards_own_uart_script_used_still_work  k=[22, 29]
+ok   test_the_uid_cycle_covers_every_legal_value_and_never_0xff 0/0 sleeps=0 clean=0ms
+ok   test_the_valid_frame_count_saturates 0/0 sleeps=0 clean=0ms
+FLIP test_the_wire_log_of_a_multi_chunk_set_is_byte_exact 17/37 k=[17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 30, 31, 32, 34, 35, 36] first=AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1093, in test_the_wire_log_of_a_multi_chunk_set_is_byte_exact
+     kind: AssertionError:  @ File "tests/test_asy_uart_comm.py", line 1093, in test_the_wire_log_of_a_multi_chunk_set_is_byte_exact  k=[17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 30, 31, 32, 34, 35, 36]
+ok   test_the_write_hold_off_uses_a_deadline_and_expires 0/15 sleeps=15 clean=158ms
+ok   test_timeout_below_the_gc_pause_floor_is_refused 0/0 sleeps=0 clean=0ms
+ok   test_two_declined_ids_in_rotation_do_not_refill_the_history_either 0/60 sleeps=2220 clean=1716ms
+ok   test_tx_and_rx_buffers_are_separate 0/0 sleeps=0 clean=0ms
+ok   test_uart_listen_returns_the_namedtuple_on_every_path 0/15 sleeps=15 clean=17ms
+ok   test_valid_construction_sets_the_gate_only_after_setup 0/7 sleeps=7 clean=8ms
+ok   test_validation_accepts_every_legal_frame_shape 0/0 sleeps=0 clean=0ms
+ok   test_validation_never_raises_on_a_short_or_missing_buffer 0/0 sleeps=0 clean=0ms

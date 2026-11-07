@@ -1,0 +1,7 @@
+test_digital_twin_fram_crash_points.settrace rc=124 wall=300.02 mem=0 :: 
+test_digital_twin_timer_pool.dev.settrace rc=0 wall=45.79 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_hot_replug.settrace rc=0 wall=73.54 mem=0 :: 2/2 passed, 0 failed, 0 skipped
+test_digital_twin_isl29125_autorange.settrace rc=0 wall=54.50 mem=0 :: 22/22 passed, 0 failed, 0 skipped
+test_digital_twin_bus_hazard_concurrency.settrace rc=0 wall=165.66 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_generic_wiring.settrace rc=0 wall=0.13 mem=0 :: 15/15 passed, 0 failed, 0 skipped
+BATCH-DONE

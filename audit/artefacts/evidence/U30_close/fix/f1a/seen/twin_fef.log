@@ -1,0 +1,18 @@
+== reset_errors_while_storage_is_paused_is_refused_and_clears_nothing: A ResetErrors while mempause holds answers Failed and lowers no error count, the FRAM manager's RAM-only log included.
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1a/fef_tree/build/generated_src/sensortask_wozi_wiring_plan.json --device wozi --host 127.0.0.1 --port 20830 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1a/twin_fef/reset_errors_while_storage_is_paused_is_refused_and_clears_nothing/state_01/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1a/twin_fef/reset_errors_while_storage_is_paused_is_refused_and_clears_nothing/state_01/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1a/twin_fef/reset_errors_while_storage_is_paused_is_refused_and_clears_nothing/state_01/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1a/twin_fef/reset_errors_while_storage_is_paused_is_refused_and_clears_nothing/state_01/config/ --gc-threshold -1 --debug-level 1 --test-kbd-traceback --fault sgp40:writeto:1 --fault fram:wren:2 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1a/twin_fef/reset_errors_while_storage_is_paused_is_refused_and_clears_nothing/twin_01.log)
+FAILED: reset_errors_while_storage_is_paused_is_refused_and_clears_nothing - AssertionError: ResetErrors while storage is paused lowered error counts (before, after): {'FRAM': (3, 0)} (3.9s)
+== Summary: scripts/_digital_twin_scenarios.py ==
+Commit: fef34d0 (uncommitted changes)
+Levels: L2 (wozi)
+GC stage: -1
+Counts (scenarios): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - reset_errors_while_storage_is_paused_is_refused_and_clears_nothing: AssertionError: ResetErrors while storage is paused lowered error counts (before, after): {'FRAM': (3, 0)} (3.9s)
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

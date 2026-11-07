@@ -1,0 +1,58 @@
+tests_scripts/test_archive_evidence.py:23:    return {str(p.relative_to(root)) for p in root.rglob("*")}
+tests_scripts/test_bench_control_restore.py:159:@pytest.mark.parametrize("module", sorted(p for p in TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts), ids=lambda p: str(p.relative_to(TESTS_HARDWARE)))
+tests_scripts/test_bench_harness_helpers.py:35:HOST_MODULES = sorted(p for p in TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts)
+tests_scripts/test_build_device_websites_sh.py:86:    assert sorted(p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file()) == ["index.html", "js/app.js"]
+tests_scripts/test_build_device_websites_sh.py:94:    assert not list(runs.staged.rglob("*.py"))
+tests_scripts/test_build_website_sh.py:134:    assert sorted(p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file()) == ["index.html", "js/app.js"]
+tests_scripts/test_build_website_sh.py:136:    assert not list(tmp_path.rglob("*.py"))
+tests_scripts/test_code_conventions.py:428:    paths = sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "tests_scripts").rglob("*.py") if "__pycache__" not in p.parts)
+tests_scripts/test_coverage_runner.py:222:    expected = sorted(p.relative_to(repo_root).as_posix() for prefix in ("src", "digital_twin", "build/generated_src") for p in (repo_root / prefix).rglob("*.py"))
+tests_scripts/test_device_script_config_flush.py:244:    hosts = sorted(p for p in _TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts)
+tests_scripts/test_device_script_config_schemas.py:111:    for path in sorted(scripts.rglob("*.py")):
+tests_scripts/test_device_script_config_schemas.py:160:    for path in sorted(DEVICE_SCRIPTS.rglob("*.py")):
+tests_scripts/test_device_script_facts.py:26:    return sorted(p for p in root.rglob("*.py") if "device_scripts" not in p.parts)
+tests_scripts/test_device_script_watchdog.py:108:    modules = sorted(p for p in _TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts)
+tests_scripts/test_error_catalog.py:112:    return [_module(p.relative_to(_REPO).as_posix(), p.read_text()) for p in sorted((_REPO / directory).rglob("*.py"))]
+tests_scripts/test_exception_handler_contract.py:252:        for path in sorted(p for p in (root / directory).rglob("*.py") if "_tmp" not in p.relative_to(root).parts):
+tests_scripts/test_gc_collect_sites.py:56:    found = sorted(str(path.relative_to(repo_root)) for path in (repo_root / "buildgen").rglob("*.py") if "gc.collect(" in path.read_text())
+tests_scripts/test_generate_sensortask_modules.py:104:    assert not [p for p in out_dir.rglob("*") if p.is_file()]
+tests_scripts/test_generate_sensortask_modules.py:124:    files = {p.relative_to(out).as_posix(): p.read_text() for p in out.rglob("*") if p.is_file()}
+tests_scripts/test_generate_sensortask_modules.py:144:    assert not out.exists() or not any(p.is_file() for p in out.rglob("*"))
+tests_scripts/test_generate_sensortask_modules.py:182:    finals = sorted(p for p in out_dir.rglob("*") if p.is_file())
+tests_scripts/test_generate_sensortask_modules.py:208:    assert not [p for p in out_dir.rglob("*") if p.is_file()], "a failed write left files behind"
+tests_scripts/test_generate_sensortask_modules.py:219:    assert [p for p in out_dir.rglob(f"*{removed}*") if p.is_file()], "the removed device was never generated - the sweep below would hold vacuously"
+tests_scripts/test_generate_sensortask_modules.py:228:    left = sorted(p.relative_to(out_dir).as_posix() for p in out_dir.rglob("*") if p.is_file() and not p.name.endswith(".tmp"))
+tests_scripts/test_generate_sensortask_modules.py:262:    outputs = sorted(p.relative_to(out_dir).as_posix() for p in out_dir.rglob("*") if p.is_file())
+tests_scripts/test_hardware_clones.py:22:    for path in sorted(p for p in root.rglob("*.py") if "_shared" not in p.parts):
+tests_scripts/test_hardware_verdict.py:250:    for path in sorted((repo_root / "tests_hardware").rglob("test_*.py")):
+tests_scripts/test_js_coverage_excludes_json.py:43:    for dirpath, dirnames, filenames in os.walk(repo_root):
+tests_scripts/test_js_coverage_report_dir.py:24:        for path in sorted((repo_root / scope).rglob("*.py")):
+tests_scripts/test_js_generated_definitions_loader.py:40:    written = {str(p.parent.relative_to(tmp_path)) for d in DEVICE_NAMES for p in tmp_path.rglob(f"{output}/{d}.json")}
+tests_scripts/test_js_generated_definitions_loader.py:53:    stamps = sorted(tmp_path.rglob("inputs_stamp.json"))
+tests_scripts/test_memory_error_gate_agreement.py:91:        for path in sorted(q for q in (repo_root / scope).rglob("*.py") if "_tmp" not in q.parts):
+tests_scripts/test_micropython_overrides.py:256:    return sorted((str(path.relative_to(root)), path.stat().st_size, path.stat().st_mtime_ns) for path in root.rglob("*"))
+tests_scripts/test_micropython_overrides.py:408:    before = sorted(p.relative_to(fake_mp_dir) for p in fake_mp_dir.rglob("*"))
+tests_scripts/test_micropython_overrides.py:410:    after = sorted(p.relative_to(fake_mp_dir) for p in fake_mp_dir.rglob("*"))
+tests_scripts/test_micropython_overrides.py:666:    before = sorted(p.relative_to(fake) for p in fake.rglob("*"))
+tests_scripts/test_micropython_overrides.py:668:    after = sorted(p.relative_to(fake) for p in fake.rglob("*"))
+tests_scripts/test_micropython_overrides.py:1540:    next((missing / "CMakeFiles" / "firmware.dir").rglob("modlwip.c.o")).unlink()
+tests_scripts/test_micropython_overrides.py:1627:    assert sorted(str(path.relative_to(variant)) for path in variant.rglob("*") if path.is_file()) == [
+tests_scripts/test_micropython_overrides.py:1661:    assert not [path for path in board.rglob("*") if path.is_file() and "IPV6_FRAG_COPYHEADER" in path.read_text()]
+tests_scripts/test_persistence_write_marker_completeness.py:72:    return sorted(p for p in base.rglob("*.py") if "device_scripts" not in p.parts)
+tests_scripts/test_setup_toolchain_env.py:1830:    return sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+tests_scripts/test_stage_website.py:126:    assert sorted(p.relative_to(root / "stage").as_posix() for p in (root / "stage").rglob("*") if p.is_file()) == ["index.html", "js/app.js"]
+tests_scripts/test_stage_website.py:212:    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+tests_scripts/test_stage_website.py:216:    after = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+tests_scripts/test_test_sh.py:538:        return sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+tests_scripts/test_tests_hardware_collect_matrix.py:129:    for path in sorted((repo_root / "tests_hardware").rglob("*.py")):
+tests_scripts/test_tests_hardware_product_copies.py:56:    found = [line for path in sorted((_REPO_ROOT / "tests_hardware").rglob("*.py")) for line in copies(path, product_values())]
+tests_scripts/test_ticks_wrap_scan.py:227:    return {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8") for scope in _SCOPES for p in sorted((root / scope).rglob("*.py"))}
+tests_scripts/test_tool_help.py:68:    for root, dirs, files in os.walk(REPO_ROOT):
+tests_scripts/test_tunables_register.py:117:        for directory, subdirs, names in os.walk(root / scope):
+tests_scripts/test_twin_entry_point_order.py:116:    mains = [path for path in sorted((REPO_ROOT / "digital_twin").rglob("*.py")) if "def main(" in path.read_text(encoding="utf-8")]
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:29:    return sorted(TWIN.rglob("*.py"))
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:57:        for path in sorted((REPO_ROOT / directory).rglob("*")):
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:143:        for path in sorted((root / directory).rglob("*")):
+tests_scripts/test_twin_runner_test_flags.py:91:    twin_only = {path.stem for path in (REPO_ROOT / "digital_twin").rglob("*.py")} - _SHARED_NAMES
+tests_scripts/test_twin_wiring_contract.py:52:    return sorted(p for root in _CONSUMER_ROOTS for p in (_REPO / root).rglob("*.py") if "wiring_plan" in p.read_text(encoding="utf-8"))
+tests_scripts/test_typecheck_sh.py:191:        files = sorted(path.rglob("*.py*")) if path.is_dir() else [path]

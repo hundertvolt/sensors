@@ -1,0 +1,5 @@
+      1 E        +  where 2 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-879...5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23b/scripts/_stage_website.py': [Errno 2] No such file or directory\n").returncode
+      1 E       AssertionError: /home/user/sensors/.venv/bin/python: can't open file '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23b/scripts/_stage_website.py': [Errno 2] No such file or directory
+      1 E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23b/html/favicon.ico'
+      1 FAILED tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[jsdoc-key-not-passed]
+      1 _ test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[jsdoc-key-not-passed] _

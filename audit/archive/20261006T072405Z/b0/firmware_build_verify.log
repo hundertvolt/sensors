@@ -1,0 +1,793 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/b0wt
+configfile: pyproject.toml
+collected 20 items / 14 deselected / 6 selected
+
+tests_scripts/test_build_firmware.py FFF...                              [100%]
+
+=================================== FAILURES ===================================
+_____________ test_real_firmware_build_produces_a_valid_uf2[arzi] ______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/b0wt')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-23/test_real_firmware_build_produ0')
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    @pytest.mark.skipif(
+        os.environ.get("RUN_SLOW_FIRMWARE_BUILD") != "1",
+        reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 "
+        "(see .github/workflows/ci.yml's firmware-build-verify job, which sets it)",
+    )
+    def test_real_firmware_build_produces_a_valid_uf2(repo_root: Path, tmp_path: Path, device: str) -> None:
+        # The end-to-end proof Part B.11 asked for: a real firmware.uf2 from the same script and
+        # manifest a device build uses, not just the staging logic above. Needs the toolchain already
+        # installed, which test.sh and the unit-tests job both provision first.
+    
+        # Parametrized over all six real devices, each with its own boot entry that must compile and
+        # freeze cleanly. CI runs them as a per-device matrix; locally `-k` selects one.
+        output = tmp_path / f"firmware-{device}.uf2"
+        result = _run_cli(repo_root, [device, "--output", str(output)])
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: 
+E         == Building the real website for device='arzi'
+E         Writing Python file /tmp/tmp25b4k0a8/stage/frozen_html.py.
+E         Appended folder /tmp/tmp.BjVFrZ0dzN as /.
+E         Appended file   /tmp/tmp.BjVFrZ0dzN/index.html.gz (6852 bytes) as /index.html.gz
+E         Appended folder /tmp/tmp.BjVFrZ0dzN/js as /js
+E         Appended file   /tmp/tmp.BjVFrZ0dzN/js/app.js.gz (16292 bytes) as /js/app.js.gz
+E         Sum of file sizes 23144 bytes, 2 files 2 folders
+E         On import the file system will be mounted at /html.
+E         /tmp/tmp25b4k0a8/stage/frozen_html.py written successfully.
+E         Wrote /tmp/tmp25b4k0a8/stage/frozen_html.py (mounts at /html on import)
+E         
+E         == Cleaning /root/pico-toolchain/micropython/mpy-cross/build before rebuilding
+E         
+E         == Building mpy-cross
+E         $ make -j4   (cwd=/root/pico-toolchain/micropython/mpy-cross)
+E         Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+E         mkdir -p build/genhdr
+E         mkdir -p build/py/
+E         mkdir -p build/shared/runtime/
+E         GEN build/genhdr/mpversion.h
+E         GEN build/genhdr/qstr.i.last
+E         GEN build/genhdr/qstr.split
+E         GEN build/genhdr/moduledefs.split
+E         GEN build/genhdr/root_pointers.split
+E         GEN build/genhdr/qstrdefs.collected.h
+E         GEN build/genhdr/moduledefs.collected
+E         GEN build/genhdr/root_pointers.collected
+E         QSTR updated
+E         Module registrations updated
+E         GEN build/genhdr/qstrdefs.generated.h
+E         GEN build/genhdr/moduledefs.h
+E         Root pointer registrations updated
+E         GEN build/genhdr/root_pointers.h
+E         CC ../py/mpstate.c
+E         CC ../py/nlr.c
+E         CC ../py/nlrx86.c
+E         CC ../py/nlrx64.c
+E         CC ../py/nlrthumb.c
+E         CC ../py/nlraarch64.c
+E         CC ../py/nlrmips.c
+E         CC ../py/nlrpowerpc.c
+E         CC ../py/nlrxtensa.c
+E         CC ../py/nlrrv32.c
+E         CC ../py/nlrrv64.c
+E         CC ../py/nlrloong64.c
+E         CC ../py/nlrsetjmp.c
+E         CC ../py/malloc.c
+E         CC ../py/gc.c
+E         CC ../py/pystack.c
+E         CC ../py/qstr.c
+E         CC ../py/vstr.c
+E         CC ../py/mpprint.c
+E         CC ../py/unicode.c
+E         CC ../py/mpz.c
+E         CC ../py/reader.c
+E         CC ../py/lexer.c
+E         CC ../py/parse.c
+E         CC ../py/scope.c
+E         CC ../py/compile.c
+E         CC ../py/emitcommon.c
+E         CC ../py/emitbc.c
+E         CC ../py/asmbase.c
+E         CC ../py/asmx64.c
+E         CC ../py/emitnx64.c
+E         CC ../py/asmx86.c
+E         CC ../py/emitnx86.c
+E         CC ../py/asmthumb.c
+E         CC ../py/emitnthumb.c
+E         CC ../py/emitinlinethumb.c
+E         CC ../py/asmarm.c
+E         CC ../py/emitnarm.c
+E         CC ../py/asmxtensa.c
+E         CC ../py/emitnxtensa.c
+E         CC ../py/emitinlinextensa.c
+E         CC ../py/emitnxtensawin.c
+E         CC ../py/asmrv32.c
+E         CC ../py/emitnrv32.c
+E         CC ../py/emitinlinerv32.c
+E         CC ../py/emitndebug.c
+E         CC ../py/formatfloat.c
+E         CC ../py/parsenumbase.c
+E         CC ../py/parsenum.c
+E         CC ../py/emitglue.c
+E         CC ../py/persistentcode.c
+E         CC ../py/runtime.c
+E         CC ../py/runtime_utils.c
+E         CC ../py/scheduler.c
+E         CC ../py/nativeglue.c
+E         CC ../py/pairheap.c
+E         CC ../py/ringbuf.c
+E         CC ../py/cstack.c
+E         CC ../py/stackctrl.c
+E         CC ../py/argcheck.c
+E         CC ../py/warning.c
+E         CC ../py/profile.c
+E         CC ../py/obj.c
+E         CC ../py/map.c
+E         CC ../py/objattrtuple.c
+E         CC ../py/objarray.c
+E         CC ../py/objbool.c
+E         CC ../py/objboundmeth.c
+E         CC ../py/objcell.c
+E         CC ../py/objclosure.c
+E         CC ../py/objcode.c
+E         CC ../py/objcomplex.c
+E         CC ../py/objdeque.c
+E         CC ../py/objdict.c
+E         CC ../py/objenumerate.c
+E         CC ../py/objexcept.c
+E         CC ../py/objfilter.c
+E         CC ../py/objfloat.c
+E         Assembler messages:
+E         Fatal error: can't create build/py/objfilter.o: No such file or directory
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [../py/mkrules.mk:113: build/py/objfilter.o] Error 1
+E         make: *** Waiting for unfinished jobs....
+E         In file included from ../py/lexer.h:32,
+E                          from ../py/parsenum.h:30,
+E                          from ../py/objfloat.c:32:
+E         ../py/qstr.h:43:14: fatal error: genhdr/qstrdefs.generated.h: No such file or directory
+E            43 |     #include "genhdr/qstrdefs.generated.h"
+E               |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E         compilation terminated.
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [../py/mkrules.mk:113: build/py/objfloat.o] Error 1
+E         ../py/objdict.c:672:1: fatal error: opening dependency file build/py/objdict.d: No such file or directory
+E           672 | }
+E               | ^
+E         compilation terminated.
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [../py/mkrules.mk:113: build/py/objdict.o] Error 1
+E         ../py/objexcept.c:659:1: fatal error: opening dependency file build/py/objexcept.d: No such file or directory
+E           659 | }
+E               | ^
+E         compilation terminated.
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [../py/mkrules.mk:113: build/py/objexcept.o] Error 1
+E         
+E         
+E         FAILED: command failed (exit 2): make -j4
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/b0wt/.venv/bi... *** [../py/mkrules.mk:113: build/py/objexcept.o] Error 1\n\n', stderr='\nFAILED: command failed (exit 2): make -j4\n').returncode
+
+tests_scripts/test_build_firmware.py:211: AssertionError
+______________ test_real_firmware_build_produces_a_valid_uf2[dev] ______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/b0wt')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-23/test_real_firmware_build_produ1')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    @pytest.mark.skipif(
+        os.environ.get("RUN_SLOW_FIRMWARE_BUILD") != "1",
+        reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 "
+        "(see .github/workflows/ci.yml's firmware-build-verify job, which sets it)",
+    )
+    def test_real_firmware_build_produces_a_valid_uf2(repo_root: Path, tmp_path: Path, device: str) -> None:
+        # The end-to-end proof Part B.11 asked for: a real firmware.uf2 from the same script and
+        # manifest a device build uses, not just the staging logic above. Needs the toolchain already
+        # installed, which test.sh and the unit-tests job both provision first.
+    
+        # Parametrized over all six real devices, each with its own boot entry that must compile and
+        # freeze cleanly. CI runs them as a per-device matrix; locally `-k` selects one.
+        output = tmp_path / f"firmware-{device}.uf2"
+        result = _run_cli(repo_root, [device, "--output", str(output)])
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: 
+E         == Building the real website for device='dev'
+E         Writing Python file /tmp/tmph35msf3r/stage/frozen_html.py.
+E         Appended folder /tmp/tmp.E89TSKYShY as /.
+E         Appended file   /tmp/tmp.E89TSKYShY/index.html.gz (9292 bytes) as /index.html.gz
+E         Appended folder /tmp/tmp.E89TSKYShY/js as /js
+E         Appended file   /tmp/tmp.E89TSKYShY/js/app.js.gz (16292 bytes) as /js/app.js.gz
+E         Sum of file sizes 25584 bytes, 2 files 2 folders
+E         On import the file system will be mounted at /html.
+E         /tmp/tmph35msf3r/stage/frozen_html.py written successfully.
+E         Wrote /tmp/tmph35msf3r/stage/frozen_html.py (mounts at /html on import)
+E         
+E         == Cleaning /root/pico-toolchain/micropython/mpy-cross/build before rebuilding
+E         
+E         == Building mpy-cross
+E         $ make -j4   (cwd=/root/pico-toolchain/micropython/mpy-cross)
+E         Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+E         mkdir -p build/genhdr
+E         mkdir -p build/
+E         mkdir -p build/py/
+E         mkdir -p build/shared/runtime/
+E         GEN build/genhdr/mpversion.h
+E         GEN build/genhdr/qstr.i.last
+E         GEN build/genhdr/qstr.split
+E         GEN build/genhdr/moduledefs.split
+E         GEN build/genhdr/root_pointers.split
+E         GEN build/genhdr/root_pointers.collected
+E         GEN build/genhdr/qstrdefs.collected.h
+E         GEN build/genhdr/moduledefs.collected
+E         Root pointer registrations updated
+E         Module registrations updated
+E         GEN build/genhdr/root_pointers.h
+E         GEN build/genhdr/moduledefs.h
+E         QSTR updated
+E         GEN build/genhdr/qstrdefs.generated.h
+E         CC ../py/mpstate.c
+E         CC ../py/nlr.c
+E         CC ../py/nlrx86.c
+E         CC ../py/nlrx64.c
+E         CC ../py/nlrthumb.c
+E         CC ../py/nlraarch64.c
+E         CC ../py/nlrmips.c
+E         CC ../py/nlrpowerpc.c
+E         CC ../py/nlrxtensa.c
+E         CC ../py/nlrrv32.c
+E         CC ../py/nlrrv64.c
+E         CC ../py/nlrloong64.c
+E         CC ../py/nlrsetjmp.c
+E         CC ../py/malloc.c
+E         CC ../py/pystack.c
+E         CC ../py/gc.c
+E         CC ../py/qstr.c
+E         CC ../py/vstr.c
+E         CC ../py/mpprint.c
+E         CC ../py/unicode.c
+E         CC ../py/mpz.c
+E         CC ../py/reader.c
+E         CC ../py/lexer.c
+E         CC ../py/parse.c
+E         CC ../py/scope.c
+E         CC ../py/compile.c
+E         CC ../py/emitcommon.c
+E         CC ../py/emitbc.c
+E         CC ../py/asmbase.c
+E         CC ../py/asmx64.c
+E         CC ../py/emitnx64.c
+E         CC ../py/asmx86.c
+E         CC ../py/emitnx86.c
+E         CC ../py/asmthumb.c
+E         CC ../py/emitnthumb.c
+E         CC ../py/emitinlinethumb.c
+E         CC ../py/asmarm.c
+E         CC ../py/emitnarm.c
+E         CC ../py/asmxtensa.c
+E         CC ../py/emitnxtensa.c
+E         CC ../py/emitinlinextensa.c
+E         CC ../py/emitnxtensawin.c
+E         CC ../py/asmrv32.c
+E         CC ../py/emitnrv32.c
+E         CC ../py/emitinlinerv32.c
+E         CC ../py/emitndebug.c
+E         CC ../py/formatfloat.c
+E         CC ../py/parsenumbase.c
+E         CC ../py/parsenum.c
+E         CC ../py/emitglue.c
+E         CC ../py/persistentcode.c
+E         CC ../py/runtime.c
+E         CC ../py/runtime_utils.c
+E         CC ../py/scheduler.c
+E         CC ../py/nativeglue.c
+E         CC ../py/pairheap.c
+E         CC ../py/ringbuf.c
+E         CC ../py/cstack.c
+E         CC ../py/stackctrl.c
+E         CC ../py/argcheck.c
+E         CC ../py/warning.c
+E         CC ../py/profile.c
+E         CC ../py/map.c
+E         CC ../py/obj.c
+E         CC ../py/objarray.c
+E         CC ../py/objattrtuple.c
+E         CC ../py/objbool.c
+E         CC ../py/objboundmeth.c
+E         CC ../py/objcell.c
+E         CC ../py/objclosure.c
+E         CC ../py/objcode.c
+E         CC ../py/objcomplex.c
+E         CC ../py/objdeque.c
+E         CC ../py/objdict.c
+E         CC ../py/objenumerate.c
+E         CC ../py/objexcept.c
+E         CC ../py/objfilter.c
+E         CC ../py/objfloat.c
+E         CC ../py/objfun.c
+E         CC ../py/objgenerator.c
+E         CC ../py/objgetitemiter.c
+E         CC ../py/objint.c
+E         CC ../py/objint_longlong.c
+E         CC ../py/objint_mpz.c
+E         CC ../py/objlist.c
+E         CC ../py/objmap.c
+E         CC ../py/objmodule.c
+E         CC ../py/objobject.c
+E         CC ../py/objpolyiter.c
+E         CC ../py/objproperty.c
+E         CC ../py/objnone.c
+E         CC ../py/objnamedtuple.c
+E         CC ../py/objrange.c
+E         CC ../py/objreversed.c
+E         CC ../py/objringio.c
+E         CC ../py/objset.c
+E         CC ../py/objsingleton.c
+E         CC ../py/objslice.c
+E         CC ../py/objstr.c
+E         CC ../py/objstrunicode.c
+E         CC ../py/objstringio.c
+E         CC ../py/objtemplate.c
+E         CC ../py/objtuple.c
+E         CC ../py/objtype.c
+E         CC ../py/objzip.c
+E         CC ../py/opmethods.c
+E         CC ../py/sequence.c
+E         CC ../py/stream.c
+E         CC ../py/binary.c
+E         CC ../py/builtinimport.c
+E         CC ../py/builtinevex.c
+E         CC ../py/builtinhelp.c
+E         CC ../py/modarray.c
+E         CC ../py/modbuiltins.c
+E         CC ../py/modcollections.c
+E         CC ../py/modgc.c
+E         CC ../py/modio.c
+E         CC ../py/modmath.c
+E         CC ../py/modcmath.c
+E         CC ../py/modmicropython.c
+E         CC ../py/modstring.c
+E         CC ../py/modstruct.c
+E         CC ../py/modsys.c
+E         CC ../py/moderrno.c
+E         CC ../py/modthread.c
+E         CC ../py/modweakref.c
+E         CC ../py/vm.c
+E         CC ../py/bc.c
+E         CC ../py/showbc.c
+E         CC ../py/repl.c
+E         CC ../py/smallint.c
+E         CC ../py/frozenmod.c
+E         CC main.c
+E         CC gccollect.c
+E         CC ../shared/runtime/gchelper_generic.c
+E         LINK build/mpy-cross
+E            text	   data	    bss	    dec	    hex	filename
+E          413624	  19921	    872	 434417	  6a0f1	build/mpy-cross
+E         
+E         $ /root/pico-toolchain/micropython/mpy-cross/build/mpy-cross --version
+E         MicroPython v1.29.0 on 2026-10-06; mpy-cross emitting mpy v6.3
+E         
+E         Built: MicroPython v1.29.0 on 2026-10-06; mpy-cross emitting mpy v6.3
+E         
+E         == Building firmware for BOARD=RPI_PICO_W, device='dev'
+E         
+E         == Building firmware for BOARD=RPI_PICO_W (with the frozen verification module (build-only check))
+E         $ make -j4 CFLAGS_EXTRA=-Wno-array-bounds BOARD=RPI_PICO_W BOARD_DIR=/root/pico-toolchain/build_overrides/lwip_connection_counts_board FROZEN_MANIFEST=/tmp/tmph35msf3r/manifest.py   (cwd=/root/pico-toolchain/micropython/ports/rp2)
+E         Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+E         PICO_SDK_PATH is /root/pico-toolchain/micropython/lib/pico-sdk
+E         Target board (PICO_BOARD) is 'pico_w'.
+E         Using board configuration from /root/pico-toolchain/micropython/lib/pico-sdk/src/boards/include/boards/pico_w.h
+E         Defaulting platform (PICO_PLATFORM) to 'rp2040' based on PICO_BOARD setting.
+E         Defaulting compiler (PICO_COMPILER) to 'pico_arm_cortex_m0plus_gcc' since not specified or detected.
+E         Configuring toolchain based on PICO_COMPILER 'pico_arm_cortex_m0plus_gcc'
+E         Defaulting PICO_GCC_TRIPLE to 'arm-none-eabi'
+E         -- The C compiler identification is GNU 13.2.1
+E         -- The CXX compiler identification is GNU 13.2.1
+E         -- Detecting C compiler ABI info
+E         -- Detecting C compiler ABI info - done
+E         -- Check for working C compiler: /usr/bin/arm-none-eabi-gcc - skipped
+E         -- Detecting C compile features
+E         -- Detecting C compile features - done
+E         -- Detecting CXX compiler ABI info
+E         -- Detecting CXX compiler ABI info - done
+E         -- Check for working CXX compiler: /usr/bin/arm-none-eabi-g++ - skipped
+E         -- Detecting CXX compile features
+E         -- Detecting CXX compile features - done
+E         -- The ASM compiler identification is GNU
+E         -- Found assembler: /usr/bin/arm-none-eabi-gcc
+E         Build type is MinSizeRel
+E         -- Found Python3: /usr/local/bin/python3 (found version "3.11.15") found components: Interpreter 
+E         -- Detected native TLS (__aeabi_read_tp)
+E         TinyUSB available at /root/pico-toolchain/micropython/lib/tinyusb/hw/bsp/rp2040; enabling build support for USB.
+E         BTstack available at /root/pico-toolchain/micropython/lib/btstack
+E         cyw43-driver available at /root/pico-toolchain/micropython/lib/cyw43-driver
+E         Pico W Bluetooth build support available.
+E         lwIP available at /root/pico-toolchain/micropython/lib/lwip
+E         Pico W Wi-Fi build support available.
+E         C library type is newlib
+E         Found User C Module(s): 
+E         Using picotool from /usr/local/bin/picotool
+E         -- Configuring done (1.2s)
+E         -- Generating done (0.2s)
+E         -- Build files have been written to: /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W
+E         make[1]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[2]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  0%] Building ASM object pico-sdk/src/rp2040/boot_stage2/CMakeFiles/bs2_default.dir/compile_time_choice.S.o
+E         [  0%] Creating directories for 'pioasmBuild'
+E         [  0%] No download step for 'pioasmBuild'
+E         [  0%] Linking ASM executable bs2_default.elf
+E         [  1%] No update step for 'pioasmBuild'
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  1%] Built target bs2_default
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  1%] Generating bs2_default.bin
+E         [  1%] No patch step for 'pioasmBuild'
+E         [  1%] Generating bs2_default_padded_checksummed.S
+E         [  1%] Performing configure step for 'pioasmBuild'
+E         Not searching for unused variables given on the command line.
+E         loading initial cache file /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pico-sdk/src/rp2_common/pico_cyw43_driver/pioasm/tmp/pioasmBuild-cache-MinSizeRel.cmake
+E         GEN /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/genhdr/mpversion.h
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  1%] Built target BUILD_VERSION_HEADER
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  1%] Generating genhdr/pins.h, pins_RPI_PICO_W.c
+E         [  1%] Building ASM object pico-sdk/src/rp2040/boot_stage2/CMakeFiles/bs2_default_library.dir/bs2_default_padded_checksummed.S.o
+E         -- The CXX compiler identification is GNU 13.3.0
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  1%] Built target bs2_default_library
+E         [  1%] Generating genhdr/qstr.i.last
+E         -- Detecting CXX compiler ABI info
+E         -- Detecting CXX compiler ABI info - done
+E         -- Check for working CXX compiler: /usr/bin/c++ - skipped
+E         -- Detecting CXX compile features
+E         -- Detecting CXX compile features - done
+E         -- Configuring done (0.4s)
+E         -- Generating done (0.0s)
+E         -- Build files have been written to: /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm
+E         [  2%] Performing build step for 'pioasmBuild'
+E         make[4]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         make[5]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         make[6]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         make[6]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         make[6]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         [  2%] Generating genhdr/qstr.split
+E         [  3%] Generating genhdr/root_pointers.split
+E         [  3%] Generating genhdr/qstrdefs.collected.h
+E         QSTR updated
+E         [  3%] Generating genhdr/root_pointers.collected
+E         Root pointer registrations updated
+E         [  3%] Generating genhdr/qstrdefs.preprocessed.h
+E         [  3%] Generating genhdr/root_pointers.h
+E         [  3%] Generating genhdr/qstrdefs.generated.h
+E         MPY _boot_fat.py
+E         MPY _boot.py
+E         MPY rp2.py
+E         MPY asyncio/__init__.py
+E         MPY asyncio/core.py
+E         MPY asyncio/event.py
+E         MPY asyncio/funcs.py
+E         MPY asyncio/lock.py
+E         MPY asyncio/stream.py
+E         MPY uasyncio.py
+E         MPY onewire.py
+E         MPY ds18x20.py
+E         MPY dht.py
+E         MPY neopixel.py
+E         MPY requests/__init__.py
+E         MPY mip/__init__.py
+E         MPY ntptime.py
+E         MPY ssl.py
+E         MPY webrepl.py
+E         MPY webrepl_setup.py
+E         MPY urequests.py
+E         MPY aioble/__init__.py
+E         MPY aioble/core.py
+E         MPY aioble/device.py
+E         MPY aioble/peripheral.py
+E         MPY aioble/server.py
+E         MPY aioble/central.py
+E         MPY aioble/client.py
+E         MPY aioble/l2cap.py
+E         MPY aioble/security.py
+E         MPY asy_sgp40_driver.py
+E         MPY main.py
+E         MPY asy_bmp3xx_driver.py
+E         MPY base_classes.py
+E         MPY asy_neopixel_driver.py
+E         MPY sensortask_dev.py
+E         MPY system_service.py
+E         MPY asy_ntp_client.py
+E         MPY voc_algorithm.py
+E         MPY asy_dns_client.py
+E         MPY frozen_html.py
+E         MPY asy_spi_driver.py
+E         MPY asy_isl29125_driver.py
+E         MPY asy_notification_service.py
+E         MPY asy_uart_comm.py
+E         MPY asy_i2c_driver.py
+E         MPY asy_uart_driver.py
+E         MPY api_response.py
+E         MPY captive_dns.py
+E         MPY asy_fram_manager.py
+E         MPY asy_uart_link_driver.py
+E         MPY asy_fram_driver.py
+E         MPY crc_checks.py
+E         MPY framing_codecs.py
+E         MPY asy_udp_socket.py
+E         MPY config_manager.py
+E         MPY asy_scd30_driver.py
+E         MPY microdot.py
+E         MPY asy_wifi_service.py
+E         MPY print_log.py
+E         MPY math_helpers.py
+E         MPY asy_webserver_service.py
+E         GEN /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/frozen_content.c
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  3%] Built target BUILD_FROZEN_CONTENT
+E         make[6]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         [100%] Built target pioasm
+E         make[5]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         make[4]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         [  3%] Performing install step for 'pioasmBuild'
+E         make[4]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         make[5]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         make[6]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         make[6]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         [100%] Built target pioasm
+E         make[5]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         Install the project...
+E         -- Install configuration: "Release"
+E         make[4]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+E         [  3%] Completed 'pioasmBuild'
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  3%] Built target pioasmBuild
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  3%] Generating cyw43_bus_pio_spi.pio.h
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  3%] Built target cyw43_driver_picow_cyw43_bus_pio_spi_pio_h
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  3%] Generating genhdr/compressed.split
+E         [  3%] Generating genhdr/moduledefs.split
+E         [  3%] Generating genhdr/moduledefs.collected
+E         [  3%] Generating genhdr/compressed.collected
+E         Module registrations updated
+E         [  3%] Generating genhdr/moduledefs.h
+E         Compressed data updated
+E         [  3%] Generating genhdr/compressed.data.h
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         [  3%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/argcheck.c.o
+E         [  3%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/asmarm.c.o
+E         [  3%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/asmbase.c.o
+E         [  3%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/asmrv32.c.o
+E         [  4%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/asmthumb.c.o
+E         [  4%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/asmx64.c.o
+E         [  4%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/asmx86.c.o
+E         [  4%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/asmxtensa.c.o
+E         [  4%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/bc.c.o
+E         [  4%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/binary.c.o
+E         [  5%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/builtinevex.c.o
+E         [  5%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/builtinhelp.c.o
+E         [  5%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/builtinimport.c.o
+E         [  5%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/compile.c.o
+E         [  5%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/cstack.c.o
+E         [  5%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitbc.c.o
+E         [  6%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitcommon.c.o
+E         [  6%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitglue.c.o
+E         [  6%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitinlinerv32.c.o
+E         [  6%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitinlinethumb.c.o
+E         [  6%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitinlinextensa.c.o
+E         [  6%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitnarm.c.o
+E         [  7%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitndebug.c.o
+E         [  7%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitnrv32.c.o
+E         [  7%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitnthumb.c.o
+E         [  7%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitnx64.c.o
+E         [  7%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitnx86.c.o
+E         [  8%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitnxtensawin.c.o
+E         [  8%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/emitnxtensa.c.o
+E         [  8%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/formatfloat.c.o
+E         [  8%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/frozenmod.c.o
+E         [  8%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/gc.c.o
+E         [  8%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/lexer.c.o
+E         [  8%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/malloc.c.o
+E         [  9%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/map.c.o
+E         [  9%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modarray.c.o
+E         [  9%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modbuiltins.c.o
+E         [  9%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modcmath.c.o
+E         [  9%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modcollections.c.o
+E         [  9%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modgc.c.o
+E         [ 10%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modio.c.o
+E         [ 10%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modmath.c.o
+E         [ 10%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modmicropython.c.o
+E         [ 10%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modstring.c.o
+E         [ 10%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modstruct.c.o
+E         [ 10%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modsys.c.o
+E         [ 11%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modthread.c.o
+E         [ 11%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/moderrno.c.o
+E         [ 11%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/modweakref.c.o
+E         [ 11%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/mpprint.c.o
+E         [ 11%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/mpstate.c.o
+E         [ 11%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/mpz.c.o
+E         [ 12%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nativeglue.c.o
+E         [ 12%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlr.c.o
+E         [ 12%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlraarch64.c.o
+E         [ 12%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrloong64.c.o
+E         [ 12%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrmips.c.o
+E         [ 12%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrpowerpc.c.o
+E         [ 12%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrrv32.c.o
+E         [ 13%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrrv64.c.o
+E         [ 13%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrsetjmp.c.o
+E         [ 13%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrthumb.c.o
+E         [ 13%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrx64.c.o
+E         [ 13%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrx86.c.o
+E         [ 13%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/nlrxtensa.c.o
+E         [ 14%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/obj.c.o
+E         [ 14%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objarray.c.o
+E         [ 14%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objattrtuple.c.o
+E         [ 14%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objbool.c.o
+E         [ 14%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objboundmeth.c.o
+E         [ 14%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objcode.c.o
+E         [ 15%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objcell.c.o
+E         [ 15%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objclosure.c.o
+E         [ 15%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objcomplex.c.o
+E         [ 15%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objdeque.c.o
+E         [ 15%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objdict.c.o
+E         [ 15%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objenumerate.c.o
+E         [ 16%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objexcept.c.o
+E         [ 16%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objfilter.c.o
+E         [ 16%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objfloat.c.o
+E         [ 16%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objfun.c.o
+E         [ 16%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objgenerator.c.o
+E         [ 16%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objgetitemiter.c.o
+E         [ 17%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objint.c.o
+E         [ 17%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objint_longlong.c.o
+E         [ 17%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objint_mpz.c.o
+E         [ 17%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objlist.c.o
+E         [ 17%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objmap.c.o
+E         [ 17%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objmodule.c.o
+E         [ 18%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objnamedtuple.c.o
+E         [ 18%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objnone.c.o
+E         [ 18%] Building C object CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objobject.c.o
+E         In file included from /root/pico-toolchain/micropython/lib/pico-sdk/src/rp2_common/hardware_flash/include/hardware/flash.h:10,
+E                          from /root/pico-toolchain/micropython/ports/rp2/mpconfigport.h:30,
+E                          from /root/pico-toolchain/micropython/py/mpconfig.h:100,
+E                          from /root/pico-toolchain/micropython/py/obj.h:31,
+E                          from /root/pico-toolchain/micropython/py/objnone.c:29:
+E         /root/pico-toolchain/micropython/lib/pico-sdk/src/common/pico_base_headers/include/pico.h:27:10: fatal error: pico/version.h: No such file or directory
+E            27 | #include "pico/version.h"
+E               |          ^~~~~~~~~~~~~~~~
+E         compilation terminated.
+E         make[3]: *** [CMakeFiles/firmware.dir/build.make:1626: CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objnone.c.o] Error 1
+E         make[3]: *** Waiting for unfinished jobs....
+E         In file included from /root/pico-toolchain/micropython/lib/pico-sdk/src/rp2_common/hardware_flash/include/hardware/flash.h:10,
+E                          from /root/pico-toolchain/micropython/ports/rp2/mpconfigport.h:30,
+E                          from /root/pico-toolchain/micropython/py/mpconfig.h:100,
+E                          from /root/pico-toolchain/micropython/py/obj.h:31,
+E                          from /root/pico-toolchain/micropython/py/objtype.h:29,
+E                          from /root/pico-toolchain/micropython/py/objobject.c:29:
+E         /root/pico-toolchain/micropython/lib/pico-sdk/src/common/pico_base_headers/include/pico.h:27:10: fatal error: pico/version.h: No such file or directory
+E            27 | #include "pico/version.h"
+E               |          ^~~~~~~~~~~~~~~~
+E         compilation terminated.
+E         make[3]: *** [CMakeFiles/firmware.dir/build.make:1640: CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objobject.c.o] Error 1
+E         /root/pico-toolchain/micropython/py/objnamedtuple.c:183:1: fatal error: opening dependency file CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objnamedtuple.c.o.d: No such file or directory
+E           183 | MP_DEFINE_CONST_FUN_OBJ_2(mp_namedtuple_obj, new_namedtuple_type);
+E               | ^~~~~~~~~~~~~~~~~~~~~~~~~
+E         compilation terminated.
+E         make[3]: *** [CMakeFiles/firmware.dir/build.make:1612: CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objnamedtuple.c.o] Error 1
+E         /root/pico-toolchain/micropython/py/objlist.c:541:1: fatal error: opening dependency file CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objlist.c.o.d: No such file or directory
+E           541 | }
+E               | ^
+E         compilation terminated.
+E         make[3]: *** [CMakeFiles/firmware.dir/build.make:1570: CMakeFiles/firmware.dir/root/pico-toolchain/micropython/py/objlist.c.o] Error 1
+E         make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[2]: *** [CMakeFiles/Makefile2:1897: CMakeFiles/firmware.dir/all] Error 2
+E         make[2]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         make[1]: *** [Makefile:91: all] Error 2
+E         make[1]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [Makefile:73: all] Error 1
+E         
+E         
+E         FAILED: command failed (exit 2): make -j4 CFLAGS_EXTRA=-Wno-array-bounds BOARD=RPI_PICO_W BOARD_DIR=/root/pico-toolchain/build_overrides/lwip_connection_counts_board FROZEN_MANIFEST=/tmp/tmph35msf3r/manifest.py
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/b0wt/.venv/bi..._DIR=/root/pico-toolchain/build_overrides/lwip_connection_counts_board FROZEN_MANIFEST=/tmp/tmph35msf3r/manifest.py\n').returncode
+
+tests_scripts/test_build_firmware.py:211: AssertionError
+____________ test_real_firmware_build_produces_a_valid_uf2[grkizi] _____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/b0wt')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-23/test_real_firmware_build_produ2')
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    @pytest.mark.skipif(
+        os.environ.get("RUN_SLOW_FIRMWARE_BUILD") != "1",
+        reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 "
+        "(see .github/workflows/ci.yml's firmware-build-verify job, which sets it)",
+    )
+    def test_real_firmware_build_produces_a_valid_uf2(repo_root: Path, tmp_path: Path, device: str) -> None:
+        # The end-to-end proof Part B.11 asked for: a real firmware.uf2 from the same script and
+        # manifest a device build uses, not just the staging logic above. Needs the toolchain already
+        # installed, which test.sh and the unit-tests job both provision first.
+    
+        # Parametrized over all six real devices, each with its own boot entry that must compile and
+        # freeze cleanly. CI runs them as a per-device matrix; locally `-k` selects one.
+        output = tmp_path / f"firmware-{device}.uf2"
+        result = _run_cli(repo_root, [device, "--output", str(output)])
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: 
+E         == Building the real website for device='grkizi'
+E         Writing Python file /tmp/tmpyq_sq0br/stage/frozen_html.py.
+E         Appended folder /tmp/tmp.JtLsUYpwfg as /.
+E         Appended file   /tmp/tmp.JtLsUYpwfg/index.html.gz (6855 bytes) as /index.html.gz
+E         Appended folder /tmp/tmp.JtLsUYpwfg/js as /js
+E         Appended file   /tmp/tmp.JtLsUYpwfg/js/app.js.gz (16292 bytes) as /js/app.js.gz
+E         Sum of file sizes 23147 bytes, 2 files 2 folders
+E         On import the file system will be mounted at /html.
+E         /tmp/tmpyq_sq0br/stage/frozen_html.py written successfully.
+E         Wrote /tmp/tmpyq_sq0br/stage/frozen_html.py (mounts at /html on import)
+E         
+E         == Cleaning /root/pico-toolchain/micropython/mpy-cross/build before rebuilding
+E         
+E         == Building mpy-cross
+E         $ make -j4   (cwd=/root/pico-toolchain/micropython/mpy-cross)
+E         Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+E         mkdir -p build/genhdr
+E         mkdir -p build/
+E         mkdir -p build/py/
+E         mkdir -p build/shared/runtime/
+E         GEN build/genhdr/mpversion.h
+E         GEN build/genhdr/qstr.i.last
+E         GEN build/genhdr/qstr.split
+E         GEN build/genhdr/moduledefs.split
+E         GEN build/genhdr/root_pointers.split
+E         GEN build/genhdr/qstrdefs.collected.h
+E         GEN build/genhdr/root_pointers.collected
+E         GEN build/genhdr/moduledefs.collected
+E         QSTR updated
+E         GEN build/genhdr/qstrdefs.generated.h
+E         Root pointer registrations updated
+E         GEN build/genhdr/root_pointers.h
+E         Module registrations updated
+E         ERROR: Empty preprocessor output - check for errors above
+E         GEN build/genhdr/moduledefs.h
+E         make: *** [../py/py.mk:276: build/genhdr/qstrdefs.generated.h] Error 1
+E         make: *** Deleting file 'build/genhdr/qstrdefs.generated.h'
+E         make: *** Waiting for unfinished jobs....
+E         
+E         
+E         FAILED: command failed (exit 2): make -j4
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/b0wt/.venv/bi...s.generated.h'\nmake: *** Waiting for unfinished jobs....\n\n", stderr='\nFAILED: command failed (exit 2): make -j4\n').returncode
+
+tests_scripts/test_build_firmware.py:211: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[arzi]
+FAILED tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[dev]
+FAILED tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[grkizi]
+============ 3 failed, 3 passed, 14 deselected in 165.91s (0:02:45) ============

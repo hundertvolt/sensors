@@ -1,0 +1,39 @@
+............................................                             [100%]
+============================== slowest durations ===============================
+2.27s call     tests_scripts/test_port_lock.py::test_a_lock_left_without_a_pid_is_taken_over_after_the_bounded_wait
+2.02s call     tests_scripts/test_port_lock.py::test_a_lock_left_without_a_pid_is_taken_over_by_the_cpython_reader
+0.24s call     tests_scripts/test_port_lock.py::test_a_pid_written_during_the_wait_is_honoured
+0.12s call     tests_scripts/test_port_lock.py::test_a_cpython_holder_interrupted_releases_and_one_killed_is_taken_over
+0.12s call     tests_scripts/test_port_lock.py::test_racing_takers_leave_exactly_one_holder[stale]
+0.11s call     tests_scripts/test_port_lock.py::test_bash_and_cpython_takers_racing_leave_exactly_one_holder
+0.08s call     tests_scripts/test_port_lock.py::test_a_grandchild_passes_after_its_parent_took_a_port_of_its_own
+0.07s call     tests_scripts/test_port_lock.py::test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/test.sh]
+0.07s call     tests_scripts/test_port_lock.py::test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/run_digital_twin_ci.sh]
+0.07s call     tests_scripts/test_port_lock.py::test_a_bash_runner_refuses_a_port_the_cpython_reader_holds
+0.07s call     tests_scripts/test_port_lock.py::test_a_cpython_child_of_a_bash_holder_passes_without_retaking
+0.06s call     tests_scripts/test_port_lock.py::test_racing_takers_leave_exactly_one_holder[free]
+0.06s call     tests_scripts/test_port_lock.py::test_a_bash_child_of_a_cpython_holder_passes_without_retaking
+0.05s call     tests_scripts/test_port_lock.py::test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/run_unix_port_integration.sh]
+0.05s call     tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[run_digital_twin_ci.sh-18080]
+0.05s call     tests_scripts/test_port_lock.py::test_a_terminated_holder_releases_its_locks
+0.05s call     tests_scripts/test_port_lock.py::test_release_removes_only_the_runners_own_locks
+0.05s call     tests_scripts/test_port_lock.py::test_a_second_runner_on_a_held_port_exits_1_naming_the_holder
+0.05s call     tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[test.sh-53]
+0.05s call     tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[run_digital_twin_ci.sh-53]
+0.05s call     tests_scripts/test_port_lock.py::test_a_dead_holders_lock_is_taken_over
+0.04s call     tests_scripts/test_port_lock.py::test_the_inherited_chain_does_not_open_a_port_an_unrelated_process_holds
+0.04s call     tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[run_unix_port_integration.sh-53]
+0.04s call     tests_scripts/test_port_lock.py::test_a_taker_that_read_a_dead_pid_leaves_a_fresh_live_lock_in_place
+0.03s call     tests_scripts/test_port_lock.py::test_a_refused_runner_releases_the_ports_it_took_before
+0.03s call     tests_scripts/test_port_lock.py::test_a_descendant_of_the_owner_passes_without_retaking
+0.03s call     tests_scripts/test_port_lock.py::test_the_cpython_reader_refuses_a_port_a_bash_runner_holds
+0.03s call     tests_scripts/test_port_lock.py::test_a_runner_retaking_its_own_port_passes
+0.02s call     tests_scripts/test_port_lock.py::test_a_planted_lock_of_a_live_unrelated_process_refuses_the_taker
+0.01s call     tests_scripts/test_port_lock.py::test_a_malformed_take_is_a_usage_error[zero]
+0.01s call     tests_scripts/test_port_lock.py::test_the_cpython_reader_takes_over_a_dead_holders_lock_and_chains_while_it_holds
+0.01s call     tests_scripts/test_port_lock.py::test_a_malformed_take_is_a_usage_error[no-runner]
+0.01s call     tests_scripts/test_port_lock.py::test_a_malformed_take_is_a_usage_error[not-a-number]
+0.01s call     tests_scripts/test_port_lock.py::test_a_malformed_take_is_a_usage_error[too-high]
+
+(98 durations < 0.005s hidden.  Use -vv to show these durations.)
+44 passed in 6.20s

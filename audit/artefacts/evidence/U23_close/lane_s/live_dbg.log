@@ -1,0 +1,127 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s
+
+DEBUG response http://127.0.0.1:19481/ 200 1791887387352
+DEBUG response http://127.0.0.1:19481/js/app.js 200 1791887388684
+DEBUG response http://127.0.0.1:19481/status 200 1791887388750
+DEBUG response http://127.0.0.1:19481/measurements 200 1791887388942
+DEBUG requestfailed http://127.0.0.1:19481/system net::ERR_CONNECTION_RESET 1791887388982
+DEBUG requestfailed http://127.0.0.1:19481/measurements net::ERR_CONNECTION_REFUSED 1791887391957
+DEBUG response http://127.0.0.1:19481/measurements 200 1791887394984
+DEBUG recovered response http://127.0.0.1:19481/measurements 200 1791887394984
+DEBUG response http://127.0.0.1:19481/status 200 1791887395064
+DEBUG response http://127.0.0.1:19481/system 200 1791887395254
+DEBUG response http://127.0.0.1:19481/measurements 200 1791887398022
+DEBUG response http://127.0.0.1:19481/measurements 200 1791887401058
+DEBUG response http://127.0.0.1:19481/measurements 200 1791887404095
+DEBUG recovered failed TimeoutError: locator.waitFor: Timeout 10000ms exceeded.
+Call log:
+[2m  - waiting for locator('#app-main .error-banner[data-shown="false"]') to be visible[22m
+[2m    23 × locator resolved to hidden <p role="alert" data-shown="false" class="error-banner">Could not refresh Measurements: TypeError: Failed…</p>[22m
+ 1791887404988
+DEBUG banner html <h2 class="section-heading">Measurements</h2><p class="section-description">Live sensor readings, refreshed automatically.</p><p class="error-banner" data-shown="false" role="alert">Could not refresh Measurements: TypeError: Failed to fetch</p><div class="group-grid"><div class="card" data-group-key="SCD30"><h3>SCD30 — CO2, Temperature, Humidity</h3><div class="field" data-field-wrapper-key="CO2"><span class="field-label" id="field-0-0-label">CO2<span class="field-unit"> [ppm]</span></span><span class="field-value" aria-labelledby="field-0-0-label" data-field-key="CO2">432</span><p class="fiel
+ ❯ |chromium| tests_js/live-backend.test.js (18 tests | 1 failed | 17 skipped) 19863ms
+   ↓ live digital-twin backend: arzi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: dev (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: grkizi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: klkizi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: schlafzi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend: wozi (1)
+     ↓ the real website, driven by a real browser, round-trips a real PUT against a live twin
+   ↓ live digital-twin backend, concurrent browser sessions: arzi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: dev (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: klkizi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: schlafzi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, concurrent browser sessions: wozi (1)
+     ↓ a full ceiling of browser tabs against one live twin all load, directly or on one reload
+   ↓ live digital-twin backend, device restart: arzi (1)
+     ↓ the page recovers from a device restart without reloading
+   ↓ live digital-twin backend, device restart: dev (1)
+     ↓ the page recovers from a device restart without reloading
+   ↓ live digital-twin backend, device restart: grkizi (1)
+     ↓ the page recovers from a device restart without reloading
+   ↓ live digital-twin backend, device restart: klkizi (1)
+     ↓ the page recovers from a device restart without reloading
+   ↓ live digital-twin backend, device restart: schlafzi (1)
+     ↓ the page recovers from a device restart without reloading
+   ❯ live digital-twin backend, device restart: wozi (1)
+     × the page recovers from a device restart without reloading 19861ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: wozi > the page recovers from a device restart without reloading
+AssertionError: expected { skipped: false, …(3) } to deeply equal { skipped: false, …(3) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--wozi---the-page-recovers-from-a-device-restart-without-reloading.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "bannerShown": true,[22m
+[32m-   "recovered": true,[39m
+[31m+   "recovered": false,[39m
+[2m    "reloaded": false,[22m
+[2m    "skipped": false,[22m
+[2m  }[22m
+
+ ❯ tests_js/live-backend.test.js:78:28
+     76|             }
+     77|
+     78|             expect(result).toEqual({ skipped: false, bannerShown: true…
+       |                            ^
+     79|         },
+     80|         RESTART_RECOVERY_TIMEOUT_MS,
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Start at  10:29:43
+   Duration  21.39s (tests 98%, worker 1%, import 1%)
+
+== Summary: npm test ==
+Commit: f40c66a (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 17 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: wozi > the page recovers from a device restart without reloading: expected { skipped: false, …(3) } to deeply equal { skipped: false, …(3) }
+Skipped:
+  - tests_js/live-backend.test.js > live digital-twin backend: arzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: dev > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: grkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: klkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: schlafzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend: wozi > the real website, driven by a real browser, round-trips a real PUT against a live twin: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: arzi > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: dev > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: grkizi > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: klkizi > the page recovers from a device restart without reloading: skip
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: schlafzi > the page recovers from a device restart without reloading: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

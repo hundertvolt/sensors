@@ -1,0 +1,1 @@
+test_sensortask_wozi plain rc=0 elapsed=53.794961393s mem_markers=0 :: 76/76 passed, 0 failed, 0 skipped

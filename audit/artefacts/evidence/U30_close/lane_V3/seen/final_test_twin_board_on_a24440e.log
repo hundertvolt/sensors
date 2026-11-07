@@ -1,0 +1,204 @@
+...........FFFFF.......                                                  [100%]
+=================================== FAILURES ===================================
+_ test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[wiring plan] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11359/test_a_string_the_interpreter_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f0534984390>
+case = 'wiring plan'
+
+    @pytest.mark.parametrize("case", ["wiring plan", "script", "multibyte state directory", "runner's directory", "micropypath entry"])
+    def test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1): the run fails naming it,
+        # its size in bytes (as the interpreter measures) and the limit, before the probe or the interpreter runs.
+        calls: list[list[str]] = []
+    
+        def run(argv: "list[str]", **_kw: object) -> "subprocess.CompletedProcess[str]":
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "ok\n", "")
+    
+        plan_dir, script_dir = tmp_path / ("p" * 250 if case == "wiring plan" else "twin"), tmp_path / ("s" * 250 if case == "script" else "scripts")
+        script_dir.mkdir()
+        if case == "multibyte state directory":
+            (tmp_path / ("\u00e9" * 100)).mkdir()
+            monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / ("\u00e9" * 100)))
+        elif case == "runner's directory":
+            monkeypatch.setattr(twin_board, "RUNNER", f"{'r' * 250}/run_device_script.py")
+        elif case == "micropypath entry":
+            monkeypatch.setattr(twin_board, "_TWIN_LAYOUT", f"/{'m' * _LIMIT}:{_TWIN_LAYOUT}")
+        monkeypatch.setattr(twin_board, "PLAN_DIR", plan_dir)
+        monkeypatch.setattr(subprocess, "run", run)
+        board, script = twin_board.TwinBoard(), _script(script_dir, "print('ok')\n")
+        name, value = {
+            "wiring plan": ("argument 1", plan_dir / f"{board.device}_plan.json"),
+            "script": ("argument 2", script),
+            "multibyte state directory": ("--state-dir's value", board._state.name),
+            "runner's directory": ("the runner's directory", (twin_board.REPO_ROOT / twin_board.RUNNER).resolve().parent),
+            "micropypath entry": ("MICROPYPATH entry 1", f"/{'m' * _LIMIT}"),
+        }[case]
+>       with pytest.raises(harness.HardwareTestFailureError, match=r"^twin run of probe\.py was not started: ") as failed:
+E       Failed: DID NOT RAISE HardwareTestFailureError
+
+tests_scripts/test_twin_board.py:184: Failed
+_ test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[script] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11359/test_a_string_the_interpreter_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f05362167d0>
+case = 'script'
+
+    @pytest.mark.parametrize("case", ["wiring plan", "script", "multibyte state directory", "runner's directory", "micropypath entry"])
+    def test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1): the run fails naming it,
+        # its size in bytes (as the interpreter measures) and the limit, before the probe or the interpreter runs.
+        calls: list[list[str]] = []
+    
+        def run(argv: "list[str]", **_kw: object) -> "subprocess.CompletedProcess[str]":
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "ok\n", "")
+    
+        plan_dir, script_dir = tmp_path / ("p" * 250 if case == "wiring plan" else "twin"), tmp_path / ("s" * 250 if case == "script" else "scripts")
+        script_dir.mkdir()
+        if case == "multibyte state directory":
+            (tmp_path / ("\u00e9" * 100)).mkdir()
+            monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / ("\u00e9" * 100)))
+        elif case == "runner's directory":
+            monkeypatch.setattr(twin_board, "RUNNER", f"{'r' * 250}/run_device_script.py")
+        elif case == "micropypath entry":
+            monkeypatch.setattr(twin_board, "_TWIN_LAYOUT", f"/{'m' * _LIMIT}:{_TWIN_LAYOUT}")
+        monkeypatch.setattr(twin_board, "PLAN_DIR", plan_dir)
+        monkeypatch.setattr(subprocess, "run", run)
+        board, script = twin_board.TwinBoard(), _script(script_dir, "print('ok')\n")
+        name, value = {
+            "wiring plan": ("argument 1", plan_dir / f"{board.device}_plan.json"),
+            "script": ("argument 2", script),
+            "multibyte state directory": ("--state-dir's value", board._state.name),
+            "runner's directory": ("the runner's directory", (twin_board.REPO_ROOT / twin_board.RUNNER).resolve().parent),
+            "micropypath entry": ("MICROPYPATH entry 1", f"/{'m' * _LIMIT}"),
+        }[case]
+>       with pytest.raises(harness.HardwareTestFailureError, match=r"^twin run of probe\.py was not started: ") as failed:
+E       Failed: DID NOT RAISE HardwareTestFailureError
+
+tests_scripts/test_twin_board.py:184: Failed
+_ test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[multibyte state directory] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11359/test_a_string_the_interpreter_2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f053485dd90>
+case = 'multibyte state directory'
+
+    @pytest.mark.parametrize("case", ["wiring plan", "script", "multibyte state directory", "runner's directory", "micropypath entry"])
+    def test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1): the run fails naming it,
+        # its size in bytes (as the interpreter measures) and the limit, before the probe or the interpreter runs.
+        calls: list[list[str]] = []
+    
+        def run(argv: "list[str]", **_kw: object) -> "subprocess.CompletedProcess[str]":
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "ok\n", "")
+    
+        plan_dir, script_dir = tmp_path / ("p" * 250 if case == "wiring plan" else "twin"), tmp_path / ("s" * 250 if case == "script" else "scripts")
+        script_dir.mkdir()
+        if case == "multibyte state directory":
+            (tmp_path / ("\u00e9" * 100)).mkdir()
+            monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / ("\u00e9" * 100)))
+        elif case == "runner's directory":
+            monkeypatch.setattr(twin_board, "RUNNER", f"{'r' * 250}/run_device_script.py")
+        elif case == "micropypath entry":
+            monkeypatch.setattr(twin_board, "_TWIN_LAYOUT", f"/{'m' * _LIMIT}:{_TWIN_LAYOUT}")
+        monkeypatch.setattr(twin_board, "PLAN_DIR", plan_dir)
+        monkeypatch.setattr(subprocess, "run", run)
+        board, script = twin_board.TwinBoard(), _script(script_dir, "print('ok')\n")
+        name, value = {
+            "wiring plan": ("argument 1", plan_dir / f"{board.device}_plan.json"),
+            "script": ("argument 2", script),
+            "multibyte state directory": ("--state-dir's value", board._state.name),
+            "runner's directory": ("the runner's directory", (twin_board.REPO_ROOT / twin_board.RUNNER).resolve().parent),
+            "micropypath entry": ("MICROPYPATH entry 1", f"/{'m' * _LIMIT}"),
+        }[case]
+>       with pytest.raises(harness.HardwareTestFailureError, match=r"^twin run of probe\.py was not started: ") as failed:
+E       Failed: DID NOT RAISE HardwareTestFailureError
+
+tests_scripts/test_twin_board.py:184: Failed
+_ test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[runner's directory] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11359/test_a_string_the_interpreter_3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f0536217c10>
+case = "runner's directory"
+
+    @pytest.mark.parametrize("case", ["wiring plan", "script", "multibyte state directory", "runner's directory", "micropypath entry"])
+    def test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1): the run fails naming it,
+        # its size in bytes (as the interpreter measures) and the limit, before the probe or the interpreter runs.
+        calls: list[list[str]] = []
+    
+        def run(argv: "list[str]", **_kw: object) -> "subprocess.CompletedProcess[str]":
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "ok\n", "")
+    
+        plan_dir, script_dir = tmp_path / ("p" * 250 if case == "wiring plan" else "twin"), tmp_path / ("s" * 250 if case == "script" else "scripts")
+        script_dir.mkdir()
+        if case == "multibyte state directory":
+            (tmp_path / ("\u00e9" * 100)).mkdir()
+            monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / ("\u00e9" * 100)))
+        elif case == "runner's directory":
+            monkeypatch.setattr(twin_board, "RUNNER", f"{'r' * 250}/run_device_script.py")
+        elif case == "micropypath entry":
+            monkeypatch.setattr(twin_board, "_TWIN_LAYOUT", f"/{'m' * _LIMIT}:{_TWIN_LAYOUT}")
+        monkeypatch.setattr(twin_board, "PLAN_DIR", plan_dir)
+        monkeypatch.setattr(subprocess, "run", run)
+        board, script = twin_board.TwinBoard(), _script(script_dir, "print('ok')\n")
+        name, value = {
+            "wiring plan": ("argument 1", plan_dir / f"{board.device}_plan.json"),
+            "script": ("argument 2", script),
+            "multibyte state directory": ("--state-dir's value", board._state.name),
+            "runner's directory": ("the runner's directory", (twin_board.REPO_ROOT / twin_board.RUNNER).resolve().parent),
+            "micropypath entry": ("MICROPYPATH entry 1", f"/{'m' * _LIMIT}"),
+        }[case]
+>       with pytest.raises(harness.HardwareTestFailureError, match=r"^twin run of probe\.py was not started: ") as failed:
+E       Failed: DID NOT RAISE HardwareTestFailureError
+
+tests_scripts/test_twin_board.py:184: Failed
+_ test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[micropypath entry] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11359/test_a_string_the_interpreter_4')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f05362154d0>
+case = 'micropypath entry'
+
+    @pytest.mark.parametrize("case", ["wiring plan", "script", "multibyte state directory", "runner's directory", "micropypath entry"])
+    def test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+        # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1): the run fails naming it,
+        # its size in bytes (as the interpreter measures) and the limit, before the probe or the interpreter runs.
+        calls: list[list[str]] = []
+    
+        def run(argv: "list[str]", **_kw: object) -> "subprocess.CompletedProcess[str]":
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "ok\n", "")
+    
+        plan_dir, script_dir = tmp_path / ("p" * 250 if case == "wiring plan" else "twin"), tmp_path / ("s" * 250 if case == "script" else "scripts")
+        script_dir.mkdir()
+        if case == "multibyte state directory":
+            (tmp_path / ("\u00e9" * 100)).mkdir()
+            monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / ("\u00e9" * 100)))
+        elif case == "runner's directory":
+            monkeypatch.setattr(twin_board, "RUNNER", f"{'r' * 250}/run_device_script.py")
+        elif case == "micropypath entry":
+            monkeypatch.setattr(twin_board, "_TWIN_LAYOUT", f"/{'m' * _LIMIT}:{_TWIN_LAYOUT}")
+        monkeypatch.setattr(twin_board, "PLAN_DIR", plan_dir)
+        monkeypatch.setattr(subprocess, "run", run)
+        board, script = twin_board.TwinBoard(), _script(script_dir, "print('ok')\n")
+        name, value = {
+            "wiring plan": ("argument 1", plan_dir / f"{board.device}_plan.json"),
+            "script": ("argument 2", script),
+            "multibyte state directory": ("--state-dir's value", board._state.name),
+            "runner's directory": ("the runner's directory", (twin_board.REPO_ROOT / twin_board.RUNNER).resolve().parent),
+            "micropypath entry": ("MICROPYPATH entry 1", f"/{'m' * _LIMIT}"),
+        }[case]
+>       with pytest.raises(harness.HardwareTestFailureError, match=r"^twin run of probe\.py was not started: ") as failed:
+E       Failed: DID NOT RAISE HardwareTestFailureError
+
+tests_scripts/test_twin_board.py:184: Failed
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_board.py::test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[wiring plan]
+FAILED tests_scripts/test_twin_board.py::test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[script]
+FAILED tests_scripts/test_twin_board.py::test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[multibyte state directory]
+FAILED tests_scripts/test_twin_board.py::test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[runner's directory]
+FAILED tests_scripts/test_twin_board.py::test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts[micropypath entry]
+5 failed, 18 passed in 2.98s

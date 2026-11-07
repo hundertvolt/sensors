@@ -1,0 +1,244 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23c
+
+ ❯ |chromium| tests_js/render.test.js (85 tests | 2 failed | 82 skipped) 396ms
+   ↓ showBanner and hideBanner (1)
+     ↓ show the message through data-shown, and hide it keeping the text
+   ❯ renderSection (84)
+     ↓ renders readonly measurement fields and updates them on poll
+     ↓ renders a nested measurement field's own leaf at its declared precision, not [object Object]
+     ↓ renders a writable number field pre-filled via its current-value caption, and a toggle button
+     ↓ submits an edited field via Apply and shows the resulting per-field status
+     ↓ colors each individual field's own box by its own result, not just the card's worst status
+     ↓ sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field
+     ↓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change)
+     ↓ submits a numeric-valued enum field as a number, not a stringified one (regression)
+     ↓ renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination
+     ↓ renders an errcount group outside the Status section from GET /status's errcount
+     ↓ preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll update
+     ↓ shows Valid after a successful Reset All Errors submission, read from /status's per-field result
+     ↓ shows Failed when /status's PUT answers the reset Failed
+     ✓ sends no reset when its confirmation is declined, and leaves the toggle as set 30ms
+     ↓ an always-executed toggle with no GET value (2)
+       ↓ renders unset, and an untouched Apply has nothing to submit
+       ↓ sends false once set Off, then returns to unset after the Apply
+     ↓ skips the PUT and shows a neutral message when Apply is clicked with nothing to submit
+     ↓ skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression)
+     ↓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds
+     ↓ shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it
+     ↓ reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression)
+     ↓ reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression)
+     ↓ reports Invalid for a composite field submitted with only some subfields filled
+     ↓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification)
+     ↓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank
+     ↓ reads maintenance data by path, each of two instances whose flattened keys would collide showing its own value
+     ↓ shows a visible error banner when a GET response body is empty
+     ↓ shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)
+     ↓ surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error
+     ↓ shows a visible error banner when a section's /status sub-request fails
+     ↓ refreshes a readonly field embedded in a writable, live-polled group in place on the next poll
+     ↓ shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure)
+     ↓ shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR)
+     ↓ shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500)
+     ↓ shows Failed when a PUT response body is empty (a torn/truncated transmission)
+     ↓ shows Failed for a field missing from a nominally-OK PUT response, without losing the other field's real status (defensive fallback)
+     ↓ the section controller (18)
+       ↓ keeps the same card and readonly value node across three polls
+       ↓ keeps focus on the errcount card's 'Show all' across a poll
+       ↓ paints nothing and shows no banner when a GET pending at stop() settles afterwards
+       ↓ does not queue the next section's first GET behind a stopped section's pending one
+       ↓ reads a statusPath field's value from GET /status on a section that reads another route
+       ↓ shows a degraded /status source as unavailable in every field of its card, with the card's cue
+       ↓ updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns
+       ↓ renders every errcount row as no data when /status carries no errcount
+       ↓ renders an errcount entry sent as the unavailable marker as unavailable
+       ↓ feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike
+       ↓ shows an epoch field as its age against the device clock, and a float without decimals at the site default
+       ↓ calls onRecovered once when a failure episode ends, never on a plain success
+       ↓ logs console.error once per failure episode, not once per failed tick
+       ↓ counts an Apply on the shell's tracker from the click until its post-write GET settles
+       ↓ shows the banner when a GET answers JSON that is not an object, never a silent dash everywhere
+       ↓ words a failed GET whose body is not JSON by its status, not as an empty body
+       ↓ refreshes a writable field's caption through its statusPath on every poll
+       ↓ ends the shell's Apply count after a failed PUT too
+     ❯ the Apply path (30)
+       ↓ sends number text "  " that is not a plain decimal as typed, which the device answers Invalid
+       ↓ sends number text "0x10" that is not a plain decimal as typed, which the device answers Invalid
+       ↓ sends number text "1e3" that is not a plain decimal as typed, which the device answers Invalid
+       ↓ sends number text "1,5" that is not a plain decimal as typed, which the device answers Invalid
+       ↓ sends a plain decimal with surrounding spaces as its number
+       ↓ sends a float field's whole number as the JSON number
+       ↓ sends a dispatch toggle only when On: left Off, Apply has nothing to submit
+       ↓ keeps an Invalid field's typed text and clears a Valid sibling's
+       ↓ clears a field's previous colour when a later Apply's result omits it
+       ↓ marks the card failed for an unknown result word and shows the word as sent
+       ↓ gives every submitted field the one word a sensor answers in place of its field map
+       ↓ shows a toggle and a dropdown as the post-write GET reports them, not as sent
+       ↓ keeps the Apply button disabled until the post-write GET settles
+       ↓ keeps a Valid result when the post-write GET fails: the banner shows, Apply re-enables, nothing rejects unhandled
+       ↓ asks before system command erasefram, sends exactly it, and returns the select to its placeholder
+       ↓ asks before system command resetconfig, sends exactly it, and returns the select to its placeholder
+       × sends no system command when its confirmation is declined, and re-enables Apply 243ms
+       ↓ shows Failed on the field and the card when a system command answers Failed
+       ↓ DNS fallback Clear: sends exactly an empty list after its confirmation, with no GET before it
+       × DNS fallback Clear: sends nothing on cancel, and an Apply with the input blank never sends the key 121ms
+       ↓ the Altitude warning is shown while the pressure baseline is non-zero
+       ↓ the Altitude warning is hidden while the pressure baseline is zero
+       ↓ the Altitude warning is hidden once the Altitude input is cleared
+       ↓ the Altitude warning is hidden when 0 is typed as the pressure
+       ↓ the Altitude warning is shown when a pressure is typed over a zero baseline
+       ↓ never sends a password mask: the inputs start empty under the dots, and only a typed password is sent
+       ↓ renders, collects, sends and colours keys that are hostile in a selector
+       ↓ sends one GET of the section before the PUT, and a toggle and dropdown another client changed
+       ↓ has nothing to submit when the form equals the refreshed values, and re-enables Apply
+       ↓ sends no GET from a stopped section
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the Apply path > sends no system command when its confirmation is declined, and re-enables Apply
+AssertionError: expected '' to be 'Not sent - the confirmation was decli…' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-Apply-path---sends-no-system-command-when-its-confirmation-is-declined--and-re-enables-Apply.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- Not sent - the confirmation was declined.[39m
+
+ ❯ tests_js/render.test.js:1813:66
+    1811|             expect(card.dataset.applyStatus).toBeUndefined();
+    1812|             // A browser that suppresses dialogs answers false at once…
+    1813|             expect(mustQuery(card, ".apply-result").textContent).toBe(…
+       |                                                                  ^
+    1814|             expect(/** @type {HTMLButtonElement} */ (mustQuery(card, "…
+    1815|             expect(/** @type {HTMLSelectElement} */ (mustQuery(main, '…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the Apply path > DNS fallback Clear: sends nothing on cancel, and an Apply with the input blank never sends the key
+AssertionError: expected '' to be 'Not sent - the confirmation was decli…' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-Apply-path---DNS-fallback-Clear--sends-nothing-on-cancel--and-an-Apply-with-the-input-blank-never-sends-the-key.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- Not sent - the confirmation was declined.[39m
+
+ ❯ tests_js/render.test.js:1871:66
+    1869|
+    1870|             mustQuery(main, "[data-clear-for]").click();
+    1871|             expect(mustQuery(main, ".apply-result").textContent).toBe(…
+       |                                                                  ^
+    1872|             await applyAndSettle(mustQuery(main, '[data-group-key="dns…
+    1873|             expect(puts).toEqual([]);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed | 82 skipped (85)
+   Start at  09:51:28
+   Duration  1.65s (tests 60%, worker 30%, import 10%)
+
+== Summary: npm test ==
+Commit: aa1d2a8 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 1 · failed 2 · skipped 82 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/render.test.js > renderSection > the Apply path > sends no system command when its confirmation is declined, and re-enables Apply: expected '' to be 'Not sent - the confirmation was decli…' // Object.is equality
+  - tests_js/render.test.js > renderSection > the Apply path > DNS fallback Clear: sends nothing on cancel, and an Apply with the input blank never sends the key: expected '' to be 'Not sent - the confirmation was decli…' // Object.is equality
+Skipped:
+  - tests_js/render.test.js > showBanner and hideBanner > show the message through data-shown, and hide it keeping the text: skip
+  - tests_js/render.test.js > renderSection > renders readonly measurement fields and updates them on poll: skip
+  - tests_js/render.test.js > renderSection > renders a nested measurement field's own leaf at its declared precision, not [object Object]: skip
+  - tests_js/render.test.js > renderSection > renders a writable number field pre-filled via its current-value caption, and a toggle button: skip
+  - tests_js/render.test.js > renderSection > submits an edited field via Apply and shows the resulting per-field status: skip
+  - tests_js/render.test.js > renderSection > colors each individual field's own box by its own result, not just the card's worst status: skip
+  - tests_js/render.test.js > renderSection > sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field: skip
+  - tests_js/render.test.js > renderSection > still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change): skip
+  - tests_js/render.test.js > renderSection > submits a numeric-valued enum field as a number, not a stringified one (regression): skip
+  - tests_js/render.test.js > renderSection > renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination: skip
+  - tests_js/render.test.js > renderSection > renders an errcount group outside the Status section from GET /status's errcount: skip
+  - tests_js/render.test.js > renderSection > preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll update: skip
+  - tests_js/render.test.js > renderSection > shows Valid after a successful Reset All Errors submission, read from /status's per-field result: skip
+  - tests_js/render.test.js > renderSection > shows Failed when /status's PUT answers the reset Failed: skip
+  - tests_js/render.test.js > renderSection > an always-executed toggle with no GET value > renders unset, and an untouched Apply has nothing to submit: skip
+  - tests_js/render.test.js > renderSection > an always-executed toggle with no GET value > sends false once set Off, then returns to unset after the Apply: skip
+  - tests_js/render.test.js > renderSection > skips the PUT and shows a neutral message when Apply is clicked with nothing to submit: skip
+  - tests_js/render.test.js > renderSection > skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression): skip
+  - tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds: skip
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it: skip
+  - tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression): skip
+  - tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression): skip
+  - tests_js/render.test.js > renderSection > reports Invalid for a composite field submitted with only some subfields filled: skip
+  - tests_js/render.test.js > renderSection > reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification): skip
+  - tests_js/render.test.js > renderSection > skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank: skip
+  - tests_js/render.test.js > renderSection > reads maintenance data by path, each of two instances whose flattened keys would collide showing its own value: skip
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty: skip
+  - tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error): skip
+  - tests_js/render.test.js > renderSection > surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error: skip
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a section's /status sub-request fails: skip
+  - tests_js/render.test.js > renderSection > refreshes a readonly field embedded in a writable, live-polled group in place on the next poll: skip
+  - tests_js/render.test.js > renderSection > shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure): skip
+  - tests_js/render.test.js > renderSection > shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR): skip
+  - tests_js/render.test.js > renderSection > shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500): skip
+  - tests_js/render.test.js > renderSection > shows Failed when a PUT response body is empty (a torn/truncated transmission): skip
+  - tests_js/render.test.js > renderSection > shows Failed for a field missing from a nominally-OK PUT response, without losing the other field's real status (defensive fallback): skip
+  - tests_js/render.test.js > renderSection > the section controller > keeps the same card and readonly value node across three polls: skip
+  - tests_js/render.test.js > renderSection > the section controller > keeps focus on the errcount card's 'Show all' across a poll: skip
+  - tests_js/render.test.js > renderSection > the section controller > paints nothing and shows no banner when a GET pending at stop() settles afterwards: skip
+  - tests_js/render.test.js > renderSection > the section controller > does not queue the next section's first GET behind a stopped section's pending one: skip
+  - tests_js/render.test.js > renderSection > the section controller > reads a statusPath field's value from GET /status on a section that reads another route: skip
+  - tests_js/render.test.js > renderSection > the section controller > shows a degraded /status source as unavailable in every field of its card, with the card's cue: skip
+  - tests_js/render.test.js > renderSection > the section controller > updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns: skip
+  - tests_js/render.test.js > renderSection > the section controller > renders every errcount row as no data when /status carries no errcount: skip
+  - tests_js/render.test.js > renderSection > the section controller > renders an errcount entry sent as the unavailable marker as unavailable: skip
+  - tests_js/render.test.js > renderSection > the section controller > feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike: skip
+  - tests_js/render.test.js > renderSection > the section controller > shows an epoch field as its age against the device clock, and a float without decimals at the site default: skip
+  - tests_js/render.test.js > renderSection > the section controller > calls onRecovered once when a failure episode ends, never on a plain success: skip
+  - tests_js/render.test.js > renderSection > the section controller > logs console.error once per failure episode, not once per failed tick: skip
+  - tests_js/render.test.js > renderSection > the section controller > counts an Apply on the shell's tracker from the click until its post-write GET settles: skip
+  - tests_js/render.test.js > renderSection > the section controller > shows the banner when a GET answers JSON that is not an object, never a silent dash everywhere: skip
+  - tests_js/render.test.js > renderSection > the section controller > words a failed GET whose body is not JSON by its status, not as an empty body: skip
+  - tests_js/render.test.js > renderSection > the section controller > refreshes a writable field's caption through its statusPath on every poll: skip
+  - tests_js/render.test.js > renderSection > the section controller > ends the shell's Apply count after a failed PUT too: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends number text "  " that is not a plain decimal as typed, which the device answers Invalid: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends number text "0x10" that is not a plain decimal as typed, which the device answers Invalid: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends number text "1e3" that is not a plain decimal as typed, which the device answers Invalid: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends number text "1,5" that is not a plain decimal as typed, which the device answers Invalid: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends a plain decimal with surrounding spaces as its number: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends a float field's whole number as the JSON number: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends a dispatch toggle only when On: left Off, Apply has nothing to submit: skip
+  - tests_js/render.test.js > renderSection > the Apply path > keeps an Invalid field's typed text and clears a Valid sibling's: skip
+  - tests_js/render.test.js > renderSection > the Apply path > clears a field's previous colour when a later Apply's result omits it: skip
+  - tests_js/render.test.js > renderSection > the Apply path > marks the card failed for an unknown result word and shows the word as sent: skip
+  - tests_js/render.test.js > renderSection > the Apply path > gives every submitted field the one word a sensor answers in place of its field map: skip
+  - tests_js/render.test.js > renderSection > the Apply path > shows a toggle and a dropdown as the post-write GET reports them, not as sent: skip
+  - tests_js/render.test.js > renderSection > the Apply path > keeps the Apply button disabled until the post-write GET settles: skip
+  - tests_js/render.test.js > renderSection > the Apply path > keeps a Valid result when the post-write GET fails: the banner shows, Apply re-enables, nothing rejects unhandled: skip
+  - tests_js/render.test.js > renderSection > the Apply path > asks before system command erasefram, sends exactly it, and returns the select to its placeholder: skip
+  - tests_js/render.test.js > renderSection > the Apply path > asks before system command resetconfig, sends exactly it, and returns the select to its placeholder: skip
+  - tests_js/render.test.js > renderSection > the Apply path > shows Failed on the field and the card when a system command answers Failed: skip
+  - tests_js/render.test.js > renderSection > the Apply path > DNS fallback Clear: sends exactly an empty list after its confirmation, with no GET before it: skip
+  - tests_js/render.test.js > renderSection > the Apply path > the Altitude warning is shown while the pressure baseline is non-zero: skip
+  - tests_js/render.test.js > renderSection > the Apply path > the Altitude warning is hidden while the pressure baseline is zero: skip
+  - tests_js/render.test.js > renderSection > the Apply path > the Altitude warning is hidden once the Altitude input is cleared: skip
+  - tests_js/render.test.js > renderSection > the Apply path > the Altitude warning is hidden when 0 is typed as the pressure: skip
+  - tests_js/render.test.js > renderSection > the Apply path > the Altitude warning is shown when a pressure is typed over a zero baseline: skip
+  - tests_js/render.test.js > renderSection > the Apply path > never sends a password mask: the inputs start empty under the dots, and only a typed password is sent: skip
+  - tests_js/render.test.js > renderSection > the Apply path > renders, collects, sends and colours keys that are hostile in a selector: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends one GET of the section before the PUT, and a toggle and dropdown another client changed: skip
+  - tests_js/render.test.js > renderSection > the Apply path > has nothing to submit when the form equals the refreshed values, and re-enables Apply: skip
+  - tests_js/render.test.js > renderSection > the Apply path > sends no GET from a stopped section: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

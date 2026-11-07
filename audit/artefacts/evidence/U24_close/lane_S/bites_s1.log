@@ -1,0 +1,33 @@
+== bite chain-ignored
+FAILED tests_scripts/test_port_lock.py::test_a_descendant_of_the_owner_passes_without_retaking
+FAILED tests_scripts/test_port_lock.py::test_a_grandchild_passes_after_its_parent_took_a_port_of_its_own
+2 failed, 17 passed in 10.89s
+== bite chain-no-port-check
+FAILED tests_scripts/test_port_lock.py::test_the_inherited_chain_does_not_open_a_port_an_unrelated_process_holds
+FAILED tests_scripts/test_port_lock.py::test_a_refused_runner_releases_the_ports_it_took_before
+2 failed, 17 passed in 8.13s
+== bite chain-overwritten
+FAILED tests_scripts/test_port_lock.py::test_a_grandchild_passes_after_its_parent_took_a_port_of_its_own
+1 failed, 18 passed in 14.48s
+== bite release-everything
+FAILED tests_scripts/test_port_lock.py::test_a_second_runner_on_a_held_port_exits_1_naming_the_holder
+FAILED tests_scripts/test_port_lock.py::test_a_planted_lock_of_a_live_unrelated_process_refuses_the_taker
+FAILED tests_scripts/test_port_lock.py::test_a_descendant_of_the_owner_passes_without_retaking
+FAILED tests_scripts/test_port_lock.py::test_release_removes_only_the_runners_own_locks
+4 failed, 15 passed in 8.91s
+== bite dead-is-alive
+FAILED tests_scripts/test_port_lock.py::test_a_dead_holders_lock_is_taken_over
+FAILED tests_scripts/test_port_lock.py::test_racing_takers_leave_exactly_one_holder[stale]
+2 failed, 17 passed in 13.35s
+== bite no-wait
+FAILED tests_scripts/test_port_lock.py::test_a_pid_written_during_the_wait_is_honoured
+1 failed, 18 passed in 1.15s
+== bite no-claim
+19 passed in 2.36s
+== bite no-claim (with the FIFO swap test)
+FAILED tests_scripts/test_port_lock.py::test_a_taker_that_read_a_dead_pid_leaves_a_fresh_live_lock_in_place
+1 failed, 19 passed in 2.20s
+== bite no-recheck-after-claim
+FAILED tests_scripts/test_port_lock.py::test_a_taker_that_read_a_dead_pid_leaves_a_fresh_live_lock_in_place
+FAILED tests_scripts/test_port_lock.py::test_racing_takers_leave_exactly_one_holder[stale]
+2 failed, 18 passed in 22.25s

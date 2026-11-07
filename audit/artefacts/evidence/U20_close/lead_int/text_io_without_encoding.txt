@@ -1,0 +1,521 @@
+digital_twin/README.md:264:Path("/tmp/twin_boot/sensortask_novel_combo.py").write_text(generated.module_source)
+digital_twin/README.md:265:Path("/tmp/twin_boot/wiring_plan.json").write_text(json.dumps(compute_twin_wiring(generated.model)))
+digital_twin/_fram_chip.py:141:            f = open(self.state_path)
+digital_twin/_fram_chip.py:182:        with open(self.state_path, "w") as f:
+digital_twin/_scd30_chip.py:124:            f = open(self.state_path)
+digital_twin/_scd30_chip.py:143:        with open(self.state_path, "w") as f:
+digital_twin/machine.py:359:    with open(f"build/generated_src/sensortask_{profile}_wiring_plan.json") as f:
+digital_twin/rp2.py:84:    def _check_open(self) -> None:
+digital_twin/rp2.py:152:        self._check_open()
+digital_twin/rp2.py:163:        self._check_open()
+digital_twin/rp2.py:178:        self._check_open()
+digital_twin/rp2.py:194:        self._check_open()
+digital_twin/rp2.py:202:        self._check_open()
+digital_twin/rp2.py:207:        self._check_open()
+digital_twin/rp2.py:228:        self._check_open()
+digital_twin/rp2.py:245:        self._check_open()
+digital_twin/run_generic_integration.py:290:    with open(config.wiring_plan_path) as f:
+scripts/_digital_twin_ci_suite.py:258:        log_text = log_path.read_text(errors="replace")
+scripts/_digital_twin_ci_suite.py:517:    log_file = open(log_path, "w")  # lifetime is the whole subprocess run, closed by caller
+scripts/_digital_twin_ci_suite.py:574:        status_text = (proc_dir / "status").read_text()
+scripts/_digital_twin_ci_suite.py:582:        fields["wchan"] = (proc_dir / "wchan").read_text().strip() or "(running)"
+scripts/_digital_twin_ci_suite.py:634:        return log_path.read_text(errors="replace")
+scripts/_digital_twin_ci_suite.py:1399:    plan = json.loads(wiring_plan_path.read_text())
+scripts/_generate_sensortask_modules.py:55:        (out_dir / f"sensortask_{device}.py").write_text(generated.module_source)
+scripts/_generate_sensortask_modules.py:56:        (out_dir / f"sensortask_{device}_main.py").write_text(generated.boot_entry_source)
+scripts/_generate_sensortask_modules.py:57:        (out_dir / f"sensortask_{device}_main_noautostart.py").write_text(generated.boot_entry_noautostart_source)
+scripts/_generate_sensortask_modules.py:58:        (out_dir / f"sensortask_{device}_expected.json").write_text(json.dumps(generated.expected_facts))
+scripts/_generate_sensortask_modules.py:59:        (out_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(wiring_plan))
+scripts/_generate_sensortask_modules.py:60:        (definitions_dir / f"{device}.json").write_text(json.dumps(definitions, indent=2))
+scripts/_generate_sensortask_modules.py:61:        (api_dir / f"{device}.json").write_text(api_reference_json(reference))
+scripts/_generate_sensortask_modules.py:62:    (definitions_dir / "index.json").write_text(json.dumps({"devices": [p.stem for p in device_tomls]}))
+scripts/_hardware_verdict.py:47:        record = json.loads(path.read_text())
+scripts/_pytest_run_record.py:123:        tmp.write_text(json.dumps(record, indent=1) + "\n")
+scripts/_render_coverage.py:25:        with open(raw_file) as f:
+scripts/_render_coverage.py:68:    with open(os.path.join(repo_root, args.markdown_file), "w") as f:
+scripts/_summary_block.py:191:        record = json.loads(path.read_text())
+scripts/build_firmware.py:50:    dest.write_text(strip_type_checking_blocks(src_file.read_text()))
+scripts/build_firmware.py:92:    (stage_dir / f"{entry_module}.py").write_text(strip_type_checking_blocks(generated.module_source))
+scripts/build_firmware.py:93:    (stage_dir / "main.py").write_text(generated.boot_entry_source)
+scripts/build_firmware.py:147:        manifest_path.write_text(_MANIFEST_TEMPLATE.format(board=board, stage_dir=str(stage_dir)))
+tests_hardware/bench/test_end_to_end_timing.py:57:    # wiping the very Timer this test waits on. is_device_present() is the passive open()/close()
+tests_hardware/bench/test_heap_under_connection_ceiling.py:108:def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list[int], stop: threading.Event) -> None:
+tests_hardware/harness.py:128:def _still_open(sock: socket.socket) -> bool:
+tests_hardware/harness.py:154:            held = sum(_still_open(sock) for sock in probes)
+tests_hardware/http_client.py:39:        with urllib.request.urlopen(request, timeout=timeout_s) as response:
+tests_hardware/isl29125_conformance.py:33:exec(open(sys.argv[1]).read())
+tests_scripts/_repo_scan.py:78:def read_text(path: str) -> str | None:
+tests_scripts/_toml_fixtures.py:108:    path.write_text(dump_toml(doc))
+tests_scripts/_toml_fixtures.py:112:def write_text(tmp_path: Path, name: str, text: str) -> Path:
+tests_scripts/_toml_fixtures.py:114:    path.write_text(text)
+tests_scripts/test_archive_evidence.py:31:        evidence.write_text(f"run {n}\n")
+tests_scripts/test_archive_evidence.py:36:    assert (made[3] / "log3.txt").read_text() == "run 3\n"
+tests_scripts/test_archive_evidence.py:44:    (root / "stray.txt").write_text("keep\n")
+tests_scripts/test_archive_evidence.py:52:        evidence.write_text("e\n")
+tests_scripts/test_archive_evidence.py:55:    assert (root / "stray.txt").read_text() == "keep\n"
+tests_scripts/test_archive_evidence.py:67:    (present / "f").write_text("f\n")
+tests_scripts/test_archive_evidence.py:108:        copy.write_text(_SCRIPT.read_text())
+tests_scripts/test_archive_evidence.py:123:    evidence.write_text("x\n")
+tests_scripts/test_archive_evidence.py:126:    assert (Path(done.stdout.strip()) / "log.txt").read_text() == "x\n"
+tests_scripts/test_bench_harness_helpers.py:123:    assert _unguarded_fetches(module.read_text()) == [], module.name
+tests_scripts/test_bench_no_task_ended_completeness.py:30:        for fn in ast.parse(path.read_text()).body:
+tests_scripts/test_bench_restores_serving.py:63:    return sorted(p for p in BENCH.glob("test_*.py") if f".{_RUNS}(" in p.read_text())
+tests_scripts/test_bench_restores_serving.py:73:    assert _problems(module.read_text()) == [], module.name
+tests_scripts/test_build_device_websites_sh.py:32:    html = gzip.decompress(_frozen_file(frozen_module.read_text(), "/index.html.gz")).decode()
+tests_scripts/test_build_device_websites_sh.py:47:    skipped_toml.write_text((repo_root / "tests_scripts" / "buildgen_fixtures" / "malformed_missing_device_table.toml").read_text())
+tests_scripts/test_build_device_websites_sh.py:71:    module.write_text(f"_f0 = const({page!r})\n_files = (\n ( '/index.html.gz',  ( _f0, False, {len(page)} ) ),\n)\n")
+tests_scripts/test_build_firmware.py:73:    (tmp_path / "src" / "main.py").write_text("# dummy colliding module\n")
+tests_scripts/test_build_firmware.py:131:    assert (repo_root / "ext" / "microdot.py").read_text() == (tmp_path / "microdot.py").read_text()
+tests_scripts/test_build_firmware.py:154:    staged = (tmp_path / f"sensortask_{device}.py").read_text()
+tests_scripts/test_build_firmware.py:158:    assert (tmp_path / "main.py").read_text() == generated.boot_entry_source == generate_boot_entry_source(device)
+tests_scripts/test_build_firmware.py:160:    assert (tmp_path / "main.py").read_text() != generate_boot_entry_source(other_device)
+tests_scripts/test_build_firmware.py:169:    staged_text = (tmp_path / "asy_config_manager.py").read_text()
+tests_scripts/test_build_firmware.py:171:    assert "TYPE_CHECKING" in (repo_root / "src" / "asy_config_manager.py").read_text()
+tests_scripts/test_build_firmware.py:177:    frozen_html_text = (tmp_path / "frozen_html.py").read_text()
+tests_scripts/test_build_frozen_html_sh.py:42:        (src / name).write_text(name)
+tests_scripts/test_build_frozen_html_sh.py:46:    text = out_file.read_text()
+tests_scripts/test_build_frozen_html_sh.py:59:    (dir_a / "top.txt").write_text("a-top")
+tests_scripts/test_build_frozen_html_sh.py:60:    (dir_a / "sub" / "inside.txt").write_text("a-nested")
+tests_scripts/test_build_frozen_html_sh.py:62:    (dir_b / "other.txt").write_text("b-top")
+tests_scripts/test_build_frozen_html_sh.py:63:    (dir_b / "deep" / "nested" / "file.txt").write_text("b-deep")
+tests_scripts/test_build_frozen_html_sh.py:68:    text = out_file.read_text()
+tests_scripts/test_build_website_sh.py:26:    text = out_file.read_text()
+tests_scripts/test_build_website_sh.py:56:    text = out_file.read_text()
+tests_scripts/test_build_website_sh.py:86:    text = out_file.read_text()
+tests_scripts/test_build_website_sh.py:102:    fixture = (repo_root / "tests_scripts" / "buildgen_fixtures" / "malformed_missing_device_table.toml").read_text()
+tests_scripts/test_build_website_sh.py:104:    device_toml.write_text(fixture)
+tests_scripts/test_build_website_sh.py:120:    script_text = (repo_root / "scripts" / "build_website.sh").read_text()
+tests_scripts/test_buildgen_defaults.py:62:    path.write_text("class _DefaultFoo:\n    def __init__(self, required_one, optional_one=5):\n        pass\n")
+tests_scripts/test_buildgen_defaults.py:72:    path.write_text("class _DefaultFoo:\n    def __init__(self, *, need, opt=1):\n        pass\n")
+tests_scripts/test_buildgen_defaults.py:82:    path.write_text("class _DefaultFoo:\n    pass\n")
+tests_scripts/test_buildgen_defaults.py:90:    path.write_text("def f(:\n")
+tests_scripts/test_buildgen_definitions.py:36:_CATALOG = json.loads((_REPO_ROOT / "buildgen" / "error_catalog.json").read_text())
+tests_scripts/test_buildgen_definitions.py:37:_SHAPE_CASES = json.loads((_REPO_ROOT / "tests_scripts" / "definitions_shape_cases.json").read_text())
+tests_scripts/test_buildgen_definitions.py:850:    mutated_ntp.write_text(
+tests_scripts/test_buildgen_definitions.py:1021:    assert json.loads(out_file.read_text()) == json.loads(json.dumps(generate_definitions(model, src_dir)))
+tests_scripts/test_buildgen_driver_registry.py:38:    (tmp_path / "asy_plain_driver.py").write_text("class Plain_Reader(SensorReader):\n    pass\n")
+tests_scripts/test_buildgen_driver_registry.py:43:    (tmp_path / "asy_trig_driver.py").write_text("class Trig_Reader(SensorReader):\n    def get_trigger_starters(self):\n        return []\n")
+tests_scripts/test_buildgen_driver_registry.py:44:    (tmp_path / "asy_tick_driver.py").write_text("class Tick_Reader(SensorReaderConfig):\n    def get_timer_starters(self):\n        return []\n")
+tests_scripts/test_buildgen_driver_registry.py:58:    (tmp_path / "asy_chipx_driver.py").write_text("class ChipX_Reader(SensorReader):\n    pass\n")
+tests_scripts/test_buildgen_driver_registry.py:65:    (tmp_path / "asy_bogus_driver.py").write_text("class NotAReader:\n    pass\n")
+tests_scripts/test_buildgen_driver_registry.py:72:    (tmp_path / "asy_dual_driver.py").write_text("class Foo_Reader(SensorReader):\n    pass\n\n\nclass Bar_Reader(SensorReaderConfig):\n    pass\n")
+tests_scripts/test_buildgen_driver_registry.py:79:    (tmp_path / "asy_broken_driver.py").write_text("class Foo(:\n")
+tests_scripts/test_buildgen_driver_registry.py:124:    path.write_text("class Foo_Reader(SensorReader):\n    pass\n")
+tests_scripts/test_buildgen_driver_registry.py:132:    path.write_text("_NAME = 42\n")
+tests_scripts/test_buildgen_driver_registry.py:166:    path.write_text('CHIP = namedtuple("CHIP", ("A", "B"))\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> "CHIP":\n        pass\n')
+tests_scripts/test_buildgen_driver_registry.py:174:    path.write_text('CHIP = namedtuple("CHIP", ("A",))' + reader)
+tests_scripts/test_buildgen_driver_registry.py:176:    path.write_text('CHIP = namedtuple("CHIP", ("A", "C"))' + reader)
+tests_scripts/test_buildgen_driver_registry.py:194:    path.write_text(source)
+tests_scripts/test_buildgen_error_contract.py:35:        for node in ast.walk(ast.parse(path.read_text(), str(path))):
+tests_scripts/test_buildgen_error_contract.py:47:    text = (src / filename).read_text()
+tests_scripts/test_buildgen_error_contract.py:49:    (src / filename).write_text(text.replace(old, new))
+tests_scripts/test_buildgen_error_contract.py:67:    out.write_text("a file where the output directory belongs\n")
+tests_scripts/test_buildgen_error_contract.py:147:        return real_write_text(self, data)
+tests_scripts/test_buildgen_frozen_modules.py:67:        for dep in _runtime_imports(files[frontier.pop()].read_text()):
+tests_scripts/test_buildgen_frozen_modules.py:79:    imported = _runtime_imports(generated[device].module_source).union(*(_runtime_imports(files[m].read_text()) for m in frozen))
+tests_scripts/test_buildgen_frozen_modules.py:102:    (tmp_path / "src" / "asy_real_driver.py").write_text("")
+tests_scripts/test_buildgen_frozen_modules.py:110:    (tmp_path / "type_only_dep.py").write_text("")
+tests_scripts/test_buildgen_frozen_modules.py:111:    (tmp_path / "asy_typechecked_driver.py").write_text(
+tests_scripts/test_buildgen_frozen_modules.py:122:    (tmp_path / "type_only_dep.py").write_text("")
+tests_scripts/test_buildgen_frozen_modules.py:123:    (tmp_path / "runtime_dep.py").write_text("")
+tests_scripts/test_buildgen_frozen_modules.py:124:    (tmp_path / "asy_branching_driver.py").write_text("TYPE_CHECKING = False\nif TYPE_CHECKING:\n    import type_only_dep\nelse:\n    import runtime_dep\n")
+tests_scripts/test_buildgen_frozen_modules.py:131:    (tmp_path / "real_dep.py").write_text("")
+tests_scripts/test_buildgen_frozen_modules.py:132:    (tmp_path / "asy_realdep_driver.py").write_text("import real_dep\n")
+tests_scripts/test_buildgen_frozen_modules.py:149:    (tmp_path / "mod_a.py").write_text("import mod_b\n")
+tests_scripts/test_buildgen_frozen_modules.py:150:    (tmp_path / "mod_b.py").write_text("import mod_a\n")
+tests_scripts/test_buildgen_fuzz.py:127:    bases: list[TomlDoc] = [base_doc(), *(tomllib.loads(device_toml(d).read_text()) for d in DEVICE_NAMES)]
+tests_scripts/test_buildgen_generate.py:828:        text = path.read_text()
+tests_scripts/test_buildgen_generate.py:829:        path.write_text(re.sub(r"^    def get_trigger_starters\(self\)[^\n]*:\n        return \[[^\n]*\]\n\n", "", text, flags=re.MULTILINE))
+tests_scripts/test_buildgen_generate.py:832:        text = path.read_text()
+tests_scripts/test_buildgen_generate.py:836:        path.write_text(text[: match.end()] + method + text[match.end() :])
+tests_scripts/test_buildgen_generate.py:897:        assert "def get_trigger_starters" not in path.read_text(), path.name
+tests_scripts/test_buildgen_generate.py:1183:    ast.parse((out_dir / "sensortask_wozi.py").read_text())
+tests_scripts/test_buildgen_generate.py:1397:    ast.parse((out / "sensortask_wozi.py").read_text())
+tests_scripts/test_buildgen_limits.py:21:    path.write_text(source)
+tests_scripts/test_buildgen_limits.py:229:    for node in ast.walk(ast.parse(driver.read_text())):
+tests_scripts/test_buildgen_requires_tag.py:40:    path.write_text(source)
+tests_scripts/test_buildgen_schema_ast.py:20:    path.write_text(source)
+tests_scripts/test_buildgen_schema_ast.py:26:    path.write_text(source)
+tests_scripts/test_buildgen_tag_comments.py:42:    path.write_text("# a real comment\nx = 1\n")
+tests_scripts/test_buildgen_tag_comments.py:52:    path.write_text('x = "value # @requires bus.timeout>=200000"\n')
+tests_scripts/test_buildgen_tag_comments.py:59:    path.write_text('"""Doc.\n# @requires bus.timeout>=200000\n"""\nx = 1\n')
+tests_scripts/test_buildgen_tag_comments.py:65:    path.write_text("class Foo:\n    def bar(self):\n        # indented comment\n        pass\n")
+tests_scripts/test_buildgen_tag_comments.py:74:    path.write_text("def f():\n\t# tab-indented comment\n\tpass\n")
+tests_scripts/test_buildgen_tag_comments.py:83:    path.write_text("_WIRING = ()  # trailing comment\n")
+tests_scripts/test_buildgen_tag_comments.py:94:    path.write_text("_WIRING = (\n    # @requires bus.timeout>=200000\n)\n")
+tests_scripts/test_buildgen_tag_comments.py:102:    path.write_text("def f():\n    x = (\n        # @requires bus.timeout>=200000\n    )\n")
+tests_scripts/test_buildgen_tag_comments.py:111:    path.write_text("def f():\n    pass\n# @requires bus.timeout>=200000\nx = 1\n")
+tests_scripts/test_buildgen_tag_comments.py:120:    path.write_text("_A = (\n    1,\n)\ndef f():\n    # inner\n    pass\n# outer\n")
+tests_scripts/test_buildgen_tag_comments.py:127:    path.write_text("#!/usr/bin/env python3\nx = 1  # first\n\n# second\ndef f():\n    # third\n    pass\n")
+tests_scripts/test_buildgen_tag_comments.py:139:    path.write_text("x = 1\n# @requires bus.timeout>=200000")
+tests_scripts/test_buildgen_tag_comments.py:145:    path.write_text("")
+tests_scripts/test_buildgen_tag_comments.py:156:    # Perfectly valid Python that a plain read_text() can't decode - the scan reads source the way
+tests_scripts/test_buildgen_tag_comments.py:195:    path.write_text(source)
+tests_scripts/test_buildgen_tag_comments.py:203:    path.write_text(source)
+tests_scripts/test_buildgen_tag_comments.py:225:    path.write_text("# @requires bus.timeout>=200000\n")
+tests_scripts/test_buildgen_tag_comments.py:227:    path.write_text("X = 1\n# @requires bus.freq>=400000\n")
+tests_scripts/test_buildgen_tag_comments.py:233:    path.write_text("# one\n# two\n")
+tests_scripts/test_buildgen_tag_comments.py:242:    path.write_text("x = (1,\n")
+tests_scripts/test_buildgen_tag_comments.py:494:        tree = ast.parse(path.read_text())
+tests_scripts/test_buildgen_twin_wiring.py:25:    tree = ast.parse((src_dir / f"asy_{driver}_driver.py").read_text())
+tests_scripts/test_buildgen_twin_wiring.py:84:    (generated_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(expected))
+tests_scripts/test_buildgen_twin_wiring.py:182:    (tmp_path / "asy_scd30_driver.py").write_text("_SCD30_TIMEOUT_MS = const(20)\n")
+tests_scripts/test_buildgen_validate.py:39:_RADIO_SHAPES = json.loads((Path(__file__).resolve().parent.parent / "tests" / "_radio_shape_cases.json").read_text())
+tests_scripts/test_buildgen_validate.py:80:    for node in ast.parse((src_dir / filename).read_text()).body:
+tests_scripts/test_buildgen_validate.py:96:    path = write_text(tmp_path, "fixture", "this is not [valid toml\n")
+tests_scripts/test_buildgen_validate.py:105:    path = write_text(tmp_path, "fixture", '[device]\nname = "Test"\nname = "Test2"\n')
+tests_scripts/test_buildgen_validate.py:164:    path = write_text(tmp_path, "fixture", '[device]\nname = "Test"\n\n[instance]\ndriver = "neopixel"\npin = 15\n')
+tests_scripts/test_buildgen_validate.py:171:    path = write_text(tmp_path, "fixture", 'instance = 5\n\n[device]\nname = "Test"\n')
+tests_scripts/test_buildgen_validate.py:185:    path = write_text(tmp_path, "fixture", '[device]\nname = "Test"\n')
+tests_scripts/test_buildgen_validate.py:320:    assert tomllib.loads(path.read_text())["device"]["wiring"] == value
+tests_scripts/test_buildgen_validate.py:596:    (custom_src / "asy_bogus2_driver.py").write_text('_NAME = "BOGUS2"\n\n\nclass Bogus2_Reader(SensorReader):\n    pass\n')
+tests_scripts/test_buildgen_validate.py:1625:    driver.write_text(driver.read_text().replace("# @requires bus.timeout>=200000", replacement))
+tests_scripts/test_buildgen_validate.py:1706:    text = target.read_text()
+tests_scripts/test_buildgen_validate.py:1708:    target.write_text(text.replace(old, new, 1))
+tests_scripts/test_buildgen_validate.py:1720:    path = write_text(tmp_path, "fixture", "bus = 5\n\n" + _MINIMAL_DEVICE_TABLE)
+tests_scripts/test_buildgen_validate.py:1726:    path = write_text(tmp_path, "fixture", _MINIMAL_DEVICE_TABLE + "\n[bus]\ni2c0 = 5\n")
+tests_scripts/test_buildgen_validate.py:1819:    assert tomllib.loads(write_doc(tmp_path, "fixture", doc).read_text())["device"]["wiring"]["led_target"] == value
+tests_scripts/test_buildgen_validate.py:1829:    assert tomllib.loads(path.read_text())["device"]["wiring"]["led_target"] == value
+tests_scripts/test_buildgen_validate.py:1851:    path = write_text(tmp_path, "fixture", '[device]\nname = "Test"\n\n[[instance]]\nname_ext = "x"\n')
+tests_scripts/test_buildgen_validate.py:2019:    (tmp_path / "m.py").write_text("_A = const(21)\n_B = 5\n_C = const(True)\n_D = const(_A)\n")
+tests_scripts/test_buildgen_validate.py:2031:    (tmp_path / "m.py").write_text('_F = const(5.0)\n_I = const(5)\n_S = const("index.html")\n')
+tests_scripts/test_buildgen_validate.py:2174:    widths = _crc_widths((src_dir / "asy_crc_checks.py").read_text())
+tests_scripts/test_buildgen_validate.py:2176:    renamed = (src_dir / "asy_crc_checks.py").read_text().replace("class CRC16(", "class CRC16Renamed(")
+tests_scripts/test_buildgen_validate.py:2263:    links = [d for d in DEVICE_NAMES if any(i.get("driver") == "uart_link" for i in tomllib.loads(device_toml(d).read_text()).get("instance", []))]
+tests_scripts/test_buildgen_validate.py:2459:    versions = write_text(tmp_path, "versions", "lwip = 5\n")
+tests_scripts/test_buildgen_validate.py:2477:    versions = tmp_path / "versions.toml" if content is None else write_text(tmp_path, "versions", content)
+tests_scripts/test_buildgen_validate.py:2491:    (tmp_path / "asy_webserver_service.py").write_text(body)
+tests_scripts/test_buildgen_validate.py:2524:    (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass NTPClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n")
+tests_scripts/test_buildgen_validate.py:2548:        (tmp_path / "asy_webserver_service.py").write_text(content)
+tests_scripts/test_buildgen_value_wiring.py:20:    path.write_text(source)
+tests_scripts/test_buildgen_web_tag.py:24:    path.write_text(source)
+tests_scripts/test_buildgen_web_tag.py:30:    path.write_text(source)
+tests_scripts/test_buildgen_wiring.py:27:    path.write_text(source)
+tests_scripts/test_ceiling_probe.py:147:        return sum(_still_open(sock) for sock in socks)
+tests_scripts/test_citations.py:227:    scanned = {path: text for path in _scanned_files() if (text := read_text(path)) is not None}
+tests_scripts/test_citations.py:317:        read_text(str(tmp_path / "latin1.md"))
+tests_scripts/test_citations.py:318:    assert read_text(str(tmp_path / "blob.bin")) is None
+tests_scripts/test_citations.py:331:        if not is_shared_excluded(path) and read_text(path) is not None:
+tests_scripts/test_citations.py:374:    (copy / "SPECIFICATION.md").write_text("# an untracked copy nested in another repository\n")
+tests_scripts/test_citations.py:378:    (copy / "other.txt").write_text("tracked by the outer repository\n")
+tests_scripts/test_counter_steps.py:199:    copy.write_text(
+tests_scripts/test_coverage_runner.py:24:    path.write_text(body)
+tests_scripts/test_coverage_runner.py:97:    assert isinstance(json.loads(out.read_text()), dict)
+tests_scripts/test_coverage_runner.py:116:    recorded = json.loads(out.read_text())
+tests_scripts/test_coverage_runner.py:173:    recorded = json.loads(out.read_text())["src/math_helpers.py"]
+tests_scripts/test_coverage_runner.py:174:    source = (repo_root / "src" / "math_helpers.py").read_text().splitlines()
+tests_scripts/test_coverage_runner.py:182:    source = (repo_root / _RUNNER).read_text()
+tests_scripts/test_coverage_runner.py:185:    lister.write_text(source.replace("sys.exit(_run())", "print(json.dumps(sorted(_line_tables())))"))
+tests_scripts/test_coverage_runner.py:196:    tree = ast.parse((repo_root / _RUNNER).read_text())
+tests_scripts/test_cross_browser_page_load_connections.py:15:# A server behind the proxy that holds every connection open, and a client socket helper: open() resolves once the
+tests_scripts/test_cross_browser_page_load_connections.py:25:async function open() {
+tests_scripts/test_cross_browser_page_load_connections.py:80:const spare = await open(); await send(await open(), "/"); await send(await open(), "/js/app.js");
+tests_scripts/test_cross_browser_page_load_connections.py:81:const pending = await open();
+tests_scripts/test_cross_browser_page_load_connections.py:95:await open(); await send(await open(), "/"); await send(await open(), "/measurements");
+tests_scripts/test_cross_browser_page_load_connections.py:106:await send(await open(), "/"); await open();
+tests_scripts/test_cross_browser_page_load_connections.py:119:const old = await open();
+tests_scripts/test_cross_browser_page_load_connections.py:121:await send(await open(), "/");
+tests_scripts/test_cross_browser_page_load_connections.py:131:await send(await open(), "/measurements");
+tests_scripts/test_cross_browser_page_load_connections.py:133:await send(await open(), "/");
+tests_scripts/test_cross_browser_page_load_connections.py:134:const pending = await open();
+tests_scripts/test_cross_browser_smoke_probe.py:53:    path.write_text(json.dumps(definitions))
+tests_scripts/test_cross_browser_smoke_probe.py:71:    path.write_text(json.dumps(definitions))
+tests_scripts/test_cross_browser_smoke_probe.py:111:    text = (_REPO_ROOT / "scripts" / "cross_browser_smoke.mjs").read_text()
+tests_scripts/test_decision_vocabulary.py:77:        if _in_scope(path) and (text := read_text(path)) is not None:
+tests_scripts/test_device_script_gc_threshold.py:67:    return sorted(p for p in DEVICE_SCRIPTS.glob("*.py") if any((m, f) in _MEASURES for m, f, _n in _calls(ast.parse(p.read_text()))))
+tests_scripts/test_device_script_gc_threshold.py:78:    assert _problems(script.read_text()) == [], script.name
+tests_scripts/test_device_tomls.py:89:    text = (devices_dir / f"{device}.toml").read_text()
+tests_scripts/test_device_tomls.py:119:    text = path.read_text()
+tests_scripts/test_device_tomls.py:135:    lines = (devices_dir / f"{device}.toml").read_text().splitlines()
+tests_scripts/test_device_tomls.py:159:        text = (repo_root / "tests" / scenarios).read_text()
+tests_scripts/test_device_tomls.py:177:    text = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+tests_scripts/test_digital_twin_boot_contiguity.py:283:    source = (repo_root / "build" / "generated_src" / f"sensortask_{device}.py").read_text()
+tests_scripts/test_digital_twin_boot_contiguity.py:318:    return [device for device in DEVICE_NAMES if "uart_link" in json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text())["instances"]]
+tests_scripts/test_digital_twin_boot_contiguity.py:330:    plan = json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text())
+tests_scripts/test_digital_twin_boot_contiguity.py:411:    text = (repo_root / "scripts" / "test.sh").read_text()
+tests_scripts/test_digital_twin_boot_contiguity.py:420:    twin = _int_constants((repo_root / _PROBE).read_text(), _MIRRORED_BOUNDS)
+tests_scripts/test_digital_twin_boot_contiguity.py:421:    board = _int_constants((repo_root / _BOARD_SCRIPT).read_text(), _MIRRORED_BOUNDS)
+tests_scripts/test_digital_twin_ci_suite_errcount.py:187:        doc = tomllib.loads(device_toml(device).read_text())
+tests_scripts/test_digital_twin_ci_suite_errcount.py:372:    source = Path(ci_suite.__file__ or "").read_text()
+tests_scripts/test_digital_twin_ci_suite_errcount.py:404:    log.write_text(log_text)
+tests_scripts/test_digital_twin_ci_suite_soak.py:196:        log_path.write_text("")
+tests_scripts/test_digital_twin_generated_boot.py:250:    (tmp_path / f"{module_name}.py").write_text(generated.module_source)
+tests_scripts/test_digital_twin_generated_boot.py:251:    (tmp_path / "frozen_html.py").write_text(_STUB_FROZEN_HTML)
+tests_scripts/test_digital_twin_generated_boot.py:255:    wiring_plan_path.write_text(json.dumps(wiring_plan))
+tests_scripts/test_error_catalog.py:61:    result: dict[str, Any] = json.loads(_CATALOG_PATH.read_text())
+tests_scripts/test_error_catalog.py:81:    return [_module(p.relative_to(_REPO).as_posix(), p.read_text()) for p in sorted((_REPO / directory).rglob("*.py"))]
+tests_scripts/test_error_catalog.py:610:    errcount = json.loads((_REPO / _MOCK_SAMPLES).read_text())["errcount"]
+tests_scripts/test_fault_or_warning_never_both.py:228:    return [_parse(f"src/{p.name}", p.read_text()) for p in sorted((_REPO / "src").glob("*.py"))]
+tests_scripts/test_fault_or_warning_never_both.py:238:        target.write_text(result.module_source)
+tests_scripts/test_fault_or_warning_never_both.py:239:        modules.append(_parse(f"build/generated_src/{target.name}", target.read_text()))
+tests_scripts/test_fram_chunk_crc_sites.py:48:    return [(f"src/{p.name}", p.read_text()) for p in sorted((repo_root / "src").glob("*.py"))]
+tests_scripts/test_fram_chunk_owner_sites.py:119:    tree = ast.parse((_REPO_ROOT / "src" / "asy_fram_manager.py").read_text())
+tests_scripts/test_fram_chunk_owner_sites.py:151:    return [(p.name, p.read_text()) for p in sorted((_REPO_ROOT / "src").glob("*.py"))]
+tests_scripts/test_gc_collect_sites.py:46:        for owner in _collect_call_sites(ast.parse(path.read_text())):
+tests_scripts/test_gc_collect_sites.py:56:    found = sorted(str(path.relative_to(repo_root)) for path in (repo_root / "buildgen").rglob("*.py") if "gc.collect(" in path.read_text())
+tests_scripts/test_gc_collect_sites.py:63:    (tmp_path / "m.py").write_text(
+tests_scripts/test_gc_collect_sites.py:66:    assert sorted(_collect_call_sites(ast.parse((tmp_path / "m.py").read_text()))) == ["<module>", "boot"]
+tests_scripts/test_gc_collect_sites.py:71:    (tmp_path / "m.py").write_text("def f(bag) -> None:\n    bag.collect()\n")
+tests_scripts/test_gc_collect_sites.py:72:    assert _collect_call_sites(ast.parse((tmp_path / "m.py").read_text())) == []
+tests_scripts/test_generate_sensortask_modules.py:41:        assert (out_dir / f"sensortask_{device}.py").read_text() == expected.module_source
+tests_scripts/test_generate_sensortask_modules.py:42:        assert (out_dir / f"sensortask_{device}_main.py").read_text() == expected.boot_entry_source
+tests_scripts/test_generate_sensortask_modules.py:43:        assert (out_dir / f"sensortask_{device}_main_noautostart.py").read_text() == expected.boot_entry_noautostart_source
+tests_scripts/test_generate_sensortask_modules.py:44:        assert json.loads((out_dir / f"sensortask_{device}_expected.json").read_text()) == expected.expected_facts
+tests_scripts/test_generate_sensortask_modules.py:46:        assert json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text()) == compute_twin_wiring(expected.model)
+tests_scripts/test_generate_sensortask_modules.py:47:        written = json.loads((out_dir / "definitions" / f"{device}.json").read_text())
+tests_scripts/test_generate_sensortask_modules.py:49:        assert (out_dir / "api" / f"{device}.json").read_text() == api_reference_json(generate_api_reference(expected.model, repo_root / "src"))
+tests_scripts/test_generate_sensortask_modules.py:50:    assert json.loads((out_dir / "definitions" / "index.json").read_text()) == {"devices": sorted(DEVICE_NAMES)}
+tests_scripts/test_generate_sensortask_modules.py:58:    (tmp_path / "devices" / "broken.toml").write_text("# not a real device\n")
+tests_scripts/test_hardware_runners.py:33:with open(os.environ["STUB_CALLS"], "a") as calls:
+tests_scripts/test_hardware_runners.py:41:        with open(record, "w") as out:
+tests_scripts/test_hardware_runners.py:59:    (root / "devices" / "zz_test_leaked.toml").write_text("# a leaked test fixture, never a device\n")
+tests_scripts/test_hardware_runners.py:63:        (root / rel).write_text(stub)
+tests_scripts/test_hardware_runners.py:81:    for line in calls.read_text().splitlines() if calls.exists() else []:
+tests_scripts/test_hardware_verdict.py:46:        path.write_text(json.dumps(record))
+tests_scripts/test_hardware_verdict.py:223:    (suite / "conftest.py").write_text(_STUB_CONFTEST)
+tests_scripts/test_hardware_verdict.py:224:    (suite / "test_stub.py").write_text(_STUB_TEST)
+tests_scripts/test_hardware_verdict.py:242:    tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text())
+tests_scripts/test_hardware_verdict.py:251:        source = path.read_text()
+tests_scripts/test_hardware_verdict.py:270:    text = (repo_root / "tests_hardware" / "conftest.py").read_text()
+tests_scripts/test_hardware_verdict.py:287:        names = {n.name for n in ast.walk(ast.parse((repo_root / path).read_text())) if isinstance(n, ast.FunctionDef)}
+tests_scripts/test_heap_map_parser.py:216:    opened, closed = _emitted_envelope((REPO_ROOT / emitter).read_text(), "after_build_system")
+tests_scripts/test_import_placement.py:267:        "mod = __import__('time')\nimportlib.import_module('x')\nexec(compile(open('f').read(), 'f', 'exec'))\n"
+tests_scripts/test_import_placement.py:270:    probe.write_text(source)
+tests_scripts/test_import_placement.py:271:    assert sorted(sites_in_source("probe.py", probe.read_text())) == sorted([
+tests_scripts/test_js_coverage_excludes_json.py:17:    text = (repo_root / "vitest.config.js").read_text()
+tests_scripts/test_js_coverage_report_dir.py:13:    text = (repo_root / "vitest.config.js").read_text()
+tests_scripts/test_js_coverage_report_dir.py:25:            for node in ast.walk(ast.parse(path.read_text())):
+tests_scripts/test_js_coverage_report_dir.py:43:    ci = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+tests_scripts/test_js_coverage_report_dir.py:50:    ignored = (repo_root / ".gitignore").read_text().splitlines()
+tests_scripts/test_legacy_paths.py:31:        if path.startswith(_SKIPPED_PREFIXES) or path in _SKIPPED_FILES or (text := read_text(path)) is None:
+tests_scripts/test_level_containment.py:35:    tree = ast.parse((repo_root / _CI_SUITE).read_text())
+tests_scripts/test_level_containment.py:51:    for node in ast.parse(path.read_text()).body:
+tests_scripts/test_level_containment.py:76:    text = (repo_root / "SPECIFICATION.md").read_text()
+tests_scripts/test_level_containment.py:138:    text = (repo_root / _BENCH_RUNNER).read_text()
+tests_scripts/test_level_containment.py:144:    lines = (repo_root / _FLASH_HAZARDS).read_text().splitlines()
+tests_scripts/test_level_containment.py:159:    bench = {n.name for n in ast.parse((repo_root / _BENCH_HAZARDS).read_text()).body if isinstance(n, ast.FunctionDef)}
+tests_scripts/test_lint_ceilings.py:151:        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
+tests_scripts/test_lint_ceilings.py:182:        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
+tests_scripts/test_lint_ceilings.py:225:        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
+tests_scripts/test_lint_ceilings.py:247:    planted.write_text("class C:\n    def __init__(self, a, b, c, d, e, f, g, h, i):\n        pass\n\n\ndef ok(a, b, c, d, e, f, g, _h, i):\n    pass\n")
+tests_scripts/test_lint_ceilings.py:275:    planted.write_text("def f(:\n")
+tests_scripts/test_lint_sh.py:19:    text = (repo_root / "scripts" / "lint.sh").read_text()
+tests_scripts/test_lint_sh.py:32:    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nstatus=0\n{_guard_block(repo_root, needle)}\nexit "$status"\n')
+tests_scripts/test_lint_sh.py:42:    (tmp_path / "src" / "asy_system_service.py").write_text("import gc\n\n\nasync def run_setups() -> None:\n    gc.collect()\n\n\nasync def start_tasks() -> None:\n    gc.collect()\n")
+tests_scripts/test_lint_sh.py:43:    (tmp_path / "src" / "asy_fram_driver.py").write_text("x = 1\n")
+tests_scripts/test_lint_sh.py:44:    (tmp_path / "buildgen" / "codegen.py").write_text('lines.append("    sysfunct.run_setups(_collect_setups())")\n')
+tests_scripts/test_lint_sh.py:45:    (tmp_path / "buildgen" / "driver_registry.py").write_text("y = 2\n")
+tests_scripts/test_lint_sh.py:66:    (tree / "src" / "asy_fram_driver.py").write_text(f"{suppression}\n")
+tests_scripts/test_lint_sh.py:75:    (tree / "tests" / "machine.py").write_text("obj.meth = other  # type: ignore[method-assign]\n")
+tests_scripts/test_lint_sh.py:80:    (tree / "src" / "asy_fram_manager.py").write_text("import gc\ngc.collect()\n")
+tests_scripts/test_lint_sh.py:94:    (tree / "buildgen" / filename).write_text(text)
+tests_scripts/test_lint_sh.py:104:    (tree / "src" / filename).write_text("import gc\ngc.collect()\n")
+tests_scripts/test_lint_sh.py:111:    (tree / "src" / "asy_system_service.py").write_text("import gc\ngc.collect()\nfor _ in range(2):\n    gc.collect()\n")
+tests_scripts/test_lint_sh.py:119:    (tree / "src" / "sub" / "leaf.py").write_text("import gc\ngc.collect()\n")
+tests_scripts/test_lint_sh.py:142:        (stub_bin / tool).write_text(f"#!/bin/sh\nexit {1 if tool == failing_tool else 0}\n")
+tests_scripts/test_measurement_field_tuple_agreement.py:41:    for node in ast.parse(path.read_text()).body:
+tests_scripts/test_measurement_field_tuple_agreement.py:58:        _literal_tuple(k.value) for node in ast.walk(ast.parse(path.read_text()))
+tests_scripts/test_measurement_field_tuple_agreement.py:66:    return next(d for d in DEVICE_NAMES if any(i.get("driver") == driver for i in tomllib.loads(device_toml(d).read_text()).get("instance", [])))
+tests_scripts/test_memory_error_gate_agreement.py:40:    assert f'local pattern="{pattern}"' in (repo_root / "scripts" / "test.sh").read_text(), f"scripts/test.sh's MemoryError gate no longer greps for {pattern!r}"
+tests_scripts/test_memory_error_gate_agreement.py:44:    text = (repo_root / "tests_js" / "_memory_markers.js").read_text()
+tests_scripts/test_memory_error_gate_agreement.py:56:    text = (repo_root / path).read_text()
+tests_scripts/test_memory_error_gate_agreement.py:62:    assert "MEMORY_ERROR_MARKERS" in (repo_root / path).read_text(), f"{path} boots a twin and must scan its output for harness.MEMORY_ERROR_MARKERS"
+tests_scripts/test_memory_error_gate_agreement.py:69:    text = (repo_root / path).read_text()
+tests_scripts/test_memory_error_gate_agreement.py:96:            for node in ast.walk(ast.parse(path.read_text())):
+tests_scripts/test_micropython_overrides.py:31:    common_header.write_text("\n".join(lines) + "\n")
+tests_scripts/test_micropython_overrides.py:35:    (standard_dir / "mpconfigvariant.h").write_text(
+tests_scripts/test_micropython_overrides.py:38:    (standard_dir / "mpconfigvariant.mk").write_text("FROZEN_MANIFEST ?= $(VARIANT_DIR)/manifest.py\n")
+tests_scripts/test_micropython_overrides.py:40:        (standard_dir / "manifest.py").write_text('include("$(PORT_DIR)/variants/manifest.py")\n')
+tests_scripts/test_micropython_overrides.py:88:        generated = (override_dir / "mpconfigvariant.h").read_text()
+tests_scripts/test_micropython_overrides.py:103:        assert (override_dir / "mpconfigvariant.mk").read_text() == f"include {real_mk}\n"
+tests_scripts/test_micropython_overrides.py:112:        assert (override_dir / "manifest.py").read_text() == f'include("{real_manifest}")\n'
+tests_scripts/test_micropython_overrides.py:159:                (build_dir / "micropython").write_text("#!/bin/sh\necho fake\n")
+tests_scripts/test_micropython_overrides.py:185:                (build_dir / "micropython").write_text("#!/bin/sh\necho fake\n")
+tests_scripts/test_micropython_overrides.py:221:        shell = (repo_root / "scripts" / "test.sh").read_text()
+tests_scripts/test_micropython_overrides.py:222:        conftest = (repo_root / "tests_scripts" / "conftest.py").read_text()
+tests_scripts/test_micropython_overrides.py:231:        source = (repo_root / "toolchain" / "setup_toolchain.py").read_text()
+tests_scripts/test_micropython_overrides.py:280:    (opt_h / "opt.h").write_text(guards + "\n")
+tests_scripts/test_micropython_overrides.py:296:    (common / "lwipopts_common.h").write_text("\n".join(line for line in common_lines if line != drop) + "\n")
+tests_scripts/test_micropython_overrides.py:301:    (lwip_inc / "lwipopts.h").write_text("" if inc_line == drop else inc_line + "\n")
+tests_scripts/test_micropython_overrides.py:308:    (root / "ports" / "rp2" / "CMakeLists.txt").write_text("\n".join(line for line in cmake_lines if line != drop) + "\n")
+tests_scripts/test_micropython_overrides.py:313:    (board_dir / "mpconfigboard.cmake").write_text('set(PICO_BOARD "pico_w")\n' if board_cmake_line == drop else f'set(PICO_BOARD "pico_w")\n{board_cmake_line}\n')
+tests_scripts/test_micropython_overrides.py:316:            (board_dir / name).write_text("")
+tests_scripts/test_micropython_overrides.py:389:        generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text()
+tests_scripts/test_micropython_overrides.py:403:        cmake = (override_dir / "mpconfigboard.cmake").read_text()
+tests_scripts/test_micropython_overrides.py:417:        assert (override_dir / "mpconfigboard.h").read_text() == f'#include "{real_board / "mpconfigboard.h"}"\n'
+tests_scripts/test_micropython_overrides.py:418:        assert (override_dir / "manifest.py").read_text() == f'include("{real_board / "manifest.py"}")\n'
+tests_scripts/test_micropython_overrides.py:653:        generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text()
+tests_scripts/test_micropython_overrides.py:668:    (flags / "flags.make").write_text("".join(f"{key} = {value}\n" for key, value in lines.items() if key != drop_key))
+tests_scripts/test_micropython_overrides.py:671:    compiler.write_text(f"#!{sys.executable}\nimport sys, pathlib\npathlib.Path({str(argv_log)!r}).write_text(' '.join(sys.argv[1:]))\nsys.stdout.write({stdout!r})\nsys.stderr.write('boom')\nsys.exit({returncode})\n")
+tests_scripts/test_micropython_overrides.py:687:        assert "-I/over/ride -I/real/lwip_inc" in argv_log.read_text(), "the real build's own flags must reach the preprocessor"
+tests_scripts/test_micropython_overrides.py:741:        sleeper.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(30)\n")
+tests_scripts/test_micropython_overrides.py:753:        flags_make.write_text(f"# compile ASM with /nowhere/asm-gcc\n# compile C with {compiler}\n" + flags_make.read_text())
+tests_scripts/test_micropython_overrides.py:759:        (build_dir / "CMakeCache.txt").write_text(f"CMAKE_C_FLAGS:STRING=\nCMAKE_C_COMPILER:FILEPATH={compiler}\n")
+tests_scripts/test_micropython_overrides.py:766:        flags_make.write_text(f"# compile C with {tmp_path / 'no-such-gcc'}\n" + flags_make.read_text())
+tests_scripts/test_micropython_overrides.py:817:            (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text("C_DEFINES = \nC_INCLUDES = \nC_FLAGS = \n")
+tests_scripts/test_micropython_overrides.py:857:        versions.write_text('[micropython]\nref = "v1.29.0"\n')
+tests_scripts/test_microtest.py:14:    test_file.write_text(source + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n')
+tests_scripts/test_mypy_any_baseline.py:65:    (tmp_path / "src" / "kept.py").write_text("")
+tests_scripts/test_no_variant_literals.py:191:        if _in_scope(path) and (text := read_text(path)) is not None:
+tests_scripts/test_persistence_write_marker_completeness.py:103:    tree = ast.parse((repo_root / "tests_hardware" / "http_client.py").read_text())
+tests_scripts/test_persistence_write_marker_completeness.py:115:    tree = ast.parse(path.read_text())
+tests_scripts/test_persistence_write_marker_completeness.py:176:    tree = ast.parse(path.read_text())
+tests_scripts/test_persistence_write_marker_completeness.py:226:    tree = ast.parse(path.read_text())
+tests_scripts/test_persistence_write_marker_completeness.py:260:    module.write_text(
+tests_scripts/test_persistence_write_marker_completeness.py:276:    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", json_body={"BMP3XX": {"PresOvers": 4}}, timeout_s=10.0)\n')
+tests_scripts/test_persistence_write_marker_completeness.py:293:        for node in ast.walk(ast.parse(path.read_text())):
+tests_scripts/test_persistence_write_marker_completeness.py:306:    source = path.read_text()
+tests_scripts/test_persistence_write_marker_completeness.py:350:    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": 4}}, timeout_s=10.0)\n')
+tests_scripts/test_persistence_write_marker_completeness.py:359:    module.write_text(f'def test_dispatches() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {body}, timeout_s=10.0)\n')
+tests_scripts/test_persistence_write_marker_completeness.py:364:    conftest = (repo_root / "tests_hardware" / "conftest.py").read_text()
+tests_scripts/test_persistence_write_marker_completeness.py:374:        for fn in [n for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
+tests_scripts/test_pytest_run_record.py:91:    (suite / "conftest.py").write_text(_CONFTEST)
+tests_scripts/test_pytest_run_record.py:92:    (suite / "test_things.py").write_text(_TESTS)
+tests_scripts/test_pytest_run_record.py:93:    (suite / "test_module_skip.py").write_text(_MODULE_SKIP)
+tests_scripts/test_pytest_run_record.py:105:    loaded: dict[str, object] = json.loads(path.read_text())
+tests_scripts/test_pytest_run_record.py:161:    loaded = json.loads(path.read_text())
+tests_scripts/test_pytest_run_record.py:171:    path.write_text(json.dumps(record))
+tests_scripts/test_render_coverage_anchors.py:19:        (tmp_path / rel).write_text("x = 1\n")
+tests_scripts/test_request_body_cap_headroom.py:45:    tree = ast.parse((repo_root / "src" / "asy_webserver_service.py").read_text())
+tests_scripts/test_request_timeout_ceiling.py:29:    tree = ast.parse(source_path.read_text())
+tests_scripts/test_request_timeout_ceiling.py:56:    tree = ast.parse(source_path.read_text())
+tests_scripts/test_request_timeout_ceiling.py:78:    js_text = (repo_root / "js" / "poll-manager.js").read_text()
+tests_scripts/test_request_timeout_ceiling.py:109:    assert "timeout_s=_RESET_ERRORS_TIMEOUT_S" in helpers.read_text(), "reset_all_error_logs() must pass _RESET_ERRORS_TIMEOUT_S, not a literal of its own"
+tests_scripts/test_request_timeout_ceiling.py:160:    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef helper(outer_cap_s: float = 30.0) -> None: ...\n")
+tests_scripts/test_request_timeout_ceiling.py:169:    source.write_text("_CAP = 15.0\ndef serve(outer_cap_s: float) -> None: ...\ndef other(*, outer_cap_s: float = _CAP) -> None: ...\n")
+tests_scripts/test_request_timeout_ceiling.py:178:    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef again(outer_cap_s: int = 15) -> None: ...\n")
+tests_scripts/test_request_timeout_ceiling.py:186:    posonly.write_text("def serve(outer_cap_s: float = 15.0, /) -> None: ...\n")
+tests_scripts/test_request_timeout_ceiling.py:189:    trailing.write_text("def serve(self, app: object, outer_cap_s: float = 15.0) -> None: ...\n")
+tests_scripts/test_request_timeout_ceiling.py:197:    source.write_text("_OTHER_TIMEOUT_S = 30.0\n")
+tests_scripts/test_request_timeout_ceiling.py:206:    source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n_CAP_S = const("15.0")\n')
+tests_scripts/test_request_timeout_ceiling.py:216:    source.write_text("_DEFAULT_OUTER_CAP_S = const(15.0)\n_DEFAULT_MAX_CONNECTIONS = const(6)\n_PLAIN_S = 2.5\n")
+tests_scripts/test_request_timeout_ceiling.py:297:    ceiling_holder._hold_ceiling_open("127.0.0.1", 2, 30.0, held_out, threading.Event())
+tests_scripts/test_request_timeout_ceiling.py:320:    source = path.read_text()
+tests_scripts/test_require_clean_hardware_run_sh.py:17:with open(os.environ["STUB_CALLS"], "a") as calls:
+tests_scripts/test_require_clean_hardware_run_sh.py:25:    with open(record, "w") as out, open(os.environ["STUB_RECORD"]) as canned:
+tests_scripts/test_require_clean_hardware_run_sh.py:43:    stub.write_text(_STUB_UV.format(python=sys.executable))
+tests_scripts/test_require_clean_hardware_run_sh.py:45:    (tmp_path / "canned.json").write_text(json.dumps(record if record is not None else _record(_GREEN)))
+tests_scripts/test_require_clean_hardware_run_sh.py:57:    for line in calls.read_text().splitlines() if calls.exists() else []:
+tests_scripts/test_require_clean_hardware_run_sh.py:94:    assert "canned pytest output" in (evidence / "pytest.log").read_text()
+tests_scripts/test_require_clean_hardware_run_sh.py:95:    assert json.loads((evidence / "run_record.json").read_text())["tests"] == [_GREEN]
+tests_scripts/test_resolve_board_device.py:34:        (usb_device / "idVendor").write_text(f"{vendor}\n")
+tests_scripts/test_resolve_board_device.py:37:        (self.dev / tty).write_text("")
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:23:    (stub_bin / "sudo").write_text('#!/bin/bash\nexec "$@"\n')
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:24:    (stub_bin / "env").write_text('#!/bin/bash\nwhile [[ "$1" == *=* ]]; do export "$1"; shift; done\nexec "$@"\n')
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:25:    (stub_bin / "apt-get").write_text(
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:31:    (stub_bin / "microsoft-edge-stable").write_text("#!/bin/bash\nexit 0\n")
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:35:        (ff / name).write_text("#!/bin/bash\nexit 0\n")
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:62:    assert "webkit2gtk-driver" in calls.read_text(), "apt-get install never ran, so the update failure still stopped it"
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:69:    text = script.read_text()
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:71:    bare.write_text(text.replace(_TOLERANCE, ""))
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:75:    assert "webkit2gtk-driver" not in calls.read_text()
+tests_scripts/test_setup_cross_browser_toolchain_sh.py:85:    installs = [line for line in script.read_text().splitlines() if "apt-get install" in line]
+tests_scripts/test_setup_toolchain_env.py:49:    (usb_device_dir / "idVendor").write_text(f"{id_vendor}\n")
+tests_scripts/test_setup_toolchain_env.py:57:        (dev_dir / tty_name).write_text("")
+tests_scripts/test_setup_toolchain_env.py:437:    harness_src = harness_path.read_text()
+tests_scripts/test_setup_toolchain_env.py:451:    (tmp_path / "package.json").write_text("{}")
+tests_scripts/test_setup_toolchain_env.py:466:    (tmp_path / "package.json").write_text("{}")
+tests_scripts/test_setup_toolchain_env.py:473:    (tmp_path / "package.json").write_text("{}")
+tests_scripts/test_setup_toolchain_env.py:520:    (tmp_path / ".nvmrc").write_text("22\n")
+tests_scripts/test_setup_toolchain_env.py:522:    (tmp_path / ".nvmrc").write_text("v20.11.1\n")
+tests_scripts/test_setup_toolchain_env.py:535:    (tmp_path / ".nvmrc").write_text("22\n")
+tests_scripts/test_setup_toolchain_env.py:550:    (tmp_path / ".nvmrc").write_text("22\n")
+tests_scripts/test_setup_toolchain_env.py:555:    (bindir / "node").write_text("#!/bin/sh\n")
+tests_scripts/test_strip_type_checking.py:104:    src_files_with_guard = [p for p in (repo_root / "src").glob("*.py") if "TYPE_CHECKING" in p.read_text()]
+tests_scripts/test_strip_type_checking.py:107:        output = strip_module.strip_type_checking_blocks(src_file.read_text())
+tests_scripts/test_summary_block.py:215:    (tmp_path / "garbled.json").write_text("{not json")
+tests_scripts/test_summary_block.py:256:    (repo / "f").write_text("x\n")
+tests_scripts/test_summary_block.py:262:    (repo / "g").write_text("y\n")
+tests_scripts/test_summary_block.py:303:    path.write_text(json.dumps(record))
+tests_scripts/test_summary_block.py:313:    path.write_text(json.dumps({"tests": [], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": exitstatus}))
+tests_scripts/test_summary_block.py:320:    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": 1}))
+tests_scripts/test_summary_block.py:328:    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 0}))
+tests_scripts/test_summary_block.py:352:    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 1}))
+tests_scripts/test_summary_block.py:362:        assert "GITHUB_STEP_SUMMARY" not in path.read_text(), path
+tests_scripts/test_test_sh.py:33:    return (repo_root / "scripts" / "test.sh").read_text()
+tests_scripts/test_test_sh.py:66:    text = (repo_root / "tests_scripts" / "test_build_website_sh.py").read_text()
+tests_scripts/test_test_sh.py:70:    written = [(path_var, name_var) for path_var, name_var in re.findall(r'(\w+) = repo_root / "devices" / f"\{(\w+)\}\.toml"', text) if f"{path_var}.write_text(" in text]
+tests_scripts/test_test_sh.py:83:    conftest = (repo_root / "tests_scripts" / "conftest.py").read_text()
+tests_scripts/test_test_sh.py:101:    stub.write_text(f"#!/bin/sh\nsleep {probe_sleep_s}\n")
+tests_scripts/test_test_sh.py:104:    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{body.group(0)}\n_detect_parallelism\n')
+tests_scripts/test_test_sh.py:121:        uptime.write_text(f"{start_cs // 100}.{start_cs % 100:02d} 4000.00\n")
+tests_scripts/test_test_sh.py:124:    stub.write_text(f'#!/bin/sh\n[ -f "{uptime}" ] && echo "{end_cs // 100}.{end_cs % 100:02d} 4000.10" >"{uptime}"\nexit 0\n')
+tests_scripts/test_test_sh.py:134:        (bin_dir / "date").write_text('#!/bin/sh\nc="$0.calls"\nn=$(cat "$c" 2>/dev/null || echo 0)\nn=$((n + 1)); echo "$n" > "$c"\necho $((n * 3600000000000))\n')
+tests_scripts/test_test_sh.py:138:    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{redirected}\n_detect_parallelism\n')
+tests_scripts/test_test_sh.py:183:    script.write_text(f"#!/usr/bin/env bash\nset -uo pipefail\n{body.group(0)}\n_coverage_parallelism {jobs} {cores} {multiplier}\n")
+tests_scripts/test_test_sh.py:216:    cpu_file.write_text(cpu_max)
+tests_scripts/test_test_sh.py:218:    stub.write_text("#!/bin/sh\nexit 0\n")
+tests_scripts/test_test_sh.py:225:    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{redirected}\n_detect_parallelism\n')
+tests_scripts/test_test_sh.py:260:    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\ncoverage={int(coverage)}\n_detect_parallelism() {{ echo "8 4 2 300"; }}\n{cap.group(0)}\n' + text[start:end] + 'echo "RESOLVED=$max_parallel"\n')
+tests_scripts/test_test_sh.py:291:    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{tmp_path}/does_not_exist"\n{body.group(0)}\n_detect_parallelism\n')
+tests_scripts/test_test_sh.py:351:    script.write_text(
+tests_scripts/test_test_sh.py:363:    inner = observed.read_text().strip()
+tests_scripts/test_test_sh.py:416:        path.write_text("# fixture\n")
+tests_scripts/test_test_sh.py:449:    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\n{body.group(0)}\nunix_port_variant "{binary}"\n')
+tests_scripts/test_test_sh.py:470:    broken.write_text("#!/bin/sh\nexit 1\n")
+tests_scripts/test_test_sh.py:481:    no_asyncio.write_text(f'#!/usr/bin/env bash\nexec "{micropython_bin}" -c "import sys; sys.path.clear()\n$2"\n')
+tests_scripts/test_test_sh.py:542:    script.write_text("#!/usr/bin/env bash\nset -euo pipefail\ncoverage=0\n" + "\n".join(lines[start : end + 1]) + "\n")
+tests_scripts/test_test_sh.py:591:    sentinel.write_text("held by a concurrently running test file\n")
+tests_scripts/test_test_sh.py:593:    fixture.write_text("# swept by scripts/test.sh's reserved-namespace sweep\n")
+tests_scripts/test_test_sh.py:666:        log.write_text(output)
+tests_scripts/test_test_sh.py:668:    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nresults_dir="{results}"\n{body.group(0)}\n_flag_memory_errors case "{log}"\n')
+tests_scripts/test_test_sh.py:672:    return (memerr.read_text() if memerr.exists() else "", noverdict.read_text() if noverdict.exists() else "")
+tests_scripts/test_test_sh.py:692:    grep.write_text("#!/bin/sh\nexit 2\n")
+tests_scripts/test_test_sh.py:765:    script.write_text(
+tests_scripts/test_test_sh.py:775:    (tmp_path / "test_x.memerr").write_text("")
+tests_scripts/test_test_sh.py:776:    (tmp_path / "test_x.log").write_text("[test_x] 50% done\n[test_x] AssertionError: boom\n")
+tests_scripts/test_test_sh.py:814:    script.write_text(
+tests_scripts/test_test_sh.py:824:    (tmp_path / "test_x.memerr").write_text("a 50% b\nc\n")
+tests_scripts/test_test_sh.py:848:        (tmp_path / f"{tag}.log").write_text(f"[{tag}] boom\n")
+tests_scripts/test_test_sh.py:849:        (tmp_path / f"{tag}.memerr").write_text(f"[{tag}] memory allocation failed\n")
+tests_scripts/test_test_sh.py:851:    script.write_text(
+tests_scripts/test_test_sh.py:914:                (results / f"{tag}.{suffix}").write_text(content)
+tests_scripts/test_test_sh.py:916:        (results / name).write_text(content)
+tests_scripts/test_test_sh.py:918:    status_file.write_text(pytest_status + "\n")
+tests_scripts/test_test_sh.py:920:        (results / "tests_scripts.json").write_text(record)
+tests_scripts/test_test_sh.py:924:    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\nif [ "$2" = "scripts/_render_coverage.py" ]; then exit {1 if render_fails else 0}; fi\nexec {shutil.which("uv")} "$@"\n')
+tests_scripts/test_test_sh.py:928:    script.write_text(
+tests_scripts/test_test_sh.py:973:    assert (runs[0] / "summary.txt").read_text() == block
+tests_scripts/test_test_sh.py:1076:    stub.write_text(f'#!/usr/bin/env bash\necho x >>"{calls}"\nif [ "$(wc -l <"{calls}")" -eq 1 ]; then\n{first_attempt}\nelse\n{later_attempts}\nfi\n')
+tests_scripts/test_test_sh.py:1081:    script.write_text(
+tests_scripts/test_test_sh.py:1096:        (results / f"test_x.{suffix}").read_text() if (results / f"test_x.{suffix}").exists() else None for suffix in ("status", "log", "memerr")
+tests_scripts/test_test_sh.py:1104:    assert (results / "test_x.status").read_text() == "RETRIED-PASS 2/3\n"
+tests_scripts/test_test_sh.py:1112:    assert "memory allocation failed" in (results / "test_x.memerr").read_text()
+tests_scripts/test_test_sh.py:1136:    (results / "test_x.log").write_text("[test_x] boom\n")
+tests_scripts/test_test_sh.py:1138:    script.write_text(
+tests_scripts/test_test_sh.py:1148:    assert (run / "results" / "test_x.log").read_text() == "[test_x] boom\n"
+tests_scripts/test_test_sh.py:1164:    workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+tests_scripts/test_tests_hardware_conftest_constants.py:20:    tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text())
+tests_scripts/test_tests_hardware_conftest_constants.py:44:    source = (repo_root / "src" / "asy_wifi_service.py").read_text()
+tests_scripts/test_tests_hardware_conftest_constants.py:54:    doc = tomllib.loads(device_toml(_BENCH_DEVICE).read_text())
+tests_scripts/test_tests_hardware_conftest_constants.py:77:        tomllib.loads(device_toml(_BENCH_DEVICE).read_text())["device"]["hotspot_password"]
+tests_scripts/test_tests_hardware_persistence_write_gating.py:110:    (tmp_path / "_deselection_probe.py").write_text(_DESELECTION_PROBE)
+tests_scripts/test_tests_hardware_run_record.py:23:    record = json.loads(record_path.read_text())
+tests_scripts/test_tests_hardware_run_record.py:44:    (tmp_path / "test_stub.py").write_text(_STUB_TEST)
+tests_scripts/test_tests_hardware_run_record.py:48:    record = json.loads(record_path.read_text())
+tests_scripts/test_tests_hardware_run_record.py:58:    (tmp_path / "test_stub.py").write_text(_STUB_TEST)
+tests_scripts/test_threshold_runner.py:19:    path.write_text(body)
+tests_scripts/test_toml_schema_contract.py:65:    return (repo_root / "SPECIFICATION.md").read_text()
+tests_scripts/test_tool_help.py:61:            wrapper.write_text(f'#!/bin/sh\nexec "{target}" "$@"\n')
+tests_scripts/test_tunables_register.py:289:    (tmp_path / "src" / "mod.py").write_text(source)
+tests_scripts/test_tunables_register.py:290:    (tmp_path / "SPECIFICATION.md").write_text(f"# Part N\n\n{_BEGIN}\n## N.3\n\n{_HEAD}\n" + "\n".join(rows) + f"\n{_END}\n")
+tests_scripts/test_tunables_register.py:330:    (root / "src" / "mypy.ini").write_text(f"[mypy]\n# @{_NAME} x.wait_s = 5\nwait = 5\n")
+tests_scripts/test_twin_wiring_contract.py:219:    for caller, source in (("digital_twin/run_generic_integration.py", (_REPO / "digital_twin" / "run_generic_integration.py").read_text()), ("the boot entry", generated.boot_entry_source)):
+tests_scripts/test_typecheck_sh.py:29:        (stub_bin / name).write_text(body)
+toolchain/micropython_overrides.py:27:    return path.read_text()
+toolchain/micropython_overrides.py:67:    (override_dir / "mpconfigvariant.h").write_text(
+toolchain/micropython_overrides.py:77:    (override_dir / "mpconfigvariant.mk").write_text(
+toolchain/micropython_overrides.py:82:        (override_dir / "manifest.py").write_text(f'include("{real_manifest}")\n')
+toolchain/micropython_overrides.py:323:    (include_dir / "lwipopts.h").write_text(
+toolchain/micropython_overrides.py:333:    (override_dir / "mpconfigboard.cmake").write_text(
+toolchain/micropython_overrides.py:342:    (override_dir / "mpconfigboard.h").write_text(f'#include "{real_board_dir / "mpconfigboard.h"}"\n')
+toolchain/micropython_overrides.py:343:    (override_dir / "manifest.py").write_text(f'include("{real_board_dir / "manifest.py"}")\n')
+toolchain/micropython_overrides.py:401:        match = re.search(r"^CMAKE_C_COMPILER:[A-Z]+=(\S.*)$", cache.read_text(), re.MULTILINE)
+toolchain/micropython_overrides.py:414:    text = flags_make.read_text()
+toolchain/micropython_overrides.py:428:        probe.write_text(probe_body)
+toolchain/setup_toolchain.py:155:    text = path.read_text()
+toolchain/setup_toolchain.py:157:    path.write_text(new_text)
+toolchain/setup_toolchain.py:443:    test_file.write_text(FROZEN_VERIFY_PY)
+toolchain/setup_toolchain.py:464:    manifest_path.write_text(
+toolchain/setup_toolchain.py:657:            return vendor_file.read_text().strip()
+toolchain/setup_toolchain.py:946:    major = nvmrc.read_text().strip().lstrip("v")

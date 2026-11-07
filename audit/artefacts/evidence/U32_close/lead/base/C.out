@@ -1,0 +1,20 @@
+08:00:23 rebuild rc=0
+08:09:10 tests/test_asy_uart_comm.py@-1 rc=0
+08:10:13 tests/test_asy_uart_comm.py@32768 rc=0
+08:10:28 tests_scripts/test_digital_twin_boot_contiguity.py rc=0
+08:10:29 tests/test_digital_twin_fram.py@-1 rc=0
+08:10:29 tests/test_digital_twin_fram.py@32768 rc=0
+08:11:40 tests/test_digital_twin_hot_replug.py@-1 rc=0
+08:12:51 tests/test_digital_twin_hot_replug.py@32768 rc=0
+08:12:59 tests/test_ntp_fram_system_integration.py@-1 rc=0
+08:13:07 tests/test_ntp_fram_system_integration.py@32768 rc=0
+08:13:16 tests/test_asy_neopixel_driver.py@-1 rc=0
+08:13:26 tests/test_asy_neopixel_driver.py@32768 rc=0
+08:13:30 tests/test_asy_webserver_service.py@-1 rc=0
+08:13:38 tests/test_asy_webserver_service.py@32768 rc=0
+08:14:18 tests/test_uart_comm_cancel_sweep.py@-1 rc=0
+08:14:59 tests/test_uart_comm_cancel_sweep.py@32768 rc=0
+08:16:43 tests/test_uart_comm_hazard.py@-1 rc=0
+08:18:32 tests/test_uart_comm_hazard.py@32768 rc=0
+mem markers: 0 files
+08:18:32 done

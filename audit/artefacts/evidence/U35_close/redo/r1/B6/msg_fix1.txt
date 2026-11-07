@@ -1,0 +1,7 @@
+U35: UART: _rx_stop() sits in its member-order place
+
+The receive-ring teardown's static method went in beside _arm_rx(), its caller; the conventions check puts private
+methods in name order, so it moves between _rx_peek() and _write_all(). No code change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

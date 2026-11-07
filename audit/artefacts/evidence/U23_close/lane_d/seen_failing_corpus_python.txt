@@ -1,0 +1,43 @@
+42 of 133 disagree with HEAD's _shape_problems():
+defaultPollIntervalMs above setTimeout's ceiling
+section pollIntervalMs above setTimeout's ceiling
+defaultDecimals 1.5
+defaultDecimals -1
+defaultDecimals 101
+defaultDecimals a string
+duplicate section keys
+duplicate group keys
+errcount module missing its label
+errcount module that is not an object
+a submit group under a section without rest.put
+a field that is null
+a field that is a number
+field key missing
+field label missing
+field kind missing
+field kind unknown
+duplicate field keys
+composite subFields not an array
+composite subFields missing
+composite with a sub-field missing its kind
+specialValues not an array
+a special value without a meaning
+clearable not a boolean
+clearable on a number field
+statusPath empty
+statusPath with an empty step
+statusPath not an array
+statusPath on a toggle field
+codeTones key outside codes
+codeTones without codes
+codeTones with an unknown tone
+codeTones not an object
+ignoredWhenSet naming no sibling
+ignoredWhenSet naming the field itself
+ignoredWhenSet not a string
+resolution 0
+resolution -1
+resolution a string
+resolution on a string field
+confirm not a boolean
+confirm on a number field

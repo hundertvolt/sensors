@@ -1,0 +1,18 @@
+U23 lead: the live put matrix stops idling between a paint and Playwright's next look
+
+The three shards grew from 223-237 s to 361-388 s. One traced shard (1/3, 367 s, 114 cases, every
+command, step and page request timed) split it: the page's GET before each Apply, product
+behaviour that stays, 35.6 s; the test's own current-value read, 24.7 s (108 reads, 229 ms each,
+one per case, the baseline the case compares against, so none to reuse); and test-side waiting
+that checks nothing: 56.5 s for each nav click to find its link stable while the drawer slides
+in (0.18 s, 220 navigations), and about 85 s of locator waitFor back-off - its checks grow to
+0.5 s apart, so a section painted 0.37 s after the click was seen at 0.77 s (53.2 s over the
+navigations, up to 31.8 s over the Applies).
+
+The page now runs with reduced motion, which in style.css drops only the drawer's slide, and each
+navigation and Apply first waits for its element on the frame it is shown (enabled, for Apply),
+then lets the same locator waitFor confirm it with the same timeout. Every check, read and
+assertion is unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

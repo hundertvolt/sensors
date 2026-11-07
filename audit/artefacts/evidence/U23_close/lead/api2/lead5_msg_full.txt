@@ -1,0 +1,8 @@
+U23 lead: the decision-vocabulary allow-list drops the rows wave 2 retired
+
+The allow-list only shrinks: each row whose text no longer occurs in its file goes. Dropped rows:
+- js/field-format.js (row 158): "Deliberately a narrow local shape, not `import("./definitions.js").FieldDef` - s"
+- tests_js/main.test.js (row 530): "The actual point of inlining (scripts/build_website.sh's own "Inlining" comment,"
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

@@ -1,0 +1,16 @@
+test_bench_harness_helpers	3.60	2.22	15 failed, 252 passed in 2.72s
+test_bench_control_restore	0.64	-	74 passed in 0.33s
+test_bench_device	0.39	-	6 passed in 0.12s
+test_buildgen_generate	13.90	22.51	351 passed in 11.65s
+test_buildgen_validate	22.33	33.44	403 passed in 14.42s
+test_device_tomls	1.18	1.61	37 passed in 0.74s
+test_evidence_snapshot	0.47	-	6 passed in 0.19s
+test_harness_mpremote_retry	0.36	-	9 passed in 0.09s
+test_heap_map_parser	0.40	0.41	37 passed in 0.11s
+test_http_client_ceiling_close	0.36	0.40	31 passed, 3 warnings in 0.12s
+test_http_client_shape_parity	0.36	-	7 passed in 0.11s
+test_memory_error_gate_agreement	4.24	4.20	14 passed in 3.99s
+test_resolve_board_device	0.39	0.34	8 passed in 0.12s
+test_toml_schema_contract	0.78	0.73	1 failed, 2 passed in 0.39s
+test_twin_board	3.40	-	16 passed in 2.70s
+test_twin_record	0.41	-	2 passed, 4 errors in 0.11s

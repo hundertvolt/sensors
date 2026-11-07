@@ -1,0 +1,323 @@
+tests/machine.py: note: In member "__init__" of class "_CallLog":
+tests/machine.py:251:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/machine.py: note: In member "__getitem__" of class "_CallLog":
+tests/machine.py:261:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/machine.py: note: In member "__iter__" of class "_CallLog":
+tests/machine.py:270:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/machine.py: note: In member "_ordered" of class "_CallLog":
+tests/machine.py:276:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/machine.py: note: At top level:
+tests/machine.py:722:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/machine.py: note: In member "_channel" of class "UART":
+tests/machine.py:857:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/machine.py: note: In function "mem_backup":
+tests/machine.py:1478:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/heap_under_connection_ceiling.py:12:1: error: Cannot find implementation or library stub for module named "sensortask_dev"  [import-not-found]
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:10:1: error: Cannot find implementation or library stub for module named "sensortask_dev"  [import-not-found]
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:8:1: error: Cannot find implementation or library stub for module named "sensortask_dev"  [import-not-found]
+tests/_uart_link_contract.py:21:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py: note: In member "_timed" of class "_TimedUart":
+tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:52:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/uart_crossover_recovery.py: note: In function "_exchange":
+tests_hardware/device_scripts/uart_crossover_recovery.py:107:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/uart_crossover_exchange.py: note: In function "_main":
+tests_hardware/device_scripts/uart_crossover_exchange.py:107:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/serving_at_default_gc.py:12:1: error: Cannot find implementation or library stub for module named "sensortask_dev"  [import-not-found]
+tests_hardware/device_scripts/serving_at_default_gc.py:25:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/allocation_need_per_source.py:11:1: error: Cannot find implementation or library stub for module named "sensortask_dev"  [import-not-found]
+tests_hardware/device_scripts/allocation_need_per_source.py:11:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+tests_hardware/device_scripts/allocation_need_per_source.py:35:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/allocation_need_per_source.py: note: In function "_build_sieve":
+tests_hardware/device_scripts/allocation_need_per_source.py:60:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/allocation_need_per_source.py:61:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/allocation_need_per_source.py: note: In function "_sources":
+tests_hardware/device_scripts/allocation_need_per_source.py:82:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/allocation_need_per_source.py:83:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/allocation_need_per_source.py: note: In function "_whole_route":
+tests_hardware/device_scripts/allocation_need_per_source.py:114:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "_make_uart":
+tests/test_asy_uart_driver.py:80:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In member "__init__" of class "_StepPoller":
+tests/test_asy_uart_driver.py:143:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "cobs_uart":
+tests/test_asy_uart_driver.py:617:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "locked_readinto_until_complete":
+tests/test_asy_uart_driver.py:631:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "locked_read_until_complete":
+tests/test_asy_uart_driver.py:636:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In member "__call__" of class "_AllocRecorder":
+tests/test_asy_uart_driver.py:1227:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "test_a_negative_count_reads_nothing_and_consumes_nothing":
+tests/test_asy_uart_driver.py:1680:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "test_readline_reads_the_ring_never_the_fifo_api":
+tests/test_asy_uart_driver.py:1789:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "test_a_closed_receive_channel_reads_as_a_silent_line":
+tests/test_asy_uart_driver.py:1847:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In member "__init__" of class "_LappingChannel":
+tests/test_asy_uart_driver.py:1862:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In member "__init__" of class "_ChannelProbe":
+tests/test_asy_uart_driver.py:2226:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In member "config" of class "_ChannelProbe":
+tests/test_asy_uart_driver.py:2247:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In member "pack_ctrl" of class "_ChannelProbe":
+tests/test_asy_uart_driver.py:2251:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "test_the_receive_path_never_touches_the_fifo_api":
+tests/test_asy_uart_driver.py:2289:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "test_a_misaligned_ring_or_no_free_channel_is_refused_with_nothing_armed":
+tests/test_asy_uart_driver.py:2388:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In member "__call__" of class "_StarvedRing":
+tests/test_asy_uart_driver.py:2402:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "test_a_refused_ring_names_its_cause":
+tests/test_asy_uart_driver.py:2430:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "_discarded_by":
+tests/test_asy_uart_driver.py:2647:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "_counted_reads":
+tests/test_asy_uart_driver.py:2656:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_driver.py: note: In function "_holder":
+tests/test_asy_uart_driver.py:2738:1: error: Explicit "Any" is not allowed  [explicit-any]
+src/asy_system_service.py: note: In member "__init__" of class "SystemService":
+src/asy_system_service.py:220:9: error: Explicit "Any" is not allowed  [explicit-any]
+src/asy_system_service.py:221:9: error: Explicit "Any" is not allowed  [explicit-any]
+src/asy_system_service.py: note: In member "_log_dead_task" of class "SystemService":
+src/asy_system_service.py:281:5: error: Explicit "Any" is not allowed  [explicit-any]
+src/asy_system_service.py: note: In member "_start_task" of class "SystemService":
+src/asy_system_service.py:448:5: error: Explicit "Any" is not allowed  [explicit-any]
+src/asy_system_service.py: note: In member "start_tasks" of class "SystemService":
+src/asy_system_service.py:672:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "_make_comm":
+tests/test_asy_uart_comm.py:134:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py:139:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In member "sleep_ms" of class "_SleepRecorder":
+tests/test_asy_uart_comm.py:322:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_partially_failed_allocation_refuses_construction_outright":
+tests/test_asy_uart_comm.py:683:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_the_listen_loop_survives_a_raising_callback":
+tests/test_asy_uart_comm.py:778:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_multi_chunk_payload_arrives_byte_identical":
+tests/test_asy_uart_comm.py:1631:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_rejected_get_callback_reports_a_distinct_outcome":
+tests/test_asy_uart_comm.py:1710:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_callback_returning_a_non_buffer_payload_is_rejected":
+tests/test_asy_uart_comm.py:1763:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_re_entrant_callback_is_refused_instead_of_deadlocking":
+tests/test_asy_uart_comm.py:1799:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_payload_can_be_streamed_from_a_pull_callback":
+tests/test_asy_uart_comm.py:1884:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_an_empty_set_is_delivered_as_a_distinct_outcome":
+tests/test_asy_uart_comm.py:2027:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "_stream_with_listener":
+tests/test_asy_uart_comm.py:2091:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_the_owned_listen_loop_delivers_a_received_payload":
+tests/test_asy_uart_comm.py:2278:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "returns":
+tests/test_asy_uart_comm.py:2649:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py:2651:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "fail_write_after":
+tests/test_asy_uart_comm.py:2776:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_peer_answering_a_different_question_is_refused":
+tests/test_asy_uart_comm.py:2850:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In member "__call__" of class "_StarvedAlloc":
+tests/test_asy_uart_comm.py:2872:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_every_internal_buffer_read_rechecks_rather_than_indexing_none":
+tests/test_asy_uart_comm.py:2917:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_cancelled_transaction_still_releases_the_re_entrancy_flag":
+tests/test_asy_uart_comm.py:2948:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault":
+tests/test_asy_uart_comm.py:2993:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py:2994:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py: note: In function "test_the_legacy_bsec_command_set_still_runs_end_to_end":
+tests/test_asy_uart_comm.py:3080:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py:3084:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_asy_uart_comm.py:3086:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:11:1: error: Cannot find implementation or library stub for module named "sensortask_dev"  [import-not-found]
+tests/_boot_contiguity_probe.py:42:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_boot_contiguity_probe.py: note: In function "_main":
+tests/_boot_contiguity_probe.py:150:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In member "__init__" of class "I2CHazardAdapter":
+tests/_bus_hazard_catalog.py:164:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_read_once_scd30":
+tests/_bus_hazard_catalog.py:207:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_write_once_scd30":
+tests/_bus_hazard_catalog.py:213:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_exercise_scd30":
+tests/_bus_hazard_catalog.py:225:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_read_once_sgp40":
+tests/_bus_hazard_catalog.py:259:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_general_call_sgp40":
+tests/_bus_hazard_catalog.py:264:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_exercise_sgp40":
+tests/_bus_hazard_catalog.py:268:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_read_once_isl29125":
+tests/_bus_hazard_catalog.py:294:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_write_once_isl29125":
+tests/_bus_hazard_catalog.py:303:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_exercise_isl29125":
+tests/_bus_hazard_catalog.py:307:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_read_once_bmp3xx":
+tests/_bus_hazard_catalog.py:332:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_write_once_bmp3xx":
+tests/_bus_hazard_catalog.py:344:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "_exercise_bmp3xx":
+tests/_bus_hazard_catalog.py:350:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In member "__init__" of class "BusOccupant":
+tests/_bus_hazard_catalog.py:421:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "build_bus_occupants":
+tests/_bus_hazard_catalog.py:428:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_bus_hazard_catalog.py: note: In function "scenario_each_occupant_never_touches_an_unexpected_address":
+tests/_bus_hazard_catalog.py:742:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_multi_device.py: note: In function "_register_reads_unbroken":
+tests/test_bus_hazard_multi_device.py:326:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_multi_device.py: note: In function "_recover_between_halves":
+tests/test_bus_hazard_multi_device.py:398:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_multi_device.py: note: In function "_shared_i2c1":
+tests/test_bus_hazard_multi_device.py:522:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_multi_device.py: note: In function "_rung_beside_sibling_reads":
+tests/test_bus_hazard_multi_device.py:527:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_generated.py: note: In function "_all_device_wiring_plans":
+tests/test_bus_hazard_generated.py:44:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_generated.py: note: In function "_make_build_fresh":
+tests/test_bus_hazard_generated.py:67:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_generated.py: note: In function "_writers":
+tests/test_bus_hazard_generated.py:77:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_generated.py: note: In function "_register_write_tests":
+tests/test_bus_hazard_generated.py:87:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_generated.py: note: In function "_register_bus_tests":
+tests/test_bus_hazard_generated.py:99:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_generated.py: note: In function "_register_spi_bus_tests":
+tests/test_bus_hazard_generated.py:148:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/test_bus_hazard_generated.py: note: At top level:
+tests/test_bus_hazard_generated.py:165:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_strict":
+tests/_sensortask_scenarios.py:93:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_expected_facts":
+tests/_sensortask_scenarios.py:104:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:107:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_boot":
+tests/_sensortask_scenarios.py:188:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "build":
+tests/_sensortask_scenarios.py:199:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_device_of":
+tests/_sensortask_scenarios.py:206:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_present_optional_instances":
+tests/_sensortask_scenarios.py:218:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_has":
+tests/_sensortask_scenarios.py:226:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_has_uart_link":
+tests/_sensortask_scenarios.py:239:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_all_loggers":
+tests/_sensortask_scenarios.py:253:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_ram_only_config_logs":
+tests/_sensortask_scenarios.py:287:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_expected_fram_chunk_owners":
+tests/_sensortask_scenarios.py:297:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_fram_stores":
+tests/_sensortask_scenarios.py:315:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_fram_chunks":
+tests/_sensortask_scenarios.py:319:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_fram_chip":
+tests/_sensortask_scenarios.py:327:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_sensor_reader_owners":
+tests/_sensortask_scenarios.py:331:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_dispatch_async":
+tests/_sensortask_scenarios.py:342:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_dispatch":
+tests/_sensortask_scenarios.py:352:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_forwards_web_host_port":
+tests/_sensortask_scenarios.py:473:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_layout":
+tests/_sensortask_scenarios.py:510:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_log_one_entry_everywhere":
+tests/_sensortask_scenarios.py:541:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_error_count":
+tests/_sensortask_scenarios.py:546:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_ram_only_entries":
+tests/_sensortask_scenarios.py:653:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_stop_supervising":
+tests/_sensortask_scenarios.py:658:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_supervise_until_the_reboot_is_armed":
+tests/_sensortask_scenarios.py:666:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_setup_owner_names":
+tests/_sensortask_scenarios.py:721:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_main_until_supervised":
+tests/_sensortask_scenarios.py:761:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_no_dropped_logger":
+tests/_sensortask_scenarios.py:813:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_system_debug_level":
+tests/_sensortask_scenarios.py:917:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_cancel_reset_task":
+tests/_sensortask_scenarios.py:1052:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In member "__getattr__" of class "_AsyncioWaits":
+tests/_sensortask_scenarios.py:1086:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_fire_stagger_waits":
+tests/_sensortask_scenarios.py:1099:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_module_objects":
+tests/_sensortask_scenarios.py:1117:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_unfed_boot_stretch":
+tests/_sensortask_scenarios.py:1204:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1207:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1208:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_fan_in_inventory":
+tests/_sensortask_scenarios.py:1368:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_float_config_keys":
+tests/_sensortask_scenarios.py:1393:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_leaves":
+tests/_sensortask_scenarios.py:1400:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_no_non_finite_float_on_the_wire":
+tests/_sensortask_scenarios.py:1417:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1425:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_call_order":
+tests/_sensortask_scenarios.py:1533:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_queue_scd30_snapshot":
+tests/_sensortask_scenarios.py:1628:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_config_snapshot_chips":
+tests/_sensortask_scenarios.py:1651:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_sensors_get_marks_a_failed_chip_read":
+tests/_sensortask_scenarios.py:1670:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1673:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_start_hotspot_once":
+tests/_sensortask_scenarios.py:1754:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_hold_each_step":
+tests/_sensortask_scenarios.py:1844:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1850:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1856:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1861:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1866:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_boot_supervised":
+tests/_sensortask_scenarios.py:1894:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_command_to_reset":
+tests/_sensortask_scenarios.py:1904:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:1909:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_run_gated":
+tests/_sensortask_scenarios.py:1927:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scd30_readers":
+tests/_sensortask_scenarios.py:1998:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scd30_bus":
+tests/_sensortask_scenarios.py:2002:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scd30_put_bodies":
+tests/_sensortask_scenarios.py:2006:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_every_error_log":
+tests/_sensortask_scenarios.py:2016:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_log_chunk_bytes":
+tests/_sensortask_scenarios.py:2025:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_every_write_refused":
+tests/_sensortask_scenarios.py:2032:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:2037:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:2038:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scd30_commands":
+tests/_sensortask_scenarios.py:2065:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scd30_cycles":
+tests/_sensortask_scenarios.py:2071:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py:2096:13: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_one_notification_cycle":
+tests/_sensortask_scenarios.py:2437:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_status_notification_state":
+tests/_sensortask_scenarios.py:2471:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_storing_stores":
+tests/_sensortask_scenarios.py:2488:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_store_defaults":
+tests/_sensortask_scenarios.py:2493:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_out_of_field":
+tests/_sensortask_scenarios.py:2498:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests/_sensortask_scenarios.py: note: In function "_scenario_status_ap_mode_rssi":
+tests/_sensortask_scenarios.py:2605:5: error: Explicit "Any" is not allowed  [explicit-any]
+Found 176 errors in 19 files (checked 205 source files)

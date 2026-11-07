@@ -1,0 +1,61 @@
+107456 928832
+mem: total=826990, current=804256, peak=804256
+stack: 912 out of 80000
+GC: total: 1036288, used: 107456, free: 928832
+ No. of 1-blocks: 2969, 2-blocks: 45, max blk sz: 84, max free sz: 28938
+GC memory layout; from 7f8841f02000:
+00000000: h=hh=hhLhhSh===h========hh===LhhBSAhhhhADhhAhAhDAhhhSSAAhhShSLhA
+00000800: hhSADAhAhhhSAhhhAhSShhSAAhSAhhShhhhDSAAShhShAhhh===AhSShhAhSh===
+00001000: ==hhhh=AAALAhhhhhSAhLhSh==AhAhShhhAAShShAhhLhAhAhAhAhAhhhAShDhLh
+00001800: AhAhhSADAAhSSAhhhAhhDhShSASh=ShSAhhAAhhSShAAhSAhAADLhhhSAAhAhSAA
+00002000: hhSAhhhhhhhhhSASAhhhhh=ShSAShAAhLhAhAhAhAhhLShhhhhSSAhhhLhAhhSSA
+00002800: Shhh==ShSAhAhhAAhhhhSSAhhhSSShhhSShAhAhhhShShSAhh=h==h=hSSAhAhAh
+00003000: hAAhhShSAAhhhSh=hSAhDAhShhSADAhhSAAhAhhSAhAhhSAhLhLhhhLSAhhShSAh
+00003800: ====hhSAhAhAhAhhhh====AhhSSSAhhShAhhhAhAhShhAAhShhhhSShSDAADASAA
+00004000: hhhShShAhhhhAhhSShhShAAhhSADAhhhhShh=AhSAhhhSSShALAhhAhAhhLhhAhS
+00004800: hAAhhhDhSAShhLhAhAhAhAhAhh=Sh===hShhShSSSSAhhhALhAhhALhAhAhShShS
+00005000: AAhSh==hShAhSShhhhSAhShAhSh==Ahh==hhLDAhhLShAhhASAhhhASAhhhShSSA
+00005800: AhhShSAhAAhhAAhhhhLhSSAhhDhShLShhASAhAh=hhAhhSh=hLhASAhAhhhLhSLA
+00006000: hhAAhhhAhhShSAhhSAALhhSDLAhAhALAhhhShhhSLhAhShAAhhAAADhAhAhhDh==
+00006800: ==hAhhSAAhhSAhhSShhhhAhAhhhAhSSh=SSADAhhAhSAAhhAAhhLhhhhhh===AAh
+00007000: LAhShAhAhh==DhAASAhhAhShhhhhhhhASSh====AhSSShAhAAAhhhh=hSSLhAAAh
+00007800: hhAhSAAhSAAhhhhShhAAShhhLhh=ShAAhhAAhhhhAhhAhSSDhhLhSSAhDShhDASA
+00008000: hAh===hhhhLShSASLhhhhhhSAAhShhhSALhSAAAhLhhDhSAhLhAAhhALhAhAShAh
+00008800: hShhAShAhDhhAhhhAhSALhShSAhhAhAhAhhhhSAhhSLASAhhSLhhShhAAhhhLAhh
+00009000: AhhSSSDAAhhSShShAhShDAAhhhSSAADAAhAhAhhADhhhhASAhSAhhhhhASAhhLhA
+00009800: hhhSAShASAhSAhhhSDhAAhShAhhLhAAhhAhAhhAShAhh=hSSAADDhDhhAhAAhLSA
+0000a000: hLhShhAhhSASAhAhhSAhhhAhSAhAhhShAShhhShhSAhhh===hSSAShhALhLhAhSS
+0000a800: hSAAhhShAhShhhAAAhhAhSAhAhhSSAAhLhDhAAAhAShhAhhhAhSAShhhAShhASAh
+0000b000: hAhhShAAhAhSAhhhShhShhAhhhhhSSAhAhAAhhhAhhSAhhLASSAhLhAhAhAhAhhh
+0000b800: SASAhhhhSAAhhhhhShhhSLAhLhSSALhAhShhShhSh====hALhShAhAhhSAADAALL
+0000c000: hhAhhAhAhSAhhAAhh=ShhhSAhhhShh=AAhhAhAAhAShhhh=ShAh=ADAhhhSAhAhh
+0000c800: ShAhhhSh.LAhAhAhhShhh.SLLSAhhSShhSh=Ah==LhAhAhAhAhhS.ADDhAhhS.DA
+0000d000: AhhAAhhSAhhAhSh====hh=hSAAhDDALhhAhhDhSAhAAhhhAhShAhhSAhAhShALhA
+0000d800: hAhAhhh====hSAALhShhhhShSAhh===LSLLhhhLAAhAAhLhAhAhhAhAShhAhAhhS
+0000e000: AhhShSAhLAhhLhAhh..SAhhAShAhAAhhhLShALhSDSAhhhShSAhLAhSShAhAhAhh
+0000e800: ===..hAh..AhAhh=.S.hhhALhALhhhAhAhAShhAhhShDAhhSAhSASAAhhhhAhShS
+0000f000: AhhSAShAAhhhShhhSAhAhAhhSLALh=h===hhSh==AhhAAhLAhhAhAAhhAhhh=ShA
+0000f800: ShhhSASAhAhhhShhhSAhAhhhShAhAhhAAhAhhShSShShLhhhSAhShhhhSh====Ah
+00010000: LhAAhAALhhhhAhhLhLhAhAhAhAhhSAhhAhASShAhSAhh=AhLDSADAhhShAhAhhSh
+00010800: AhSSSAAhh=hASAhLLhShAhAhhhAhShAhhSAhSDAhhhhLhAhhAhhhSSAAhhLSShSA
+00011000: hAShhLhhAhADAhSAAhhAhhhAAhhhhShAhSAhAhShh=AAShAhhShSShhLhhhShASL
+00011800: hAAhhAhAhhAhSAhhhSAhhSAhhhSSAhhASh===SAhhSAhhAhh==hhhSAhh=Sh=SAh
+00012000: hShS..Lhh===SAhhhhSDhS.hLDADAh=ShhhShhAAh.Lh.h==AhhhhSSSAhSA.Ahh
+00012800: SAAhhhhSAhhLhLhAhhhASSSAhLhAhAhAhAhAhAh.hh=SAAh.ShALh.hhSLhASh=h
+00013000: AAhLhAhAAhAhhSAhhhShhDLAhhShAAAhhhh=hSAhhSSAhhSAhhALAhAh====AhAh
+00013800: h=h=hhhSSS.Dh===h==AhLhhh.hALLhhAhSAhShhAhAAhhAhShAhAhAhA.ShAhLh
+00014000: hSAhAhAhSSAh.DhSAhLhLhAhAhhhSh=hDhSLLLAhhLAhAShhhhSA.L.AhAAhhhhA
+00014800: hAhhhShhhAA.hhhSLhhSAAAAAhhhAhhASLALhhAhhAhhAhhAh====AhAhSAhhhSL
+00015000: AhAAhAhSAhAhhhShhLSh=LhAhAhhShLhAhhALhAhhSSh=AhhDALhhAhhASShhASh
+00015800: ..SADhSAhhhhSShhSSLh====LhhALhAhALhAhAhAhAhAhh=ShAhhDDA.hhAShhAh
+00016000: Ah.hhSAhhSShSSLhAhAhhAhAAShAhh.h=Sh=.AhhLhAhAhAhAhhSLShAhAAhhDAA
+00016800: S.LhAh.hh=======================================================
+00017000: ============================hLhAhAhhShSAhAhAhhShAhAhh=LShhAhAhhS
+00017800: ShhhDSAhh.S.hDS.AhSAh.hhASLhAAhhSLhAhhhLhAhAhAhhSAhASLAhhhAhAhSh
+00018000: AhhhhSSSALAAhDhAh.hhhh.hSSA.ASAALhAhhShhhSAhhhSAhShhShSA.LhAhAhS
+00018800: hhhSAhShhShAh..SLSAhhAhShAh=hhShAShhhSh.hAh.SAhhhShSAhhSh===AS..
+00019000: hhh=SAhhhSA.AhhSh.hSSSh====hSLhS...h.ShLSLh.hAhAhAShhAhAh.hh.S.h
+00019800: ShSL.hAhhhS.S.SLhLAhA.hAhAhAh..AhhShShAhDAhhh.SALhDAhhSAAhhSAhhS
+0001a000: A.A.Ah.hhhSAhhhSSh.hSS..A.hhhSS.L..hAhA.hhAhA.L.h===============
+0001a800: hhAhAhShh.SS...hDS....h===============================..........
+       (452 lines all free)

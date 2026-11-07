@@ -1,0 +1,24 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________ test_the_uart_receive_rings_land_with_the_boot_survivors[dev] _________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7f39ec2218a0>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", _UART_LINK_DEVICES)
+    def test_the_uart_receive_rings_land_with_the_boot_survivors(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # Each link allocates its DMA ring in its own setup(), a unit of the one-time batch, so the placement
+        # reset puts it low with the other survivors (SPECIFICATION.md I.4(f.1)), and its address never moves:
+        # the same ring after the starter loop, nothing reallocated once the batch ended.
+        run = boot_probe(device, _ARM_LIVE)
+        after_batch, after_loop = run.rings.get("after_batch", {}), run.rings.get("after_starter_loop_end", {})
+        plan = json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text())
+        plan["uart"] = {}
+>       assert "uart_link" in plan["instances"] and plan["uart"], f"{device} declares a uart_link, yet its generated wiring plan builds no UART bus"
+E       AssertionError: dev declares a uart_link, yet its generated wiring plan builds no UART bus
+E       assert ('uart_link' in ['bmp3xx', 'fram', 'isl29125', 'neopixel', 'notification', 'scd30', ...] and {})
+
+tests_scripts/test_zz_bite_boot.py:336: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_zz_bite_boot.py::test_the_uart_receive_rings_land_with_the_boot_survivors[dev]
+1 failed, 32 deselected in 2.06s

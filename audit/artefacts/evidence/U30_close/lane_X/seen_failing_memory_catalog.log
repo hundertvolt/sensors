@@ -1,0 +1,3 @@
+E       AssertionError: SPECIFICATION.md I.2 names no section for ['asy_api_response.py', 'asy_base_classes.py', 'asy_bmp3xx_driver.py', 'asy_config_manager.py', 'asy_crc_checks.py', 'asy_dns_client.py', 'asy_fram_driver.py', 'asy_framing_codecs.py', 'asy_i2c_driver.py', 'asy_isl29125_driver.py', 'asy_neopixel_driver.py', 'asy_notification_service.py', 'asy_ntp_client.py', 'asy_print_log.py', 'asy
+E       assert not ['asy_api_response.py', 'asy_base_classes.py', 'asy_bmp3xx_driver.py', 'asy_config_manager.py', 'asy_crc_checks.py', 'asy_dns_client.py', ...]
+1 failed, 11 passed in 1.09s

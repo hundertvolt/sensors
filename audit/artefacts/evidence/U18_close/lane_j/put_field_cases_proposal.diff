@@ -1,0 +1,17 @@
+--- /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18j/tests_js/_put_field_cases.js	2026-10-08 01:48:10.837054504 +0000
++++ tests_js/_put_field_cases.js	2026-10-08 02:09:50.549109145 +0000
+@@ -121,5 +121,14 @@
+     if (field.shape === "countryCode") {
+         return "XX"; // cyw43's worldwide code: the one alpha-2 pair valid on every device
+     }
++    if (field.shape === "hostName") {
++        // Every 32nd character a dot (never the last): labels of at most 32 characters, `length` in all.
++        return Array.from({ length }, (_, i) => (i % 32 === 31 && i !== length - 1 ? "." : "x")).join("");
++    }
++    if (field.shape === "ipv4List") {
++        // An address list takes few lengths: the longest of one to three addresses that fits, else one.
++        const lists = ["1.1.1.1", "1.1.1.1,2.2.2.2", "1.1.1.1,2.2.2.2,3.3.3.3", "100.100.100.100,100.100.100.101,100.100.100.102"];
++        return lists.filter((list) => list.length <= length).at(-1) ?? "1.1.1.1";
++    }
+     return "x".repeat(length);
+ }

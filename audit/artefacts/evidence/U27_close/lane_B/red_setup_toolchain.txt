@@ -1,0 +1,13 @@
+        # rule passed setup and failed the test at its first send, so the bench tier probes the very command.
+        monkeypatch.setattr(setup_toolchain, "run", _FakeRun({("sudo", "-k", "-n"): setup_toolchain.SetupError("command failed (exit 1)")}))
+FAILED tests_scripts/test_setup_toolchain_env.py::test_the_spoof_s_sudo_rule_is_probed_with_the_venv_interpreter
+FAILED tests_scripts/test_setup_toolchain_env.py::test_a_refused_spoof_rule_fails_the_bench_tier_naming_it
+FAILED tests_scripts/test_setup_toolchain_env.py::test_root_needs_no_spoof_sudo_probe
+FAILED tests_scripts/test_setup_toolchain_env.py::test_the_bench_tier_checks_commands_then_sudo_then_builds_the_bridge
+FAILED tests_scripts/test_setup_toolchain_env.py::test_load_versions_names_the_file_and_its_first_defect[[micropython]\nref = "v1.29.0"\n\n[toolchain]\nboard = "RPI_PICO_W"\napt_packages = ["git"]\n\n[lwip]\nTCP_MSS = 800\n-\\[stubs\\] is missing]
+FAILED tests_scripts/test_setup_toolchain_env.py::test_load_versions_names_the_file_and_its_first_defect[[micropython]\nref = "v1.29.0"\n\n[stubs]\nboard = "1.29.0.post1"\n\n[toolchain]\nboard = "RPI_PICO_W"\napt_packages = ["git"]\n\n[lwip]\nTCP_MSS = 800\n-\\[stubs\\] stdlib is missing]
+FAILED tests_scripts/test_setup_toolchain_env.py::test_load_versions_names_the_file_and_its_first_defect[[micropython]\nref = "v1.29.0"\n\n[stubs]\nboard = 1.29\nstdlib = "1.29.0.post2"\n\n[toolchain]\nboard = "RPI_PICO_W"\napt_packages = ["git"]\n\n[lwip]\nTCP_MSS = 800\n-\\[stubs\\] board must be a non-empty string]
+FAILED tests_scripts/test_setup_toolchain_env.py::test_the_pinned_versions_file_loads_as_tomllib_reads_it
+FAILED tests_scripts/test_setup_toolchain_env.py::test_a_run_holding_the_lock_shared_is_named_as_such_never_by_a_stale_pid
+FAILED tests_scripts/test_setup_toolchain_env.py::test_main_prints_a_setup_error_as_one_line_and_exits_1
+10 failed, 146 passed in 3.32s

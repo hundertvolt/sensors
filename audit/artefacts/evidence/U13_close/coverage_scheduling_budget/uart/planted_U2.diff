@@ -1,0 +1,20 @@
+--- ../wt-u13rc/src/asy_uart_driver.py	2026-10-07 16:03:00.883708676 +0000
++++ planted_U2/asy_uart_driver.py	2026-10-07 16:40:28.737133018 +0000
+@@ -8,6 +8,7 @@
+ import asyncio
+ import select
+ import time
++from time import sleep_ms as _blocking_sleep_ms
+ from array import array
+ 
+ from machine import UART as _UART
+@@ -613,6 +614,9 @@
+                     break
+                 if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
+                     return False
++                if timeout_ms > 0:
++                    _blocking_sleep_ms(wait_ms)  # PLANTED U2: holds the loop instead of yielding
++                    continue
+                 await asyncio.sleep_ms(wait_ms)
+             except (MemoryError, OSError, OverflowError, TypeError):
+                 # TypeError: a malformed mask/timeout_ms; callers' excepts wrap only the UART call.

@@ -1,0 +1,33 @@
+ruff (WRONG SCOPE: `ruff check .`, log deleted; re-run scoped below)
+mypy_noargs rc=0 10.8s Success: no issues found in 187 source files
+mypy_ci rc=0 10.7s Success: no issues found in 174 source files
+mypy_twin rc=0 2.6s Success: no issues found in 52 source files
+mypy_host rc=0 8.7s Success: no issues found in 199 source files
+py_test_buildgen_definitions rc=0 8.8s 250 passed in 7.21s
+py_test_error_catalog rc=0 27.9s 33 passed in 18.61s
+py_test_mypy_any_baseline rc=0 0.4s 7 passed in 0.09s
+py_test_citations rc=0 10.8s 15 passed in 10.52s
+py_test_decision_vocabulary rc=0 9.0s 6 passed in 8.66s
+py_test_comment_block_cap rc=0 4.6s 452 passed in 4.22s
+py_test_code_conventions rc=0 3.8s 23 passed in 2.94s
+py_test_tunables_register rc=1 4.3s 1 failed, 14 passed in 3.96s
+py_test_memory_error_gate_agreement rc=0 4.3s 13 passed in 4.05s
+py_test_lint_ceilings rc=0 10.6s 19 passed in 10.30s
+py_test_host_annotations rc=0 2.3s 12 passed in 2.05s
+py_test_import_placement rc=0 8.3s 7 passed in 8.07s
+py_test_legacy_paths rc=0 2.1s 3 passed in 1.81s
+py_test_fault_or_warning_never_both rc=0 3.7s 11 passed in 2.86s
+mp_e_test_neopixel_wifi_integration rc=0 2.9s 8/8 passed, 0 failed, 0 skipped
+mp_f_test_neopixel_wifi_integration rc=0 3.4s 8/8 passed, 0 failed, 0 skipped
+mp_e_test_notification_sgp40_integration rc=0 3.0s 3/3 passed, 0 failed, 0 skipped
+mp_f_test_notification_sgp40_integration rc=0 3.3s 3/3 passed, 0 failed, 0 skipped
+mp_e_test_notification_scd30_integration rc=0 4.5s 4/4 passed, 0 failed, 0 skipped
+mp_f_test_notification_scd30_integration rc=0 4.5s 4/4 passed, 0 failed, 0 skipped
+mp_e_test_asy_notification_service rc=0 19.1s 66/66 passed, 0 failed, 0 skipped
+mp_f_test_asy_notification_service rc=0 19.2s 66/66 passed, 0 failed, 0 skipped
+mp_e_test_asy_neopixel_driver rc=0 9.5s 53/53 passed, 0 failed, 0 skipped
+mp_f_test_asy_neopixel_driver rc=0 9.6s 53/53 passed, 0 failed, 0 skipped
+mp_e_test_readiness_gates rc=0 0.2s 14/14 passed, 0 failed, 0 skipped
+mp_f_test_readiness_gates rc=0 0.3s 14/14 passed, 0 failed, 0 skipped
+memerr files: 0
+DONE

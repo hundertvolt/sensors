@@ -1,0 +1,10 @@
+FAIL test_the_ring_size_is_public_and_set_by_init:	AttributeError: 'UART' object has no attribute 'rx_ring'
+FAIL test_a_line_over_the_cap_is_discarded_and_logged_once:	TypeError: readline_until_complete() takes 3 positional arguments but 4 were given
+FAIL test_a_line_at_the_cap_is_returned:	TypeError: readline_until_complete() takes 3 positional arguments but 4 were given
+FAIL test_a_write_whose_line_never_drains_gives_up_at_its_deadline:	TypeError: unexpected keyword argument 'timeout_ms'
+FAIL test_readline_until_complete_assembles_multi_part_line:	TypeError: readline_until_complete() takes 3 positional arguments but 4 were given
+FAIL test_a_refused_ring_names_its_cause:	AttributeError: 'UART' object has no attribute 'rx_ring_refusal'
+FAIL test_no_readline_allocation_exceeds_chunk_bytes:	TypeError: readline_until_complete() takes 3 positional arguments but 4 were given
+FAIL test_a_line_split_across_the_ring_end_reads_whole:	TypeError: readline_until_complete() takes 3 positional arguments but 4 were given
+FAIL test_operations_after_deinit_return_none_or_false:	TypeError: readline_until_complete() takes 3 positional arguments but 4 were given
+FAIL test_a_write_with_a_deadline_still_completes_once_the_line_drains:	TypeError: unexpected keyword argument 'timeout_ms'

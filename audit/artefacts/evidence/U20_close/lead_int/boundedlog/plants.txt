@@ -1,0 +1,17 @@
+== _ordered unrotated: rc=1
+FAIL test_bounded_log_reads_oldest_first_before_and_after_it_wraps:
+59/60 passed, 1 failed, 0 skipped
+== [i] ignores head: rc=1
+FAIL test_bounded_log_reads_oldest_first_before_and_after_it_wraps:
+59/60 passed, 1 failed, 0 skipped
+Traceback (most recent call last):
+  File "<stdin>", line 12, in <module>
+AssertionError: head not advanced
+== head not advanced: rc=1
+FAIL test_bounded_log_reads_oldest_first_before_and_after_it_wraps:
+59/60 passed, 1 failed, 0 skipped
+== clear keeps head: rc=0
+60/60 passed, 0 failed, 0 skipped
+== clear keeps head (tightened test): rc=1
+FAIL test_bounded_log_clear_starts_over_at_slot_zero:
+59/60 passed, 1 failed, 0 skipped

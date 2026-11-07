@@ -1,0 +1,23 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s
+
+ ✓ |chromium| tests_js/main.test.js (8 tests) 283ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  09:35:19
+   Duration  1.45s (tests 54%, worker 38%, import 8%)
+
+== Summary: npm test ==
+Commit: 0caa85b
+Levels: L0
+Counts (tests): passed 8 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

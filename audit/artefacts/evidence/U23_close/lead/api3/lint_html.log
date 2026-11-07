@@ -1,0 +1,4 @@
+
+> sensors-website@0.1.0 lint:html
+> html-validate "html/**/*.html"
+

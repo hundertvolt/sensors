@@ -1,0 +1,6 @@
+E         ?       ^^
+
+tests_scripts/test_buildgen_generate.py:61: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_generate.py::test_an_emitted_string_reads_back_as_itself_double_quoted_unless_it_holds_both_quotes[emoji \U0001f600]
+1 failed, 8 passed, 352 deselected in 0.43s

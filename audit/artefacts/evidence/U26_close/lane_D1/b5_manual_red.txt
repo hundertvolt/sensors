@@ -1,0 +1,4 @@
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_manual_runner_summary.py:84: AssertionError: == Summary: run_manual_hardware_tests ==
+=========================== short test summary info ============================
+FAILED tests_scripts/test_manual_runner_summary.py::test_a_step_returning_with_no_judgment_fails
+1 failed, 5 passed in 0.59s

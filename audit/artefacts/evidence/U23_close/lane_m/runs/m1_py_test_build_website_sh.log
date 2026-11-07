@@ -1,0 +1,28 @@
+..........F.                                                             [100%]
+=================================== FAILURES ===================================
+___ test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script ____
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23m')
+
+    def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo_root: Path) -> None:
+        # build_website.sh's cp lists are hand-kept, not derived from directory contents, so a new
+        # html/ or js/ file would silently ship without it - or without a deliberate prototype-only
+        # decision. Cross-checking the directories against the script's source makes that loud.
+        script_text = (repo_root / "scripts" / "build_website.sh").read_text()
+    
+        html_root_files = {p.name for p in (repo_root / "html").iterdir() if p.is_file()}
+        for name in html_root_files:
+            assert name in script_text, f"html/{name} exists but isn't referenced by build_website.sh"
+    
+        js_files = {p.name for p in (repo_root / "js").glob("*.js")}
+        # js/main.js is staged under a different name (see build_website.sh's own comment) - checked
+        # for by content ("main.js" itself), not "js/app.js.gz" like the others.
+        for name in js_files:
+>           assert name in script_text, f"js/{name} exists but isn't referenced by build_website.sh"
+E           AssertionError: js/api-contract.js exists but isn't referenced by build_website.sh
+E           assert 'api-contract.js' in '#!/usr/bin/env bash\n# Stages the real website (html/ + js/) for exactly one device into the shape\n# scripts/build_f... "$src"\n    done\n} > "$stage_dir"/js/app.js\n\nHTML_SRC_DIRS="$stage_dir" scripts/build_frozen_html.sh "$out_file"\n'
+
+tests_scripts/test_build_website_sh.py:130: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_build_website_sh.py::test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script
+1 failed, 11 passed in 6.81s

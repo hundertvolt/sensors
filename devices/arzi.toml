@@ -1,5 +1,5 @@
 # arzi.toml - distinct wiring from the "neu" family (klkizi/grkizi/schlafzi), no bmp3xx.
-# Wiring sourced from modules/sensortask-arzi.py (legacy, read-only reference).
+# Wiring sourced from legacy/firmware/modules/sensortask-arzi.py (legacy, read-only reference).
 
 [device]
 name = "Arzi"
@@ -13,7 +13,7 @@ hotspot_time_min = 8
 # is omitted, so it derives max_connections + 1 - already the deepest queue buildgen allows.
 max_connections = 6
 
-# Mandatory-infra-to-instance links; each field optional, absence disables that feature.
+# Mandatory-infra-to-instance links; each optional, absence disables that link (owner, 2026-09-09).
 [device.wiring]
 led_target = "neopixel"
 fram_target = "fram"
@@ -35,14 +35,14 @@ sck_pin = 2
 mosi_pin = 3
 miso_pin = 4
 
-# --- sensor drivers ---------------------------------------------------------------------------
+# --- sensor drivers -------------------------------------------------------------------------------
 
 [[instance]]
 driver = "scd30"
 name_ext = ""
 bus = "i2c0"
 irq_pin = 8
-trigger_sec = 3
+trigger_s = 3
 
 [instance.wiring]
 fram_target = "fram"
@@ -63,12 +63,13 @@ field = "Temp"
 source = "scd30"
 field = "Hum"
 
-# --- singleton services ------------------------------------------------------------------------
+# --- singleton services ---------------------------------------------------------------------------
 
 [[instance]]
 driver = "fram"
 bus = "spi0"
 cs_pin = 1
+# MB85RS64V, 8KB.
 max_size = 0x2000
 
 [[instance]]
@@ -85,7 +86,7 @@ driver = "notification"
 signal_sink = "neopixel"
 fram_target = "fram"
 
-# Per-signal getters - each optional; absence disables that specific warning signal.
+# Per-signal getters - each optional; absence disables that warning signal (owner, 2026-09-09).
 [instance.wiring.warn_co2]
 source = "scd30"
 field = "CO2"

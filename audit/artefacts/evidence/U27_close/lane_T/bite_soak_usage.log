@@ -1,0 +1,3 @@
+=========================== short test summary info ============================
+FAILED tests_scripts/test_hardware_runners.py::test_the_soak_runners_usage_names_exactly_the_durations_it_accepts
+1 failed, 52 deselected in 0.19s

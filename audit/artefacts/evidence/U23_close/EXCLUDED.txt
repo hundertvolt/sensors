@@ -1,0 +1,82 @@
+U23 close evidence: what was left out, and why (draft: the final-now folders and the slots; gates/ is the gate's).
+
+Refused by the checks against the tracked trees (final_evcheck.py; 0103283^.. each of audit/u23-api3, -s, -lead, -b, -c,
+-d, -m, -t: 204 revs, 767 blobs; evcheck1.out 4 flagged; after the replacements evcheck2.out and, after the last refresh, evcheck3.out 0 flagged):
+  c (90%)   lane_d/dbg/seen_failing_test_buildgen_definitions.diff.txt  59/65 diff lines in tests_scripts/test_buildgen_definitions.py
+            (all four appended cases landed in 411bbb8); kept as seen_failing_test_buildgen_definitions.txt (prose)
+  c (90%)   lane_c/edits/e2_new.py                     458/475 lines in tests_js/render.test.js (an edit script whose body is the
+            final's new render cases); left out, its two sibling edit scripts (76% and 50%) kept
+  c (90%)   lead/f12/test_api_reference.3d29af9_vs_3c23b1b.diff.txt  18/19 diff lines in tests_scripts/test_api_reference.py (a diff
+            between two tracked blobs); kept in u23/close/f12/, swapped_file.txt (prose, the git command) here
+  c (90%)   lead/api3/dropped_rows.txt                 6/6 lines in tests_scripts/_decision_vocab_allowlist.txt; kept as prose under
+            the same name (the git command that shows the six rows)
+
+Round 2, the slots (final_evcheck.py; 0103283^.. each of the 20 audit/u23-* branches, audit/u23-final at 659c22c: 78 revs,
+812 blobs). A preview over the eleven source folders flagged these four and the byte-identical copies, staged sites and
+bite trees listed below; the staged tree, final-now folders and slots together (1580 files), 0 flagged:
+  c (90%)   lead/api4/dropped_rows.txt                 4/4 lines in tests_scripts/_decision_vocab_allowlist.txt; kept as prose under
+            the same name (the git command that shows the four rows 57da9b5 dropped)
+  c (90%)   lead/round2/e1_render.js                   710/713 lines in js/render.js (the file as it stood at the E1 probe, 12:09);
+            kept as e1_render.diff.txt, its diff against 176a88c's js/render.js
+  c (90%)   lead/round2/render_tests_new.js            74/74 lines in tests_js/render.test.js (E1's new render cases as they
+            landed in 176a88c); left out
+  c (90%)   lead/round2/traced_live_matrix_command.js  468/501 lines in tests_js/_live_matrix_command.js (the E3 trace's
+            instrumented copy); kept as traced_live_matrix_command.txt (prose: instrument.py over d34bdcd's file reproduces
+            it byte for byte, checked)
+
+Left out by construction (scratch copies of tracked files, each a product or test source, and tree exports):
+  lane D: head_tree/ (a git archive of 8fff76f, 144 MB); head_definitions.js and d1_definitions.js (js/definitions.js at
+          8fff76f and at 68c7a87, byte-identical); cases_head.json (tests_scripts/definitions_shape_cases.json at 8fff76f,
+          byte-identical); eff/test_buildgen_definitions.py (411bbb8's file, byte-identical); contract/test_contract_rows.py
+          and test_contract_rows2.py (tests_scripts/test_buildgen_error_contract.py at 3d29af9 and d90bd96 with _REPO pointed
+          at wt-u23d, the only change); tools/head_defs_test.py (8fff76f's test_buildgen_definitions.py with _REPO_ROOT read
+          from argv, the only change); the copies' bytecode (contract/__pycache__, tools/__pycache__); batch/before.pid.
+          The datasheet text under u23d_pdf/ (text of tracked PDFs) was never in scope; its tool is staged.
+  lane M: install.js and mid.js (fragments of js/mock-server.js, 190/192 and 271/278 lines tracked); loader_new.js
+          (tests_js/_generated_definitions.js as landed in faaa647, byte-identical); pdf/scd30_if.txt (text of a tracked
+          datasheet PDF).
+  lane B: style_head.css (html/style.css at 8fff76f, byte-identical).
+  lane C: render_head.js (js/render.js at 8fff76f, byte-identical); cov_new.js (tests_js/definitions-mockdata-coverage.test.js
+          as landed in f6a7cae, byte-identical); harness/ (the C1 harness tree, a tree copy, already gone from scratch).
+  lane T: nothing.
+  lead:   api2/stage/, api3/stage/, leadedits/stage/ (each device's staged index.html and js/app.js, a build of tracked html/
+          and js/; dupnames.log and the handbacks keep the verdicts); api1/bite/test_modlwip_eagain_bite.py (kept as
+          bite/mutation.diff.txt against 4f60381: _SPIN_ROUNDS 40 and a 50 ms busy wait per round); pid files
+          (w1/step3.pids, api2/ and api3/ l0.pid and quick.pid); 15 empty files (the *.out files of w1/, api2/, api3/; api2/ and api3/
+          stage.log, api2/tsc_node.log; leadedits/ e4_stage.log, e4_vtset.log, final_quick.log; lane D's
+          batch/driver_before.log and driver_after.log).
+  F-12:   the git archive of 3d29af9 it ran in (u23/close/f12/export/), deleted after the run.
+  lane S: pm_test.bak (tests_js/live-backend-put-matrix.test.js at b8ccba7, byte-identical); head_tree/ and preview_tree/
+          (tree exports, already gone from scratch, never staged); head_gen.err (empty).
+  lane X, lane Y: nothing.
+  API4:   stage/ (each device's staged index.html and js/app.js, a build of tracked html/ and js/; dupnames.log keeps the
+          verdict); spec_x1.md (SPECIFICATION.md at 7006202, byte-identical, 1.2 MB); l0.pid, quick.pid; l0.out, quick.out,
+          stage.log (empty).
+  API5:   stage/ (as API4's); l0.pid, pool.pid, quick.pid, step3.pids; l0.out, pool.out, quick.out, stage.log (empty).
+  round 2: e1_poll-manager.js (js/poll-manager.js at 176a88c, byte-identical); e3_live_matrix_command.js
+          (tests_js/_live_matrix_command.js at 20932b4, byte-identical); orig_live_matrix_command.js (the same file at
+          b8ccba7, byte-identical); orig_put_matrix_test.js (tests_js/live-backend-put-matrix.test.js at b8ccba7,
+          byte-identical); s_handbacks.txt (u23/close/laneS_reports.txt byte for byte, staged as lane_s/handbacks.txt);
+          e1probe_old.log and e1probe_new.log (byte-identical to their .keep.log twins, which the hand-back cites and which
+          stay); heavy.now (empty).
+  OF-111: oldsrc/asy_webserver_service.py (src/asy_webserver_service.py at e4a18bf, byte-identical: the old-source overlay
+          the seenfail2/seenfail3 runs used; their logs and results.tsv keep the verdicts).
+  OF-129, its follow-up, round 5: nothing.
+  round 4: bite_tree/, bite_tree2/, bite_tree3/ (three copies of the worktree's js/, tests_js/ and configs at e9b5ce1, 174
+          files: every file a tracked blob but the planted js/shell.js, whose plants stay as plant_await.diff,
+          plant_reorder.diff and plant_nostop.diff; a node_modules symlink each; vitest's failure screenshots of the bite
+          runs, 12 PNG files of 4 distinct images, the bite logs keep the failures).
+  Never to go in a slot: any tree export or worktree.
+
+Credentials: every hit of password/PSK/secret/token (154 lines, the same in evcheck2.out and evcheck3.out; with the slots
+388, the 154 unchanged and 234 in the slots) was read. They are test names ("..._password",
+"password mask"), prose, the HTML attribute value autocomplete="new-password", CSS colour "tokens", the citation checker's
+"(path, token)" message and a vitest "Unexpected token" parse error. The accepted hotspot fallback literal and the six
+devices' hotspot_password values (devices/*.toml at 9a8700f) were searched for in every file, gzipped ones included: none
+is present. The slots' 234 hits are the same kinds: test names (test_get_dict_cfg_masks_the_password,
+test_start_hotspot_uses_the_configured_hotspot_password_not_the_default and their kind, "only a typed password is sent",
+"never sends a password mask"), the `autocomplete="new-password"` and test_website_tokens.py
+prose, the citation checker's "(path, token)" message and one vitest "Unexpected token" parse error. Round 2 searched every
+file again, gzipped ones included, for the devices' hotspot_password (devices/*.toml at 0103283, 9a8700f and 659c22c: one
+distinct value, the literal src/asy_wifi_service.py's comment names): none is present. No real credential is in the
+evidence.

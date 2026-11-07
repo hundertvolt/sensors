@@ -1,0 +1,42 @@
+FAIL test_a_second_failed_streak_goes_silent_dark_and_links_on_a_later_attempt 40.711 AssertionError('the streak after the hotspot window ended in phase 3, not the silent mode',)
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22t_runs/run_mod.py", line 8, in <module>
+  File "tests/test_digital_twin_sensortask_integration.py", line 1060, in test_a_second_failed_streak_goes_silent_dark_and_links_on_a_later_attempt
+  File "tests/test_digital_twin_sensortask_integration.py", line 92, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_sensortask_integration.py", line 1032, in scenario
+  File "tests/test_digital_twin_sensortask_integration.py", line 976, in _end_hotspot_window
+AssertionError: the streak after the hotspot window ended in phase 3, not the silent mode
+FAIL test_a_settings_change_in_the_hotspot_reopens_it_once_more 15.567 AttributeError("'WifiService' object has no attribute '_reconnect_fresh'",)
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22t_runs/run_mod.py", line 8, in <module>
+  File "tests/test_digital_twin_sensortask_integration.py", line 1095, in test_a_settings_change_in_the_hotspot_reopens_it_once_more
+  File "tests/test_digital_twin_sensortask_integration.py", line 92, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_sensortask_integration.py", line 1085, in scenario
+  File "tests/test_digital_twin_sensortask_integration.py", line 225, in _wait_until
+  File "tests/test_digital_twin_sensortask_integration.py", line 1085, in <lambda>
+AttributeError: 'WifiService' object has no attribute '_reconnect_fresh'
+FAIL test_a_chip_down_stations_answer_counts_as_no_client 45.696 AssertionError('an unconfirmed stations check left the window stopped',)
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22t_runs/run_mod.py", line 8, in <module>
+  File "tests/test_digital_twin_sensortask_integration.py", line 1138, in test_a_chip_down_stations_answer_counts_as_no_client
+  File "tests/test_digital_twin_sensortask_integration.py", line 92, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_sensortask_integration.py", line 1125, in scenario
+AssertionError: an unconfirmed stations check left the window stopped

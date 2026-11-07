@@ -1,0 +1,58 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+__________ test_a_recursive_await_fails_the_budget_whatever_its_depth __________
+
+    def test_a_recursive_await_fails_the_budget_whatever_its_depth() -> None:
+        # A recursion re-enters without bound at run time: its cut counts one level, so the cut itself fails the budget.
+        source = "import asyncio\n\n\nasync def ping():\n    await pong()\n\n\nasync def pong():\n    await ping()\n\n\nasyncio.create_task(ping())\n"
+        program = program_from_sources({"m": source})
+        program.solve()
+        found = program.chains()
+        assert [chain.path for chain in found] == [("m.ping", "m.pong", "m.ping (cycle)")]
+>       assert _over_budget(found) == found
+E       AssertionError: assert [] == [Chain(depth=...ng (cycle)'))]
+E         
+E         Right contains one more item: Chain(depth=3, path=('m.ping', 'm.pong', 'm.ping (cycle)'))
+E         Use -v to get more diff
+
+tests_scripts/test_await_depth.py:109: AssertionError
+_________ test_a_chain_cut_by_a_cycle_is_never_reused_from_another_top _________
+
+    def test_a_chain_cut_by_a_cycle_is_never_reused_from_another_top() -> None:
+        # Reached from a, y is cut at x and one level short; b, reaching y first, must see its whole chain.
+        source = (
+            "import asyncio\n\n\nasync def a():\n    await x()\n\n\nasync def b():\n    await y()\n\n\n"
+            "async def x():\n    await y()\n\n\nasync def y():\n    await x()\n\n\n"
+            "asyncio.create_task(a())\nasyncio.create_task(b())\n"
+        )
+>       assert _solved({"m": source}) == {"m.a": 4, "m.b": 4}
+E       AssertionError: assert {'m.a': 4, 'm.b': 3} == {'m.a': 4, 'm.b': 4}
+E         
+E         Omitting 1 identical items, use -vv to show
+E         Differing items:
+E         {'m.b': 3} != {'m.b': 4}
+E         Use -v to get more diff
+
+tests_scripts/test_await_depth.py:119: AssertionError
+__ test_a_site_awaiting_a_coroutine_or_an_asyncio_awaitable_counts_the_deeper __
+
+    def test_a_site_awaiting_a_coroutine_or_an_asyncio_awaitable_counts_the_deeper() -> None:
+        # One await whose value is either the project's one-frame leaf() or wait_for_ms()'s two frames: the two count.
+        source = (
+            "import asyncio\n\n\nasync def leaf():\n    pass\n\n\nasync def top(flag):\n    pending = leaf()\n"
+            "    if flag:\n        pending = asyncio.wait_for_ms(asyncio.sleep_ms(1), 5)\n    await pending\n\n\n"
+            "asyncio.create_task(top(1))\n"
+        )
+>       assert _solved({"m": source}) == {"m.top": 3}
+E       AssertionError: assert {'m.top': 2} == {'m.top': 3}
+E         
+E         Differing items:
+E         {'m.top': 2} != {'m.top': 3}
+E         Use -v to get more diff
+
+tests_scripts/test_await_depth.py:129: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_await_depth.py::test_a_recursive_await_fails_the_budget_whatever_its_depth
+FAILED tests_scripts/test_await_depth.py::test_a_chain_cut_by_a_cycle_is_never_reused_from_another_top
+FAILED tests_scripts/test_await_depth.py::test_a_site_awaiting_a_coroutine_or_an_asyncio_awaitable_counts_the_deeper
+3 failed, 6 deselected in 0.06s

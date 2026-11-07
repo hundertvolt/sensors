@@ -1,0 +1,2 @@
+gc.collect() sites: 2 allowed, 0 outside the table; generated modules checked: 18
+not checked yet: tests/, digital_twin/, tests_hardware/ (their measurement rows are not in the table)

@@ -1,0 +1,51 @@
+PASS test_a_full_in_flight_queue_counts_the_byte_it_could_not_take
+PASS test_a_planted_framing_or_break_error_fails_the_frame_and_the_next_reads_whole
+PASS test_a_poller_asks_only_for_its_mask
+FAIL test_a_real_poll_over_a_uart_is_counted_and_fails_the_test:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 166, in test_a_real_poll_over_a_uart_is_counted_and_fails_the_test
+AttributeError: type object 'UART' has no attribute 'real_poll_queries'
+FAIL test_a_second_construction_on_one_bus_id_returns_the_same_live_object:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 69, in test_a_second_construction_on_one_bus_id_returns_the_same_live_object
+AssertionError: 
+PASS test_delivery_takes_real_wire_time
+PASS test_faster_baud_delivers_faster
+PASS test_ioctl_answers_einval_to_get_fileno
+PASS test_poll_mask_reports_what_the_link_delivered
+PASS test_reads_pump_the_wire_without_settle
+PASS test_reset_peripherals_frees_every_dma_channel
+FAIL test_settle_refuses_to_block_a_running_loop:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 137, in test_settle_refuses_to_block_a_running_loop
+AssertionError: 
+FAIL test_settle_waits_out_the_wire_time_in_a_bounded_number_of_steps:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 157, in test_settle_waits_out_the_wire_time_in_a_bounded_number_of_steps
+AssertionError: [64]
+FAIL test_the_delay_buffer_holds_at_most_the_receivers_capacity:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 112, in test_the_delay_buffer_holds_at_most_the_receivers_capacity
+AttributeError: '_LinkDirection' object has no attribute 'dropped_delayed'
+PASS test_the_finaliser_aborts_the_channel
+FAIL test_the_link_and_uart_counters_saturate_at_the_counter_cap:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 123, in test_the_link_and_uart_counters_saturate_at_the_counter_cap
+AssertionError: 
+PASS test_twin_link_satisfies_the_shared_contract
+PASS test_twin_poller_is_not_a_real_select_poll
+PASS test_twin_poller_requeries_ioctl
+FAIL test_uart_takes_rp2s_ids_pins_buffers_and_defaults:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_machine_uart.py", line 81, in test_uart_takes_rp2s_ids_pins_buffers_and_defaults
+  File "tests/test_digital_twin_machine_uart.py", line 95, in _value_error
+AssertionError: expected ValueError
+13/20 passed, 7 failed, 0 skipped
+RC=1 WALL=4.229828056 FILE=tests/test_digital_twin_machine_uart.py STAGE=-1

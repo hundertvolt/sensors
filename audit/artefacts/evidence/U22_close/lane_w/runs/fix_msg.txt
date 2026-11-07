@@ -1,0 +1,15 @@
+U22 lane W: a silent period that cannot be armed feeds the hardware streak
+
+In the silent mode a failed period arm (Timer.init() refusing with ENOMEM) was persisted and
+retried every iteration but never set _hw_op_failed. With no period no attempt is ever due, so
+the streak gate skipped _error_check() and the unit stayed silent with no escalation until a power
+cycle. The failed arm is now the iteration's hardware failure, as a failed uptime-tick re-arm in
+the same loop already is, so the streak reaches its device rung and its give-up, and the
+supervisor's restart keeps the silent mode (agent, 2026-10-12). _arm_hotspot_timer() and the
+hotspot mode's caller are unchanged.
+
+Test first: test_a_silent_period_that_cannot_be_armed_feeds_the_hardware_streak, seen failing on
+b283d81 (400 loop iterations, history WLAN_SILENT then TIMER only, no rung, no give-up).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

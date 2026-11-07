@@ -1,0 +1,79 @@
+r1	tests_scripts/test_ruff_exemptions_live.py	6.96	0	13 passed in 6.52s
+r1	tests_scripts/test_suppression_form.py	4.16	1	4 failed, 16 passed in 3.91s
+r1	tests_scripts/test_buildgen_generate.py	5.65	0	361 passed in 5.00s
+r1	tests_scripts/test_buildgen_reproducible.py	1.58	0	1 passed in 1.31s
+r1	tests_scripts/test_buildgen_definitions.py	4.06	1	1 failed, 398 passed in 3.36s
+r1	tests_scripts/test_buildgen_validate.py	6.54	0	409 passed in 5.62s
+r1	tests_scripts/test_buildgen_defaults.py	0.44	0	13 passed in 0.16s
+r1	tests_scripts/test_buildgen_driver_registry.py	0.65	0	47 passed in 0.37s
+r1	tests_scripts/test_buildgen_graph.py	1.18	0	15 passed in 0.79s
+r1	tests_scripts/test_buildgen_limits.py	0.68	0	68 passed in 0.45s
+r1	tests_scripts/test_buildgen_pico_gpio.py	0.84	0	17 passed in 0.46s
+r1	tests_scripts/test_buildgen_requires_tag.py	0.85	0	128 passed in 0.60s
+r1	tests_scripts/test_buildgen_schema_ast.py	0.52	0	47 passed in 0.24s
+r1	tests_scripts/test_buildgen_tag_comments.py	0.56	0	105 passed in 0.28s
+r1	tests_scripts/test_buildgen_value_wiring.py	0.73	0	34 passed in 0.47s
+r1	tests_scripts/test_buildgen_web_tag.py	1.26	0	158 passed in 1.02s
+r1	tests_scripts/test_buildgen_wiring.py	0.81	0	64 passed in 0.58s
+r1	tests_scripts/test_generate_sensortask_modules.py	2.94	0	16 passed in 2.41s
+r1	tests_scripts/test_pytest_run_record.py	0.90	0	8 passed in 0.62s
+r1	tests_scripts/test_summary_block.py	2.84	0	63 passed in 2.53s
+r1	tests_scripts/test_build_firmware.py	8.59	0	51 passed, 6 skipped in 8.14s
+r1	tests_scripts/test_micropython_overrides.py	4.15	0	262 passed in 3.87s
+r1	tests_scripts/test_coverage_runner.py	3.20	0	19 passed in 2.97s
+r1	tests_scripts/test_digital_twin_ci_suite_errcount.py	0.80	0	89 passed in 0.56s
+r1	tests_scripts/test_board_image_fixture.py	0.80	0	12 passed in 0.56s
+r1	tests_scripts/test_require_venv_sh.py	0.33	0	6 passed in 0.09s
+r1	tests_scripts/test_bench_control_restore.py	0.61	0	90 passed in 0.38s
+r1	tests_scripts/test_hardware_verdict.py	3.23	0	27 passed in 3.01s
+r1	tests_scripts/test_port_lock.py	6.10	0	44 passed in 5.88s
+r1	tests_scripts/test_digital_twin_boot_contiguity.py	12.66	0	36 passed in 12.39s
+r1	tests_scripts/test_board_image_fixture.py	0.44	0	12 passed in 0.23s
+chk1	tests_scripts/test_decision_vocabulary.py	8.98	1	2 failed, 4 passed in 8.70s
+chk1	tests_scripts/test_citations.py	14.21	0	15 passed in 13.93s
+chk1	tests_scripts/test_comment_block_cap.py	4.67	0	608 passed in 4.41s
+chk1	tests_scripts/test_tunables_register.py	4.81	0	15 passed in 4.50s
+chk1	tests_scripts/test_legacy_paths.py	2.09	0	3 passed in 1.83s
+chk1	tests_scripts/test_import_placement.py	8.41	0	7 passed in 8.19s
+chk1	tests_scripts/test_code_conventions.py	3.52	0	25 passed in 3.09s
+chk1	tests_scripts/test_error_catalog.py	6.48	0	40 passed in 5.78s
+chk1	tests_scripts/test_host_annotations.py	2.74	0	12 passed in 2.46s
+chk1	tests_scripts/test_lint_ceilings.py	8.82	0	19 passed in 8.55s
+chk1	tests_scripts/test_mypy_any_baseline.py	0.31	0	7 passed in 0.08s
+chk1	tests_scripts/test_memory_error_gate_agreement.py	3.19	0	14 passed in 2.98s
+chk2	tests_scripts/test_decision_vocabulary.py	9.03	1	1 failed, 5 passed in 8.81s
+chk2	tests_scripts/test_comment_block_cap.py	4.29	0	608 passed in 4.05s
+chk2	tests_scripts/test_ruff_exemptions_live.py	5.93	0	13 passed in 5.51s
+r1b	tests_scripts/test_digital_twin_ci_suite_errcount.py	0.76	0	89 passed in 0.49s
+pins_red	tests_scripts/test_tool_pins.py	0.32	1	2 failed, 12 passed in 0.07s
+paths	tests_scripts/test_config_paths_resolve.py	3.42	1	1 failed, 5 passed in 3.20s
+paths	tests_scripts/test_config_paths_resolve.py	5.20	0	6 passed in 4.92s
+of194	tests_scripts/test_build_firmware.py	8.17	0	53 passed, 6 skipped in 7.77s
+of28	tests_scripts/test_device_script_config_schemas.py	1.11	0	12 passed in 0.76s
+of28	tests_scripts/test_stored_config_golden.py	10.33	0	19 passed in 9.82s
+of28	tests_scripts/test_stored_config_golden.py	10.05	0	19 passed in 9.60s
+basecmp	tests_scripts/test_zz_base_golden_tmp.py	10.11	0	18 passed in 9.67s
+basecmp	tests_scripts/test_stored_config_golden.py	9.99	0	19 passed in 9.51s
+s94	tests_scripts/test_measurement_field_tuple_agreement.py	0.55	0	11 passed in 0.32s
+s84	tests_scripts/test_digital_twin_ci_suite_ceiling.py	0.46	0	15 passed in 0.22s
+fix2	tests_scripts/test_no_variant_literals.py	9.24	0	19 passed in 9.00s
+fix2	tests_scripts/test_ruff_exemptions_live.py	7.72	0	13 passed in 7.24s
+fix2	tests_scripts/test_tool_pins.py	0.32	1	2 failed, 12 passed in 0.08s
+pins_after	tests_scripts/test_tool_pins.py	0.41	1	1 failed, 13 passed in 0.18s
+final	tests_scripts/test_decision_vocabulary.py	9.18	0	6 passed in 8.93s
+final	tests_scripts/test_citations.py	12.27	0	15 passed in 12.04s
+final	tests_scripts/test_comment_block_cap.py	4.60	0	610 passed in 4.35s
+final	tests_scripts/test_tunables_register.py	4.26	0	15 passed in 4.01s
+final	tests_scripts/test_legacy_paths.py	1.94	0	3 passed in 1.69s
+final	tests_scripts/test_import_placement.py	7.96	0	7 passed in 7.75s
+final	tests_scripts/test_code_conventions.py	3.77	0	25 passed in 3.32s
+final	tests_scripts/test_error_catalog.py	7.45	0	40 passed in 6.57s
+final	tests_scripts/test_host_annotations.py	2.38	0	12 passed in 2.15s
+final	tests_scripts/test_lint_ceilings.py	9.78	0	19 passed in 9.53s
+final	tests_scripts/test_mypy_any_baseline.py	0.28	0	7 passed in 0.06s
+final	tests_scripts/test_memory_error_gate_agreement.py	3.51	0	14 passed in 3.22s
+final	tests_scripts/test_ruff_exemptions_live.py	5.90	0	13 passed in 5.48s
+final	tests_scripts/test_suppression_form.py	3.95	1	4 failed, 16 passed in 3.70s
+final	tests_scripts/test_config_paths_resolve.py	3.25	0	6 passed in 3.04s
+final	tests_scripts/test_script_metadata_pins.py	0.49	0	8 passed in 0.26s
+final	tests_scripts/test_no_variant_literals.py	9.26	0	19 passed in 9.06s

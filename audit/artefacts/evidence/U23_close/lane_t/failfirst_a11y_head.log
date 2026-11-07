@@ -1,0 +1,599 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23t
+
+ ❯ |chromium| tests_js/zz_a11y_head.test.js (45 tests | 42 failed) 6541ms
+   ✓ the accessibility checks (3)
+     ✓ find a repeated id, a label naming nothing, a label naming a span and a labelledby naming nothing 7ms
+     ✓ find a button, an input and a select with no name, and accept each way a control can have one 2ms
+     ✓ find a masked input without autocomplete=new-password 1ms
+   ❯ arzi's page (7)
+     × measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 207ms
+     × sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 143ms
+     × networking section: unique ids, bound labels, a name on every control, no autofillable masked input 147ms
+     × system section: unique ids, bound labels, a name on every control, no autofillable masked input 150ms
+     × status section: unique ids, bound labels, a name on every control, no autofillable masked input 196ms
+     × notification section: unique ids, bound labels, a name on every control, no autofillable masked input 158ms
+     × keeps the closed drawer inert, focuses its first link on open and returns the focus on close 123ms
+   ❯ dev's page (7)
+     × measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 133ms
+     × sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 179ms
+     × networking section: unique ids, bound labels, a name on every control, no autofillable masked input 160ms
+     × system section: unique ids, bound labels, a name on every control, no autofillable masked input 130ms
+     × status section: unique ids, bound labels, a name on every control, no autofillable masked input 174ms
+     × notification section: unique ids, bound labels, a name on every control, no autofillable masked input 141ms
+     × keeps the closed drawer inert, focuses its first link on open and returns the focus on close 177ms
+   ❯ grkizi's page (7)
+     × measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 119ms
+     × sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 185ms
+     × networking section: unique ids, bound labels, a name on every control, no autofillable masked input 153ms
+     × system section: unique ids, bound labels, a name on every control, no autofillable masked input 158ms
+     × status section: unique ids, bound labels, a name on every control, no autofillable masked input 181ms
+     × notification section: unique ids, bound labels, a name on every control, no autofillable masked input 153ms
+     × keeps the closed drawer inert, focuses its first link on open and returns the focus on close 117ms
+   ❯ klkizi's page (7)
+     × measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 112ms
+     × sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 140ms
+     × networking section: unique ids, bound labels, a name on every control, no autofillable masked input 165ms
+     × system section: unique ids, bound labels, a name on every control, no autofillable masked input 144ms
+     × status section: unique ids, bound labels, a name on every control, no autofillable masked input 208ms
+     × notification section: unique ids, bound labels, a name on every control, no autofillable masked input 186ms
+     × keeps the closed drawer inert, focuses its first link on open and returns the focus on close 107ms
+   ❯ schlafzi's page (7)
+     × measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 88ms
+     × sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 149ms
+     × networking section: unique ids, bound labels, a name on every control, no autofillable masked input 160ms
+     × system section: unique ids, bound labels, a name on every control, no autofillable masked input 138ms
+     × status section: unique ids, bound labels, a name on every control, no autofillable masked input 192ms
+     × notification section: unique ids, bound labels, a name on every control, no autofillable masked input 161ms
+     × keeps the closed drawer inert, focuses its first link on open and returns the focus on close 124ms
+   ❯ wozi's page (7)
+     × measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 155ms
+     × sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 172ms
+     × networking section: unique ids, bound labels, a name on every control, no autofillable masked input 182ms
+     × system section: unique ids, bound labels, a name on every control, no autofillable masked input 143ms
+     × status section: unique ids, bound labels, a name on every control, no autofillable masked input 219ms
+     × notification section: unique ids, bound labels, a name on every control, no autofillable masked input 139ms
+     × keeps the closed drawer inert, focuses its first link on open and returns the focus on close 163ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 42 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > arzi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > grkizi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > klkizi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > schlafzi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(12) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/arzi-s-page---measurements-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/grkizi-s-page---measurements-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/klkizi-s-page---measurements-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/schlafzi-s-page---measurements-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "label \"CO2 [ppm]\" names \"field-CO2\", which is no labelable element",[39m
+[31m+   "label \"Temperature [°C]\" names \"field-Temp\", which is no labelable element",[39m
+[31m+   "label \"Relative Humidity [%]\" names \"field-Hum\", which is no labelable element",[39m
+[31m+   "label \"Wet Bulb Temperature [°C]\" names \"field-WetBulb\", which is no labelable element",[39m
+[31m+   "label \"Dew Point [°C]\" names \"field-DewPoint\", which is no labelable element",[39m
+[31m+   "label \"FRC Readiness\" names \"field-FRCState\", which is no labelable element",[39m
+[31m+   "label \"FRC Settling Left [s]\" names \"field-FRCWait\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+   "label \"VOC Index\" names \"field-VOC\", which is no labelable element",[39m
+[31m+   "label \"VOC Raw [ticks]\" names \"field-Raw\", which is no labelable element",[39m
+[31m+   "label \"VOC Algorithm\" names \"field-VOCState\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > arzi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > grkizi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > klkizi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > schlafzi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected undefined to be 'false' // Object.is equality
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/arzi-s-page---sensors-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/grkizi-s-page---sensors-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/klkizi-s-page---sensors-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/schlafzi-s-page---sensors-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected:[39m
+"false"
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/zz_a11y_head.test.js:192:78
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+       |                                                                              ^
+    193|             expect(consoleError).not.toHaveBeenCalled();
+    194|         },
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > arzi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > dev's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > grkizi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > klkizi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > schlafzi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > wozi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(2) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/arzi-s-page---networking-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/dev-s-page---networking-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/grkizi-s-page---networking-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/klkizi-s-page---networking-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/schlafzi-s-page---networking-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/wozi-s-page---networking-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "masked input <input#field-PW key=PW> lacks autocomplete=\"new-password\"",[39m
+[31m+   "masked input <input#field-HotspotPW key=HotspotPW> lacks autocomplete=\"new-password\"",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > arzi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > dev's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > grkizi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > klkizi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > schlafzi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > wozi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(3) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/arzi-s-page---system-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/dev-s-page---system-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/grkizi-s-page---system-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/klkizi-s-page---system-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/schlafzi-s-page---system-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/wozi-s-page---system-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "label \"Firmware Version\" names \"field-FirmwareVersion\", which is no labelable element",[39m
+[31m+   "label \"Website Version\" names \"field-WebsiteVersion\", which is no labelable element",[39m
+[31m+   "label \"Build Date\" names \"field-BuildDate\", which is no labelable element",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > arzi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > grkizi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > klkizi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > schlafzi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > wozi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(30) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/arzi-s-page---status-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/grkizi-s-page---status-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/klkizi-s-page---status-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/schlafzi-s-page---status-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/wozi-s-page---status-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "label \"Wi-Fi Mode\" names \"field-Mode\", which is no labelable element",[39m
+[31m+   "label \"Connected\" names \"field-Connected\", which is no labelable element",[39m
+[31m+   "label \"IPv4 Address\" names \"field-IPv4\", which is no labelable element",[39m
+[31m+   "label \"Subnet Mask\" names \"field-Subnet\", which is no labelable element",[39m
+[31m+   "label \"Gateway\" names \"field-Gateway\", which is no labelable element",[39m
+[31m+   "label \"Name Server\" names \"field-DNS\", which is no labelable element",[39m
+[31m+   "label \"Wi-Fi RSSI [dBm]\" names \"field-RSSI\", which is no labelable element",[39m
+[31m+   "label \"Wi-Fi Uptime [s]\" names \"field-WifiUptime\", which is no labelable element",[39m
+[31m+   "label \"Wi-Fi Status Time\" names \"field-WifiTS\", which is no labelable element",[39m
+[31m+   "label \"NTP Synced\" names \"field-NTPSynced\", which is no labelable element",[39m
+[31m+   "label \"NTP Last Sync Age [s]\" names \"field-NTPLastSyncAge\", which is no labelable element",[39m
+[31m+   "label \"NTP Last Sync Time\" names \"field-NTPLastSync\", which is no labelable element",[39m
+[31m+   "label \"Dropped Connections\" names \"field-HTTPDropped\", which is no labelable element",[39m
+[31m+   "label \"System Uptime [s]\" names \"field-SysUptime\", which is no labelable element",[39m
+[31m+   "label \"Boot Signature\" names \"field-BootSignature\", which is no labelable element",[39m
+[31m+   "label \"Last Reset Reason\" names \"field-ResetReason\", which is no labelable element",[39m
+[31m+   "label \"Reset Flags\" names \"field-ResetBits\", which is no labelable element",[39m
+[31m+   "label \"Free Heap [B]\" names \"field-MemFree\", which is no labelable element",[39m
+[31m+   "label \"Backups Paused\" names \"field-MemPaused\", which is no labelable element",[39m
+[31m+   "label \"Config Faults\" names \"field-ConfigFaults\", which is no labelable element",[39m
+[31m+   "label \"Config Unpersisted\" names \"field-ConfigUnpersisted\", which is no labelable element",[39m
+[31m+   "label \"Local Time\" names \"field-LocalTime\", which is no labelable element",[39m
+[31m+   "label \"UTC Time\" names \"field-UTCTime\", which is no labelable element",[39m
+[31m+   "label \"Device Clock [s]\" names \"field-UnixTime\", which is no labelable element",[39m
+[31m+   "label \"SGP40 Last Backup\" names \"field-SGP40_BackupTS\", which is no labelable element",[39m
+[31m+   "label \"SGP40 Restore Timestamp\" names \"field-SGP40_RestoreTS\", which is no labelable element",[39m
+[31m+   "label \"Currently Triggered\" names \"field-Triggered\", which is no labelable element",[39m
+[31m+   "label \"Evaluation State\" names \"field-State\", which is no labelable element",[39m
+[31m+   "label \"Last Cycle Time\" names \"field-TS\", which is no labelable element",[39m
+[31m+   "label \"Remaining Pause Time [s]\" names \"field-PauseTime\", which is no labelable element",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > arzi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > dev's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > grkizi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > klkizi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > schlafzi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > wozi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/arzi-s-page---notification-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/dev-s-page---notification-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/grkizi-s-page---notification-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/klkizi-s-page---notification-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/schlafzi-s-page---notification-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/wozi-s-page---notification-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "label \"LED Flash\" names \"field-LightCmdLED\", which is no labelable element",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > arzi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > dev's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > grkizi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > klkizi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > schlafzi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > wozi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close
+AssertionError: expected true to be false // Object.is equality
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/arzi-s-page---keeps-the-closed-drawer-inert--focuses-its-first-link-on-open-and-returns-the-focus-on-close.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/dev-s-page---keeps-the-closed-drawer-inert--focuses-its-first-link-on-open-and-returns-the-focus-on-close.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/grkizi-s-page---keeps-the-closed-drawer-inert--focuses-its-first-link-on-open-and-returns-the-focus-on-close.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/klkizi-s-page---keeps-the-closed-drawer-inert--focuses-its-first-link-on-open-and-returns-the-focus-on-close.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/schlafzi-s-page---keeps-the-closed-drawer-inert--focuses-its-first-link-on-open-and-returns-the-focus-on-close.png
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/wozi-s-page---keeps-the-closed-drawer-inert--focuses-its-first-link-on-open-and-returns-the-focus-on-close.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+ ❯ tests_js/zz_a11y_head.test.js:204:30
+    202|
+    203|         hamburger.click();
+    204|         expect(drawer.inert).toBe(false);
+       |                              ^
+    205|         expect(document.activeElement).toBe(drawer.querySelector("[dat…
+    206|         expect(hamburger.getAttribute("aria-label")).toBe("Close navig…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > dev's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(29) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/dev-s-page---measurements-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "label \"CO2 [ppm]\" names \"field-CO2\", which is no labelable element",[39m
+[31m+   "label \"Temperature [°C]\" names \"field-Temp\", which is no labelable element",[39m
+[31m+   "label \"Relative Humidity [%]\" names \"field-Hum\", which is no labelable element",[39m
+[31m+   "label \"Wet Bulb Temperature [°C]\" names \"field-WetBulb\", which is no labelable element",[39m
+[31m+   "label \"Dew Point [°C]\" names \"field-DewPoint\", which is no labelable element",[39m
+[31m+   "label \"FRC Readiness\" names \"field-FRCState\", which is no labelable element",[39m
+[31m+   "label \"FRC Settling Left [s]\" names \"field-FRCWait\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+   "label \"VOC Index\" names \"field-VOC\", which is no labelable element",[39m
+[31m+   "label \"VOC Raw [ticks]\" names \"field-Raw\", which is no labelable element",[39m
+[31m+   "label \"VOC Algorithm\" names \"field-VOCState\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+   "label \"Pressure [hPa]\" names \"field-Pres\", which is no labelable element",[39m
+[31m+   "label \"Temperature [°C]\" names \"field-Temp\", which is no labelable element",[39m
+[31m+   "label \"Sea Level Pressure [hPa]\" names \"field-SLPres\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+   "label \"Illuminance [lx]\" names \"field-Lux\", which is no labelable element",[39m
+[31m+   "label \"Red\" names \"field-R\", which is no labelable element",[39m
+[31m+   "label \"Green\" names \"field-G\", which is no labelable element",[39m
+[31m+   "label \"Blue\" names \"field-B\", which is no labelable element",[39m
+[31m+   "label \"Hue [°]\" names \"field-H\", which is no labelable element",[39m
+[31m+   "label \"Saturation\" names \"field-S\", which is no labelable element",[39m
+[31m+   "label \"Brightness\" names \"field-Bri\", which is no labelable element",[39m
+[31m+   "label \"Colour Temperature [K]\" names \"field-CCT\", which is no labelable element",[39m
+[31m+   "label \"Active Range [lx]\" names \"field-RangeAct\", which is no labelable element",[39m
+[31m+   "label \"Overrange\" names \"field-Overrange\", which is no labelable element",[39m
+[31m+   "label \"Measured Gain Ratio\" names \"field-GainMeas\", which is no labelable element",[39m
+[31m+   "label \"Calibration Light\" names \"field-CalLight\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > dev's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(6) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/dev-s-page---sensors-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "id \"field-TempOffset\" is used 2 times",[39m
+[31m+   "id \"field-SampleInterval\" is used 2 times",[39m
+[31m+   "id \"field-FiltCoeff\" is used 2 times",[39m
+[31m+   "<input#field-TempOffset key=TempOffset> has no accessible name",[39m
+[31m+   "<input#field-SampleInterval key=SampleInterval> has no accessible name",[39m
+[31m+   "<input#field-FiltCoeff key=FiltCoeff> has no accessible name",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > dev's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(32) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/dev-s-page---status-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "label \"Wi-Fi Mode\" names \"field-Mode\", which is no labelable element",[39m
+[31m+   "label \"Connected\" names \"field-Connected\", which is no labelable element",[39m
+[31m+   "label \"IPv4 Address\" names \"field-IPv4\", which is no labelable element",[39m
+[31m+   "label \"Subnet Mask\" names \"field-Subnet\", which is no labelable element",[39m
+[31m+   "label \"Gateway\" names \"field-Gateway\", which is no labelable element",[39m
+[31m+   "label \"Name Server\" names \"field-DNS\", which is no labelable element",[39m
+[31m+   "label \"Wi-Fi RSSI [dBm]\" names \"field-RSSI\", which is no labelable element",[39m
+[31m+   "label \"Wi-Fi Uptime [s]\" names \"field-WifiUptime\", which is no labelable element",[39m
+[31m+   "label \"Wi-Fi Status Time\" names \"field-WifiTS\", which is no labelable element",[39m
+[31m+   "label \"NTP Synced\" names \"field-NTPSynced\", which is no labelable element",[39m
+[31m+   "label \"NTP Last Sync Age [s]\" names \"field-NTPLastSyncAge\", which is no labelable element",[39m
+[31m+   "label \"NTP Last Sync Time\" names \"field-NTPLastSync\", which is no labelable element",[39m
+[31m+   "label \"Dropped Connections\" names \"field-HTTPDropped\", which is no labelable element",[39m
+[31m+   "label \"System Uptime [s]\" names \"field-SysUptime\", which is no labelable element",[39m
+[31m+   "label \"Boot Signature\" names \"field-BootSignature\", which is no labelable element",[39m
+[31m+   "label \"Last Reset Reason\" names \"field-ResetReason\", which is no labelable element",[39m
+[31m+   "label \"Reset Flags\" names \"field-ResetBits\", which is no labelable element",[39m
+[31m+   "label \"Free Heap [B]\" names \"field-MemFree\", which is no labelable element",[39m
+[31m+   "label \"Backups Paused\" names \"field-MemPaused\", which is no labelable element",[39m
+[31m+   "label \"Config Faults\" names \"field-ConfigFaults\", which is no labelable element",[39m
+[31m+   "label \"Config Unpersisted\" names \"field-ConfigUnpersisted\", which is no labelable element",[39m
+[31m+   "label \"Local Time\" names \"field-LocalTime\", which is no labelable element",[39m
+[31m+   "label \"UTC Time\" names \"field-UTCTime\", which is no labelable element",[39m
+[31m+   "label \"Device Clock [s]\" names \"field-UnixTime\", which is no labelable element",[39m
+[31m+   "label \"SGP40 Last Backup\" names \"field-SGP40_BackupTS\", which is no labelable element",[39m
+[31m+   "label \"SGP40 Restore Timestamp\" names \"field-SGP40_RestoreTS\", which is no labelable element",[39m
+[31m+   "label \"UART Link Transfers\" names \"field-UARTLINK_Transfers\", which is no labelable element",[39m
+[31m+   "label \"UART Link Failures\" names \"field-UARTLINK_Failures\", which is no labelable element",[39m
+[31m+   "label \"Currently Triggered\" names \"field-Triggered\", which is no labelable element",[39m
+[31m+   "label \"Evaluation State\" names \"field-State\", which is no labelable element",[39m
+[31m+   "label \"Last Cycle Time\" names \"field-TS\", which is no labelable element",[39m
+[31m+   "label \"Remaining Pause Time [s]\" names \"field-PauseTime\", which is no labelable element",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > wozi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(16) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/wozi-s-page---measurements-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "label \"CO2 [ppm]\" names \"field-CO2\", which is no labelable element",[39m
+[31m+   "label \"Temperature [°C]\" names \"field-Temp\", which is no labelable element",[39m
+[31m+   "label \"Relative Humidity [%]\" names \"field-Hum\", which is no labelable element",[39m
+[31m+   "label \"Wet Bulb Temperature [°C]\" names \"field-WetBulb\", which is no labelable element",[39m
+[31m+   "label \"Dew Point [°C]\" names \"field-DewPoint\", which is no labelable element",[39m
+[31m+   "label \"FRC Readiness\" names \"field-FRCState\", which is no labelable element",[39m
+[31m+   "label \"FRC Settling Left [s]\" names \"field-FRCWait\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+   "label \"VOC Index\" names \"field-VOC\", which is no labelable element",[39m
+[31m+   "label \"VOC Raw [ticks]\" names \"field-Raw\", which is no labelable element",[39m
+[31m+   "label \"VOC Algorithm\" names \"field-VOCState\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+   "label \"Pressure [hPa]\" names \"field-Pres\", which is no labelable element",[39m
+[31m+   "label \"Temperature [°C]\" names \"field-Temp\", which is no labelable element",[39m
+[31m+   "label \"Sea Level Pressure [hPa]\" names \"field-SLPres\", which is no labelable element",[39m
+[31m+   "label \"Timestamp\" names \"field-TS\", which is no labelable element",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/42]⎯
+
+ FAIL  |chromium| tests_js/zz_a11y_head.test.js > wozi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input
+AssertionError: expected [ …(2) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_a11y_head.test.js/wozi-s-page---sensors-section--unique-ids--bound-labels--a-name-on-every-control--no-autofillable-masked-input.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "id \"field-TempOffset\" is used 2 times",[39m
+[31m+   "<input#field-TempOffset key=TempOffset> has no accessible name",[39m
+[31m+ ][39m
+
+ ❯ tests_js/zz_a11y_head.test.js:191:49
+    189|             const consoleError = vi.spyOn(console, "error");
+    190|             const root = await openPage(section);
+    191|             expect(accessibilityProblems(root)).toEqual([]);
+       |                                                 ^
+    192|             expect(mustQuery(root, "#app-main .error-banner").dataset.…
+    193|             expect(consoleError).not.toHaveBeenCalled();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/42]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  42 failed | 3 passed (45)
+   Start at  09:38:16
+   Duration  8.01s (tests 94%, worker 4%, import 2%)
+
+== Summary: npm test ==
+Commit: f865d44 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 3 · failed 42 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/zz_a11y_head.test.js > arzi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(12) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > arzi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input: expected undefined to be 'false' // Object.is equality
+  - tests_js/zz_a11y_head.test.js > arzi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(2) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > arzi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(3) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > arzi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(30) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > arzi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ Array(1) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > arzi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close: expected true to be false // Object.is equality
+  - tests_js/zz_a11y_head.test.js > dev's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(29) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > dev's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(6) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > dev's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(2) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > dev's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(3) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > dev's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(32) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > dev's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ Array(1) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > dev's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close: expected true to be false // Object.is equality
+  - tests_js/zz_a11y_head.test.js > grkizi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(12) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > grkizi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input: expected undefined to be 'false' // Object.is equality
+  - tests_js/zz_a11y_head.test.js > grkizi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(2) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > grkizi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(3) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > grkizi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(30) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > grkizi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ Array(1) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > grkizi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close: expected true to be false // Object.is equality
+  - tests_js/zz_a11y_head.test.js > klkizi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(12) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > klkizi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input: expected undefined to be 'false' // Object.is equality
+  - tests_js/zz_a11y_head.test.js > klkizi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(2) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > klkizi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(3) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > klkizi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(30) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > klkizi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ Array(1) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > klkizi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close: expected true to be false // Object.is equality
+  - tests_js/zz_a11y_head.test.js > schlafzi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(12) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > schlafzi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input: expected undefined to be 'false' // Object.is equality
+  - tests_js/zz_a11y_head.test.js > schlafzi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(2) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > schlafzi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(3) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > schlafzi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(30) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > schlafzi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ Array(1) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > schlafzi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close: expected true to be false // Object.is equality
+  - tests_js/zz_a11y_head.test.js > wozi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(16) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > wozi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(2) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > wozi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(2) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > wozi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(3) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > wozi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ …(30) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > wozi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input: expected [ Array(1) ] to deeply equal []
+  - tests_js/zz_a11y_head.test.js > wozi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close: expected true to be false // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

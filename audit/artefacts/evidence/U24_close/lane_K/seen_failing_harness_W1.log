@@ -1,0 +1,64 @@
+--- test_a_run_keeps_no_task_that_has_finished
+FAIL test_a_run_keeps_no_task_that_has_finished:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 267, in test_a_run_keeps_no_task_that_has_finished
+AssertionError: (48800, 46784)
+0/1 passed, 1 failed, 0 skipped
+rc=1
+--- test_a_task_awaiting_the_one_a_base_exception_left_mid_step_is_ended
+Traceback (most recent call last):
+  File "tests/microtest.py", line 119, in run
+  File "tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 198, in test_a_task_awaiting_the_one_a_base_exception_left_mid_step_is_ended
+  File "tests/_async_harness.py", line 101, in run
+  File "tests/_async_harness.py", line 53, in _drive
+  File "tests/_async_harness.py", line 78, in _reap
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+KeyboardInterrupt: 
+0/1 passed, 1 failed, 0 skipped - aborted at test_a_task_awaiting_the_one_a_base_exception_left_mid_step_is_ended, later tests not run
+rc=124
+--- test_a_task_whose_awaited_task_swallows_its_cancellation_is_still_ended
+Traceback (most recent call last):
+  File "tests/microtest.py", line 119, in run
+  File "tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 223, in test_a_task_whose_awaited_task_swallows_its_cancellation_is_still_ended
+  File "tests/_async_harness.py", line 101, in run
+  File "tests/_async_harness.py", line 53, in _drive
+  File "tests/_async_harness.py", line 78, in _reap
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+KeyboardInterrupt: 
+0/1 passed, 1 failed, 0 skipped - aborted at test_a_task_whose_awaited_task_swallows_its_cancellation_is_still_ended, later tests not run
+rc=124
+--- test_a_task_nothing_can_wake_is_named_and_taken_off_without_waiting_out_the_bound
+  File "tests/microtest.py", line 119, in run
+  File "tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 241, in test_a_task_nothing_can_wake_is_named_and_taken_off_without_waiting_out_the_bound
+  File "tests/test_async_harness.py", line 67, in _unended_message
+  File "tests/_async_harness.py", line 101, in run
+  File "tests/_async_harness.py", line 53, in _drive
+  File "tests/_async_harness.py", line 78, in _reap
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+KeyboardInterrupt: 
+0/1 passed, 1 failed, 0 skipped - aborted at test_a_task_nothing_can_wake_is_named_and_taken_off_without_waiting_out_the_bound, later tests not run
+rc=124
+--- test_a_task_running_on_after_its_cancellation_is_named_once_the_bound_passes
+  File "tests/microtest.py", line 119, in run
+  File "tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 259, in test_a_task_running_on_after_its_cancellation_is_named_once_the_bound_passes
+  File "tests/test_async_harness.py", line 67, in _unended_message
+  File "tests/_async_harness.py", line 101, in run
+  File "tests/_async_harness.py", line 53, in _drive
+  File "tests/_async_harness.py", line 78, in _reap
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+KeyboardInterrupt: 
+0/1 passed, 1 failed, 0 skipped - aborted at test_a_task_running_on_after_its_cancellation_is_named_once_the_bound_passes, later tests not run
+rc=124

@@ -1,0 +1,57 @@
+F..F                                                                     [100%]
+=================================== FAILURES ===================================
+_______________ test_every_attributed_file_opens_with_its_header _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneA/seen_attr')
+
+    def test_every_attributed_file_opens_with_its_header(repo_root: Path) -> None:
+        attributed = _attributed(repo_root)
+        problems = [problem for rel in attributed for problem in _header_problems(repo_root, rel)]
+        # An SPDX tag anywhere else in src/ is a header in another order, or one the shape check cannot see.
+        for path in sorted((repo_root / "src").glob("*.py")):
+            rel = f"src/{path.name}"
+            problems += [f"{rel}:{n}: SPDX tag outside a header's lines 1-2" for n, line in enumerate(_lines(repo_root, rel), 1) if "SPDX-" in line and (n > 2 or rel not in attributed)]
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_bmp3xx_driver.py: lines 2-3 are not `# SPDX-License-Identifier: <expr>` then a comment naming THIRD_PARTY_LICENSES.md: ['# CircuitPython) - restructured/rewritten for asyncio + MicroPython, see THIRD_PARTY_LICENSES.md.', '# SPDX-License-Identifier: MIT']
+E         src/asy_fram_driver.py: lines 2-3 are not `# SPDX-License-Identifier: <expr>` then a comment naming THIRD_PARTY_LICENSES.md: ['# CircuitPython) - restructured/rewritten for asyncio + MicroPython, see THIRD_PARTY_LICENSES.md.', '# SPDX-License-Identifier: MIT']
+E         src/asy_isl29125_driver.py: lines 2-3 are not `# SPDX-License-Identifier: <expr>` then a comment naming THIRD_PARTY_LICENSES.md: ["# restructured/rewritten for asyncio + this project's driver shape, see THIRD_PARTY_LICENSES.md.", '# SPDX-License-Identifier: MIT']
+E         src/asy_bmp3xx_driver.py:3: SPDX tag outside a header's lines 1-2
+E         src/asy_fram_driver.py:3: SPDX tag outside a header's lines 1-2
+E         src/asy_isl29125_driver.py:3: SPDX tag outside a header's lines 1-2
+E       assert not ["src/asy_bmp3xx_driver.py: lines 2-3 are not `# SPDX-License-Identifier: <expr>` then a comment naming THIRD_PARTY_LI...er.py:3: SPDX tag outside a header's lines 1-2", "src/asy_isl29125_driver.py:3: SPDX tag outside a header's lines 1-2"]
+
+tests_scripts/test_third_party_attribution.py:95: AssertionError
+______ test_each_header_agrees_with_its_entry_on_licence_holder_and_year _______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneA/seen_attr')
+
+    def test_each_header_agrees_with_its_entry_on_licence_holder_and_year(repo_root: Path) -> None:
+        entries, problems = _entries(repo_root), []
+        # A file the shape or one-entry test names is skipped here: its header or its entry cannot be read as one.
+        checked = [rel for rel in _attributed(repo_root) if rel != _NO_LICENSE_FILE and len(entries.get(rel, [])) == 1 and not _header_problems(repo_root, rel)]
+        for rel in checked:
+            head, entry = _lines(repo_root, rel)[:3], entries[rel][0]
+            expression = head[1][len(_LICENSE_TAG) :].strip()
+            ids = [token for token in re.split(r"[\s()]+", expression) if token and token not in _OPERATORS]
+            problems += [f"{rel}: its entry does not name {token}" for token in ids if not re.search(rf"(?<![\w.-]){re.escape(token)}(?![\w-]|\.\w)", entry)]
+            # A file under more than one licence has its entry state the expression, and any such statement matches.
+            stated = _SCOPE_SENTENCE.findall(entry)
+            if stated != [expression] and (stated or len(ids) > 1):
+                problems.append(f"{rel}: the header reads `{expression}`, its entry states the SPDX header reads {stated}")
+            years, holder = _holder(head)
+            if not years or years not in entry or holder not in entry:
+                problems.append(f"{rel}: its entry does not name the header's year {years!r} and holder {holder!r}")
+            copyright_line = head[0][len(_COPYRIGHT_TAG) :]
+            for licence in sorted({span for span in _CODE_SPAN.findall(entry) if span.startswith("src/LICENSE-")}):
+                if copyright_line not in (line.strip() for line in _lines(repo_root, licence)):
+                    problems.append(f"{licence}: no line reads `{copyright_line}`, the holder line of {rel}'s header")
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_captive_dns.py: the header reads `Apache-2.0`, its entry states the SPDX header reads ['Apache-2.0 AND MIT']
+E         src/LICENSE-captive_dns: no line reads `Copyright 2019 p-doyle (Micropython-DNSServer-Captive-Portal)`, the holder line of src/asy_captive_dns.py's header
+E       assert not ["src/asy_captive_dns.py: the header reads `Apache-2.0`, its entry states the SPDX header reads ['Apache-2.0 AND MIT']...s `Copyright 2019 p-doyle (Micropython-DNSServer-Captive-Portal)`, the holder line of src/asy_captive_dns.py's header"]
+
+tests_scripts/test_third_party_attribution.py:132: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_third_party_attribution.py::test_every_attributed_file_opens_with_its_header
+FAILED tests_scripts/test_third_party_attribution.py::test_each_header_agrees_with_its_entry_on_licence_holder_and_year
+2 failed, 2 passed in 0.15s

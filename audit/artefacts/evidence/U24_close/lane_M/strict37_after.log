@@ -1,0 +1,4 @@
+after th=-1 ascii bytes 37492 json.loads ms 1 check_strict_json ms 31 strict_loads ms 33
+after th=-1 non-ascii bytes 37906 json.loads ms 1 check_strict_json ms 31 strict_loads ms 41
+after th=32768 ascii bytes 37492 json.loads ms 2 check_strict_json ms 57 strict_loads ms 58
+after th=32768 non-ascii bytes 37906 json.loads ms 3 check_strict_json ms 59 strict_loads ms 63

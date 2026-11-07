@@ -1,0 +1,23 @@
+sensortask[arzi]	-1	29.42	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[dev]	-1	46.43	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[grkizi]	-1	29.35	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[klkizi]	-1	29.36	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[schlafzi]	-1	29.06	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[wozi]	-1	33.37	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+test_asy_sgp40_driver	-1	8.06	rc=0	mem=0	164/164 passed, 0 failed, 0 skipped
+test_asy_webserver_service	-1	4.53	rc=0	mem=0	222/222 passed, 0 failed, 0 skipped
+test_ntp_fram_system_integration	-1	7.66	rc=0	mem=0	12/12 passed, 0 failed, 0 skipped
+test_digital_twin_ntp	-1	34.28	rc=0	mem=0	16/16 passed, 0 failed, 0 skipped
+test_digital_twin_clock_jump	-1	24.53	rc=0	mem=0	6/6 passed, 0 failed, 0 skipped
+sensortask[arzi]	32768	33.23	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[dev]	32768	54.87	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[grkizi]	32768	33.64	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[klkizi]	32768	33.21	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[schlafzi]	32768	33.70	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+sensortask[wozi]	32768	37.40	rc=0	mem=0	91/91 passed, 0 failed, 0 skipped
+test_asy_sgp40_driver	32768	9.13	rc=0	mem=0	164/164 passed, 0 failed, 0 skipped
+test_asy_webserver_service	32768	8.08	rc=0	mem=0	222/222 passed, 0 failed, 0 skipped
+test_ntp_fram_system_integration	32768	7.69	rc=0	mem=0	12/12 passed, 0 failed, 0 skipped
+test_digital_twin_ntp	32768	33.64	rc=0	mem=0	16/16 passed, 0 failed, 0 skipped
+test_digital_twin_clock_jump	32768	24.87	rc=0	mem=0	6/6 passed, 0 failed, 0 skipped
+ALLDONE

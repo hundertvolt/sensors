@@ -1,0 +1,23 @@
+# mutant m5_unset32 against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m5_unset32
+@@ -288,7 +288,7 @@
+                 return None
+             else:
+                 # A chip that cannot come up leaves the binding's 32-entry buffer unfilled: a failed check, never 32 clients.
+-                return None if len(stations) == _STATIONS_UNSET else stations
++                return stations
+ 
+     async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
+         # Refuses a radio value outside its byte bound or shape before it is stored (C.7.4); the rest of the
+@@ -731,8 +731,8 @@
+         self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
+ 
+     async def _run_silent_mode(self) -> None:
+-        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a
+-        # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
++        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never
++        # WLAN.scan(), which holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
+         if not self._hotspot_timer_running:
+             await self._arm_hotspot_timer()  # a failed arm is persisted and retried next iteration
+         if not self._silent_attempt_due:

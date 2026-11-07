@@ -1,0 +1,10 @@
+test_asy_scd30_driver.py plain neighbours rc=0 time=27.235893367s memerr_lines=0 summary: 125/125 passed, 0 failed, 0 skipped
+test_setter_microdot_integration.py plain neighbours rc=0 time=4.483447835s memerr_lines=0 summary: 39/39 passed, 0 failed, 0 skipped
+test_asy_ntp_client.py plain neighbours rc=0 time=24.752468840s memerr_lines=0 summary: 177/177 passed, 0 failed, 0 skipped
+test_asy_notification_service.py plain neighbours rc=0 time=19.529079888s memerr_lines=0 summary: 64/64 passed, 0 failed, 0 skipped
+test_asy_api_response.py plain neighbours rc=0 time=1.088744305s memerr_lines=0 summary: 31/31 passed, 0 failed, 0 skipped
+test_readiness_gates.py plain neighbours rc=0 time=.505194400s memerr_lines=0 summary: 14/14 passed, 0 failed, 0 skipped
+test_asy_bmp3xx_driver.py plain neighbours rc=0 time=12.925580867s memerr_lines=0 summary: 134/134 passed, 0 failed, 0 skipped
+test_asy_isl29125_driver.py plain neighbours rc=0 time=3.451360365s memerr_lines=0 summary: 240/240 passed, 0 failed, 0 skipped
+test_asy_sgp40_driver.py plain neighbours rc=0 time=119.199588824s memerr_lines=0 summary: 155/155 passed, 0 failed, 0 skipped
+test_asy_wifi_service.py plain neighbours rc=0 time=21.623601322s memerr_lines=0 summary: 232/232 passed, 0 failed, 0 skipped

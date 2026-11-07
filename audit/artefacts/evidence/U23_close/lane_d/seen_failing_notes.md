@@ -1,0 +1,4 @@
+# Lane D seen-failing record (HEAD 8fff76f code, new tests)
+- test_buildgen_web_tag.py: 37 failed, 120 passed (seen_failing_web_tag.txt); guards passing at once: real_scd30_contmeas_is_freestanding, isl29125 Calibrate pin.
+- test_buildgen_definitions.py (first form, kwargs helper): 63 failed, 245 passed: system order x6, reset rows, device clock x6, confirm x6, defaultDecimals x6, no defaultValue x6, maintenance path x6, notification TS/PauseTime statusPath x6, page keys x6, scd30 decimals x6, CalLight tones, decimals-from-resolution x4, page key off inferred kind x3. Guards at once: decimals-from-resolution[None,None,None], code table without tones.
+- test_buildgen_definitions.py (helper rewritten with explicit kwargs): collection TypeError on HEAD (WebFieldTag has no resolution=) - the same new cases.

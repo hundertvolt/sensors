@@ -1,0 +1,3 @@
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_schema_ast.py::test_extract_field_schemas_places_its_errors_at_the_callers_field
+1 failed, 47 deselected in 1.80s

@@ -1,0 +1,5 @@
+idle host 05:2x, scripts/typecheck.sh (no args), cold cache, two runs each:
+c11ca0a 28.3 s, 24.7 s
+6bd84cf 24.5 s, 24.1 s
+U17 final (9817530, 00:50, coverage leg running beside it): 12 s (gate_times.txt: lint 00:50:07, typecheck noargs 00:50:19)
+lint.sh now 2 s; in the U18 gate 12 s, typecheck 154 s

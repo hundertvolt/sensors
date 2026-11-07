@@ -1,0 +1,12 @@
+# mutant m14_restart_leaves_silent against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m14_restart_leaves_silent
+@@ -693,7 +693,7 @@
+             self._dns_server_task = None
+         self._connection_failures = 0
+         self._hotspot_started_once = False
+-        if self._conn_phase not in (_PHASE_HOTSPOT, _PHASE_DEACTIVATED, _PHASE_SILENT):
++        if self._conn_phase not in (_PHASE_HOTSPOT, _PHASE_DEACTIVATED):
+             # DEACTIVATED (no configuration) and SILENT survive a restart (A.4); HOTSPOT is kept only so reconn_wifi below leaves it
+             # through _leave_hotspot_mode(), after which STA starts a fresh streak with hotspot_started_once cleared, as legacy's restart did
+             # (legacy/firmware/python/CommonDrivers/async_connect.py:176-181).

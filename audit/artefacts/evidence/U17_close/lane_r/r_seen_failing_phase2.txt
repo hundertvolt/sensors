@@ -1,0 +1,8 @@
+FAIL test_the_discard_count_wraps_without_passing_the_cap:	AssertionError: 1073741821
+FAIL test_a_crc_failure_counts_the_whole_frame:	AssertionError: 
+FAIL test_a_mid_frame_timeout_counts_the_partial_frame:	AssertionError: 
+FAIL test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise:	AssertionError: 1073741824
+FAIL test_a_receive_overrun_fails_the_initiators_transaction_and_the_next_succeeds:	TypeError: unexpected keyword argument 'payload_size'
+FAIL test_a_cobs_decode_failure_counts_the_consumed_bytes:	AssertionError: 
+FAIL test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged:	AssertionError: (1073741824, 1073741824)
+FAIL test_an_exact_size_codec_delivers_a_full_frame:

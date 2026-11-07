@@ -1,0 +1,5 @@
+worker rule, OSError-only handler (bench/test_end_to_end_timing.py _client): real module clean=[]; planted copy flagged=['_client (line 102)']
+worker rule, positional target via a helper: real module clean=[]; planted copy flagged=['_planted_worker (line 177)']
+join rule, finally without the join (bench/test_heap_under_connection_ceiling.py): real module clean=[]; planted copy flagged=['_hold_ceiling_open (line 108)']
+rendered emitter: converted script read raw fails (expected one MAP and one ENDMAP print, found 0/0); read rendered finds '=== MAP after_build_system ==='/'=== ENDMAP after_build_system ==='
+website union: real == union True; first-group-only == union False (the hub case fails on it)

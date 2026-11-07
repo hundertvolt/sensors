@@ -1,0 +1,379 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L
+
+ ✓ |chromium| tests_js/live-backend-put-matrix.test.js (354 tests | 353 skipped) 36352ms
+   ✓ live PUT matrix on wozi (4)
+     ✓ live action status/resetErrors/ResetErrors (1)
+       ✓ answers each send with its exact word through the page, its confirmation accepted 33249ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 353 skipped (354)
+   Start at  12:11:18
+   Duration  37.85s (tests 99%, worker 1%)
+
+== Summary: npm test ==
+Commit: d4d4408 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 1 · failed 0 · skipped 353 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped:
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/TempOffset (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/TempOffset (number) > rejects -0.5 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/TempOffset (number) > rejects 655.85 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/TempOffset (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/TempOffset (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/TempOffset (number) > accepts 327.68 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/TempOffset (number) > accepts 655.35 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/MeasInterval (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/MeasInterval (number) > rejects 1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/MeasInterval (number) > rejects 1801 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/MeasInterval (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/MeasInterval (number) > accepts 2 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/MeasInterval (number) > accepts 901 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/MeasInterval (number) > accepts 1800 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/Altitude (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/Altitude (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/Altitude (number) > rejects 65536 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/Altitude (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/Altitude (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/Altitude (number) > accepts 32768 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/Altitude (number) > accepts 65535 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/SelfCal (toggle) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/SelfCal (toggle) > flipping to the opposite state renders Valid with the new state actually shown: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCNoise (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCNoise (number) > rejects 0 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCNoise (number) > rejects 501 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCNoise (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCNoise (number) > accepts 1 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCNoise (number) > accepts 251 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCNoise (number) > accepts 500 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCRate (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCRate (number) > rejects -0.4 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCRate (number) > rejects 1000.5 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCRate (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCRate (number) > accepts 0.1 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCRate (number) > accepts 500.05 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCRate (number) > accepts 1000 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCWindow (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCWindow (number) > rejects 19 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCWindow (number) > rejects 3601 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCWindow (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCWindow (number) > accepts 20 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCWindow (number) > accepts 1810 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/FRCWindow (number) > accepts 3600 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupPeriod (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupPeriod (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupPeriod (number) > rejects 1441 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupPeriod (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupPeriod (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupPeriod (number) > accepts 720 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupPeriod (number) > accepts 1440 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupPeriod (number) > accepts the declared special value 0 ("Backups off"), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupMaxAge (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupMaxAge (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupMaxAge (number) > rejects 10081 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupMaxAge (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupMaxAge (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupMaxAge (number) > accepts 5040 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupMaxAge (number) > accepts 10080 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/BackupMaxAge (number) > accepts the declared special value 0 ("Use all found backups"), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/WaitTimeNTP (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/WaitTimeNTP (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/WaitTimeNTP (number) > rejects 601 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/WaitTimeNTP (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/WaitTimeNTP (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/WaitTimeNTP (number) > accepts 300 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/WaitTimeNTP (number) > accepts 600 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/WaitTimeNTP (number) > accepts the declared special value 0 ("Never wait for NTP sync"), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/SSID (string) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/SSID (string) > rejects a too-long string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/SSID (string) > accepts a 1-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/SSID (string) > accepts a 3-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/SSID (string) > accepts a 32-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/PW (string) > rejects a too-short string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/PW (string) > rejects a too-long string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/PW (string) > accepts a 8-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/PW (string) > accepts a 11-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/PW (string) > accepts a 63-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Country (string) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Country (string) > rejects a too-short string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Country (string) > rejects a too-long string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Country (string) > accepts a 2-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Hostname (string) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Hostname (string) > rejects a too-long string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Hostname (string) > accepts a 1-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Hostname (string) > accepts a 4-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/Hostname (string) > accepts a 32-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/HotspotPW (string) > rejects a too-short string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/HotspotPW (string) > rejects a too-long string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/HotspotPW (string) > accepts a 8-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/HotspotPW (string) > accepts a 11-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/identity/HotspotPW (string) > accepts a 63-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/wifiLed/LEDWifiOn (toggle) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/wifiLed/LEDWifiOn (toggle) > flipping to the opposite state renders Valid with the new state actually shown: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPHost (string) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPHost (string) > rejects a too-short string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPHost (string) > rejects a too-long string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPHost (string) > accepts a 3-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPHost (string) > accepts a 6-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPHost (string) > accepts a 253-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPOffset (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPOffset (number) > rejects -43201 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPOffset (number) > rejects 43201 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPOffset (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPOffset (number) > accepts -43200 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPOffset (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPOffset (number) > accepts 43200 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPInterval (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPInterval (number) > rejects 0 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPInterval (number) > rejects 25 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPInterval (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPInterval (number) > accepts 1 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPInterval (number) > accepts 13 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/ntp/NTPInterval (number) > accepts 24 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/dns/DNSFallback (string) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/dns/DNSFallback (string) > rejects a too-long string: real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/dns/DNSFallback (string) > accepts a 1-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/dns/DNSFallback (string) > accepts a 3-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT networking/dns/DNSFallback (string) > accepts a 47-char string (a valid value distributed across the length range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DebugLevel (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DebugLevel (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DebugLevel (number) > rejects 6 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DebugLevel (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DebugLevel (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DebugLevel (number) > accepts 3 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DebugLevel (number) > accepts 5 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/GMTOffset (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/GMTOffset (number) > rejects -43201 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/GMTOffset (number) > rejects 43201 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/GMTOffset (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/GMTOffset (number) > accepts -43200 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/GMTOffset (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/GMTOffset (number) > accepts 43200 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DSTOffset (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DSTOffset (number) > rejects -43201 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DSTOffset (number) > rejects 43201 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DSTOffset (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DSTOffset (number) > accepts -43200 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DSTOffset (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT system/settings/DSTOffset (number) > accepts 43200 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/AutoOn (toggle) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/AutoOn (toggle) > flipping to the opposite state renders Valid with the new state actually shown: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnH (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnH (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnH (number) > rejects 24 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnH (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnH (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnH (number) > accepts 12 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnH (number) > accepts 23 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnM (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnM (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnM (number) > rejects 60 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnM (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnM (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnM (number) > accepts 30 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OnM (number) > accepts 59 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffH (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffH (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffH (number) > rejects 24 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffH (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffH (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffH (number) > accepts 12 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffH (number) > accepts 23 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffM (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffM (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffM (number) > rejects 60 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffM (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffM (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffM (number) > accepts 30 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/OffM (number) > accepts 59 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashBri (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashBri (number) > rejects 0 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashBri (number) > rejects 256 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashBri (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashBri (number) > accepts 1 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashBri (number) > accepts 128 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashBri (number) > accepts 255 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashInterval (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashInterval (number) > rejects 59 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashInterval (number) > rejects 3601 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashInterval (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashInterval (number) > accepts 60 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashInterval (number) > accepts 1830 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashInterval (number) > accepts 3600 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashDur (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashDur (number) > rejects 0 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashDur (number) > rejects 10.5 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashDur (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashDur (number) > accepts 0.5 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashDur (number) > accepts 5.25 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/FlashDur (number) > accepts 10 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnCO2 (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnCO2 (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnCO2 (number) > rejects 3001 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnCO2 (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnCO2 (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnCO2 (number) > accepts 1500 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnCO2 (number) > accepts 3000 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnVOC (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnVOC (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnVOC (number) > rejects 501 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnVOC (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnVOC (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnVOC (number) > accepts 250 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnVOC (number) > accepts 500 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnHum (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnHum (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnHum (number) > rejects 101 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnHum (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnHum (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnHum (number) > accepts 50 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT notification/autoConfig/WarnHum (number) > accepts 100 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/AmbPres (never Unchanged) > two identical valid sends both answer Valid: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/ForceCalRef (never Unchanged) > two identical valid sends both answer Valid: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SCD30/ContMeas (never Unchanged) > two identical valid sends both answer Valid: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live PUT sensors/SGP40/ResetVOC (never Unchanged) > two identical valid sends both answer Valid: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live action status/resetErrors/ResetErrors > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live action notification/flash/LightCmdLED > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live action notification/pause/PauseTime > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on arzi > live action system/command/SystemCmd > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SampleInterval (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SampleInterval (number) > rejects 0 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SampleInterval (number) > rejects 3601 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SampleInterval (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SampleInterval (number) > accepts 1 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SampleInterval (number) > accepts 1801 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SampleInterval (number) > accepts 3600 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOvers (enum) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOvers (enum) > selecting option 1 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOvers (enum) > selecting option 2 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOvers (enum) > selecting option 4 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOvers (enum) > selecting option 8 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOvers (enum) > selecting option 16 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOvers (enum) > selecting option 32 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > selecting option 1 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > selecting option 2 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > selecting option 4 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > selecting option 8 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > selecting option 16 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > selecting option 32 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 0 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 1 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 3 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 7 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 15 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 31 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 63 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 127 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOffset (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOffset (number) > rejects -501 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOffset (number) > rejects 501 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOffset (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOffset (number) > accepts -500 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOffset (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PresOffset (number) > accepts 500 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOffset (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOffset (number) > rejects -11 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOffset (number) > rejects 11 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOffset (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOffset (number) > accepts -10 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOffset (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOffset (number) > accepts 10 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SeaLevelOffset (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SeaLevelOffset (number) > rejects -1001 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SeaLevelOffset (number) > rejects 5001 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SeaLevelOffset (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SeaLevelOffset (number) > accepts -1000 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SeaLevelOffset (number) > accepts 2000 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/SeaLevelOffset (number) > accepts 5000 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/MeanAtmTemp (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/MeanAtmTemp (number) > rejects -41 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/MeanAtmTemp (number) > rejects 51 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/MeanAtmTemp (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/MeanAtmTemp (number) > accepts -40 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/MeanAtmTemp (number) > accepts 5 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/MeanAtmTemp (number) > accepts 50 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/SampleInterval (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/SampleInterval (number) > rejects 0 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/SampleInterval (number) > rejects 3601 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/SampleInterval (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/SampleInterval (number) > accepts 1 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/SampleInterval (number) > accepts 1801 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/SampleInterval (number) > accepts 3600 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/Resolution (enum) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/Resolution (enum) > selecting option 12 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/Resolution (enum) > selecting option 16 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/RangeAuto (toggle) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/RangeAuto (toggle) > flipping to the opposite state renders Valid with the new state actually shown: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/Range (enum) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/Range (enum) > selecting option 375 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/Range (enum) > selecting option 10000 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeThresh (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeThresh (number) > rejects 49 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeThresh (number) > rejects 96 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeThresh (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeThresh (number) > accepts 50 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeThresh (number) > accepts 73 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeThresh (number) > accepts 95 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeDwell (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeDwell (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeDwell (number) > rejects 301 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeDwell (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeDwell (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeDwell (number) > accepts 150 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeDwell (number) > accepts 300 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/AutoRangeDwell (number) > accepts the declared special value 0 ("No dwell - hardware persistence alone"), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompOffset (enum) > resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip): skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompOffset (enum) > selecting option 0 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompOffset (enum) > selecting option 1 renders Valid with that option actually shown selected: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompAdjust (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompAdjust (number) > rejects -1 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompAdjust (number) > rejects 64 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompAdjust (number) > rejects a decimal-point (fractional) literal for this int-typed field, not silently truncated: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompAdjust (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompAdjust (number) > accepts 32 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/IRCompAdjust (number) > accepts 63 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/FiltCoeff (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/FiltCoeff (number) > rejects -2 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/FiltCoeff (number) > rejects 2 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/FiltCoeff (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/FiltCoeff (number) > accepts -1 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/FiltCoeff (number) > accepts 0 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/FiltCoeff (number) > accepts 1 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/FiltCoeff (number) > accepts the declared special value -1 ("Filter off"), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/GainRatio (number) > resubmitting the field's own current value renders it, answered Unchanged: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/GainRatio (number) > rejects 19 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/GainRatio (number) > rejects 35 (out of range): real render stays at the field's own current value: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/GainRatio (number) > accepts a fractional literal for this float-typed field, rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/GainRatio (number) > accepts 20 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/GainRatio (number) > accepts 27 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/GainRatio (number) > accepts 34 (a valid value distributed across the range), rendered correctly: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/ISL29125/Calibrate (never Unchanged) > two identical valid sends both answer Valid: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live action status/resetErrors/ResetErrors > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live action notification/flash/LightCmdLED > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live action notification/pause/PauseTime > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live action system/command/SystemCmd > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on grkizi > live action status/resetErrors/ResetErrors > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on grkizi > live action notification/flash/LightCmdLED > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on grkizi > live action notification/pause/PauseTime > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on grkizi > live action system/command/SystemCmd > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on klkizi > live action status/resetErrors/ResetErrors > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on klkizi > live action notification/flash/LightCmdLED > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on klkizi > live action notification/pause/PauseTime > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on klkizi > live action system/command/SystemCmd > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on schlafzi > live action status/resetErrors/ResetErrors > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on schlafzi > live action notification/flash/LightCmdLED > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on schlafzi > live action notification/pause/PauseTime > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on schlafzi > live action system/command/SystemCmd > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on wozi > live action notification/flash/LightCmdLED > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on wozi > live action notification/pause/PauseTime > answers each send with its exact word through the page, its confirmation accepted: skip
+  - tests_js/live-backend-put-matrix.test.js > live PUT matrix on wozi > live action system/command/SystemCmd > answers each send with its exact word through the page, its confirmation accepted: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

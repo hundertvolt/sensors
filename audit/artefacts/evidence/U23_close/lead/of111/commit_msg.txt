@@ -1,0 +1,26 @@
+U23 lead: ResetErrors is refused once a reboot or erase command is accepted (OF-111)
+
+WebserverService records, one-way, that a reboot, bootloader, resetconfig or erasefram command answered
+"Valid" (_run_system_cmd(): set before the task yields, so no request runs between SystemService's
+acceptance and the record); from then _put_status() answers ResetErrors "Failed" and starts no reset, so no
+FRAM-backed log, RAM ring or HTTPDropped window is cleared and the logs survive into the reboot. Before, a
+ResetErrors between the acceptance and S3's quiesce answered "Valid" and cleared every log on the chip, and
+one after it answered "Failed" yet cleared every RAM ring. The record is the webserver's own because the
+acceptance state (SystemService._shutdown) is not reachable from the routes without new wiring. mempause, a
+refused or raising command and a word that is no command leave ResetErrors open.
+
+Tests: one unit test over the four words (seen failing on the old code for all four: "Valid", two resets,
+every log and the drop count cleared), a guard for mempause and the commands that were not accepted, and the
+shared shutdown scenario back to "Failed" at every step S1-S6 for every word on all six devices, every error
+log and both blocks of every log chunk on the chip compared around the PUT (seen failing on every device at
+its first word, reboot: "Valid" at S1-S3, logs cleared at S1 and S4).
+
+Owner decision (owner, 2026-10-13: "1 b"), on the question asked in session: "OF-111: refuse
+`ResetErrors` once a reboot or erase command has been accepted? The case: between a reboot or erase
+command's acceptance and the moment FRAM writes pause, a `ResetErrors` still answers "Valid" and clears
+every FRAM-backed error log right before the reboot - the one evidence a reboot keeps. Every device with
+FRAM. (a) As is: accepted until FRAM pauses. (b) Refuse it ("Failed") from the command's acceptance on:
+one line in the status PUT handler; the logs survive into the reboot."
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

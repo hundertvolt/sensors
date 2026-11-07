@@ -1,0 +1,23 @@
+probe_listen_off_netif_idx_plus1 = 49
+probe_listen_off_next_plus1 = 53
+probe_listen_off_remote_ip_plus1 = 25
+probe_listen_off_so_options_plus1 = 50
+probe_listen_off_ttl_plus1 = 52
+probe_mem_alignment = 4
+probe_memp_align_size_listen = 72
+probe_memp_mem_malloc_plus1 = 1
+probe_memp_overflow_check_plus1 = 1
+probe_memp_size_plus1 = 1
+probe_num_listen = 8
+probe_offsetof_errf = 184
+probe_offsetof_recv = 172
+probe_sizeof_ip_addr = 24
+probe_sizeof_ptr = 4
+probe_sizeof_tcp_pcb = 196
+probe_sizeof_tcp_pcb_listen = 72
+probe_sizeof_tcp_seg = 16
+7673:2000d082 00000243 B memp_memory_TCP_PCB_LISTEN_base
+7674-2000d2c5 000006e7 B memp_memory_TCP_PCB_base
+7675-2000d9ac 00000303 B memp_memory_TCP_SEG_base
+7676-2000dcaf 00000193 B memp_memory_UDP_PCB_base
+7677-2000de42 00000001 b nd6_cached_destination_index

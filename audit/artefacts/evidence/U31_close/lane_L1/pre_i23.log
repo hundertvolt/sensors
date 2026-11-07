@@ -1,0 +1,10 @@
+== ruff
+All checks passed!
+ruff rc=0
+== checks
+checks rc=0 788 passed, 1 warning in 62.73s (0:01:02)
+mypy main(no args) rc=1 Found 1 error in 1 file (checked 260 source files)
+mypy main(src tests dev_scripts) rc=1 Found 1 error in 1 file (checked 226 source files)
+mypy host rc=0 Success: no issues found in 303 source files
+mypy twin rc=0 Success: no issues found in 52 source files
+DONE

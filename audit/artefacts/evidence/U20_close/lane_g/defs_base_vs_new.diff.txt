@@ -1,0 +1,35 @@
+# diff -r defs_base defs_new in u20g_work (dump_defs.py's six definitions dumps, base and after G2; computed at evidence assembly, the dumps left out as generated bulk)
+diff -r defs_base/dev.json defs_new/dev.json
+119c119
+<      "label": "BMP388 \u2014 Pressure, Temperature",
+---
+>      "label": "BMP3xx \u2014 Pressure, Temperature",
+445c445
+<      "label": "BMP388 \u2014 Pressure, Temperature",
+---
+>      "label": "BMP3xx \u2014 Pressure, Temperature",
+1453c1453
+<        "label": "BMP388"
+---
+>        "label": "BMP3xx"
+1457c1457
+<        "label": "BMP388 Config Store"
+---
+>        "label": "BMP3xx Config Store"
+diff -r defs_base/wozi.json defs_new/wozi.json
+119c119
+<      "label": "BMP388 \u2014 Pressure, Temperature",
+---
+>      "label": "BMP3xx \u2014 Pressure, Temperature",
+321c321
+<      "label": "BMP388 \u2014 Pressure, Temperature",
+---
+>      "label": "BMP3xx \u2014 Pressure, Temperature",
+1175c1175
+<        "label": "BMP388"
+---
+>        "label": "BMP3xx"
+1179c1179
+<        "label": "BMP388 Config Store"
+---
+>        "label": "BMP3xx Config Store"

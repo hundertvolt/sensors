@@ -1,0 +1,90 @@
+..FF                                                                     [100%]
+=================================== FAILURES ===================================
+_ test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device[generate_definitions] _
+
+generate_sensortask_modules = <module '_generate_sensortask_modules' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19r/scripts/_generate_sensortask_modules.py'>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19r')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-6297/test_a_later_stage_build_error0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f41517d8790>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f415364b850>
+stage = 'generate_definitions'
+
+    @pytest.mark.parametrize("stage", ["generate_definitions", "generate_api_reference"])
+    def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], stage: str) -> None:
+        # A device's outputs are all computed before any is written, so a stage after the module's own
+        # generation failing is the same one-line report and exit 1, with no file of that device behind.
+        monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+        (tmp_path / "devices").mkdir()
+        (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").symlink_to(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml")
+        (tmp_path / "src").symlink_to(repo_root / "src")
+        (tmp_path / "ext").symlink_to(repo_root / "ext")
+    
+        def failing_stage(*_args: object, **_kwargs: object) -> SimpleNamespace:
+            raise BuildError(DEVICE_NAMES[0], f"simulated {stage} failure")
+    
+        monkeypatch.setattr(generate_sensortask_modules, stage, failing_stage)
+    
+>       assert generate_sensortask_modules.main() == 1
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_generate_sensortask_modules.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+scripts/_generate_sensortask_modules.py:58: in main
+    definitions = generate_definitions(generated.model, REPO_ROOT / "src")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+_args = (DeviceModel(device='arzi', path=PosixPath('/tmp/pytest-of-root/pytest-6297/test_a_later_stage_build_error0/devices/ar...'sgp40', ''), ('notification', '')]), PosixPath('/tmp/pytest-of-root/pytest-6297/test_a_later_stage_build_error0/src'))
+_kwargs = {}
+
+    def failing_stage(*_args: object, **_kwargs: object) -> SimpleNamespace:
+>       raise BuildError(DEVICE_NAMES[0], f"simulated {stage} failure")
+E       buildgen.errors.BuildError: [arzi] simulated generate_definitions failure
+
+tests_scripts/test_generate_sensortask_modules.py:88: BuildError
+_ test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device[generate_api_reference] _
+
+generate_sensortask_modules = <module '_generate_sensortask_modules' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19r/scripts/_generate_sensortask_modules.py'>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19r')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-6297/test_a_later_stage_build_error1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f414e532a90>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f414e5331d0>
+stage = 'generate_api_reference'
+
+    @pytest.mark.parametrize("stage", ["generate_definitions", "generate_api_reference"])
+    def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], stage: str) -> None:
+        # A device's outputs are all computed before any is written, so a stage after the module's own
+        # generation failing is the same one-line report and exit 1, with no file of that device behind.
+        monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+        (tmp_path / "devices").mkdir()
+        (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").symlink_to(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml")
+        (tmp_path / "src").symlink_to(repo_root / "src")
+        (tmp_path / "ext").symlink_to(repo_root / "ext")
+    
+        def failing_stage(*_args: object, **_kwargs: object) -> SimpleNamespace:
+            raise BuildError(DEVICE_NAMES[0], f"simulated {stage} failure")
+    
+        monkeypatch.setattr(generate_sensortask_modules, stage, failing_stage)
+    
+>       assert generate_sensortask_modules.main() == 1
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_generate_sensortask_modules.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+scripts/_generate_sensortask_modules.py:60: in main
+    (api_dir / f"{device}.json").write_text(api_reference_json(generate_api_reference(generated.model, REPO_ROOT / "src")))
+                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+_args = (DeviceModel(device='arzi', path=PosixPath('/tmp/pytest-of-root/pytest-6297/test_a_later_stage_build_error1/devices/ar...'sgp40', ''), ('notification', '')]), PosixPath('/tmp/pytest-of-root/pytest-6297/test_a_later_stage_build_error1/src'))
+_kwargs = {}
+
+    def failing_stage(*_args: object, **_kwargs: object) -> SimpleNamespace:
+>       raise BuildError(DEVICE_NAMES[0], f"simulated {stage} failure")
+E       buildgen.errors.BuildError: [arzi] simulated generate_api_reference failure
+
+tests_scripts/test_generate_sensortask_modules.py:88: BuildError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_generate_sensortask_modules.py::test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device[generate_definitions]
+FAILED tests_scripts/test_generate_sensortask_modules.py::test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device[generate_api_reference]
+2 failed, 2 passed in 5.76s

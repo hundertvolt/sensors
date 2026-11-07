@@ -1,0 +1,75 @@
+........................................................................ [  5%]
+........................................................................ [ 11%]
+........................................................................ [ 16%]
+........................................................................ [ 22%]
+........................................................................ [ 28%]
+........................................................................ [ 33%]
+........................................................................ [ 39%]
+........................................................................ [ 44%]
+......................................................................F. [ 50%]
+........................................................................ [ 56%]
+........................................................................ [ 61%]
+........................................................................ [ 67%]
+........................................................................ [ 72%]
+........................................................................ [ 78%]
+........................................................................ [ 84%]
+........................................................................ [ 89%]
+........................................................................ [ 95%]
+........................................F...................             [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31f')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='vitest.config.js', ...r_controller_at', literal='4'), Tag(path='src/asy_base_classes.py', line=404, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_wifi_service.py:148: wifi.sta_disconnect_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:150: wifi.sta_connect_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:154: wifi.hotspot_stations_settle_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:165: wifi.led_hotspot_on_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:167: wifi.led_hotspot_off_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:169: wifi.led_hotspot_client_on_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:171: wifi.led_hotspot_client_off_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:173: wifi.led_deactivated_on_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:175: wifi.led_deactivated_off_ms is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:11405: wifi.hotspot_stations_settle_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11410: wifi.led_hotspot_on_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11411: wifi.led_hotspot_off_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11412: wifi.led_hotspot_client_on_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11413: wifi.led_hotspot_client_off_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11414: wifi.led_deactivated_on_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11415: wifi.led_deactivated_off_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11418: wifi.sta_disconnect_poll_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11420: wifi.sta_connect_poll_s is a tuned row, but no file carries its @tunable tag
+E       assert not ['src/asy_wifi_service.py:148: wifi.sta_disconnect_poll_ms is tagged but has no SPECIFICATION.md Part N row', 'src/asy...w', 'src/asy_wifi_service.py:169: wifi.led_hotspot_client_on_ms is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+________________ test_every_entrys_hashes_are_the_current_files ________________
+
+recorder = <module 'record_twin_instrument_runs' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31f/scripts/record_twin_instrument_runs.py'>
+record = {'tests_hardware/bench/test_boot_order_and_triggers.py': {'api_sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b9...2026-10-20T20:35:32Z', 'gc_threshold': -1, 'reason': 'needs the bench bridge (network, WLAN role-reversal)', ...}, ...}
+
+    def test_every_entrys_hashes_are_the_current_files(recorder: ModuleType, record: "dict[str, dict[str, object]]") -> None:
+        stale = [f"{key}: {name}" for key, entry in sorted(record.items()) if (recorder.REPO_ROOT / key).is_file() for name, digest in recorder.entry_hashes(recorder.REPO_ROOT / key).items() if entry.get(name) != digest]
+>       assert not stale, f"changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: {stale}"
+E       AssertionError: changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: ['tests_hardware/device_scripts/isl29125_mechanism_envelope.py: api_sha256', 'tests_hardware/device_scripts/sgp40_fram_backup_restore.py: api_sha256', 'tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py: api_sha256', 'tests_hardware/device_scripts/uart_crossover_exchange.py: api_sha256', 'tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py: api_sha256', 'tests_hardware/device_scripts/wifi_radio_reinit_recovery.py: api_sha256']
+E       assert not ['tests_hardware/device_scripts/isl29125_mechanism_envelope.py: api_sha256', 'tests_hardware/device_scripts/sgp40_fram...nder_concurrent_system_load.py: api_sha256', 'tests_hardware/device_scripts/wifi_radio_reinit_recovery.py: api_sha256']
+
+tests_scripts/test_twin_record.py:37: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31f/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_twin_record.py::test_every_entrys_hashes_are_the_current_files
+2 failed, 1282 passed, 1 warning in 123.42s (0:02:03)
+
+real	2m4.803s
+user	1m43.222s
+sys	0m4.315s

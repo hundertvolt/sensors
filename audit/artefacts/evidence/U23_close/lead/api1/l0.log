@@ -1,0 +1,338 @@
+........................................................................ [  1%]
+........................................................................ [  3%]
+....................................ssssss.............................. [  4%]
+........................................................................ [  6%]
+........................................................................ [  8%]
+........................................................................ [  9%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 17%]
+........................................................................ [ 19%]
+........................................................................ [ 21%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 27%]
+........................................................................ [ 29%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 35%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 40%]
+........................................................................ [ 42%]
+........................................................................ [ 43%]
+........................................................................ [ 45%]
+........................................................................ [ 47%]
+........................................................................ [ 48%]
+........................................................................ [ 50%]
+...................................................F.................... [ 52%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 61%]
+........................................................................ [ 63%]
+..........................F............................................. [ 65%]
+..............................................s.ssss.................... [ 66%]
+................................................................FFFFFFFF [ 68%]
+........................................................................ [ 69%]
+........................................................................ [ 71%]
+........................................................................ [ 73%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 78%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 82%]
+........................................................................ [ 84%]
+........................................................................ [ 86%]
+........................................................................ [ 87%]
+........................................................................ [ 89%]
+........................................................................ [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 94%]
+........................................................................ [ 95%]
+.............................................F.......................... [ 97%]
+........................................................................ [ 99%]
+.....................................                                    [100%]
+=================================== FAILURES ===================================
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           js/api-contract.js: tests_scripts/test_js_api_mirrors.py
+E       assert not [('js/api-contract.js', 'tests_scripts/test_js_api_mirrors.py')]
+
+tests_scripts/test_citations.py:251: AssertionError
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_decision_vocabulary_names_its_actor_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           tests_js/_source_constants.js: A top-level `const NAME = <int>;` (an `export` in front accepted) read as its in
+E       assert not [('tests_js/_source_constants.js', 'A top-level `const NAME = <int>;` (an `export` in front accepted) read as its in')]
+
+tests_scripts/test_decision_vocabulary.py:89: AssertionError
+_ test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/ext')
+fixtures_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/tests_scripts/buildgen_fixtures')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7642/test_synthetic_fixture_boots_a0')
+device_toml_name = 'multi_instance.toml'
+
+    @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)
+    def test_synthetic_fixture_boots_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
+    ) -> None:
+        # The two mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
+        # the generic wiring mechanism handles a hardware combination none of the 6 real devices use,
+        # not just wozi/dev's own two already-hand-verified layouts.
+        device_toml = fixtures_dir / device_toml_name
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_a_BackupTS', 'sensors.SGP40_a_RestoreTS', 'sensors.SGP40_b_BackupTS', 'sensors.SGP40_b_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:361: AssertionError
+___ test_synthetic_fixture_boots_and_serves_over_real_http[novel_combo.toml] ___
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/ext')
+fixtures_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/tests_scripts/buildgen_fixtures')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7642/test_synthetic_fixture_boots_a1')
+device_toml_name = 'novel_combo.toml'
+
+    @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)
+    def test_synthetic_fixture_boots_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
+    ) -> None:
+        # The two mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
+        # the generic wiring mechanism handles a hardware combination none of the 6 real devices use,
+        # not just wozi/dev's own two already-hand-verified layouts.
+        device_toml = fixtures_dir / device_toml_name
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page...K_Failures']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS', 'sensors.UARTLINK_Transfers', 'sensors.UARTLINK_Failures']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:361: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[arzi] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7642/test_real_device_boots_its_gen0')
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+__ test_real_device_boots_its_generated_module_and_serves_over_real_http[dev] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7642/test_real_device_boots_its_gen1')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page...K_Failures']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS', 'sensors.UARTLINK_Transfers', 'sensors.UARTLINK_Failures']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[grkizi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7642/test_real_device_boots_its_gen2')
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[klkizi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7642/test_real_device_boots_its_gen3')
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[schlafzi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7642/test_real_device_boots_its_gen4')
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[wozi] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7642/test_real_device_boots_its_gen5')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api')
+real_tags = [Tag(path='vitest.config.js', line=35, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: buildgen/definitions.py:39: web.default_decimals is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['buildgen/definitions.py:39: web.default_decimals is tagged but has no SPECIFICATION.md Part N row']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:287: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:457: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api/tests_hardware/bench/test_bus_concurrency_under_api_load.py:546: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[novel_combo.toml]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[arzi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[dev]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[grkizi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[klkizi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[schlafzi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[wozi]
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+11 failed, 4407 passed, 11 skipped, 3 warnings in 515.83s (0:08:35)
+rc=1

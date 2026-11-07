@@ -1,0 +1,16 @@
+11:38:21 start
+11:38:27 rebuild rc=0
+11:38:28 ruff rc=0
+11:38:30 shellcheck rc=0
+11:38:38 mypy main rc=0 Success: no issues found in 260 source files
+11:38:47 mypy main ci-paths rc=0 Success: no issues found in 260 source files
+11:38:49 mypy twin rc=0 Success: no issues found in 52 source files
+11:38:59 mypy host rc=0 Success: no issues found in 283 source files
+11:39:01 mypy bench conftest rc=0
+11:39:03 mypy conftest rc=0
+11:39:06 collect-only rc=0 196/226 tests collected (30 deselected) in 1.42s
+11:41:53 tier g1 rc=0 1802 passed in 156.02s (0:02:36)
+11:43:00 tier g2 rc=0 2144 passed in 232.70s (0:03:52)
+11:44:24 tier g0 rc=1 1 failed, 2214 passed, 6 skipped in 312.28s (0:05:12)
+11:45:26 mp: 8 of 8 rc=0, memory lines 0
+11:45:26 done

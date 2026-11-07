@@ -1,0 +1,6 @@
+FAIL test_a_silent_period_runs_one_attempt_and_a_link_is_a_normal_connection
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2613, in test_a_silent_period_runs_one_attempt_and_a_link_is_a_normal_connection
+AssertionError: the link must end the period
+selected: 1 failed: 1

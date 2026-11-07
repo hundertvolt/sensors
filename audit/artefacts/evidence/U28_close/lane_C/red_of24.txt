@@ -1,0 +1,4 @@
+E       AssertionError: ci.yml's mypy step passes paths - run scripts/typecheck.sh bare, so it checks pyproject.toml's files
+E       assert ['src', 'test...enerated_src'] == []
+E         
+E         Left contains 5 more items, first extra item: 'src'

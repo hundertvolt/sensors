@@ -1,0 +1,11 @@
+intact-data run: 4 writing phases, each ended in EAGAIN, over 32768 B
+test_a_reading_peer_receives_every_byte_intact                            351 ms
+lwIP host pool: 4 connection pairs admitted (MEMP_NUM_TCP_PCB 9, two pcbs per pair)
+test_a_write_to_a_peer_that_stopped_reading_returns_within_the_bound      438 ms
+test_capacity_returns_after_the_peers_close                               950 ms
+test_repeated_rounds_stay_stable                                        16799 ms
+EAGAIN spin: slowest round 1382 us, largest allocation 32 B over 999 rounds (1 with a collection)
+test_the_eagain_spin_round_is_bounded                                    5234 ms
+test_the_queue_limit_edge                                                 101 ms
+test_the_segment_pool_edge                                                103 ms
+slowest write 0.03 ms over 985 writes; slowest handshake 1.48 ms over 117 pairs; slowest recovery 120.1 ms

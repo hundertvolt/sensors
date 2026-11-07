@@ -1,0 +1,2 @@
+PASS test_the_erase_racing_a_logger_write_never_tears_a_chunk
+1/1 passed, 0 failed, 0 skipped

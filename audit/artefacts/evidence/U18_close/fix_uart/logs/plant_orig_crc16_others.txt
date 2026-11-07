@@ -1,0 +1,12 @@
+test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 rep 0 FAIL no recovery within two transactions after step 0 clean_awaits [42] last_k 0 max_ok_wait_vms 0 expired_waits 6 263 ms
+test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 rep 1 FAIL no recovery within two transactions after step 0 clean_awaits [42] last_k 0 max_ok_wait_vms 0 expired_waits 6 271 ms
+SUMMARY test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 plant crc 1000 0 / 2 passed 534 ms
+test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 rep 0 FAIL no recovery within two transactions after step 0 clean_awaits [42] last_k 0 max_ok_wait_vms 0 expired_waits 6 271 ms
+test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 rep 1 FAIL no recovery within two transactions after step 0 clean_awaits [41] last_k 0 max_ok_wait_vms 0 expired_waits 6 283 ms
+SUMMARY test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 plant crc 1000 0 / 2 passed 554 ms
+test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 rep 0 FAIL no recovery within two transactions after step 0 clean_awaits [42] last_k 0 max_ok_wait_vms 0 expired_waits 6 271 ms
+test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 rep 1 FAIL no recovery within two transactions after step 0 clean_awaits [42] last_k 0 max_ok_wait_vms 0 expired_waits 6 268 ms
+SUMMARY test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 plant crc 1000 0 / 2 passed 539 ms
+test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 rep 0 FAIL no recovery within two transactions after step 0 clean_awaits [42] last_k 0 max_ok_wait_vms 0 expired_waits 6 260 ms
+test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 rep 1 FAIL no recovery within two transactions after step 0 clean_awaits [42] last_k 0 max_ok_wait_vms 0 expired_waits 6 269 ms
+SUMMARY test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 plant crc 1000 0 / 2 passed 529 ms

@@ -1,0 +1,70 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/port-lock.test.js (14 tests | 1 failed) 3373ms
+   ❯ the JS port lock (14)
+     ✓ a live node holder refuses a node taker, naming the holder the same way 139ms
+     ✓ a live node holder refuses a bash taker, naming the holder the same way 97ms
+     ✓ a live bash holder refuses a node taker, naming the holder the same way 97ms
+     ✓ a live bash holder refuses a bash taker, naming the holder the same way 64ms
+     ✓ refuses a taker whose inherited chain lists the port but not the holder's pid 118ms
+     ✓ appends the port and its own pid to an inherited chain, once each, and releases the lock when its process exits 54ms
+     ✓ lets a node holder's child (bash, taking another port) and grandchild (node) pass on the held port 149ms
+     ✓ lets a bash holder's child (node, taking another port) and grandchild (bash) pass on the held port 105ms
+     ✓ is re-entrant in one process: an inner release keeps the lock, the outer one removes it 58ms
+     × takes over a lock recording a dead pid, leaving nothing behind 228ms
+     ✓ takes over a lock recording no pid at all, leaving nothing behind 2086ms
+     ✓ refuses port 0 with runner "runner" as a usage error 58ms
+     ✓ refuses port 65536 with runner "runner" as a usage error 68ms
+     ✓ refuses port 53 with runner "" as a usage error 51ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/port-lock.test.js > the JS port lock > takes over a lock recording a dead pid, leaving nothing behind
+AssertionError: expected [ 1, …(1) ] to deeply equal [ +0, '' ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/port-lock.test.js/the-JS-port-lock---takes-over-a-lock-recording-a-dead-pid--leaving-nothing-behind.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   0,[39m
+[32m-   "",[39m
+[31m+   1,[39m
+[31m+   "port 53 is held by gone (pid 2615) - run the suites one after the other (CLAUDE.md)[39m
+[31m+ ",[39m
+[2m  ][22m
+
+ ❯ tests_js/port-lock.test.js:65:44
+     63|     it.each(/** @type {[string, "dead" | ""][]} */ ([["a dead pid", "d…
+     64|         const probe = await commands.probePortLock({ taker: actor("nod…
+     65|         expect([probe.code, probe.stderr]).toEqual([0, ""]);
+       |                                            ^
+     66|         expect(probe.stdout).toMatch(/^took \d+ /mu);
+     67|         expect(probe.rootAfterTaker).toEqual([]);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  17:04:27
+   Duration  4.67s (tests 93%, worker 6%)
+
+== Summary: npm test ==
+Commit: 032eb4c (uncommitted changes)
+Levels: L0
+Counts (tests): passed 13 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/port-lock.test.js > the JS port lock > takes over a lock recording a dead pid, leaving nothing behind: expected [ 1, …(1) ] to deeply equal [ +0, '' ]
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

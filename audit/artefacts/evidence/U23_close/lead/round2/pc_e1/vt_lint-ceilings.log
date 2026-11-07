@@ -1,0 +1,49 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L
+
+ ❯ |chromium| tests_js/lint-ceilings.test.js (4 tests | 1 failed) 5107ms
+   ❯ ESLint complexity ceilings (4)
+     × complexity sits at its measured maximum 1889ms
+     ✓ max-depth sits at its measured maximum 1101ms
+     ✓ max-nested-callbacks sits at its measured maximum 1486ms
+     ✓ max-classes-per-file sits at its measured maximum 627ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/lint-ceilings.test.js > ESLint complexity ceilings > complexity sits at its measured maximum
+AssertionError: expected 0 to be greater than 0
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/lint-ceilings.test.js/ESLint-complexity-ceilings---complexity-sits-at-its-measured-maximum.png
+
+ ❯ tests_js/lint-ceilings.test.js:30:86
+     28|                 // max-classes-per-file accepts no value below 1, so i…
+     29|                 if (rule !== "max-classes-per-file" || value > 1) {
+     30|                     expect(await commands.probeLintRule({ rule, value:…
+       |                                                                                      ^
+     31|                 }
+     32|             },
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  12:12:43
+   Duration  6.26s (tests 96%, worker 3%)
+
+== Summary: npm test ==
+Commit: d4d4408 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 3 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/lint-ceilings.test.js > ESLint complexity ceilings > complexity sits at its measured maximum: expected 0 to be greater than 0
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

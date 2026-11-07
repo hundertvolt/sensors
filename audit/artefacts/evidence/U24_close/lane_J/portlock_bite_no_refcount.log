@@ -1,0 +1,67 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/port-lock.test.js (14 tests | 1 failed) 3460ms
+   ❯ the JS port lock (14)
+     ✓ a live node holder refuses a node taker, naming the holder the same way 127ms
+     ✓ a live node holder refuses a bash taker, naming the holder the same way 72ms
+     ✓ a live bash holder refuses a node taker, naming the holder the same way 119ms
+     ✓ a live bash holder refuses a bash taker, naming the holder the same way 56ms
+     ✓ refuses a taker whose inherited chain lists the port but not the holder's pid 122ms
+     ✓ appends the port and its own pid to an inherited chain, once each, and releases the lock when its process exits 75ms
+     ✓ lets a node holder's child (bash, taking another port) and grandchild (node) pass on the held port 159ms
+     ✓ lets a bash holder's child (node, taking another port) and grandchild (bash) pass on the held port 124ms
+     × is re-entrant in one process: an inner release keeps the lock, the outer one removes it 261ms
+     ✓ takes over a lock recording a dead pid, leaving nothing behind 89ms
+     ✓ takes over a lock recording no pid at all, leaving nothing behind 2083ms
+     ✓ refuses port 0 with runner "runner" as a usage error 52ms
+     ✓ refuses port 65536 with runner "runner" as a usage error 51ms
+     ✓ refuses port 53 with runner "" as a usage error 69ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/port-lock.test.js > the JS port lock > is re-entrant in one process: an inner release keeps the lock, the outer one removes it
+AssertionError: expected 'took 2992 held=53 owner=2992\nafter i…' to contain 'after inner true after outer false'
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/port-lock.test.js/the-JS-port-lock---is-re-entrant-in-one-process--an-inner-release-keeps-the-lock--the-outer-one-removes-it.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- after inner [7mtru[27me after outer false[39m
+[31m+ took 2992 held=53 owner=2992[39m
+[31m+ after inner [7mfals[27me after outer false[39m
+[31m+[39m
+
+ ❯ tests_js/port-lock.test.js:60:30
+     58|         const probe = await commands.probePortLock({ taker: actor("nod…
+     59|         expect(probe.code).toBe(0);
+     60|         expect(probe.stdout).toContain("after inner true after outer f…
+       |                              ^
+     61|     });
+     62|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  17:04:33
+   Duration  4.83s (tests 94%, worker 5%)
+
+== Summary: npm test ==
+Commit: 032eb4c (uncommitted changes)
+Levels: L0
+Counts (tests): passed 13 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/port-lock.test.js > the JS port lock > is re-entrant in one process: an inner release keeps the lock, the outer one removes it: expected 'took 2992 held=53 owner=2992\nafter i…' to contain 'after inner true after outer false'
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

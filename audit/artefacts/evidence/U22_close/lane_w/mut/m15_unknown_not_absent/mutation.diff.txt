@@ -1,0 +1,11 @@
+# mutant m15_unknown_not_absent against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m15_unknown_not_absent
+@@ -552,7 +552,6 @@
+         # Unconfirmed is no client (owner, 2026-10-08): a glitch cannot end the window under a client, whose next good check stops it.
+         if stations is None:
+             await self.pr.wrn_s("Hotspot stations unknown, counted as no client", wrnno=_WRN_WLAN_STATIONS_UNKNOWN)
+-            await self._hotspot_client_absent()
+             return
+         if len(stations) > 0:  # at least one client connected
+             self._hotspot_client_connected()

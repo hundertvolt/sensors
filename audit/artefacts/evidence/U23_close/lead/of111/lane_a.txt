@@ -1,0 +1,14 @@
+after cov test_sensortask_dev
+after f test_sensortask_dev
+after e test_sensortask_dev
+after cov test_sensortask_wozi
+after f test_sensortask_wozi
+after e test_sensortask_wozi
+after cov test_sensortask_arzi
+after f test_sensortask_arzi
+after e test_sensortask_arzi
+after f test_readiness_gates
+after cov test_readiness_gates
+before e test_readiness_gates oldsrc
+before f test_readiness_gates oldsrc
+before cov test_readiness_gates oldsrc

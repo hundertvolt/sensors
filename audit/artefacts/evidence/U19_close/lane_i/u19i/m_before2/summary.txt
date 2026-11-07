@@ -1,0 +1,6 @@
+test_sensortask_dev cov rc=0 elapsed=130.168886252s mem_markers=0 :: 76/76 passed, 0 failed, 0 skipped
+test_sensortask_wozi cov rc=0 elapsed=96.825668175s mem_markers=0 :: 76/76 passed, 0 failed, 0 skipped
+test_sensortask_arzi cov rc=0 elapsed=83.918782121s mem_markers=0 :: 76/76 passed, 0 failed, 0 skipped
+test_sensortask_klkizi cov rc=0 elapsed=85.570071993s mem_markers=0 :: 76/76 passed, 0 failed, 0 skipped
+test_sensortask_grkizi cov rc=0 elapsed=85.101395210s mem_markers=0 :: 76/76 passed, 0 failed, 0 skipped
+test_sensortask_schlafzi cov rc=0 elapsed=80.603274482s mem_markers=0 :: 76/76 passed, 0 failed, 0 skipped

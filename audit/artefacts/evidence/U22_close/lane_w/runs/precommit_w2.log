@@ -1,0 +1,18 @@
+test_error_catalog rc=0 30s :: 33 passed in 19.86s
+test_fault_or_warning_never_both rc=0 4s :: 11 passed in 3.21s
+test_decision_vocabulary rc=0 10s :: 6 passed in 9.71s
+test_citations rc=0 10s :: 15 passed in 9.62s
+test_comment_block_cap rc=0 5s :: 452 passed in 5.10s
+test_tunables_register rc=1 5s :: 1 failed, 14 passed in 4.12s
+E       AssertionError: src/asy_neopixel_driver.py:38: led.overlay_refresh_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_notification_service.py:68: notify.sample_max_age_s is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['src/asy_neopixel_driver.py:38: led.overlay_refresh_ms is tagged but has no SPECIFICATION.md Part N row', 'src/asy_notification_service.py:68: notify.sample_max_age_s is tagged but has no SPECIFICATION.md Part N row']
+test_legacy_paths rc=0 2s :: 3 passed in 1.75s
+test_import_placement rc=0 9s :: 7 passed in 8.90s
+test_code_conventions rc=0 5s :: 23 passed in 3.56s
+test_host_annotations rc=0 2s :: 12 passed in 1.87s
+test_lint_ceilings rc=0 13s :: 19 passed in 12.70s
+test_mypy_any_baseline rc=0 0s :: 7 passed in 0.08s
+test_memory_error_gate_agreement rc=0 5s :: 13 passed in 4.09s
+test_buildgen_definitions rc=0 8s :: 244 passed in 6.50s
+test_api_reference rc=0 13s :: 75 passed in 9.45s

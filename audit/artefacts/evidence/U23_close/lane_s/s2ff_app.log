@@ -1,0 +1,69 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/laneS/head_tree
+
+ ❯ |chromium| tests_js/app.test.js (11 tests | 1 failed | 10 skipped) 199ms
+   ❯ startApp (11)
+     ↓ loads the manifest's first device when ?device= is absent, renders its landing section
+     ↓ falls back to the manifest's first device when ?device= names an unknown device
+     ↓ loads the device ?device= names when the manifest lists it
+     ↓ selects the definitions' landingSection and marks it current in the nav drawer
+     × keeps ?device= while the URL's hash follows the section: a deep link, a menu selection, then Back 197ms
+     ↓ returns a stop handle that stops the shell and uninstalls the mock backend
+     ↓ shows the device-list banner and renders no section when the manifest fails to load
+     ↓ shows the device-list banner when the manifest lists no device
+     ↓ shows the error banner (and does not throw) when the device's definitions.json fails to load
+     ↓ shows the error banner (and does not throw) when the mock samples answer HTTP 500
+     ↓ shows a clear error banner (not a crash) when the mock samples are torn/truncated JSON
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/app.test.js > startApp > keeps ?device= while the URL's hash follows the section: a deep link, a menu selection, then Back
+AssertionError: expected 'Measurements' to be 'Status' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/app.test.js/startApp---keeps--device--while-the-URL-s-hash-follows-the-section--a-deep-link--a-menu-selection--then-Back.png
+
+Expected: [32m"[7mStatu[27ms"[39m
+Received: [31m"[7mMeasurement[27ms"[39m
+
+ ❯ tests_js/app.test.js:145:27
+    143|         const heading = () => mainEl.querySelector(".section-heading")…
+    144|         expect(deviceNameEl.textContent).toBe("Display fixture-b");
+    145|         expect(heading()).toBe("Status");
+       |                           ^
+    146|
+    147|         /** @type {HTMLElement} */ (drawerEl.querySelector('[data-sect…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDHb8Zj7.js?v=45a12d15:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  09:38:37
+   Duration  1.20s (tests 51%, worker 40%, import 9%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 10 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/app.test.js > startApp > keeps ?device= while the URL's hash follows the section: a deep link, a menu selection, then Back: expected 'Measurements' to be 'Status' // Object.is equality
+Skipped:
+  - tests_js/app.test.js > startApp > loads the manifest's first device when ?device= is absent, renders its landing section: skip
+  - tests_js/app.test.js > startApp > falls back to the manifest's first device when ?device= names an unknown device: skip
+  - tests_js/app.test.js > startApp > loads the device ?device= names when the manifest lists it: skip
+  - tests_js/app.test.js > startApp > selects the definitions' landingSection and marks it current in the nav drawer: skip
+  - tests_js/app.test.js > startApp > returns a stop handle that stops the shell and uninstalls the mock backend: skip
+  - tests_js/app.test.js > startApp > shows the device-list banner and renders no section when the manifest fails to load: skip
+  - tests_js/app.test.js > startApp > shows the device-list banner when the manifest lists no device: skip
+  - tests_js/app.test.js > startApp > shows the error banner (and does not throw) when the device's definitions.json fails to load: skip
+  - tests_js/app.test.js > startApp > shows the error banner (and does not throw) when the mock samples answer HTTP 500: skip
+  - tests_js/app.test.js > startApp > shows a clear error banner (not a crash) when the mock samples are torn/truncated JSON: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

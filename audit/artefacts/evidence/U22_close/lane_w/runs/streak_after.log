@@ -1,0 +1,7 @@
+FAIL test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2814, in test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode
+AssertionError: ('the streak never reached its give-up', [0, 0, 0, 0], [])
+PASS test_the_identity_hook_lands_in_the_fresh_boot_state
+selected: 2 failed: 1

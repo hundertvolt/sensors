@@ -1,0 +1,8 @@
+FAIL test_a_transfer_over_the_own_cap_is_the_caps_refusal_at_every_cap AssertionError uart_set at a cap of 2032: ['E83']
+PASS test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks
+PASS test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent
+one-runner done fails 1
+
+real	0m0.162s
+user	0m0.098s
+sys	0m0.026s

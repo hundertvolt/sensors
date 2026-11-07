@@ -1,0 +1,41 @@
+after cov test_sensortask_dev
+after f test_asy_system_service
+after e test_sensortask_dev
+after cov test_asy_system_service
+after f test_sensortask_dev
+after e test_asy_webserver_connections
+after cov test_sensortask_wozi
+after f test_asy_webserver_connections
+after e test_sensortask_wozi
+after cov test_asy_webserver_connections
+after f test_sensortask_wozi
+after e test_readiness_gates
+after cov test_sensortask_arzi
+after f test_readiness_gates
+after e test_sensortask_arzi
+after cov test_readiness_gates
+after f test_sensortask_arzi
+after e test_neopixel_wifi_integration
+after cov test_sensortask_grkizi
+after f test_neopixel_wifi_integration
+after e test_sensortask_grkizi
+after cov test_neopixel_wifi_integration
+after f test_sensortask_grkizi
+after e test_website_build_integration
+after cov test_sensortask_klkizi
+after f test_website_build_integration
+after e test_sensortask_klkizi
+after cov test_website_build_integration
+after f test_sensortask_klkizi
+before e test_readiness_gates oldsrc
+after cov test_sensortask_schlafzi
+before f test_readiness_gates oldsrc
+after e test_sensortask_schlafzi
+before cov test_readiness_gates oldsrc
+after f test_sensortask_schlafzi
+before e test_neopixel_wifi_integration oldsrc
+before f test_neopixel_wifi_integration oldsrc
+before cov test_neopixel_wifi_integration oldsrc
+before e test_website_build_integration oldsrc
+before f test_website_build_integration oldsrc
+before cov test_website_build_integration oldsrc

@@ -1,0 +1,11 @@
+tests/test_asy_webserver_service.py@32768	7.43	0
+tests/test_asy_neopixel_driver.py@32768	9.56	0
+tests/test_digital_twin_fram.py@32768	0.83	0
+tests/test_digital_twin_run_generic_integration.py@-1	1.44	0
+tests/test_digital_twin_run_generic_integration.py@32768	1.58	0
+tests/test_digital_twin_timer_pool.py[wozi]@-1	34.56	0
+tests/test_digital_twin_sensortask_integration.py[dev]@-1	41.70	1
+tests/test_digital_twin_hot_replug.py@-1	71.04	0
+tests/test_digital_twin_hot_replug.py@32768	71.06	0
+tests/test_digital_twin_sensortask_integration.py[dev]@-1	23.08	0
+tests/test_digital_twin_sensortask_integration.py[dev]@32768	23.62	0

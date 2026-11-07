@@ -1,0 +1,181 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23c/harness
+
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds
+Could not refresh Measurements: [Error: GET /measurements failed: Internal server error]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it
+Could not refresh Sensors: [TypeError: Failed to fetch (simulated network failure)]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty
+Could not refresh Measurements: [Error: GET /measurements returned an empty body]
+stderr | tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)
+Could not refresh Measurements: [Error: Response from /measurements was not valid JSON (likely a corrupted or truncated transmission)]
+stderr | tests_js/render.test.js > renderSection > surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error
+Could not refresh Notification: [Error: GET /status failed: Not found]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a section's /status sub-request fails
+Could not refresh Notification: [TypeError: Failed to fetch (simulated)]
+stderr | tests_js/render.test.js > renderSection > the section controller > calls onRecovered once when a failure episode ends, never on a plain success
+Could not refresh Measurements: [Error: GET /measurements failed: Internal server error]
+ ❯ |chromium| tests_js/render.test.js (50 tests | 4 failed) 3678ms
+   ✓ showBanner and hideBanner (1)
+     ✓ show the message through data-shown, and hide it keeping the text 3ms
+   ❯ renderSection (49)
+     ✓ renders readonly measurement fields and updates them on poll 16ms
+     ✓ renders a nested measurement field's own leaf at its declared precision, not [object Object] 14ms
+     ✓ renders a writable number field pre-filled via its current-value caption, and a toggle button 15ms
+     ✓ submits an edited field via Apply and shows the resulting per-field status 38ms
+     ✓ colors each individual field's own box by its own result, not just the card's worst status 23ms
+     × sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field 395ms
+     ✓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change) 22ms
+     ✓ submits a numeric-valued enum field as a number, not a stringified one (regression) 24ms
+     ✓ renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination 13ms
+     ✓ renders an errcount group outside the Status section from GET /status's errcount 11ms
+     ✓ preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll update 116ms
+     ✓ shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result 39ms
+     ❯ a toggle field with no real GET readback but a schema-declared defaultValue (3)
+       × renders On (the schema defaultValue), not Off, despite no real current value 111ms
+       ✓ sparse-omits it when left untouched at the defaultValue (nothing to submit) 12ms
+       ✓ submits it once deliberately flipped away from the defaultValue 23ms
+     ✓ skips the PUT and shows a neutral message when Apply is clicked with nothing to submit 16ms
+     ✓ skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression) 12ms
+     ✓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 429ms
+     ✓ shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it 212ms
+     ✓ reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression) 23ms
+     ✓ reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression) 23ms
+     ✓ reports Invalid for a composite field submitted with only some subfields filled 23ms
+     ✓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification) 23ms
+     ✓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank 14ms
+     ✓ reads maintenance data by path, each of two instances whose flattened keys would collide showing its own value 12ms
+     ✓ shows a visible error banner when a GET response body is empty 12ms
+     ✓ shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error) 12ms
+     ✓ surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error 12ms
+     ✓ shows a visible error banner when a section's /status sub-request fails 12ms
+     ✓ refreshes a readonly field embedded in a writable, live-polled group in place on the next poll 218ms
+     ✓ shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure) 23ms
+     ✓ shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR) 22ms
+     × shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500) 129ms
+     ✓ shows Failed when a PUT response body is empty (a torn/truncated transmission) 22ms
+     × shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status 129ms
+     ✓ the section controller (14)
+       ✓ keeps the same card and readonly value node across three polls 68ms
+       ✓ keeps focus on the errcount card's 'Show all' across a poll 55ms
+       ✓ paints nothing and shows no banner when a GET pending at stop() settles afterwards 65ms
+       ✓ does not queue the next section's first GET behind a stopped section's pending one 64ms
+       ✓ reads a statusPath field's value from GET /status on a section that reads another route 12ms
+       ✓ shows a degraded /status source as unavailable in every field of its card, with the card's cue 14ms
+       ✓ updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns 422ms
+       ✓ renders every errcount row as no data when /status carries no errcount 13ms
+       ✓ renders an errcount entry sent as the unavailable marker as unavailable 12ms
+       ✓ feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike 26ms
+       ✓ shows an epoch field as its age against the device clock, and a float without decimals at the site default 14ms
+       ✓ calls onRecovered once when a failure episode ends, never on a plain success 428ms
+       ✓ logs console.error once per failure episode, not once per failed tick 202ms
+       ✓ counts an Apply on the shell's tracker from the click until its post-write GET settles 25ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field
+AssertionError: expected 'Command executed — MeasInterval: Valid' to be 'OK — MeasInterval: Valid' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---sparse-omits-an-untouched-toggle-enum-field-left-at-its-current-value--unlike-a-dispatch-marked-field.png
+
+Expected: [32m"[7mOK[27m — MeasInterval: Valid"[39m
+Received: [31m"[7mCommand executed[27m — MeasInterval: Valid"[39m
+
+ ❯ tests_js/render.test.js:381:62
+    379|         expect(card.dataset.applyStatus).toBe("valid");
+    380|         // Only the field that actually changed shows up in the result…
+    381|         expect(mustQuery(card, ".apply-result").textContent).toBe("OK …
+       |                                                              ^
+    382|     });
+    383|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1e0125a0:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value
+AssertionError: expected 'false' to be 'true' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---a-toggle-field-with-no-real-GET-readback-but-a-schema-declared-defaultValue---renders-On--the-schema-defaultValue---not-Off--despite-no-real-current-value.png
+
+Expected: [32m"[7mtru[27me"[39m
+Received: [31m"[7mfals[27me"[39m
+
+ ❯ tests_js/render.test.js:578:57
+    576|
+    577|             const toggle = mustQuery(main, '[data-field-key="AuxEnable…
+    578|             expect(toggle.getAttribute("aria-pressed")).toBe("true");
+       |                                                         ^
+    579|             expect(toggle.textContent).toBe("On");
+    580|         });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1e0125a0:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500)
+AssertionError: expected 'Request failed: Error: Internal serve…' to match /simulated failure/i
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Failed-with-the-server-s-own-descr-when-a-PUT-hits-a-shaped-HTTP-error--500-.png
+
+[32m- Expected:[39m
+/simulated failure/i
+
+[31m+ Received:[39m
+"Request failed: Error: Internal server error"
+
+ ❯ tests_js/render.test.js:1066:62
+    1064|         const card = mustQuery(main, '[data-group-key="SCD30"]');
+    1065|         expect(card.dataset.applyStatus).toBe("failed");
+    1066|         expect(mustQuery(card, ".apply-result").textContent).toMatch(/…
+       |                                                              ^
+    1067|     });
+    1068|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1e0125a0:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status
+AssertionError: expected 'Request failed: RangeError: Failed to…' to contain 'MeasInterval: Failed'
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Failed-for-a-field-silently-missing-from-a-nominally-OK-PUT-response--without-losing-the-other-field-s-real-status.png
+
+Expected: [32m"MeasInterval: Failed"[39m
+Received: [31m"Request failed: RangeError: Failed to construct 'Response': The status provided (0) is outside the range [200, 599]."[39m
+
+ ❯ tests_js/render.test.js:1105:62
+    1103|         const card = mustQuery(main, '[data-group-key="SCD30"]');
+    1104|         expect(card.dataset.applyStatus).toBe("failed"); // worst-firs…
+    1105|         expect(mustQuery(card, ".apply-result").textContent).toContain…
+       |                                                              ^
+    1106|         // The reconciled Failed status reaches the field's own box to…
+    1107|         expect(mustQuery(card, '[data-field-wrapper-key="MeasInterval"…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1e0125a0:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 46 passed (50)
+   Start at  09:04:43
+   Duration  5.66s (tests 89%, worker 8%, import 3%)
+
+== Summary: npm test ==
+Commit: 6d9ae47 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 46 · failed 4 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/render.test.js > renderSection > sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field: expected 'Command executed — MeasInterval: Valid' to be 'OK — MeasInterval: Valid' // Object.is equality
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value: expected 'false' to be 'true' // Object.is equality
+  - tests_js/render.test.js > renderSection > shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500): expected 'Request failed: Error: Internal serve…' to match /simulated failure/i
+  - tests_js/render.test.js > renderSection > shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status: expected 'Request failed: RangeError: Failed to…' to contain 'MeasInterval: Failed'
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

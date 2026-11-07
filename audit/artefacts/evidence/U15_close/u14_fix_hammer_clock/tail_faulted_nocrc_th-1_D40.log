@@ -1,0 +1,37 @@
+FLIP k=560 D=40 stalled=1 window_sleeps=597 window_failed_calls=0 responder_failed_listens=0+0 464ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=561 D=40 stalled=1 window_sleeps=594 window_failed_calls=0 responder_failed_listens=0+0 445ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=562 D=40 stalled=1 window_sleeps=716 window_failed_calls=1 responder_failed_listens=1+0 573ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=563 D=40 stalled=1 window_sleeps=713 window_failed_calls=1 responder_failed_listens=1+0 537ms: FAIL AssertionError: 32 bytes over 30 failures = 1.1 B/failure
+FLIP k=564 D=40 stalled=1 window_sleeps=715 window_failed_calls=1 responder_failed_listens=1+0 547ms: FAIL AssertionError: 32 bytes over 30 failures = 1.1 B/failure
+FLIP k=565 D=40 stalled=1 window_sleeps=753 window_failed_calls=1 responder_failed_listens=1+0 600ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=566 D=40 stalled=1 window_sleeps=714 window_failed_calls=1 responder_failed_listens=1+0 551ms: FAIL AssertionError: 96 bytes over 30 failures = 3.2 B/failure
+ok   k=567 D=40 stalled=1 window_sleeps=719 window_failed_calls=1 responder_failed_listens=1+1 699ms: pass
+FLIP k=568 D=40 stalled=1 window_sleeps=711 window_failed_calls=1 responder_failed_listens=1+0 550ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+ok   k=569 D=40 stalled=1 window_sleeps=715 window_failed_calls=1 responder_failed_listens=1+1 657ms: pass
+FLIP k=570 D=40 stalled=1 window_sleeps=708 window_failed_calls=1 responder_failed_listens=1+0 546ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=571 D=40 stalled=1 window_sleeps=722 window_failed_calls=1 responder_failed_listens=1+0 536ms: FAIL AssertionError: 96 bytes over 30 failures = 3.2 B/failure
+ok   k=572 D=40 stalled=1 window_sleeps=723 window_failed_calls=1 responder_failed_listens=1+1 695ms: pass
+FLIP k=573 D=40 stalled=1 window_sleeps=592 window_failed_calls=0 responder_failed_listens=0+0 445ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+ok   k=574 D=40 stalled=1 window_sleeps=721 window_failed_calls=1 responder_failed_listens=1+1 657ms: pass
+FLIP k=575 D=40 stalled=1 window_sleeps=598 window_failed_calls=0 responder_failed_listens=0+0 485ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+ok   k=576 D=40 stalled=1 window_sleeps=715 window_failed_calls=1 responder_failed_listens=1+1 661ms: pass
+FLIP k=577 D=40 stalled=1 window_sleeps=596 window_failed_calls=0 responder_failed_listens=0+0 448ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=578 D=40 stalled=1 window_sleeps=597 window_failed_calls=0 responder_failed_listens=0+0 463ms: FAIL AssertionError: 96 bytes over 30 failures = 3.2 B/failure
+ok   k=579 D=40 stalled=1 window_sleeps=728 window_failed_calls=1 responder_failed_listens=1+1 697ms: pass
+FLIP k=580 D=40 stalled=1 window_sleeps=672 window_failed_calls=1 responder_failed_listens=0+0 494ms: FAIL AssertionError: 352 bytes over 30 failures = 11.7 B/failure
+FLIP k=581 D=40 stalled=1 window_sleeps=593 window_failed_calls=0 responder_failed_listens=0+0 441ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=582 D=40 stalled=1 window_sleeps=665 window_failed_calls=1 responder_failed_listens=0+0 507ms: FAIL AssertionError: 352 bytes over 30 failures = 11.7 B/failure
+FLIP k=583 D=40 stalled=1 window_sleeps=596 window_failed_calls=0 responder_failed_listens=0+0 449ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=584 D=40 stalled=1 window_sleeps=595 window_failed_calls=0 responder_failed_listens=0+0 448ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=585 D=40 stalled=1 window_sleeps=676 window_failed_calls=1 responder_failed_listens=0+0 513ms: FAIL AssertionError: 352 bytes over 30 failures = 11.7 B/failure
+ok   k=586 D=40 stalled=1 window_sleeps=731 window_failed_calls=1 responder_failed_listens=1+1 685ms: pass
+FLIP k=587 D=40 stalled=1 window_sleeps=605 window_failed_calls=0 responder_failed_listens=0+0 470ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+ok   k=588 D=40 stalled=1 window_sleeps=733 window_failed_calls=1 responder_failed_listens=1+1 681ms: pass
+FLIP k=589 D=40 stalled=1 window_sleeps=591 window_failed_calls=0 responder_failed_listens=0+0 461ms: FAIL AssertionError: 352 bytes over 30 failures = 11.7 B/failure
+FLIP k=590 D=40 stalled=1 window_sleeps=591 window_failed_calls=0 responder_failed_listens=0+0 472ms: FAIL AssertionError: 352 bytes over 30 failures = 11.7 B/failure
+FLIP k=591 D=40 stalled=1 window_sleeps=678 window_failed_calls=1 responder_failed_listens=0+0 505ms: FAIL AssertionError: 416 bytes over 30 failures = 13.9 B/failure
+FLIP k=592 D=40 stalled=1 window_sleeps=681 window_failed_calls=1 responder_failed_listens=0+0 520ms: FAIL AssertionError: 416 bytes over 30 failures = 13.9 B/failure
+FLIP k=593 D=40 stalled=0 window_sleeps=592 window_failed_calls=0 responder_failed_listens=0+0 400ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=594 D=40 stalled=1 window_sleeps=596 window_failed_calls=0 responder_failed_listens=0+0 437ms: FAIL AssertionError: 352 bytes over 30 failures = 11.7 B/failure
+FLIP k=595 D=40 stalled=1 window_sleeps=598 window_failed_calls=0 responder_failed_listens=0+0 448ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+ok   k=596 D=40 stalled=1 window_sleeps=728 window_failed_calls=1 responder_failed_listens=1+1 673ms: pass

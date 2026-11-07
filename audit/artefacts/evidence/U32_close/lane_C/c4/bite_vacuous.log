@@ -1,0 +1,162 @@
+.FFFFFF.                                                                 [100%]
+=================================== FAILURES ===================================
+___________ test_a_supervised_loop_started_outside_its_starter_fails ___________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12060/test_a_supervised_loop_started0/src')
+
+    def test_a_supervised_loop_started_outside_its_starter_fails(src_copy: Path) -> None:
+        _edit(src_copy, "asy_neopixel_driver.py", "    def toggle(self) -> None:\n", "    def toggle(self) -> None:\n        asyncio.create_task(self._signal_loop())\n")
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and "NeopixelDriver.toggle(): its task NeopixelDriver._signal_loop() (asy_neopixel_driver.py:" in findings[0], findings
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+../u32/laneC/bites/c4/vac/test_task_tops.py:154: AssertionError
+___________ test_a_top_that_does_not_cover_its_task_fails[narrowed] ____________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12060/test_a_top_that_does_not_cover0/src')
+name = 'asy_config_manager.py'
+old = "        except Exception as e:  # an unsupervised task's top"
+new = "        except OSError as e:  # an unsupervised task's top"
+
+    @pytest.mark.parametrize(
+        ("name", "old", "new"),
+        [
+            ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
+        ],
+        ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "loop-pass-outside-the-top"],
+    )
+    def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
+        _edit(src_copy, name, old, new)
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+../u32/laneC/bites/c4/vac/test_task_tops.py:171: AssertionError
+_______ test_a_top_that_does_not_cover_its_task_fails[cause-not-logged] ________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12060/test_a_top_that_does_not_cover1/src')
+name = 'asy_config_manager.py', old = '"- flush task failed:", e, errno='
+new = '"- flush task failed:", errno='
+
+    @pytest.mark.parametrize(
+        ("name", "old", "new"),
+        [
+            ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
+        ],
+        ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "loop-pass-outside-the-top"],
+    )
+    def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
+        _edit(src_copy, name, old, new)
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+../u32/laneC/bites/c4/vac/test_task_tops.py:171: AssertionError
+______ test_a_top_that_does_not_cover_its_task_fails[fatal-not-reported] _______
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12060/test_a_top_that_does_not_cover2/src')
+name = 'asy_config_manager.py'
+old = '            report_if_fatal(e)\n            self.unpersisted = True  # the finally'
+new = '            self.unpersisted = True  # the finally'
+
+    @pytest.mark.parametrize(
+        ("name", "old", "new"),
+        [
+            ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
+        ],
+        ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "loop-pass-outside-the-top"],
+    )
+    def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
+        _edit(src_copy, name, old, new)
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+../u32/laneC/bites/c4/vac/test_task_tops.py:171: AssertionError
+______ test_a_top_that_does_not_cover_its_task_fails[work-after-the-top] _______
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12060/test_a_top_that_does_not_cover3/src')
+name = 'asy_wifi_service.py'
+old = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n'
+new = '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'
+
+    @pytest.mark.parametrize(
+        ("name", "old", "new"),
+        [
+            ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
+        ],
+        ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "loop-pass-outside-the-top"],
+    )
+    def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
+        _edit(src_copy, name, old, new)
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+../u32/laneC/bites/c4/vac/test_task_tops.py:171: AssertionError
+___ test_a_top_that_does_not_cover_its_task_fails[loop-pass-outside-the-top] ___
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-12060/test_a_top_that_does_not_cover4/src')
+name = 'asy_captive_dns.py'
+old = '            while True:\n                try:\n'
+new = '            while True:\n                await asyncio.sleep(0)\n                try:\n'
+
+    @pytest.mark.parametrize(
+        ("name", "old", "new"),
+        [
+            ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
+            ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
+            ("asy_config_manager.py", "            report_if_fatal(e)\n            self.unpersisted = True  # the finally", "            self.unpersisted = True  # the finally"),
+            ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
+            ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
+        ],
+        ids=["narrowed", "cause-not-logged", "fatal-not-reported", "work-after-the-top", "loop-pass-outside-the-top"],
+    )
+    def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
+        _edit(src_copy, name, old, new)
+        findings = task_tops(src_copy)[0]
+>       assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+../u32/laneC/bites/c4/vac/test_task_tops.py:171: AssertionError
+=========================== short test summary info ============================
+FAILED ::test_a_supervised_loop_started_outside_its_starter_fails - Assertion...
+FAILED ::test_a_top_that_does_not_cover_its_task_fails[narrowed] - AssertionE...
+FAILED ::test_a_top_that_does_not_cover_its_task_fails[cause-not-logged] - As...
+FAILED ::test_a_top_that_does_not_cover_its_task_fails[fatal-not-reported] - ...
+FAILED ::test_a_top_that_does_not_cover_its_task_fails[work-after-the-top] - ...
+FAILED ::test_a_top_that_does_not_cover_its_task_fails[loop-pass-outside-the-top]
+6 failed, 2 passed in 1.75s

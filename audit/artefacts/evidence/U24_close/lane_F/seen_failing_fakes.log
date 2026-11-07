@@ -1,0 +1,201 @@
+FAIL test_the_timer_takes_rp2s_keywords_and_only_the_soft_timer_id
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 102, in test_the_timer_takes_rp2s_keywords_and_only_the_soft_timer_id
+  File "tests/machine.py", line 1051, in __init__
+TypeError: unexpected keyword argument 'hard'
+rc=0 -- test_the_timer_takes_rp2s_keywords_and_only_the_soft_timer_id
+FAIL test_a_fresh_network_reads_the_pico_w_power_on_seeds
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 136, in test_a_fresh_network_reads_the_pico_w_power_on_seeds
+AssertionError: 
+rc=0 -- test_a_fresh_network_reads_the_pico_w_power_on_seeds
+FAIL test_one_wlan_object_per_interface_counted
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 142, in test_one_wlan_object_per_interface_counted
+AssertionError: 
+rc=0 -- test_one_wlan_object_per_interface_counted
+FAIL test_wlan_deinit_drops_both_links
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 156, in test_wlan_deinit_drops_both_links
+AssertionError: 
+rc=0 -- test_wlan_deinit_drops_both_links
+FAIL test_wlan_status_raises_where_cyw43_raises
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 167, in test_wlan_status_raises_where_cyw43_raises
+AssertionError: rssi
+rc=0 -- test_wlan_status_raises_where_cyw43_raises
+FAIL test_a_pin_init_with_no_pull_clears_an_earlier_pull
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 184, in test_a_pin_init_with_no_pull_clears_an_earlier_pull
+AssertionError: 
+rc=0 -- test_a_pin_init_with_no_pull_clears_an_earlier_pull
+PASS test_a_pin_named_by_id_alone_changes_nothing
+rc=0 -- test_a_pin_named_by_id_alone_changes_nothing
+FAIL test_pin_names_and_numbers_share_one_gpio
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 200, in test_pin_names_and_numbers_share_one_gpio
+  File "tests/machine.py", line 48, in __init__
+TypeError: Pin id must be an int
+rc=0 -- test_pin_names_and_numbers_share_one_gpio
+FAIL test_pin_ids_outside_the_rp2_table_raise_invalid_pin
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 211, in test_pin_ids_outside_the_rp2_table_raise_invalid_pin
+AssertionError: 1.5
+rc=0 -- test_pin_ids_outside_the_rp2_table_raise_invalid_pin
+FAIL test_an_external_pin_refuses_a_pull_an_alt_and_open_drain
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 228, in test_an_external_pin_refuses_a_pull_an_alt_and_open_drain
+AssertionError: ('LED', 0, 1)
+rc=0 -- test_an_external_pin_refuses_a_pull_an_alt_and_open_drain
+PASS test_an_open_drain_release_reads_the_scripted_line
+rc=0 -- test_an_open_drain_release_reads_the_scripted_line
+PASS test_alt_mode_records_the_alternate_function
+rc=0 -- test_alt_mode_records_the_alternate_function
+FAIL test_a_second_i2c_construction_returns_the_same_bus_with_its_state
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 258, in test_a_second_i2c_construction_returns_the_same_bus_with_its_state
+TypeError: inject_fault() takes 4 positional arguments but 5 were given
+rc=0 -- test_a_second_i2c_construction_returns_the_same_bus_with_its_state
+PASS test_reset_id_power_cycles_one_bus
+rc=0 -- test_reset_id_power_cycles_one_bus
+PASS test_raise_on_construct_raises_once
+rc=0 -- test_raise_on_construct_raises_once
+FAIL test_an_i2c_id_outside_the_two_controllers_raises
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 285, in test_an_i2c_id_outside_the_two_controllers_raises
+AssertionError: 
+rc=0 -- test_an_i2c_id_outside_the_two_controllers_raises
+FAIL test_a_zero_length_probe_answers_as_rp2s_soft_transfer
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 292, in test_a_zero_length_probe_answers_as_rp2s_soft_transfer
+AttributeError: 'I2C' object has no attribute 'attached'
+rc=0 -- test_a_zero_length_probe_answers_as_rp2s_soft_transfer
+FAIL test_scan_never_raises_and_lists_what_answers_a_probe
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 312, in test_scan_never_raises_and_lists_what_answers_a_probe
+AttributeError: 'I2C' object has no attribute 'attached'
+rc=0 -- test_scan_never_raises_and_lists_what_answers_a_probe
+FAIL test_an_i2c_op_that_cannot_raise_is_refused
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 324, in test_an_i2c_op_that_cannot_raise_is_refused
+AssertionError: scan
+rc=0 -- test_an_i2c_op_that_cannot_raise_is_refused
+FAIL test_an_i2c_fault_fires_fresh_exceptions_in_order_and_counts_down
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 330, in test_an_i2c_fault_fires_fresh_exceptions_in_order_and_counts_down
+TypeError: inject_fault() takes 4 positional arguments but 5 were given
+rc=0 -- test_an_i2c_fault_fires_fresh_exceptions_in_order_and_counts_down
+FAIL test_an_i2c_fault_aimed_at_a_register_or_an_address_spares_the_rest
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 343, in test_an_i2c_fault_aimed_at_a_register_or_an_address_spares_the_rest
+TypeError: unexpected keyword argument 'address'
+rc=0 -- test_an_i2c_fault_aimed_at_a_register_or_an_address_spares_the_rest
+FAIL test_a_multi_byte_register_access_spans_consecutive_registers
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 357, in test_a_multi_byte_register_access_spans_consecutive_registers
+AssertionError: 
+rc=0 -- test_a_multi_byte_register_access_spans_consecutive_registers
+FAIL test_spi_bit_order_numbers_are_rp2s
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 374, in test_spi_bit_order_numbers_are_rp2s
+AssertionError: 
+rc=0 -- test_spi_bit_order_numbers_are_rp2s
+FAIL test_an_spi_read_fault_waits_for_a_dma_sized_transfer
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 384, in test_an_spi_read_fault_waits_for_a_dma_sized_transfer
+TypeError: inject_fault() takes 4 positional arguments but 5 were given
+rc=0 -- test_an_spi_read_fault_waits_for_a_dma_sized_transfer
+FAIL test_an_spi_fault_aimed_at_an_opcode_spares_the_other_commands
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 396, in test_an_spi_fault_aimed_at_an_opcode_spares_the_other_commands
+TypeError: unexpected keyword argument 'match'
+rc=0 -- test_an_spi_fault_aimed_at_an_opcode_spares_the_other_commands
+FAIL test_an_spi_write_fault_is_refused
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 406, in test_an_spi_write_fault_is_refused
+AssertionError: 
+rc=0 -- test_an_spi_write_fault_is_refused
+FAIL test_a_uart_buffer_below_thirty_two_bytes_is_clamped
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 415, in test_a_uart_buffer_below_thirty_two_bytes_is_clamped
+AssertionError: 
+rc=0 -- test_a_uart_buffer_below_thirty_two_bytes_is_clamped
+FAIL test_the_rtc_setter_takes_exactly_eight_fields
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 428, in test_the_rtc_setter_takes_exactly_eight_fields
+AssertionError: 
+rc=0 -- test_the_rtc_setter_takes_exactly_eight_fields
+FAIL test_the_rtc_getter_recomputes_the_date_and_weekday
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 436, in test_the_rtc_getter_recomputes_the_date_and_weekday
+AssertionError: 
+rc=0 -- test_the_rtc_getter_recomputes_the_date_and_weekday
+FAIL test_a_wdt_timeout_above_the_rp2040_cap_raises
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 447, in test_a_wdt_timeout_above_the_rp2040_cap_raises
+AssertionError: {'timeout': 8389}
+rc=0 -- test_a_wdt_timeout_above_the_rp2040_cap_raises
+FAIL test_reset_and_bootloader_count_then_never_return
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 455, in test_reset_and_bootloader_count_then_never_return
+AttributeError: module 'machine' has no attribute 'SimulatedResetError'
+rc=0 -- test_reset_and_bootloader_count_then_never_return
+FAIL test_a_neopixel_stores_grb_bytes_in_a_bytearray
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 471, in test_a_neopixel_stores_grb_bytes_in_a_bytearray
+AttributeError: 'NeoPixel' object has no attribute 'buf'
+rc=0 -- test_a_neopixel_stores_grb_bytes_in_a_bytearray
+FAIL test_a_neopixel_fill_len_and_timing_follow_the_library
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 479, in test_a_neopixel_fill_len_and_timing_follow_the_library
+TypeError: unexpected keyword argument 'timing'
+rc=0 -- test_a_neopixel_fill_len_and_timing_follow_the_library
+FAIL test_a_neopixel_write_log_keeps_the_newest_frames_and_counts_the_rest
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 491, in test_a_neopixel_write_log_keeps_the_newest_frames_and_counts_the_rest
+AttributeError: 'list' object has no attribute 'dropped'
+rc=0 -- test_a_neopixel_write_log_keeps_the_newest_frames_and_counts_the_rest
+FAIL test_reset_test_state_restores_every_knob
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 538, in test_reset_test_state_restores_every_knob
+AttributeError: module 'machine' has no attribute 'reset_test_state'
+rc=0 -- test_reset_test_state_restores_every_knob
+PASS test_the_reset_hook_1_leaves_every_knob_set
+rc=0 -- test_the_reset_hook_1_leaves_every_knob_set
+FAIL test_the_reset_hook_2_sees_every_default
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 549, in test_the_reset_hook_2_sees_every_default
+  File "<string>", line 525, in _assert_every_knob_at_its_default
+AssertionError: 
+rc=0 -- test_the_reset_hook_2_sees_every_default

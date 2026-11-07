@@ -1,0 +1,6 @@
+ss_old rc=1 167/178 passed, 11 failed, 0 skipped
+ss_new rc=1 166/178 passed, 12 failed, 0 skipped
+st_old rc=1 90/91 passed, 1 failed, 0 skipped
+st_new rc=1 88/91 passed, 3 failed, 0 skipped
+np_old rc=1 2/6 passed, 4 failed, 0 skipped
+np_new rc=1 1/6 passed, 5 failed, 0 skipped

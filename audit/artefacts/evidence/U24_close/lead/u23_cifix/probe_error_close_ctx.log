@@ -1,0 +1,10 @@
+browser 153.0.8010.12
+page.close right after the second reset: pending after 6000 ms (6001 ms)
+  then context.close: settled
+context.close right after the second reset: settled (14 ms)
+page.close right after the second reset: pending after 6000 ms (6002 ms)
+  then context.close: settled
+context.close right after the second reset: settled (8 ms)
+page.close right after the second reset: pending after 6000 ms (6001 ms)
+  then context.close: settled
+context.close right after the second reset: settled (8 ms)

@@ -1,0 +1,616 @@
+{
+ "conventions": "Read at 32a62f28 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise; CancelledError delivered at an await is its task's cancellation and propagates by design (a BaseException subclass, extmod/asyncio/core.py:18, so none of this module's eight `except Exception` clauses, :464, :479, :510, :520, :548, :574, :686, :701, swallows it). Small fixed allocations: a *args tuple (py/bc.c:163), a star-call's argument array (py/runtime.c:790-812), an async def's or a generator expression's generator (py/objgenerator.c:53-66), a closure, a heap iterator, a dict view and its 2-tuple per item (py/objdict.c:469, :550-555), a memoryview or its slice (py/objarray.c:216-233, :456-470), a divmod() pair, a boxed float, or a timestamp past 2**30 (shared/timeutils/timeutils.h:86-92); each is fixed per call site, so such a call can raise MemoryError on an exhausted heap. F.2 sends these to I.4(a): a function doomed without memory does not catch, and asyncio primitives are never wrapped as a blanket policy. Where each lands, by context: at construction (inside build_system()) and in a setup() (run_setups() catches nothing, asy_system_service.py:738-744) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException catches it (build/generated_src/sensortask_<device>_main.py:38, emitted by buildgen/codegen.py:867), records the loop end and leaves the armed watchdog to reset; in a supervised task (a reader's _read_loop() or _trigger_loop(), a service loop) the task ends and _log_dead_task()'s except Exception (asy_system_service.py:326) persists it as TASK_RAISED, after which the supervisor restarts the task (I.4(c)); in a timer starter, _run_timer_starter()'s except Exception (asy_system_service.py:436); in a REST handler (a config GET or PUT) Microdot's dispatch_request() catches it (ext/microdot.py:1533) and hands it to the errorhandler registered for Exception (asy_webserver_service.py:617, _handle_unhandled_exception() :791), which persists it and answers 500 (SPECIFICATION.md A.5). An import-time allocation precedes the boot entry's try and is the armed watchdog's alone (WDT armed at sensortask_<device>_main.py:6, I.4(d)). Parameter types are the mypy-checked ones of each signature; D.2 forbids defending against out-of-contract types at run time.",
+ "raises": {},
+ "calls": {
+  "<module>::TypeVar": {
+   "can_raise": "nothing at run time: the call sits in the `if TYPE_CHECKING:` block (:27-70)",
+   "verdict": "unreachable",
+   "proof": "TYPE_CHECKING is False on MicroPython: typing has no runtime presence, so the import at :23 raises ImportError and :25 binds False; the block never runs (mypy alone reads it)"
+  },
+  "<module>::namedtuple": {
+   "can_raise": "TypeError for fields that are neither a str nor a sequence of str (new_namedtuple_type, py/objnamedtuple.c:171-181); MemoryError for the new type (:146, m_new_obj_var0), a fixed size",
+   "verdict": "handled",
+   "proof": "the fields are the literal tuple of two str, so the TypeError cannot occur; the one fixed allocation runs at import, the armed watchdog's alone (conventions)"
+  },
+  "<module>::const": {
+   "can_raise": "nothing at run time: the parser folds `X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842)",
+   "verdict": "unreachable",
+   "proof": "no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864); the underscore names are dropped from the module (:855-858), and COUNTER_CAP (:76) and UNAVAILABLE (:78) keep a plain store of the folded value (:862-866), a str being a constant too (mp_parse_node_is_const, :376); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot"
+  },
+  "Lockable.__init__::asyncio.Lock": {
+   "can_raise": "MemoryError for the Lock and its TaskQueue (extmod/asyncio/lock.py:9-16), a fixed size",
+   "verdict": "handled",
+   "proof": "construction only: Lockable's subclasses (DeviceSession :136, I2CDevice asy_i2c_driver.py:448, SPIDevice asy_spi_driver.py:108, UART asy_uart_driver.py:88, FRAM_SPI asy_fram_driver.py:121) are bus and session objects built in their owners' constructors inside build_system(), so the boot entry's except BaseException holds it (conventions)"
+  },
+  "Lockable.__aenter__::self.session_lock.acquire": {
+   "can_raise": "CancelledError re-raised from the wait (extmod/asyncio/lock.py:39-46); MemoryError for the generator the call allocates (acquire is a generator function, :33); the TaskQueue push is C and allocates nothing",
+   "verdict": "handled",
+   "proof": "the cancellation propagates by design and the generator is a small fixed allocation, landing at the caller's task top or REST handler (conventions)"
+  },
+  "Lockable.__aexit__::self.session_lock.release": {
+   "can_raise": "RuntimeError('Lock not acquired') (extmod/asyncio/lock.py:22-23); nothing else: a fixed-arity call whose frame falls back to the C stack (py/objfun.c:268-287), and the TaskQueue peek/pop/push are C (:24-30)",
+   "verdict": "handled",
+   "proof": "caught by the except RuntimeError at :131, which records a C-stack overflow through report_if_fatal() and returns False"
+  },
+  "Lockable.__aexit__::report_if_fatal": {
+   "can_raise": "nothing: report_if_fatal() (asy_print_log.py:482-487) is an isinstance test, a tuple index and a global store",
+   "verdict": "unreachable",
+   "proof": "a one-argument call of a fixed-arity function (py/objfun.c:268-287); it allocates nothing, as its comment requires"
+  },
+  "DeviceSession.__init__::super": {
+   "can_raise": "what Lockable.__init__ raises: the Lock's fixed allocation (row :115); `super().__init__()` compiles to LOAD_SUPER_METHOD, whose super object lives on the C stack (py/objtype.c:1425-1428)",
+   "verdict": "handled",
+   "proof": "construction only (asy_bmp3xx_driver.py:465, asy_isl29125_driver.py:1186,asy_scd30_driver.py:715, asy_sgp40_driver.py:674, each in a driver's __init__ inside build_system()): the boot entry's except BaseException (conventions)"
+  },
+  "RegionBuffer.__init__::bytearray": {
+   "can_raise": "MemoryError (array_new); OverflowError for a size past a machine word (mp_obj_get_int, py/objarray.c:190-192)",
+   "verdict": "handled",
+   "proof": "both caught by the except (MemoryError, OverflowError) at :160, which prints the text through console() and leaves the buffer None; a negative size is refused at :152 before, and size is the `int` parameter"
+  },
+  "RegionBuffer.__init__::console": {
+   "can_raise": "nothing (console()'s rows, asy_print_log.py:461, :463)",
+   "verdict": "unreachable",
+   "proof": "a three-argument call of a fixed-arity function (asy_print_log.py:456, py/objfun.c:268-287) whose print rows cannot raise"
+  },
+  "RegionBuffer.get_data_buf::memoryview": {
+   "can_raise": "MemoryError for the view and its slice (py/objarray.c:216-233, :456-470); TypeError for an object with no buffer; NotImplementedError for a slice step",
+   "verdict": "handled",
+   "proof": "self._buf is a bytearray (None returns at :169-170) and the slice has no step, so neither error can occur; the bounds were checked at :152 (0 <= data_start <= data_end <= size); the two views are a small fixed allocation at the FRAM chunk operation's task top or REST handler (conventions)"
+  },
+  "PieceBuffer.__init__::bytearray": {
+   "can_raise": "MemoryError for each piece of at most piece_bytes (array_new); OverflowError cannot: size is bounded by the callers' caps, small ints",
+   "verdict": "handled",
+   "proof": "the module header's one documented raise (:7-8) and SPECIFICATION.md G.2 ('a `MemoryError` there goes to the caller, which catches it into its own failure result'; owner, 2026-10-27): every caller that builds pieces (asy_uart_comm.py:279, :318; asy_uart_driver.py:661) admits size by its cap first (max_transfer_bytes, J.8; max_bytes) and catches the MemoryError with its text printed, the GET and the SET as an ALLOC fault with the resync (asy_uart_comm.py:280-282, :319-321) and readline_until_complete() as None with the line left in the ring (asy_uart_driver.py:662-664); uart_get()'s PieceBuffer(0, ...) at asy_uart_comm.py:1118 builds no piece; no allocation exceeds piece_bytes, the design I.4(a) asks for"
+  },
+  "PieceBuffer.__init__::min": {
+   "can_raise": "TypeError when the arguments do not compare (mp_builtin_min_max, py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "two ints (piece_bytes and size - start); it returns one of them"
+  },
+  "PieceBuffer.__init__::range": {
+   "can_raise": "ValueError('zero step') (py/objrange.c:103-106); MemoryError for the range object, which a comprehension's iterable is (the counted-loop form is compile_for_stmt's alone, py/compile.c:1512-1563)",
+   "verdict": "handled",
+   "proof": "every caller passes piece_bytes >= 1 (asy_uart_driver.py:658; asy_uart_comm.py:981, checked at construction :236), so the ValueError cannot occur; the range object is one fixed allocation that lands where the pieces' does (row :181's bytearray)"
+  },
+  "PieceBuffer.copy_into::len": {
+   "can_raise": "nothing for a bytearray, memoryview or list (each type's LEN slot)",
+   "verdict": "unreachable",
+   "proof": "dest is the `bytearray | memoryview` parameter, self._pieces a list of bytearrays; len() allocates nothing"
+  },
+  "PieceBuffer.copy_into::divmod": {
+   "can_raise": "ZeroDivisionError for a zero divisor; MemoryError for the result pair (the small-int DIVMOD arm builds a 2-tuple)",
+   "verdict": "handled",
+   "proof": "_piece_bytes >= 1 in every constructed buffer (range()'s zero-step check at :181 runs first), so no ZeroDivisionError; the pair is a small fixed allocation at the UART task's top (conventions)"
+  },
+  "PieceBuffer.copy_into::memoryview": {
+   "can_raise": "MemoryError for the view and its slice (py/objarray.c:216-233, :456-470); a slice store's length or compat error (:470-500)",
+   "verdict": "handled",
+   "proof": "the piece is a bytearray and each store writes n bytes into an n-byte slice (pos + n <= size - start <= len(dest), checked at :188), so the store errors cannot occur; the views are a small fixed allocation at the UART task's top (conventions)"
+  },
+  "PieceBuffer.pieces::iter": {
+   "can_raise": "MemoryError for the list iterator (mp_builtin_iter, py/modbuiltins.c:243, allocates one with no stack buffer, py/objlist.c:224, :514)",
+   "verdict": "handled",
+   "proof": "a small fixed allocation at the caller's task top (conventions)"
+  },
+  "PieceBuffer.read_at::len": {
+   "can_raise": "nothing for a bytearray or a memoryview (each type's LEN slot)",
+   "verdict": "unreachable",
+   "proof": "dest is the `bytearray | memoryview` parameter and piece a bytearray of self._pieces; len() allocates nothing"
+  },
+  "PieceBuffer.read_at::divmod": {
+   "can_raise": "ZeroDivisionError for a zero divisor; MemoryError for the result pair",
+   "verdict": "handled",
+   "proof": "as copy_into's at :190: _piece_bytes >= 1, and the pair is a small fixed allocation (conventions) in its one caller's task, the responder's listen loop (_answer_get() -> _send_train(), asy_uart_comm.py:380, :896), whose except Exception logs it and listens on (asy_uart_comm.py:562-564)"
+  },
+  "PieceBuffer.read_at::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "two ints; it returns one of them"
+  },
+  "PieceBuffer.read_at::memoryview": {
+   "can_raise": "MemoryError for the view and its slice (py/objarray.c:216-233, :456-470); a slice store's length or compat error (:470-500)",
+   "verdict": "handled",
+   "proof": "the piece is a bytearray and each store writes n bytes into an n-byte slice of dest (offset + len(dest) <= size, checked at :206; n <= len(piece) - at), so the store errors cannot occur; the views are a small fixed allocation, landing as the divmod pair's (row :208)"
+  },
+  "PieceBuffer.trim::len": {
+   "can_raise": "nothing for a list (its LEN slot)",
+   "verdict": "unreachable",
+   "proof": "self._pieces is always a list (:181)"
+  },
+  "PieceBuffer.trim::self._pieces.pop": {
+   "can_raise": "IndexError('pop from empty list') (py/objlist.c:265); the shrink at :274 is an m_renew to a smaller size",
+   "verdict": "unreachable",
+   "proof": "the loop pops only while len(self._pieces) > keep >= 0, so the list is never empty; a shrinking realloc frees the tail blocks in place and never fails (gc_realloc's shrink branch, py/gc.c:1227-1228)"
+  },
+  "PieceBuffer.write_at::len": {
+   "can_raise": "nothing for bytes, a bytearray or a memoryview (each type's LEN slot)",
+   "verdict": "unreachable",
+   "proof": "src is the `bytes | bytearray | memoryview` parameter, view a memoryview and piece a bytearray"
+  },
+  "PieceBuffer.write_at::memoryview": {
+   "can_raise": "MemoryError for the view (py/objarray.c:216-233); TypeError for an object with no buffer",
+   "verdict": "handled",
+   "proof": "src has the buffer protocol by its signature, so no TypeError; the view is a small fixed allocation at the caller's task top (conventions); each store writes n bytes into an n-byte slice"
+  },
+  "PieceBuffer.write_at::divmod": {
+   "can_raise": "ZeroDivisionError for a zero divisor; MemoryError for the result pair",
+   "verdict": "handled",
+   "proof": "as copy_into's at :190: _piece_bytes >= 1, and the pair is a small fixed allocation (conventions)"
+  },
+  "PieceBuffer.write_at::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "two ints; it returns one of them"
+  },
+  "LockedCounter.__init__::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "max(max_val, 0) and COUNTER_CAP are ints (max_val the `int` parameter); it returns one of them"
+  },
+  "LockedCounter.__init__::max": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "max_val is the `int` parameter and 0 an int"
+  },
+  "LockedCounter.__init__::self._clamp": {
+   "can_raise": "nothing: _clamp() (:256-259) is a None test and int min/max",
+   "verdict": "unreachable",
+   "proof": "a one-argument call of a fixed-arity method (py/objfun.c:268-287); its min/max rows cannot raise"
+  },
+  "LockedCounter._clamp::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "value is the `int | None` after its None test at :257, and _max_val an int (:253)"
+  },
+  "LockedCounter._clamp::max": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "as min at :259: two ints"
+  },
+  "LockedCounter.set_value::self._clamp": {
+   "can_raise": "nothing (_clamp()'s rows)",
+   "verdict": "unreachable",
+   "proof": "as __init__'s at :254"
+  },
+  "HourlyWindowCounter._advance::range": {
+   "can_raise": "nothing here: `for i in range(...)` compiles to a counted loop with no range object (py/compile.c:1512-1563, compile_for_stmt_optimised_range :1430)",
+   "verdict": "unreachable",
+   "proof": "the bounds are ints (now_s // _HOUR_S and self._hour); each store indexes the 24-bin list at i or h % 24"
+  },
+  "HourlyWindowCounter.add::self._advance": {
+   "can_raise": "nothing: _advance()'s rows (:324, :327) and int arithmetic",
+   "verdict": "unreachable",
+   "proof": "a one-argument call of a fixed-arity method; its range rows cannot raise and every index is taken modulo 24"
+  },
+  "HourlyWindowCounter.reset::range": {
+   "can_raise": "nothing: a counted loop with no range object (py/compile.c:1512-1563)",
+   "verdict": "unreachable",
+   "proof": "a constant bound (24)"
+  },
+  "HourlyWindowCounter.total::self._advance": {
+   "can_raise": "nothing (_advance()'s rows)",
+   "verdict": "unreachable",
+   "proof": "as add()'s at :332"
+  },
+  "TickSeconds.__init__::time.ticks_ms": {
+   "can_raise": "nothing: it returns the masked tick count as a small int (extmod/modtime.c:151-152)",
+   "verdict": "unreachable",
+   "proof": "no argument and no allocation"
+  },
+  "TickSeconds.read::time.ticks_ms": {
+   "can_raise": "nothing (extmod/modtime.c:151-152)",
+   "verdict": "unreachable",
+   "proof": "as __init__'s at :359"
+  },
+  "TickSeconds.read::time.ticks_diff": {
+   "can_raise": "nothing: it reads both arguments as small ints and returns one (extmod/modtime.c:166-174)",
+   "verdict": "unreachable",
+   "proof": "both arguments are ticks_ms() values (:359, :362, :378)"
+  },
+  "TickSeconds.restart::min": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "max(value_s, 0) and COUNTER_CAP are ints (value_s the `int` parameter)"
+  },
+  "TickSeconds.restart::max": {
+   "can_raise": "TypeError when the arguments do not compare (py/modbuiltins.c:250-290)",
+   "verdict": "unreachable",
+   "proof": "value_s is the `int` parameter and 0 an int"
+  },
+  "TickSeconds.restart::time.ticks_ms": {
+   "can_raise": "nothing (extmod/modtime.c:151-152)",
+   "verdict": "unreachable",
+   "proof": "as __init__'s at :359"
+  },
+  "arm_tick_timer::timer.init": {
+   "can_raise": "OSError(ENOMEM) when the alarm pool refuses the alarm (ports/rp2/machine_timer.c:107-109); MemoryError for the lambda's closure; TypeError or ValueError from the argument parse (machine_timer_init_helper, :74)",
+   "verdict": "handled",
+   "proof": "the MemoryError by the except at :395 (console() line, returns False), the OSError by the except at :398 (logged unless quiet, returns False); the parse errors cannot occur: the arguments are the literal 1000, the timer's own PERIODIC and a callable"
+  },
+  "arm_tick_timer.<lambda>::flag.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() stores 1 into the `state` attribute its __init__ created (extmod/asyncio/event.py:46-55), replacing a slot",
+   "verdict": "unreachable",
+   "proof": "the lambda runs later as the Timer callback, outside the try around timer.init(); there the zero-argument method call keeps its frame on the C stack (py/objfun.c:268-287) and the store allocates nothing, so the callback cannot raise"
+  },
+  "arm_tick_timer::console": {
+   "can_raise": "nothing (console()'s rows, asy_print_log.py:461, :463)",
+   "verdict": "unreachable",
+   "proof": "a three-argument call of a fixed-arity function (asy_print_log.py:456, py/objfun.c:268-287)"
+  },
+  "arm_tick_timer::pr.err": {
+   "can_raise": "MemoryError from err()'s *args tuple (asy_print_log.py:115) and its at-level print (conventions)",
+   "verdict": "handled",
+   "proof": "small fixed allocations: the callers arm from a timer starter (asy_ntp_client.py:516, asy_wifi_service.py:925, asy_system_service.py:635, under _run_timer_starter()'s except at :436) or from their own supervised loop (asy_ntp_client.py:361, asy_wifi_service.py:414, asy_system_service.py:522, under _log_dead_task()) (conventions)"
+  },
+  "utc_now::time.mktime": {
+   "can_raise": "TypeError for a tuple whose length is not 8 or 9 (extmod/modtime.c:83-90); MemoryError for the result, boxed past 2**30 (timeutils_obj_from_timestamp, shared/timeutils/timeutils.h:86-92; rp2 counts from 1970, ports/rp2/mpconfigport.h:147, so every current time exceeds the small-int range)",
+   "verdict": "handled",
+   "proof": "the argument is gmtime()'s 8-tuple (extmod/modtime.c:75), so the TypeError cannot occur; the boxed int is a small fixed allocation at the caller's task top or REST handler (conventions)"
+  },
+  "utc_now::time.gmtime": {
+   "can_raise": "MemoryError for its 8-tuple (gmtime is localtime's entry, extmod/modtime.c:203, :55-75)",
+   "verdict": "handled",
+   "proof": "no argument, so the RTC is read as it stands; the tuple is a small fixed allocation (conventions)"
+  },
+  "SensorReader.__init__::instance_name": {
+   "can_raise": "MemoryError for the joined name (asy_config_manager.py:241-247: the name itself when name_ext is empty, else one concatenation)",
+   "verdict": "handled",
+   "proof": "construction only (every reader is built inside build_system()): the boot entry's except BaseException (conventions)"
+  },
+  "SensorReader.__init__::make_logger": {
+   "can_raise": "what make_logger() raises (asy_print_log.py:470): the logger's construction-time allocations (its own rows)",
+   "verdict": "handled",
+   "proof": "construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReader.__init__::asyncio.Lock": {
+   "can_raise": "MemoryError for each Lock and its TaskQueue (extmod/asyncio/lock.py:9-16), a fixed size",
+   "verdict": "handled",
+   "proof": "construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReader._climb_ladder::report_if_fatal": {
+   "can_raise": "nothing (asy_print_log.py:482-487)",
+   "verdict": "unreachable",
+   "proof": "as Lockable.__aexit__'s at :132"
+  },
+  "SensorReader._climb_ladder::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator, and what its rows leave (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the reader task that calls _error_check() (asy_bmp3xx_driver.py:303, asy_isl29125_driver.py:749,asy_scd30_driver.py:475, asy_sgp40_driver.py:386, asy_wifi_service.py:430): _log_dead_task() (conventions)"
+  },
+  "SensorReader._climb_ladder::self.pr.wrn_s": {
+   "can_raise": "MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275)",
+   "verdict": "handled",
+   "proof": "as err_s at :576: the reader task's top (conventions)"
+  },
+  "SensorReader._climb_ladder::self._recover_bus": {
+   "can_raise": "what _recover_bus() raises: its rows (:650, :651, :653, :654)",
+   "verdict": "handled",
+   "proof": "each of its rows is handled at the reader task's top; the generator is a small fixed allocation (conventions)"
+  },
+  "SensorReader._error_check::any": {
+   "can_raise": "MemoryError for the generator expression's generator; any() itself iterates through a stack buffer (py/modbuiltins.c:109-118)",
+   "verdict": "handled",
+   "proof": "`res is None` raises nothing and results is the reader's tuple; the generator is a small fixed allocation at the reader task's top (conventions)"
+  },
+  "SensorReader._error_check::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "as _climb_ladder's at :576: the reader task's top (conventions)"
+  },
+  "SensorReader._error_check::self._climb_ladder": {
+   "can_raise": "what _climb_ladder() raises: its rows (:575-583); _recover_device() sits in its except Exception at :574",
+   "verdict": "handled",
+   "proof": "each of its rows is handled at the reader task's top (conventions)"
+  },
+  "SensorReader._error_check::self.pr.err": {
+   "can_raise": "MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115)",
+   "verdict": "handled",
+   "proof": "small fixed allocations at the reader task's top (conventions)"
+  },
+  "SensorReader._init_done::bus.take_boot_clear_status": {
+   "can_raise": "nothing: it reads and clears an int attribute (asy_i2c_driver.py:404-408)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument call of a fixed-arity method; bus is the I2C the driver bound (None returns at :614-615)"
+  },
+  "SensorReader._init_done::self.pr.wrn_s": {
+   "can_raise": "MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275)",
+   "verdict": "handled",
+   "proof": "_init_done() runs from a driver's _init_*(), in its setup() or at its reader task's restart: the boot entry or _log_dead_task() (conventions)"
+  },
+  "SensorReader._init_failed::self._recover_bus": {
+   "can_raise": "what _recover_bus() raises: its rows",
+   "verdict": "handled",
+   "proof": "as _init_done's wrn_s at :618: setup() or the reader task's top (conventions)"
+  },
+  "SensorReader._rearm_timer::self._timer_fault": {
+   "can_raise": "what _timer_fault() raises: its err_s row (:731)",
+   "verdict": "handled",
+   "proof": "_rearm_timer() runs at its task's start (asy_scd30_driver.py:448, asy_sgp40_driver.py:327, _trigger_loop() :737): the task's top (conventions)"
+  },
+  "SensorReader._rearm_timer::self.start_timer": {
+   "can_raise": "what the driver's starter raises: each catches (MemoryError, OSError) around its timer.init() and hands it to _timer_failed() (asy_bmp3xx_driver.py:369-378, asy_isl29125_driver.py:986-995,asy_scd30_driver.py:552-561, asy_sgp40_driver.py:622-631); SCD30's and ISL29125's pin irq() after that try can raise only MemoryError, the IRQ object being allocated once, at its pin's first registration (ports/rp2/machine_pin.c:423-433), and the closure per call fixed",
+   "verdict": "handled",
+   "proof": "the closure is a small fixed allocation at the task's top (conventions); the arm failures are the starters' own excepts"
+  },
+  "SensorReader._recover_bus::bus.clear": {
+   "can_raise": "what I2C.clear() raises (asy_i2c_driver.py:333-337): the bus lock's acquire (CancelledError, its generator), _clear_locked()'s pulses and pin hand-back (:161-168), small fixed allocations",
+   "verdict": "handled",
+   "proof": "_recover_bus() runs from the ladder in the reader task or from _init_failed() in setup(): the task's top or the boot entry (conventions)"
+  },
+  "SensorReader._recover_bus::self.pr.wrn_s": {
+   "can_raise": "MemoryError from wrn_s()'s *args tuple and generator (asy_print_log.py:275)",
+   "verdict": "handled",
+   "proof": "as bus.clear at :650 (conventions)"
+  },
+  "SensorReader._recover_bus::bus.recover": {
+   "can_raise": "what I2C.recover() raises (asy_i2c_driver.py:386-396): as clear(), plus init()'s star-call array; init()'s OSError and ValueError are caught at :393",
+   "verdict": "handled",
+   "proof": "small fixed allocations at the task's top or the boot entry, as bus.clear at :650 (conventions)"
+  },
+  "SensorReader._republish::getattr": {
+   "can_raise": "AttributeError for a name the sample lacks (mp_builtin_getattr, py/modbuiltins.c:564-569)",
+   "verdict": "unreachable",
+   "proof": "the one caller (asy_scd30_driver.py:388) passes _FIELDS, the same eight names in order as its SCD30 namedtuple (:160-161), and `changes[n]` is read only under its `in` test; a field load allocates nothing"
+  },
+  "SensorReader._republish::type": {
+   "can_raise": "type(old) with one argument: nothing (py/objtype.c:1032-1033); the call of the class: TypeError for a positional count other than its fields' (py/objnamedtuple.c:95-106) and MemoryError for the star-call's array (py/runtime.c:790-812), the generator expression's generator and the new tuple",
+   "verdict": "handled",
+   "proof": "names covers all eight fields (row :714), so the TypeError cannot occur; the allocations are small and fixed by the sample's field count, at SCD30's reader task top or the config PUT's handler (conventions)"
+  },
+  "SensorReader._timer_failed::self.pr.err": {
+   "can_raise": "MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115)",
+   "verdict": "handled",
+   "proof": "called from a starter's except, under _run_timer_starter()'s except (asy_system_service.py:436) or _rearm_timer()'s task (conventions)"
+  },
+  "SensorReader._timer_failed::waiter.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() replaces its `state` slot (extmod/asyncio/event.py:54-55)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument method call whose frame stays on the C stack (py/objfun.c:268-287); waiter is the reader's ThreadSafeFlag"
+  },
+  "SensorReader._timer_fault::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "_timer_fault() runs in the reader task (_rearm_timer(), _trigger_loop(), the drivers' read loops): its top (conventions)"
+  },
+  "SensorReader._trigger_loop::self._rearm_timer": {
+   "can_raise": "what _rearm_timer() raises: its rows (:636, :638)",
+   "verdict": "handled",
+   "proof": "_trigger_loop() is a supervised task (asy_bmp3xx_driver.py:353, :367; asy_isl29125_driver.py:984): _log_dead_task() (conventions)"
+  },
+  "SensorReader._trigger_loop::self._base_trigger_event.wait": {
+   "can_raise": "MemoryError for the wait's generator and the IOQueue entry, map slot and poll registration (extmod/asyncio/event.py:60-63, core.py:75-88); AssertionError (core.py:83-84) only for a second reader of the same flag; CancelledError (conventions)",
+   "verdict": "handled",
+   "proof": "an asyncio primitive F.2 never wraps: small fixed allocations at this task's top (conventions); this loop is the flag's one waiter (one task per reader), so the assertion cannot fail"
+  },
+  "SensorReader._trigger_loop::self._timer_fault": {
+   "can_raise": "what _timer_fault() raises: its err_s row (:731)",
+   "verdict": "handled",
+   "proof": "this task's top (conventions)"
+  },
+  "SensorReader._trigger_loop::self._trigger_period.get_value": {
+   "can_raise": "MemoryError for the async call's generator; LockedValue.get_value() returns its value (:302-303)",
+   "verdict": "handled",
+   "proof": "a small fixed allocation at this task's top (conventions); the period is the int set at construction (asy_bmp3xx_driver.py:185, asy_isl29125_driver.py:259)"
+  },
+  "SensorReader._trigger_loop::self._read_event.set": {
+   "can_raise": "nothing: ThreadSafeFlag.set() replaces its `state` slot (extmod/asyncio/event.py:54-55)",
+   "verdict": "unreachable",
+   "proof": "as _timer_failed's waiter.set at :722"
+  },
+  "SensorReader.get_error_counter::self.pr.get_log": {
+   "can_raise": "what get_log() raises (asy_print_log.py:241): its lists grow with the configured history_length",
+   "verdict": "handled",
+   "proof": "its one caller, _write_errcount_entry() (asy_webserver_service.py:720), awaits it inside the except Exception at :1005, which writes this source's entry as unavailable (I.4(b))"
+  },
+  "SensorReader.reset_error_counter::self.pr.reset": {
+   "can_raise": "what reset() raises (asy_print_log.py:265, :362): its rows",
+   "verdict": "handled",
+   "proof": "its one caller gathers it with return_exceptions=True (asy_webserver_service.py:871), so a raise comes back as an outcome, recorded and answered Failed (:876-880)"
+  },
+  "SensorReader.setup::self.pr.setup": {
+   "can_raise": "what setup() raises (asy_print_log.py:271, :398): its rows",
+   "verdict": "handled",
+   "proof": "setup() runs in the one-time boot batch (run_setups(), asy_system_service.py:738-744): the boot entry's except BaseException (conventions)"
+  },
+  "SensorReader._get_dict_cfg::schema_names": {
+   "can_raise": "MemoryError for the list of field names (asy_config_manager.py:276-277); IndexError or TypeError for a field that is not a sequence",
+   "verdict": "handled",
+   "proof": "each field is a 6-tuple (FieldSchema, mypy-checked; the schemas pinned by tests_scripts/test_config_schemas.py), so only the allocation is left, sized by the module's constant schema and fixed per build (SPECIFICATION.md I.3, 'bounded by the schema'); the GET reaches here from the webserver's config routes (_get_sensors :649-653, _get_settings_flat :655-664), so Microdot's dispatch catch holds it (conventions)"
+  },
+  "SensorReader._get_dict_cfg::dict.fromkeys": {
+   "can_raise": "MemoryError for the heap iterator and the dict sized from the name list (dict_fromkeys, py/objdict.c:279-296); TypeError for an unhashable key",
+   "verdict": "handled",
+   "proof": "the keys are the schema's str names, so no TypeError; the allocation is fixed per build as at :456, in the GET's REST handler (conventions)"
+  },
+  "SensorReader._get_dict_cfg::report_if_fatal": {
+   "can_raise": "nothing (asy_print_log.py:482-487)",
+   "verdict": "unreachable",
+   "proof": "as Lockable.__aexit__'s at :132"
+  },
+  "SensorReader._get_dict_cfg::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the GET's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::self._writes_closed": {
+   "can_raise": "nothing: the base returns False (:749-751); SensorReaderConfig's returns cfgmgr.writes_closed(), a bool attribute (asy_config_manager.py:671-673)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument call of a fixed-arity method (py/objfun.c:268-287); no override allocates"
+  },
+  "SensorReader._set_dict_cfg::dict.fromkeys": {
+   "can_raise": "MemoryError for the heap iterator and a dict sized by data's key count (py/objdict.c:279-296); TypeError for an unhashable key",
+   "verdict": "handled",
+   "proof": "data is a parsed JSON object, so its keys are str; its key count is bounded by the request body cap (web.max_content_length, 2048 B, asy_webserver_service.py:152), the same order as the parsed body already held; there is no true alternative flow (the answer is a word per requested key, I.4(a)), so a failed allocation ends the PUT in Microdot's dispatch catch (conventions); the PUT reaches here from _put_sensors (asy_webserver_service.py:846) and handle_set_cmd() (asy_api_response.py:64)"
+  },
+  "SensorReader._set_dict_cfg::schema_dict": {
+   "can_raise": "MemoryError for the dict built from the schema (asy_config_manager.py:272-273); IndexError or TypeError for a malformed field",
+   "verdict": "handled",
+   "proof": "every field is a 6-tuple (as :456), and the dict is fixed per build by the constant schema (SPECIFICATION.md I.3, 'schema_dict() built once per PUT'), in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::fields.items": {
+   "can_raise": "MemoryError for the view, the comprehension's heap iterator and a 2-tuple per item (py/objdict.c:457-470, :550-555)",
+   "verdict": "handled",
+   "proof": "fixed per item over the constant schema, and persisted_keys holds at most its field count; the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::check_cfg_get_default": {
+   "can_raise": "what check_cfg_get_default() raises (asy_config_manager.py:136-153): the field's 6-tuple unpack and type_or_range_error()'s checks, with a small result tuple",
+   "verdict": "handled",
+   "proof": "the unpack cannot fail on a FieldSchema (as :456) and type_or_range_error() tests exact types before any arithmetic (row :545); the result tuple is a small fixed allocation in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::report_if_fatal": {
+   "can_raise": "nothing (asy_print_log.py:482-487)",
+   "verdict": "unreachable",
+   "proof": "as Lockable.__aexit__'s at :132"
+  },
+  "SensorReader._set_dict_cfg::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the PUT's REST handler (conventions); the finally at :555 still commits the staged write"
+  },
+  "SensorReader._set_dict_cfg::results.setdefault": {
+   "can_raise": "MemoryError when a missing key grows the map (dict_setdefault, py/objdict.c:349-351); TypeError for an unhashable key",
+   "verdict": "handled",
+   "proof": "results is a dict (the WriteValidity _set_mgr_cfg() returns at :519, a dict on every override under mypy's strict pass (D.2); the {} at :523 returned at :529 before this loop) and the keys are str; growth is at most data's key count, bounded by the body cap as at :500, in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::data.items": {
+   "can_raise": "MemoryError for the view and a 2-tuple per item (py/objdict.c:469, :550-555); the for loop's iterator sits in a stack buffer (:486)",
+   "verdict": "handled",
+   "proof": "fixed per item, in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::results.get": {
+   "can_raise": "nothing: dict.get() answers None for a missing key (dict_get_helper, py/objdict.c:309-338; its KeyError is the pop form's only)",
+   "verdict": "unreachable",
+   "proof": "results is a dict and key a str; the method call through LOAD_METHOD allocates nothing"
+  },
+  "SensorReader._set_dict_cfg::self._push_callbacks.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "_push_callbacks is the dict built at :436 and key a str"
+  },
+  "SensorReader._set_dict_cfg::fields.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "fields is schema_dict()'s dict (:501) and key a str"
+  },
+  "SensorReader._set_dict_cfg::type_or_range_error": {
+   "can_raise": "what type_or_range_error() raises (asy_config_manager.py:291-312): exact-type tests and comparisons, int(float) inside its own except (OverflowError, ValueError) (:101-104), a boxed float (:91) and its result tuple",
+   "verdict": "handled",
+   "proof": "no value reaches arithmetic before its exact-type test, so only the small fixed allocations are left, in the PUT's REST handler (conventions); the value is one write_config() accepted as Valid"
+  },
+  "SensorReader._set_dict_cfg::self._recover_failed_push": {
+   "can_raise": "what _recover_failed_push() raises: its rows (:673-707)",
+   "verdict": "handled",
+   "proof": "each of its rows is handled or unreachable; the generator is a small fixed allocation in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._set_dict_cfg::self._commit_mgr_cfg": {
+   "can_raise": "nothing: the base returns (:585-587); SensorReaderConfig's calls cfgmgr.commit() (row :827)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument call of a fixed-arity method, and commit() sets an asyncio.Event, which allocates nothing (row :827)"
+  },
+  "SensorReader._recover_failed_push::fields.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "fields is the caller's schema_dict() dict and key a str"
+  },
+  "SensorReader._recover_failed_push::check_cfg_get_default": {
+   "can_raise": "what check_cfg_get_default() raises: as at :506",
+   "verdict": "handled",
+   "proof": "as _set_dict_cfg's at :506: its one caller is _set_dict_cfg() (:554), in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._recover_failed_push::self._get_callbacks.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "_get_callbacks is the dict built at :439 and key a str"
+  },
+  "SensorReader._recover_failed_push::report_if_fatal": {
+   "can_raise": "nothing (asy_print_log.py:482-487)",
+   "verdict": "unreachable",
+   "proof": "as Lockable.__aexit__'s at :132"
+  },
+  "SensorReader._recover_failed_push::self.pr.err_s": {
+   "can_raise": "MemoryError from err_s()'s *args tuple and generator (asy_print_log.py:261)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._recover_failed_push::type_or_range_error": {
+   "can_raise": "what type_or_range_error() raises: as at :545",
+   "verdict": "handled",
+   "proof": "recovered is a getter's raw read, any value: type_or_range_error() tests exact types before any arithmetic (asy_config_manager.py:82-104, :291-312) and catches int()'s own OverflowError and ValueError (:102), so only its small fixed allocations are left, in the PUT's REST handler (conventions)"
+  },
+  "SensorReader._recover_failed_push::old_values.get": {
+   "can_raise": "AttributeError if old_values were not a dict; nothing for a dict (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "old_values is _get_mgr_cfg()'s result, typed `dict | None` and checked by mypy (D.2): the base returns {} (:490-491), SensorReaderConfig's ConfigManager.get_dict()'s dict or None (:814-818), SCD30's a dict or None (asy_scd30_driver.py:244-259), and None becomes {} at :499-500"
+  },
+  "SensorReader._recover_failed_push::res.get": {
+   "can_raise": "nothing (py/objdict.c:309-338)",
+   "verdict": "unreachable",
+   "proof": "res is the WriteValidity dict _set_mgr_cfg() returned at :700, a dict on every override under mypy's strict pass (D.2), and key a str"
+  },
+  "SensorReader._recover_failed_push::self.pr.err": {
+   "can_raise": "MemoryError from err()'s *args tuple and its at-level print (asy_print_log.py:115)",
+   "verdict": "handled",
+   "proof": "small fixed allocations in the PUT's REST handler (conventions)"
+  },
+  "SensorReaderConfig.__init__::super": {
+   "can_raise": "what SensorReader.__init__ raises: its rows (:425-433); `super().__init__()` loads through LOAD_SUPER_METHOD, its super object on the C stack (py/objtype.c:1425-1428)",
+   "verdict": "handled",
+   "proof": "construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig.__init__::LogConfig": {
+   "can_raise": "TypeError for a positional count other than its three fields (py/objnamedtuple.c:95-106); MemoryError for the tuple",
+   "verdict": "handled",
+   "proof": "three positional arguments for LogConfig's three fields (asy_print_log.py:451), so no TypeError; the tuple is built at construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig.__init__::ConfigManager": {
+   "can_raise": "what ConfigManager.__init__ raises (asy_config_manager.py:316-344): its construction-time allocations (its own rows)",
+   "verdict": "handled",
+   "proof": "construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig.__init__::config_filename": {
+   "can_raise": "MemoryError for the concatenated name (asy_config_manager.py:235-238)",
+   "verdict": "handled",
+   "proof": "str operands (cfg_path and the resolved name); construction only: the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig._get_mgr_cfg::self.pr.evt": {
+   "can_raise": "MemoryError from evt()'s *args tuple and its at-level print (asy_print_log.py:118)",
+   "verdict": "handled",
+   "proof": "_get_mgr_cfg() is awaited only inside the trys whose except Exception sits at :464 (_get_dict_cfg()) and :510 (_set_dict_cfg()), directly or through SCD30's override (asy_scd30_driver.py:255); either logs it and answers the GET's marker or drops the snapshot"
+  },
+  "SensorReaderConfig._get_mgr_cfg::self.cfgmgr.get_dict": {
+   "can_raise": "what ConfigManager.get_dict() raises (asy_config_manager.py:439): its rows",
+   "verdict": "handled",
+   "proof": "as evt at :815: caught by the except Exception at :464 or :510"
+  },
+  "SensorReaderConfig._set_mgr_cfg::self.pr.evt": {
+   "can_raise": "MemoryError from evt()'s *args tuple and its at-level print (asy_print_log.py:118)",
+   "verdict": "handled",
+   "proof": "_set_mgr_cfg() is awaited only inside the trys whose except Exception sits at :520 (_set_dict_cfg()) and :701 (_recover_failed_push()), directly or through the overrides' super() calls (asy_ntp_client.py:240, asy_wifi_service.py:301, asy_scd30_driver.py:321)"
+  },
+  "SensorReaderConfig._set_mgr_cfg::self.cfgmgr.write_config": {
+   "can_raise": "what ConfigManager.write_config() raises (asy_config_manager.py:605): its rows",
+   "verdict": "handled",
+   "proof": "as evt at :823: caught by the except Exception at :520 or :701"
+  },
+  "SensorReaderConfig._commit_mgr_cfg::self.cfgmgr.commit": {
+   "can_raise": "nothing: commit() sets the store's asyncio.Event (asy_config_manager.py:342, :475-477), whose set() moves waiters between C TaskQueues and replaces its `state` slot (extmod/asyncio/event.py:16-22)",
+   "verdict": "unreachable",
+   "proof": "zero-argument calls of fixed-arity methods, their frames on the C stack (py/objfun.c:268-287); nothing allocates"
+  },
+  "SensorReaderConfig._writes_closed::self.cfgmgr.writes_closed": {
+   "can_raise": "nothing: it returns the store's bool attribute (asy_config_manager.py:671-673)",
+   "verdict": "unreachable",
+   "proof": "a zero-argument call of a fixed-arity method"
+  },
+  "SensorReaderConfig.setup::super": {
+   "can_raise": "what SensorReader.setup() raises: its row (:781); `super().setup()` loads through LOAD_SUPER_METHOD (py/objtype.c:1425-1428)",
+   "verdict": "handled",
+   "proof": "the one-time boot batch (run_setups(), asy_system_service.py:738-744): the boot entry's except BaseException (conventions)"
+  },
+  "SensorReaderConfig.setup::self.cfgmgr.setup": {
+   "can_raise": "what ConfigManager.setup() raises (asy_config_manager.py:514): its rows",
+   "verdict": "handled",
+   "proof": "as super().setup() at :848: the boot entry's except BaseException (conventions)"
+  }
+ }
+}

@@ -1,0 +1,18 @@
+== uart_ring_under_concurrent_load: Both links exercise through a ceiling-filling hammer, refusal logging, FRAM-log writes and config flushes: no overrun, no failed transfer, every PUT answered.
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20166 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/dev_uart_32768/uart_ring_under_concurrent_load/state_01/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/dev_uart_32768/uart_ring_under_concurrent_load/state_01/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/dev_uart_32768/uart_ring_under_concurrent_load/state_01/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/dev_uart_32768/uart_ring_under_concurrent_load/state_01/config/ --gc-threshold 32768 --test-conn-status-interval-ms 20 --fault sgp40:readfrom_into:3:260F (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/dev_uart_32768/uart_ring_under_concurrent_load/twin_01.log)
+PASSED: uart_ring_under_concurrent_load - 26.0s
+== Summary: scripts/_digital_twin_scenarios.py ==
+Commit: f676468 (uncommitted changes)
+Levels: L2 (dev)
+GC stage: 32768
+Counts (scenarios): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0
+rc=0 wall=26s

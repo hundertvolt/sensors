@@ -1,0 +1,4 @@
+e test_neopixel_wifi_integration rc=0 wall=1.5 :: 6/6 passed, 0 failed, 0 skipped :: mem=0 unretrieved=0
+SET DONE e
+f test_neopixel_wifi_integration rc=0 wall=1.9 :: 6/6 passed, 0 failed, 0 skipped :: mem=0 unretrieved=0
+SET DONE f

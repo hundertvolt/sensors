@@ -1,0 +1,202 @@
+PASS test_a_chip_down_stations_answer_is_32_unfilled_entries
+FAIL test_a_connected_sta_reports_a_test_net_address:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 231, in test_a_connected_sta_reports_a_test_net_address
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 229, in scenario
+AssertionError: 
+FAIL test_a_downed_access_point_fails_the_station_until_switched_back:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 407, in test_a_downed_access_point_fails_the_station_until_switched_back
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 393, in scenario
+AssertionError: 
+PASS test_a_joined_link_with_no_address_holds_status_two
+FAIL test_a_status_entry_with_a_parameter_filter_fails_only_those_queries:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 219, in test_a_status_entry_with_a_parameter_filter_fails_only_those_queries
+  File "digital_twin/network.py", line 161, in status
+  File "digital_twin/network.py", line 88, in _maybe_raise
+TypeError: exceptions must derive from BaseException
+PASS test_connect_refuses_what_the_real_driver_cannot_take
+PASS test_country_and_hostname_enforce_the_real_byte_bounds
+PASS test_country_and_hostname_set_then_get_round_trip
+PASS test_neopixel_fault_injection
+PASS test_neopixel_records_committed_frames
+PASS test_neopixel_writes_stays_bounded_across_many_writes
+FAIL test_one_wlan_object_per_interface_any_other_id_the_access_point:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 178, in test_one_wlan_object_per_interface_any_other_id_the_access_point
+AssertionError: 
+FAIL test_raise_on_with_a_count_raises_that_many_fresh_exceptions:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 202, in test_raise_on_with_a_count_raises_that_many_fresh_exceptions
+AssertionError: 
+FAIL test_raise_on_without_a_count_raises_until_cleared:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 211, in test_raise_on_without_a_count_raises_until_cleared
+AssertionError: 
+FAIL test_reset_interfaces_forgets_both_objects_and_their_counts:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 186, in test_reset_interfaces_forgets_both_objects_and_their_counts
+AttributeError: module 'network' has no attribute 'reset_interfaces'
+FAIL test_reset_test_state_restores_every_network_knob:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 252, in test_reset_test_state_restores_every_network_knob
+AttributeError: module 'network' has no attribute 'reset_test_state'
+FAIL test_the_construction_count_saturates_at_the_counter_cap:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 192, in test_the_construction_count_saturates_at_the_counter_cap
+AttributeError: module 'network' has no attribute 'constructions'
+FAIL test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_consume_an_outcome:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 363, in test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_consume_an_outcome
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 360, in scenario
+AssertionError: 
+FAIL test_wlan_a_successful_reconnect_after_an_earlier_scripted_failure_reports_a_real_address:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 332, in test_wlan_a_successful_reconnect_after_an_earlier_scripted_failure_reports_a_real_address
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 329, in scenario
+  File "tests/test_digital_twin_network_neopixel.py", line 43, in _wait_until_connected
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_wlan_config_calls_stays_bounded_across_many_calls
+PASS test_wlan_config_records_every_call
+PASS test_wlan_connect_calls_stays_bounded_across_many_calls
+FAIL test_wlan_connect_shows_a_real_connecting_phase_before_got_ip:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 115, in test_wlan_connect_shows_a_real_connecting_phase_before_got_ip
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 111, in scenario
+  File "tests/test_digital_twin_network_neopixel.py", line 43, in _wait_until_connected
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_wlan_deinit_sets_the_deinit_called_flag
+PASS test_wlan_disconnect_before_connecting_finishes_cancels_the_pending_connection
+FAIL test_wlan_disconnect_of_a_pending_attempt_does_not_consume_a_scripted_outcome:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 350, in test_wlan_disconnect_of_a_pending_attempt_does_not_consume_a_scripted_outcome
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 348, in scenario
+AssertionError: 
+FAIL test_wlan_disconnect_resets_state:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 142, in test_wlan_disconnect_resets_state
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 136, in scenario
+  File "tests/test_digital_twin_network_neopixel.py", line 43, in _wait_until_connected
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+FAIL test_wlan_exhausted_scripted_queue_falls_back_to_always_succeeding:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 317, in test_wlan_exhausted_scripted_queue_falls_back_to_always_succeeding
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 314, in scenario
+AssertionError: 
+FAIL test_wlan_fault_injection:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 161, in test_wlan_fault_injection
+  File "digital_twin/network.py", line 121, in connect
+  File "digital_twin/network.py", line 88, in _maybe_raise
+TypeError: exceptions must derive from BaseException
+FAIL test_wlan_ifconfig_reports_a_plausible_address_once_connected:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 129, in test_wlan_ifconfig_reports_a_plausible_address_once_connected
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 123, in scenario
+  File "tests/test_digital_twin_network_neopixel.py", line 43, in _wait_until_connected
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+FAIL test_wlan_script_connect_outcomes_defaults_to_always_succeeding:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 266, in test_wlan_script_connect_outcomes_defaults_to_always_succeeding
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 263, in scenario
+AssertionError: 
+PASS test_wlan_scripted_failure_outcome_sets_status_and_stays_disconnected
+FAIL test_wlan_scripted_outcomes_are_consumed_in_order_one_per_completed_attempt:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_network_neopixel.py", line 300, in test_wlan_scripted_outcomes_are_consumed_in_order_one_per_completed_attempt
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 250, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/basetree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_network_neopixel.py", line 289, in scenario
+AssertionError: 
+PASS test_wlan_starts_disconnected
+PASS test_wlan_status_rssi_and_stations_read_the_underlying_fields
+16/35 passed, 19 failed, 0 skipped
+RC=1 WALL=30.640241857 FILE=tests/test_digital_twin_network_neopixel.py STAGE=-1

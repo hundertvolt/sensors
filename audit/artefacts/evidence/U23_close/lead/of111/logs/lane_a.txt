@@ -1,0 +1,15 @@
+after test_sensortask_dev cov rc=0 127.7s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_dev f rc=0 96.0s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_dev e rc=0 65.6s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_wozi cov rc=0 98.9s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_wozi f rc=0 66.8s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_wozi e rc=0 46.9s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_arzi cov rc=0 84.5s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_arzi f rc=0 59.0s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_sensortask_arzi e rc=0 41.8s mem=0 89/89 passed, 0 failed, 0 skipped
+after test_readiness_gates f rc=0 0.3s mem=0 14/14 passed, 0 failed, 0 skipped
+after test_readiness_gates cov rc=0 0.2s mem=0 14/14 passed, 0 failed, 0 skipped
+before test_readiness_gates e rc=0 0.2s mem=0 14/14 passed, 0 failed, 0 skipped
+before test_readiness_gates f rc=0 0.3s mem=0 14/14 passed, 0 failed, 0 skipped
+before test_readiness_gates cov rc=0 0.3s mem=0 14/14 passed, 0 failed, 0 skipped
+lane a done

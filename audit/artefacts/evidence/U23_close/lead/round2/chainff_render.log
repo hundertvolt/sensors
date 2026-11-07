@@ -1,0 +1,272 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L
+
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds
+Could not refresh Measurements: [Error: GET /measurements failed: Internal server error]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it
+Could not refresh Sensors: [TypeError: Failed to fetch (simulated network failure)]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty
+Could not refresh Measurements: [Error: GET /measurements returned an empty body]
+stderr | tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)
+Could not refresh Measurements: [Error: Response from /measurements was not valid JSON (likely a corrupted or truncated transmission)]
+stderr | tests_js/render.test.js > renderSection > surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error
+Could not refresh Notification: [Error: GET /status failed: Not found]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a section's /status sub-request fails
+Could not refresh Notification: [TypeError: Failed to fetch (simulated)]
+stderr | tests_js/render.test.js > renderSection > the section controller > shows an epoch field as its age against the device clock, and a float without decimals at the site default
+Could not refresh Status: [Error: GET /status failed: HTTP 404]
+stderr | tests_js/render.test.js > renderSection > the section controller > calls onRecovered once when a failure episode ends, never on a plain success
+Could not refresh Measurements: [Error: GET /measurements failed: Internal server error]
+stderr | tests_js/render.test.js > renderSection > the section controller > shows the banner when a GET answers JSON that is not an object, never a silent dash everywhere
+Could not refresh Measurements: [Error: GET /measurements returned no JSON object]
+stderr | tests_js/render.test.js > renderSection > the section controller > words a failed GET whose body is not JSON by its status, not as an empty body
+Could not refresh Measurements: [Error: GET /measurements failed: HTTP 404]
+stderr | tests_js/render.test.js > renderSection > the Apply path > keeps a Valid result when the post-write GET fails: the banner shows, Apply re-enables, nothing rejects unhandled
+Could not refresh Sensors: [Error: GET /sensors failed: Internal server error]
+ ❯ |chromium| tests_js/render.test.js (86 tests | 7 failed) 18402ms
+   ✓ showBanner and hideBanner (1)
+     ✓ show the message through data-shown, and hide it keeping the text 3ms
+   ❯ renderSection (85)
+     ✓ renders readonly measurement fields and updates them on poll 25ms
+     ✓ renders a nested measurement field's own leaf at its declared precision, not [object Object] 15ms
+     ✓ renders a writable number field pre-filled via its current-value caption, and a toggle button 14ms
+     ✓ submits an edited field via Apply and shows the resulting per-field status 22ms
+     ✓ colors each individual field's own box by its own result, not just the card's worst status 24ms
+     ✓ sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field 24ms
+     ✓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change) 25ms
+     ✓ submits a numeric-valued enum field as a number, not a stringified one (regression) 24ms
+     ✓ renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination 15ms
+     ✓ renders an errcount group outside the Status section from GET /status's errcount 13ms
+     ✓ preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll update 117ms
+     ✓ shows Valid after a successful Reset All Errors submission, read from /status's per-field result 33ms
+     ✓ shows Failed when /status's PUT answers the reset Failed 22ms
+     ✓ sends no reset when its confirmation is declined, and leaves the toggle as set 22ms
+     ✓ an always-executed toggle with no GET value (2)
+       ✓ renders unset, and an untouched Apply has nothing to submit 23ms
+       ✓ sends false once set Off, then returns to unset after the Apply 22ms
+     ✓ skips the PUT and shows a neutral message when Apply is clicked with nothing to submit 22ms
+     ✓ skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression) 22ms
+     ✓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 427ms
+     ✓ shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it 219ms
+     ✓ reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression) 23ms
+     ✓ reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression) 22ms
+     ✓ reports Invalid for a composite field submitted with only some subfields filled 23ms
+     ✓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification) 23ms
+     ✓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank 22ms
+     ✓ reads maintenance data by path, each of two instances whose flattened keys would collide showing its own value 11ms
+     ✓ shows a visible error banner when a GET response body is empty 11ms
+     ✓ shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error) 12ms
+     ✓ surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error 12ms
+     ✓ shows a visible error banner when a section's /status sub-request fails 12ms
+     ✓ refreshes a readonly field embedded in a writable, live-polled group in place on the next poll 223ms
+     ✓ shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure) 24ms
+     ✓ shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR) 22ms
+     ✓ shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500) 22ms
+     ✓ shows Failed when a PUT response body is empty (a torn/truncated transmission) 25ms
+     ✓ shows Failed for a field missing from a nominally-OK PUT response, without losing the other field's real status (defensive fallback) 22ms
+     ❯ the section controller (19)
+       ✓ keeps the same card and readonly value node across three polls 73ms
+       ✓ keeps focus on the errcount card's 'Show all' across a poll 46ms
+       ✓ aborts the GET on the wire when no section follows the stop (the page stops), painting nothing when it settles 72ms
+       ✓ on a section switch lets the left GET on the wire run to its end, discarded, and queues the next section's first GET behind it 74ms
+       × aborts a GET a switch took over once the page stops with no section following 2277ms
+       × reads a statusPath field's value from GET /status on a section that reads another route 2087ms
+       × shows a degraded /status source as unavailable in every field of its card, with the card's cue 2102ms
+       × updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns 2104ms
+       × renders every errcount row as no data when /status carries no errcount 2099ms
+       × renders an errcount entry sent as the unavailable marker as unavailable 2083ms
+       × feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike 2100ms
+       ✓ shows an epoch field as its age against the device clock, and a float without decimals at the site default 172ms
+       ✓ calls onRecovered once when a failure episode ends, never on a plain success 425ms
+       ✓ logs console.error once per failure episode, not once per failed tick 197ms
+       ✓ counts an Apply on the shell's tracker from the click until its post-write GET settles 22ms
+       ✓ shows the banner when a GET answers JSON that is not an object, never a silent dash everywhere 12ms
+       ✓ words a failed GET whose body is not JSON by its status, not as an empty body 12ms
+       ✓ refreshes a writable field's caption through its statusPath on every poll 63ms
+       ✓ ends the shell's Apply count after a failed PUT too 23ms
+     ✓ the Apply path (30)
+       ✓ sends number text "  " that is not a plain decimal as typed, which the device answers Invalid 22ms
+       ✓ sends number text "0x10" that is not a plain decimal as typed, which the device answers Invalid 22ms
+       ✓ sends number text "1e3" that is not a plain decimal as typed, which the device answers Invalid 22ms
+       ✓ sends number text "1,5" that is not a plain decimal as typed, which the device answers Invalid 22ms
+       ✓ sends a plain decimal with surrounding spaces as its number 22ms
+       ✓ sends a float field's whole number as the JSON number 22ms
+       ✓ sends a dispatch toggle only when On: left Off, Apply has nothing to submit 22ms
+       ✓ keeps an Invalid field's typed text and clears a Valid sibling's 22ms
+       ✓ clears a field's previous colour when a later Apply's result omits it 32ms
+       ✓ marks the card failed for an unknown result word and shows the word as sent 22ms
+       ✓ gives every submitted field the one word a sensor answers in place of its field map 23ms
+       ✓ shows a toggle and a dropdown as the post-write GET reports them, not as sent 22ms
+       ✓ keeps the Apply button disabled until the post-write GET settles 32ms
+       ✓ keeps a Valid result when the post-write GET fails: the banner shows, Apply re-enables, nothing rejects unhandled 78ms
+       ✓ asks before system command erasefram, sends exactly it, and returns the select to its placeholder 22ms
+       ✓ asks before system command resetconfig, sends exactly it, and returns the select to its placeholder 25ms
+       ✓ sends no system command when its confirmation is declined, and re-enables Apply 22ms
+       ✓ shows Failed on the field and the card when a system command answers Failed 22ms
+       ✓ DNS fallback Clear: sends exactly an empty list after its confirmation, with no GET before it 22ms
+       ✓ DNS fallback Clear: sends nothing on cancel, and an Apply with the input blank never sends the key 23ms
+       ✓ the Altitude warning is shown while the pressure baseline is non-zero 13ms
+       ✓ the Altitude warning is hidden while the pressure baseline is zero 11ms
+       ✓ the Altitude warning is hidden once the Altitude input is cleared 12ms
+       ✓ the Altitude warning is hidden when 0 is typed as the pressure 13ms
+       ✓ the Altitude warning is shown when a pressure is typed over a zero baseline 12ms
+       ✓ never sends a password mask: the inputs start empty under the dots, and only a typed password is sent 45ms
+       ✓ renders, collects, sends and colours keys that are hostile in a selector 22ms
+       ✓ sends one GET of the section before the PUT, and a toggle and dropdown another client changed 22ms
+       ✓ has nothing to submit when the form equals the refreshed values, and re-enables Apply 22ms
+       ✓ sends no GET from a stopped section 22ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > aborts a GET a switch took over once the page stops with no section following
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---aborts-a-GET-a-switch-took-over-once-the-page-stops-with-no-section-following.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1343:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > reads a statusPath field's value from GET /status on a section that reads another route
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---reads-a-statusPath-field-s-value-from-GET--status-on-a-section-that-reads-another-route.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1360:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > shows a degraded /status source as unavailable in every field of its card, with the card's cue
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---shows-a-degraded--status-source-as-unavailable-in-every-field-of-its-card--with-the-card-s-cue.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1388:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---updates-a-sensor-card-in-place-to-unavailable-when-a-refresh-sends-its-marker--and-back-when-the-map-returns.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1420:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > renders every errcount row as no data when /status carries no errcount
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---renders-every-errcount-row-as-no-data-when--status-carries-no-errcount.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1439:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > renders an errcount entry sent as the unavailable marker as unavailable
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---renders-an-errcount-entry-sent-as-the-unavailable-marker-as-unavailable.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1450:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---feeds-every--status-body-it-reads-to-the-device-clock--its-own-GET-s-and-a-sub-request-s-alike.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1461:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 79 passed (86)
+   Start at  12:32:33
+   Duration  20.33s (tests 98%, worker 1%, import 1%)
+
+== Summary: npm test ==
+Commit: af8f939 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 79 · failed 7 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/render.test.js > renderSection > the section controller > aborts a GET a switch took over once the page stops with no section following: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > reads a statusPath field's value from GET /status on a section that reads another route: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > shows a degraded /status source as unavailable in every field of its card, with the card's cue: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > renders every errcount row as no data when /status carries no errcount: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > renders an errcount entry sent as the unavailable marker as unavailable: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike: waitFor timed out
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

@@ -1,0 +1,25 @@
+Plugin "vitest:mocks:interceptor" defines Vite-specific hooks (configureServer) in a plugin returned from applyToEnvironment. These hooks will be ignored.
+
+ RUN  v5.0.0 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20b
+      API started at http://localhost:63315/
+
+ ✓ |chromium| tests_js/definitions-mockdata-coverage.test.js (9 tests) 11ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  11:26:29
+   Duration  4.97s (worker 60%, import 39%, tests 1%)
+
+== Summary: npm test ==
+Commit: db6ce58 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 9 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

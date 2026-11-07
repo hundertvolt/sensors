@@ -1,0 +1,13 @@
+test_asy_print_log	-1	0.42	rc=1	mem=0	100/102 passed, 2 failed, 0 skipped
+test_asy_bmp3xx_driver	-1	13.64	rc=1	mem=0	136/137 passed, 1 failed, 0 skipped
+test_asy_scd30_driver	-1	22.27	rc=1	mem=0	129/130 passed, 1 failed, 0 skipped
+test_asy_sgp40_driver	-1	8.09	rc=0	mem=0	164/164 passed, 0 failed, 0 skipped
+test_asy_isl29125_driver	-1	2.60	rc=0	mem=0	246/246 passed, 0 failed, 0 skipped
+test_asy_system_service	-1	23.77	rc=1	mem=0	170/173 passed, 3 failed, 0 skipped
+test_asy_webserver_service	-1	4.48	rc=0	mem=0	219/219 passed, 0 failed, 0 skipped
+test_voc_algorithm	-1	2.49	rc=0	mem=0	46/46 passed, 0 failed, 0 skipped
+test_digital_twin_launch	-1	8.06	rc=0	mem=0	26/26 passed, 0 failed, 0 skipped
+test_asy_wifi_service	-1	24.54	rc=0	mem=0	265/265 passed, 0 failed, 0 skipped
+test_asy_base_classes	-1	0.51	rc=0	mem=0	189/189 passed, 0 failed, 0 skipped
+test_asy_fram_driver	-1	0.22	rc=0	mem=0	104/104 passed, 0 failed, 0 skipped
+test_microtest_hooks	-1	0.10	rc=0	mem=0	7/7 passed, 0 failed, 0 skipped

@@ -1,0 +1,24 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__ test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source ___
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31t/scripts/_digital_twin_scenarios.py'>
+
+    def test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source(harness: ModuleType) -> None:
+        # The watchdog's room beside one supervisor sleep, and each uart_link's reply slack (SPECIFICATION.md F.3), read
+        # here from the sources; the twin scenario and the bench lag test both take the one helper's value.
+        src = harness.REPO_ROOT / "src"
+        task_check_s, reply_ms, gc_pause = module_int_const(src, "asy_system_service.py", "_TASK_CHECK_TIME"), module_int_const(src, "asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS"), module_int_const(src, "asy_uart_comm.py", "_GC_PAUSE_WORST_MS")
+        linked = []
+        for device in DEVICE_NAMES:
+            doc = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))
+            links = [doc["bus"][inst["bus"]] for inst in doc.get("instance", []) if inst.get("driver") == "uart_link"]
+            expected = min([harness._WDT_TIMEOUT_MS - task_check_s * 1000] + [reply_ms - (2 * bus["poll_wait_ms"] + bus["poll_idle_ms"] + gc_pause) for bus in links])
+>           assert harness.smallest_hard_consumer_ms(device_toml(device), src) == expected, device
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: module '_digital_twin_scenarios' has no attribute 'smallest_hard_consumer_ms'
+
+tests_scripts/test_digital_twin_scenarios.py:188: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source
+1 failed, 49 deselected in 0.19s

@@ -1,0 +1,37 @@
+Lane C working notes (scratch, not a report). C1 = e74f9f6 on audit/u20-c.
+
+C1 landed: 48a (boot entry pair), 48b (docstring, imports UART_CRC_MODES/WARN_SIGNALS/_WDT_TIMEOUT_MS, _KNOWN_SIGNALS gone),
+48c (header: no asyncio import, frozen_html comment+no suppression, begin_boot/BOOT_*, WDT+JsonDict+SetupFct+TaskStarter under
+TYPE_CHECKING, CRC import when named, no Any), 48d (build_system construction-only, begin_boot first, I2C comment, rx_ring/crc on
+UART, sysfunct config_stores/reset_reason, batch gone, device_table local), 48e (main sequence + marks), 48f (collectors typed,
+_collect_setups, asserts gone), step 2 (annotation-only globals, WARN_SIGNALS schema lines bare cm.ConfigSchema), step 3 (bus
+default), 51 (_collect_config_stores), 52 (callbacks, five words, status keys, JsonDict, no asserts, singleton vars via instance_var).
+Partly: 48g (only the WARN_SIGNALS lookup in _notification_signals), 157 (rx_ring= and crc= rendering; limits= is rest).
+
+Deferred to the rest: A.U20.22 device-wiring targets from model.device_wiring (V fills it in V's rest, not V1); unknown warn_*
+raise stays in codegen until V's validate raise lands (48h); 53 webserver/SETTINGS_GROUPS + the 8 arg-type ignores (need the
+_ModuleLike/_MicrodotApp protocol fix in src/asy_webserver_service.py - not my file); 48g renderer (_build_call(spec, info),
+:#x); limits=TransferLimits; rule/fix + BuildInternalError on my raises; 138 docstring/comments; 143 TOML-level crc test;
+144 hygiene pins; 48al CLI tests already moved to new names in C1; expected_facts pins (139) need P1.
+
+Deviations: ConfigFaults/ConfigUnpersisted wrapped in list() (list[str] is not list[JsonValue]: mypy dict-item, probed);
+_gmtimestruct_to_dict(t: tuple[int, ...] | None) not GMTimeStruct (time.gmtime() returns _TimeTuple); _collect_config_stores
+-> list[cm.ConfigManager] bare (test_code_conventions: quoted annotation must name a TYPE_CHECKING symbol); _collect_task_starters
+typed list[TaskStarter] (Any-free; neopixel/notification Task[Any] compatible); import asyncio dropped (unused);
+asy_system_service import placed before gc.threshold per section 3's C->P,L,I order.
+
+Findings: (1) micropython.alloc_emergency_exception_buf is absent on the Unix port (py/modmicropython.c:146-148,210-212: only when
+MICROPY_EMERGENCY_EXCEPTION_BUF_SIZE == 0; ports/unix/variants/mpconfigvariant_common.h:69-70 sets 256) - AttributeError if a twin
+ever runs the generated boot entry (U25 M.TSC.085); packet A.U20.04 says "harmless there" - wrong. rp2 has it (mpconfigport.h:126).
+(2) codegen._KNOWN_SIGNALS consumers outside every lane: tests_scripts/test_stored_config_golden.py:11,81-82 (import),
+tests_scripts/test_device_script_config_schemas.py:35-37 (AST read); comments buildgen/definitions.py:51 (G),
+tests_hardware/flash/test_config_float_round_trip.py:36 (H). (3) heap_layout_after_full_boot_sequence.py:172 unreachable once
+sysfunct is non-Optional (H: getattr). (4) Microdot app arg-type error in every generated module pre-exists (hidden by
+follow_imports=silent).
+
+Red on C's own branch until merge: whole test_buildgen_generate.py (K1 import), CLI tests (P1 names), _SYSTEM_CMDS equality (B1),
+test_tunables_register (D rows: gc.emergency_exc_buf_bytes new, wdt.timeout_ms loses codegen site), test_code_conventions
+narrowing exemption (L, M.TSC.064), test_watchdog_feed_sites (S), test_gc_collect_sites (L), test_buildgen_definitions system
+rows (G1). Sim: $SP/u20c/sim via sync_sim.sh + overlay.py (K1/S1/B1/P1 stand-ins).
+
+Timing: test_buildgen_generate.py baseline 46.6 s wall (155 tests); C1 in sim 30.1 s wall (255 tests), nice 19, loaded host.

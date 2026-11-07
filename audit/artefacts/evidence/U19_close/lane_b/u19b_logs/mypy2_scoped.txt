@@ -1,0 +1,19 @@
+tests/test_asy_base_classes.py: note: In function "test_a_failed_config_read_sends_the_unavailable_marker_in_place_of_the_map":
+tests/test_asy_base_classes.py:1642:13: error: Need type annotation for "cases"
+ [var-annotated]
+        cases = (
+                ^
+tests/test_asy_base_classes.py:1652:69: error: Cannot infer type of lambda 
+[misc]
+    ...n(reader._get_dict_cfg("READ", _VAL_SI, callback=lambda o=outcome: cal...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/allocation_need_per_source.py: note: In function "_sources":
+tests_hardware/device_scripts/allocation_need_per_source.py:92:8: error:
+"WebserverService" has no attribute "_static_mount"  [attr-defined]
+        if ws._static_mount is not None:  # the page the 2026-09-23 sittin...
+           ^~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/allocation_need_per_source.py:93:48: error:
+"WebserverService" has no attribute "_get_static_index"  [attr-defined]
+            probes.append(("route:/", _whole_route(ws._get_static_index)))
+                                                   ^~~~~~~~~~~~~~~~~~~~
+Found 4 errors in 2 files (checked 168 source files)

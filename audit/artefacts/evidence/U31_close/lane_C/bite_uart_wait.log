@@ -1,0 +1,7 @@
+FAIL test_boot_feeds_the_watchdog_exactly_once_per_setup_call:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/_sensortask_scenarios.py", line 2945, in test
+  File "tests/_sensortask_scenarios.py", line 810, in _scenario_boot_feeds_the_watchdog
+AssertionError: setup unit uart_link_init waits 5.0 ms
+0/1 passed, 1 failed, 0 skipped

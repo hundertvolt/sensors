@@ -1,0 +1,6 @@
+FAIL test_touches_only_its_own_address_except_reset_which_touches_only_the_general_call_address:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneU1/sweep/sweep_only.py", line 149, in test_touches_only_its_own_address_except_reset_which_touches_only_the_general_call_address
+AssertionError: ('get_raw', [('writeto', 0, b'\x06', True), ('writeto', 89, b'&\x0f\x80\x00\xa2ff\x93', True), ('readfrom_into', 89, b'\x80\x00\xa2', True)])
+0/1 passed, 1 failed, 0 skipped

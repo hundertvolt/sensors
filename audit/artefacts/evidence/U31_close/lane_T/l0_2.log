@@ -1,0 +1,50 @@
+...........F............................................................ [ 47%]
+........................................................................ [ 95%]
+.F.F...                                                                  [100%]
+=================================== FAILURES ===================================
+_ test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31t/scripts/_digital_twin_scenarios.py'>
+
+    def test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused(harness: ModuleType) -> None:
+        for device in harness.generated_devices():
+            text = (harness.GENERATED_SRC_DIR / f"sensortask_{device}.py").read_text(encoding="utf-8")
+            body = text[text.index("def _collect_trigger_starters") :].split("\n\n", 1)[0]
+            modules = re.search(r"for module in \(([^)]*)\)", body)
+            assert modules is not None, device
+            assert harness._stagger_waits(device) == (len([m for m in modules.group(1).split(",") if m.strip()]) > 1), (device, modules.group(1))
+>       with pytest.raises(ValueError, match="no known property"):
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'no known property'
+E         Actual message: "scenario 'zz_unknown_property' has no goal docstring"
+
+tests_scripts/test_digital_twin_scenarios.py:185: AssertionError
+______________________ test_every_instrument_has_an_entry ______________________
+
+recorder = <module 'record_twin_instrument_runs' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31t/scripts/record_twin_instrument_runs.py'>
+record = {'tests_hardware/bench/test_boot_order_and_triggers.py': {'api_sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b9...2026-10-20T20:35:32Z', 'gc_threshold': -1, 'reason': 'needs the bench bridge (network, WLAN role-reversal)', ...}, ...}
+
+    def test_every_instrument_has_an_entry(recorder: ModuleType, record: "dict[str, dict[str, object]]") -> None:
+        missing = sorted(path.relative_to(recorder.REPO_ROOT).as_posix() for path in recorder.instruments() if path.relative_to(recorder.REPO_ROOT).as_posix() not in record)
+>       assert not missing, f"instruments with no twin run recorded: {missing}"
+E       AssertionError: instruments with no twin run recorded: ['tests_hardware/device_scripts/flash_write_loop_gap.py']
+E       assert not ['tests_hardware/device_scripts/flash_write_loop_gap.py']
+
+tests_scripts/test_twin_record.py:28: AssertionError
+________________ test_every_entrys_hashes_are_the_current_files ________________
+
+recorder = <module 'record_twin_instrument_runs' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31t/scripts/record_twin_instrument_runs.py'>
+record = {'tests_hardware/bench/test_boot_order_and_triggers.py': {'api_sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b9...2026-10-20T20:35:32Z', 'gc_threshold': -1, 'reason': 'needs the bench bridge (network, WLAN role-reversal)', ...}, ...}
+
+    def test_every_entrys_hashes_are_the_current_files(recorder: ModuleType, record: "dict[str, dict[str, object]]") -> None:
+        stale = [f"{key}: {name}" for key, entry in sorted(record.items()) if (recorder.REPO_ROOT / key).is_file() for name, digest in recorder.entry_hashes(recorder.REPO_ROOT / key).items() if entry.get(name) != digest]
+>       assert not stale, f"changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: {stale}"
+E       AssertionError: changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: ['tests_hardware/device_scripts/fram_command_hold_timing.py: sha256', 'tests_hardware/flash/test_memory_stress.py: sha256']
+E       assert not ['tests_hardware/device_scripts/fram_command_hold_timing.py: sha256', 'tests_hardware/flash/test_memory_stress.py: sha256']
+
+tests_scripts/test_twin_record.py:37: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused
+FAILED tests_scripts/test_twin_record.py::test_every_instrument_has_an_entry
+FAILED tests_scripts/test_twin_record.py::test_every_entrys_hashes_are_the_current_files
+3 failed, 148 passed in 9.50s

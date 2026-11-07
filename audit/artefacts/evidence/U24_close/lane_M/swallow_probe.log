@@ -1,0 +1,36 @@
+== old
+FAIL captive _read_replies EBADF returned False - the planted error read as the expected answer
+PASS captive _read_replies EAGAIN expected errno -> True
+FAIL dns answer_once EBADF raised OSError('_FakeDNSServer.answer_once() timed out waiting for a query',)
+PASS dns answer_once EAGAIN keeps polling to its own timeout: OSError('_FakeDNSServer.answer_once() timed out waiting for a query',)
+FAIL webserver _file_or_none EISDIR (a directory) returned None - the planted error read as the expected answer
+FAIL webserver _file_or_none EBADF returned None - the planted error read as the expected answer
+PASS webserver _file_or_none ENOENT expected errno -> None
+FAIL connections _can_listen EBADF returned False - the planted error read as the expected answer
+PASS connections _can_listen EADDRINUSE expected errno -> False
+PASS connections _can_listen free port expected errno -> True
+FAIL connections _refused_or_eof EBADF at connect returned True - the planted error read as the expected answer
+FAIL connections _refused_or_eof EBADF at write/read returned True - the planted error read as the expected answer
+PASS connections _refused_or_eof expected errno at connect expected errno -> True
+PASS connections _refused_or_eof expected errno at write/read expected errno -> True
+PASS connections _refused_or_eof real closed port expected errno -> True
+8 / 15 passed
+rc=0
+== new
+PASS captive _read_replies EBADF raised OSError(9,)
+PASS captive _read_replies EAGAIN expected errno -> True
+PASS dns answer_once EBADF raised OSError(9,)
+PASS dns answer_once EAGAIN keeps polling to its own timeout: OSError('_FakeDNSServer.answer_once() timed out waiting for a query',)
+PASS webserver _file_or_none EISDIR (a directory) raised OSError(21,)
+PASS webserver _file_or_none EBADF raised OSError(9,)
+PASS webserver _file_or_none ENOENT expected errno -> None
+PASS connections _can_listen EBADF raised OSError(9,)
+PASS connections _can_listen EADDRINUSE expected errno -> False
+PASS connections _can_listen free port expected errno -> True
+PASS connections _refused_or_eof EBADF at connect raised OSError(9,)
+PASS connections _refused_or_eof EBADF at write/read raised OSError(9,)
+PASS connections _refused_or_eof expected errno at connect expected errno -> True
+PASS connections _refused_or_eof expected errno at write/read expected errno -> True
+PASS connections _refused_or_eof real closed port expected errno -> True
+15 / 15 passed
+rc=0

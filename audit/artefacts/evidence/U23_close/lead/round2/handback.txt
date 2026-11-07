@@ -1,0 +1,55 @@
+
+######## SubagentHandback 2026-10-13T13:17:32.891Z
+Lead edits round 2 are done: three commits on `audit/u23-lead2` in `S/wt-u23L`, on top of merge `d4d4408` (b8ccba7 merged with no conflict). Nothing is pushed and the tree is clean. Every run is marked done in RUNS.md, and `ps` shows none of mine.
+
+**Commits**
+- `176a88c` E1: on a section switch, the left section's queued GETs are dropped and its GET on the wire finishes, with the result thrown away (no paint, banner, log or device-clock update). The page's own stop still aborts in-flight GETs, including any GET a switch handed over.
+  - **How a switch is recognised:** render.js treats a section rendered into the same main element in the same turn as a switch; otherwise the in-flight GET is aborted on the next microtask. A plainer way is an explicit flag passed from shell.js's `selectSection`, but shell.js is outside my file set — your call.
+  - `pollManager.request()` gains a fifth argument, `queueSignal`.
+  - The render test that pinned the in-flight abort is replaced.
+  - Seen failing first: `u23/lead2/e1ff_pm.log`, `e1ff_render.log`, `chainff_render.log`. Guard bites: `biteA.log` (no page-stop abort), `biteB.log` (clock observed after the switch).
+- `d34bdcd` E2: the full-ceiling tabs check prints one count line per device before it asserts.
+- `20932b4` E3: the live put matrix stops idling between a page paint and Playwright's next look. No check, read or assertion changed.
+
+**E1 live evidence (wozi, temporary probe in the ResetErrors errcount read, 8 switches each with a `/status` GET on the wire)**
+- Before the change: 8 of 8 aborted (`net::ERR_ABORTED`), the page showed "Web Server: 8", and the WEBSERVER history held W48.
+- After: all 8 GETs ran to their end (202–234 ms), all 17 rows read 0, counter 0.
+- Added wait: the next section's first GET now starts a median 216.6 ms after the click (range 203.5–233.8), against 6.6 ms before — about +210 ms, bounded by the 15 s request cap. Evidence: `e1probe_old.json`, `e1probe_new.json` and their `.keep.log` files.
+- The probe was removed. Only the in-place errcount read's comment changed, because the reason it gave (W48) no longer holds.
+
+**E2 printed line** (identical shape on all six devices, in both runs): `concurrent tabs on wozi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all`
+
+**E3 measured split** (one traced run of shard 1/3, 367.2 s, trace in `e3_trace_s1.jsonl`):
+- The page's GET before each Apply: 35.6 s (172 GETs). Product behaviour, kept.
+- The test's own current-value read: 24.7 s (108 reads, about 229 ms each). There is one per case and no case reads twice, so nothing could be reused; kept.
+- Test-side waits that check nothing:
+  - 56.5 s waiting for each nav link to stop moving during the drawer's 0.18 s slide (220 navigations).
+  - About 85 s of Playwright's locator waitFor back-off: its checks grow to 0.5 s apart, so a section painted at 0.37 s was seen at 0.77 s (53.2 s over navigations, up to 31.8 s over Applies).
+- The change: the matrix page runs with reduced motion, which in style.css removes only the drawer slide (agent, 2026-10-13, decided on the owner's behalf for review). Each navigation and Apply also waits for its element on the frame it appears, then the same locator waitFor confirms it with the same timeout.
+
+| Put-matrix shards | 1/3 | 2/3 | 3/3 |
+|---|---|---|---|
+| Before E3 | 361.2 s | 387.8 s | 380.1 s |
+| After E3 | 245.3 s | 254.9 s | 250.3 s |
+
+Pass and skip counts are identical before and after (114+2, 119+2, 116+1 skipped). Lane S measured 223–237 s before its own changes. The after runs had more load from other agents on the host.
+
+**Checks** (`S/u23/lead2/final/`)
+- Rebuild, ruff (8 scopes), `npm run lint` and `npm run typecheck`: all clean.
+- Vitest, all green: render 86, poll-manager 22, shell 14, main 11, app 11, generated-definitions-render 48, site-functions 54, templates 112, accessibility 45.
+- `live-backend.test.js`: 18/18 (208 s; 169.5 s in the E2 run). Shards: as in the table.
+- `test_tunables_register` is red only on lane X's rows. I added no tag.
+- Pre-commit set at each commit, failures identical every time and not caused by my edits:
+  - `test_decision_vocabulary`: S's 4 stale allow-list rows (that file is API4's).
+  - `lint-ceilings`: the complexity ceiling of 41 is loose against the tree's maximum of 22; also red in API3 and API4.
+- My edits moved no ESLint maximum.
+
+**Facts for lane X**
+- H.4 "Poll coordination": the call becomes `pollManager.request(url, init, timeoutMs, signal, queueSignal)`. The abort sentence becomes: "A section that is left drops its queued GETs; its GET on the wire runs to its end, discarded, when the next section is rendered (a switch), and is aborted when the page itself stops (before a reload), with any GET a switch handed it." Measured cost: +210 ms median before the next section's first GET.
+- H.7: the tabs check prints its counts per device; the matrix page uses reduced motion and per-frame waits; the shard times above.
+
+**Fact for lane Y**: normal navigation of the site no longer logs a W48 `HTTP_PEER_RESET`. A W48 now means a client really dropped a connection mid-response, for example by closing or reloading the page while a request ran.
+
+**Rebuild needed**: E1 changes `js/render.js` and `js/poll-manager.js`, which feed the site. I rebuilt `wt-u23L`; other worktrees need a rebuild after the merge.
+
+**RUNS.md**: only line 322, your agent entry for me, is still RUNNING — yours to strike. I repaired line 353: it had joined OF-111's pychecks line with my E2 pre-commit line because of a missing newline, and my status update had written my result onto their entry.

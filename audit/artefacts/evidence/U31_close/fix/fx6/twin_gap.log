@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx6
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collected 6 items / 5 deselected / 1 selected
+
+tests_hardware/flash/test_memory_stress.py NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+.
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests_hardware/flash/test_memory_stress.py::test_flash_write_loop_gap_is_recorded
+======================= 1 passed, 5 deselected in 0.42s ========================

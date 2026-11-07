@@ -1,0 +1,64 @@
+
+> sensors-website@0.1.0 build:site
+> npm run build:definitions && scripts/build_device_websites.sh
+
+
+> sensors-website@0.1.0 build:definitions
+> uv run scripts/_generate_sensortask_modules.py
+
+Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-npm/build/generated_src
+Writing Python file build/generated_html/arzi/frozen_html.py.
+Appended folder /tmp/tmp.n0kR6ZlS9R as /.
+Appended file   /tmp/tmp.n0kR6ZlS9R/index.html.gz (12438 bytes) as /index.html.gz
+Appended folder /tmp/tmp.n0kR6ZlS9R/js as /js
+Appended file   /tmp/tmp.n0kR6ZlS9R/js/app.js.gz (17301 bytes) as /js/app.js.gz
+Sum of file sizes 29739 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/arzi/frozen_html.py written successfully.
+Wrote build/generated_html/arzi/frozen_html.py (mounts at /html on import)
+Writing Python file build/generated_html/dev/frozen_html.py.
+Appended folder /tmp/tmp.WXfkMnwKQo as /.
+Appended file   /tmp/tmp.WXfkMnwKQo/index.html.gz (14873 bytes) as /index.html.gz
+Appended folder /tmp/tmp.WXfkMnwKQo/js as /js
+Appended file   /tmp/tmp.WXfkMnwKQo/js/app.js.gz (17301 bytes) as /js/app.js.gz
+Sum of file sizes 32174 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/dev/frozen_html.py written successfully.
+Wrote build/generated_html/dev/frozen_html.py (mounts at /html on import)
+Writing Python file build/generated_html/grkizi/frozen_html.py.
+Appended folder /tmp/tmp.S7TUyy0q5G as /.
+Appended file   /tmp/tmp.S7TUyy0q5G/index.html.gz (12440 bytes) as /index.html.gz
+Appended folder /tmp/tmp.S7TUyy0q5G/js as /js
+Appended file   /tmp/tmp.S7TUyy0q5G/js/app.js.gz (17301 bytes) as /js/app.js.gz
+Sum of file sizes 29741 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/grkizi/frozen_html.py written successfully.
+Wrote build/generated_html/grkizi/frozen_html.py (mounts at /html on import)
+Writing Python file build/generated_html/klkizi/frozen_html.py.
+Appended folder /tmp/tmp.wkyjNYrGhf as /.
+Appended file   /tmp/tmp.wkyjNYrGhf/index.html.gz (12440 bytes) as /index.html.gz
+Appended folder /tmp/tmp.wkyjNYrGhf/js as /js
+Appended file   /tmp/tmp.wkyjNYrGhf/js/app.js.gz (17301 bytes) as /js/app.js.gz
+Sum of file sizes 29741 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/klkizi/frozen_html.py written successfully.
+Wrote build/generated_html/klkizi/frozen_html.py (mounts at /html on import)
+Writing Python file build/generated_html/schlafzi/frozen_html.py.
+Appended folder /tmp/tmp.rpBeiwGJVm as /.
+Appended file   /tmp/tmp.rpBeiwGJVm/index.html.gz (12442 bytes) as /index.html.gz
+Appended folder /tmp/tmp.rpBeiwGJVm/js as /js
+Appended file   /tmp/tmp.rpBeiwGJVm/js/app.js.gz (17301 bytes) as /js/app.js.gz
+Sum of file sizes 29743 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/schlafzi/frozen_html.py written successfully.
+Wrote build/generated_html/schlafzi/frozen_html.py (mounts at /html on import)
+Writing Python file build/generated_html/wozi/frozen_html.py.
+Appended folder /tmp/tmp.rMXidNRpcY as /.
+Appended file   /tmp/tmp.rMXidNRpcY/index.html.gz (12860 bytes) as /index.html.gz
+Appended folder /tmp/tmp.rMXidNRpcY/js as /js
+Appended file   /tmp/tmp.rMXidNRpcY/js/app.js.gz (17301 bytes) as /js/app.js.gz
+Sum of file sizes 30161 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+build/generated_html/wozi/frozen_html.py written successfully.
+Wrote build/generated_html/wozi/frozen_html.py (mounts at /html on import)
+build rc=0 9s

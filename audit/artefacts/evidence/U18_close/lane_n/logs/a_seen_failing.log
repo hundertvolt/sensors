@@ -1,0 +1,8 @@
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:493: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_run_9_expects_no_reply_where_a_route_leaves_the_host
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_run_9_expects_not_sent_where_no_route_leaves_the_host
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_the_route_probe_finds_the_loopback_route
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_the_route_probe_reports_a_host_with_no_route_out
+4 failed, 44 passed in 0.59s

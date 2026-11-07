@@ -1,0 +1,11 @@
+window 120.0 s, 98281 sleeps of 1 ms; overshoot <0.5,<1,<5,<10,<20,<50,>=50 ms: [97433, 501, 338, 7, 1, 1, 0]
+steal over the window, all cpus: 210 ticks of 10 ms
+overshoot 33.94 ms: guest run-queue wait in it 0.05 ms
+overshoot 13.07 ms: guest run-queue wait in it 0.00 ms
+overshoot 8.82 ms: guest run-queue wait in it 0.00 ms
+overshoot 7.21 ms: guest run-queue wait in it 0.04 ms
+overshoot 5.90 ms: guest run-queue wait in it 5.76 ms
+overshoot 5.32 ms: guest run-queue wait in it 0.05 ms
+overshoot 5.18 ms: guest run-queue wait in it 2.90 ms
+overshoot 5.12 ms: guest run-queue wait in it 0.00 ms
+overshoot 5.10 ms: guest run-queue wait in it 0.00 ms

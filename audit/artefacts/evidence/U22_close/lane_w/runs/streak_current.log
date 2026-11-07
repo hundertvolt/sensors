@@ -1,0 +1,2 @@
+PASS test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode
+selected: 1 failed: 0

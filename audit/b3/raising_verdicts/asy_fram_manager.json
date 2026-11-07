@@ -1,0 +1,561 @@
+{
+ "conventions": "Read at 651d3e79 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise. A call never raises for its frame (py/objfun.c:268-287 falls back to the C stack); `super().m()` compiles to LOAD_SUPER_METHOD (py/emitbc.c:536) with the super object on the C stack (py/objtype.c:1425-1426), so no super() call or allocation is left of it; an exception object falls back to the emergency object and an empty or emergency tuple (py/objexcept.c:209-240), so constructing one never raises. Small fixed allocations: an async def call's generator (py/objgenerator.c:53-66), a *args call's tuple, asyncio's Task and Lock/Event generators; F.2 sends these to I.4(a): a function doomed without memory does not catch. On a run-time path the calling task ends and _log_dead_task()'s except Exception (asy_system_service.py:326) persists it, after which the supervisor restarts the task (I.4(c)); at construction (FRAMManager and FRAM_SPI are built inside build_system()) and in FRAMManager.setup() (run_setups() catches nothing, asy_system_service.py:738-744) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) records the loop end and leaves the armed watchdog to reset. asyncio.CancelledError is a BaseException (extmod/asyncio/core.py:18): no `except Exception` here swallows a cancel, and every await may deliver one, which propagates to the canceller by design. Calls into asy_base_classes, asy_print_log and math_helpers that the walk marks transitive take those modules' own rows and are not repeated here. The chunk layer runs in the calling task: a logger's persistence (asy_print_log.py:321, :354, in whichever task logs), the SGP40 backup (asy_sgp40_driver.py:512, :558) and the shutdown sequence's erase and quiesce (asy_system_service.py:464, :483), inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498). get_chunk()/get_timestamped_chunk() run at construction only: their callers catch MemoryError (asy_print_log.py:292-294, asy_sgp40_driver.py:242-246) and the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest.",
+ "raises": {},
+ "calls": {
+  "<module>::const": {
+   "can_raise": "nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842)",
+   "verdict": "unreachable",
+   "proof": "no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot"
+  },
+  "_owner_seed::min": {
+   "can_raise": "TypeError for operands that do not compare (py/modbuiltins.c:250-297)",
+   "verdict": "unreachable",
+   "proof": "two small ints (crc.length() and 2); min() of two ints allocates nothing"
+  },
+  "_owner_seed::crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "_owner_seed::owner.encode": {
+   "can_raise": "MemoryError for the bytes object (str_encode, py/objstr.c:2134-2142)",
+   "verdict": "handled",
+   "proof": "reached only from get_chunk() :711 and get_timestamped_chunk() :764, which run at construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "_FRAMBaseChunk.__init__::self.crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "_FRAMBaseChunk.__init__::asyncio.Lock": {
+   "can_raise": "MemoryError for the Lock and its TaskQueue",
+   "verdict": "handled",
+   "proof": "construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "_FRAMBaseChunk.__init__::bytearray": {
+   "can_raise": "MemoryError (py/gc.c via m_malloc_fail), OverflowError for a size past mp_int_t",
+   "verdict": "handled",
+   "proof": ":107's check_length buffer by the narrow except (MemoryError, OverflowError) at :108, which prints the failure and runs unchecked; :103 and :104 are 1 and 2 bytes at construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "_FRAMBaseChunk.__init__::memoryview": {
+   "can_raise": "MemoryError for the memoryview object",
+   "verdict": "handled",
+   "proof": "a small fixed object at construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "_FRAMBaseChunk._set_check_sb::fram.get_values_sync": {
+   "can_raise": "nothing for a 1-byte buffer (the driver's rows: its one raise is the 32-byte-plus EIO)",
+   "verdict": "unreachable",
+   "proof": "stat is the chunk's 1-byte _sb_buf (:103)"
+  },
+  "_FRAMBaseChunk._set_check_sb::fram.report_get_values": {
+   "can_raise": "its err_s calls and its coroutine (the driver's rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "_FRAMBaseChunk._set_check_sb::fram.set_values_sync": {
+   "can_raise": "nothing (the driver's rows)",
+   "verdict": "unreachable",
+   "proof": "write-only transfers and 1-byte reads behind the driver's guards"
+  },
+  "_FRAMBaseChunk._set_check_sb::fram.report_set_values": {
+   "can_raise": "its err_s/wrn_s calls, _report_chip_lost() and its coroutine (the driver's rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "_FRAMBaseChunk._blank_verdict::self.fram.verify_present": {
+   "can_raise": "what verify_present() raises (the driver's rows): its TimeoutError is caught there (asy_fram_driver.py:494); a cancel and small fixed allocations remain",
+   "verdict": "handled",
+   "proof": "reached from _read() at :246, outside any try: small fixed allocations only (conventions): I.4(a), and a cancel propagates by design"
+  },
+  "_FRAMBaseChunk._blank_verdict::self.fram.lost.is_set": {
+   "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method returning an attribute; no allocation"
+  },
+  "_FRAMBaseChunk._compare_with::memoryview": {
+   "can_raise": "MemoryError for the memoryview object; TypeError for a non-buffer",
+   "verdict": "handled",
+   "proof": "buf is a bytearray by its signature; the object is small fixed allocations only (conventions): I.4(a)"
+  },
+  "_FRAMBaseChunk._compare_with::self._read_chunk": {
+   "can_raise": "what _read_chunk() raises",
+   "verdict": "handled",
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (_read_chunk()'s try :281, except :338)"
+  },
+  "_FRAMBaseChunk._handle_status_bytes::self.crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "_FRAMBaseChunk._handle_status_bytes::self._set_check_sb": {
+   "can_raise": "what _set_check_sb() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "_FRAMBaseChunk._read::self.fram.lost.is_set": {
+   "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method returning an attribute; no allocation"
+  },
+  "_FRAMBaseChunk._read::self._mempause": {
+   "can_raise": "nothing: FRAMManager.get_pause() returns an attribute (:733-734)",
+   "verdict": "unreachable",
+   "proof": "a bound method with no arguments; no allocation"
+  },
+  "_FRAMBaseChunk._read::len": {
+   "can_raise": "TypeError for an object without a length (py/modbuiltins.c mp_builtin_len)",
+   "verdict": "unreachable",
+   "proof": "every argument is a bytearray, bytes or memoryview by its signature's type (mypy-checked); len() of a buffer is a small int and allocates nothing"
+  },
+  "_FRAMBaseChunk._read::self.crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "_FRAMBaseChunk._read::self._read_into": {
+   "can_raise": "what _read_into() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "_FRAMBaseChunk._read::self._blank_verdict": {
+   "can_raise": "what _blank_verdict() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "_FRAMBaseChunk._read::self._write_chunk": {
+   "can_raise": "what _write_chunk() raises",
+   "verdict": "handled",
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (_write_chunk()'s try :410, except :433)"
+  },
+  "_FRAMBaseChunk._read::self._compare_with": {
+   "can_raise": "what _compare_with() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "_FRAMBaseChunk._read_chunk::self._read_progress": {
+   "can_raise": "nothing with span -1 (its rows)",
+   "verdict": "unreachable",
+   "proof": "called in the except body (:342) with span -1, which sets two flags and returns before the loop (:362-365)"
+  },
+  "_FRAMBaseChunk._read_into::self._read_chunk": {
+   "can_raise": "what _read_chunk() raises",
+   "verdict": "handled",
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (:281, :338)"
+  },
+  "_FRAMBaseChunk._read_progress::range": {
+   "can_raise": "TypeError for a non-int; MemoryError for a range object",
+   "verdict": "unreachable",
+   "proof": "span is a non-negative int here (:362 returned for a negative one), and the compiler turns `for x in range(...)` into a counter loop with no range object (py/compile.c:1430, :1563)"
+  },
+  "_FRAMBaseChunk._write::self.fram.lost.is_set": {
+   "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method returning an attribute; no allocation"
+  },
+  "_FRAMBaseChunk._write::self._mempause": {
+   "can_raise": "nothing: get_pause() returns an attribute (:733-734)",
+   "verdict": "unreachable",
+   "proof": "no allocation"
+  },
+  "_FRAMBaseChunk._write::len": {
+   "can_raise": "TypeError for an object without a length (py/modbuiltins.c mp_builtin_len)",
+   "verdict": "unreachable",
+   "proof": "every argument is a bytearray, bytes or memoryview by its signature's type (mypy-checked); len() of a buffer is a small int and allocates nothing"
+  },
+  "_FRAMBaseChunk._write::self.crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "_FRAMBaseChunk._write::self._write_chunk": {
+   "can_raise": "what _write_chunk() raises",
+   "verdict": "handled",
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (:410, :433)"
+  },
+  "_FRAMBaseChunk._write::range": {
+   "can_raise": "TypeError for a non-int; MemoryError for a range object",
+   "verdict": "unreachable",
+   "proof": "len() of the 2-tuple _block_addr, and the compiler turns `for x in range(...)` into a counter loop with no range object (py/compile.c:1430, :1563)"
+  },
+  "_FRAMBaseChunk._write::self._compare_with": {
+   "can_raise": "what _compare_with() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "_FRAMBaseChunk.clear::self.fram.lost.is_set": {
+   "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method returning an attribute; no allocation"
+  },
+  "_FRAMBaseChunk.clear::self._mempause": {
+   "can_raise": "nothing: get_pause() returns an attribute (:733-734)",
+   "verdict": "unreachable",
+   "proof": "no allocation"
+  },
+  "_FRAMBaseChunk.clear::range": {
+   "can_raise": "TypeError for a non-int; MemoryError for a range object",
+   "verdict": "unreachable",
+   "proof": "len() of the 2-tuple _block_addr, and the compiler turns `for x in range(...)` into a counter loop with no range object (py/compile.c:1430, :1563)"
+  },
+  "_FRAMBaseChunk.clear::len": {
+   "can_raise": "nothing for a tuple",
+   "verdict": "unreachable",
+   "proof": "_block_addr is the 2-tuple set at :97"
+  },
+  "_FRAMBaseChunk.clear::self._clear_chunk": {
+   "can_raise": "what _clear_chunk() raises",
+   "verdict": "handled",
+   "proof": "its body sits in a try catching Exception; outside it only `async with self.fram` (FRAM_SPI.__aenter__'s rows: a cancel, by design) and the coroutine remain, small fixed allocations only (conventions): I.4(a) (_clear_chunk()'s try :158, except :168)"
+  },
+  "_FRAMBaseChunk.invalidate::self.fram.lost.is_set": {
+   "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method returning an attribute; no allocation"
+  },
+  "_FRAMBaseChunk.invalidate::self._handle_status_bytes": {
+   "can_raise": "what _handle_status_bytes() raises with check_idle=False: two status-byte writes (set_values_sync() cannot raise) and report_set_values()'s small allocations",
+   "verdict": "handled",
+   "proof": "called only by erase_chip() :788, inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "_FRAMBaseChunk._copy_out::bytearray": {
+   "can_raise": "MemoryError (py/gc.c via m_malloc_fail) for a copy of the chunk's data size",
+   "verdict": "handled",
+   "proof": "the narrow except MemoryError at :197 prints the failure's own text, persists one ALLOC entry and returns None, the not-read sentinel both read()s pass on (:498, :568); a size that grows with the chunk, so it degrades rather than raising (I.4(a))"
+  },
+  "FRAMChunkBuffer.__init__::super": {
+   "can_raise": "what RegionBuffer.__init__() raises: its bytearray(size) is caught there (asy_base_classes.py:158-163)",
+   "verdict": "handled",
+   "proof": "RegionBuffer's except (MemoryError, OverflowError) at asy_base_classes.py:160 leaves the buffer None, which read_into()/write_into() report as ALLOC (:503, :523); the rest is int arithmetic"
+  },
+  "FRAMChunk.get_buffer::FRAMChunkBuffer": {
+   "can_raise": "MemoryError for the instance; its buffer's allocation is caught in RegionBuffer (asy_base_classes.py:160)",
+   "verdict": "handled",
+   "proof": "the instance is small fixed allocations only (conventions): I.4(a); the chunk-sized buffer degrades to None (row above)"
+  },
+  "FRAMChunk.get_buffer::self.crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "FRAMChunk.read::self.get_buffer": {
+   "can_raise": "what get_buffer() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMChunk.read::self.read_into": {
+   "can_raise": "what read_into() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMChunk.read::self._copy_out": {
+   "can_raise": "what _copy_out() raises: its MemoryError is caught there (:197)",
+   "verdict": "handled",
+   "proof": "the coroutine is small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMChunk.read_into::self._read": {
+   "can_raise": "what _read() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMChunk.write::self.get_buffer": {
+   "can_raise": "what get_buffer() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMChunk.write::len": {
+   "can_raise": "TypeError for an object without a length (py/modbuiltins.c mp_builtin_len)",
+   "verdict": "unreachable",
+   "proof": "every argument is a bytearray, bytes or memoryview by its signature's type (mypy-checked); len() of a buffer is a small int and allocates nothing"
+  },
+  "FRAMChunk.write::self.write_into": {
+   "can_raise": "what write_into() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMChunk.write_into::self._write": {
+   "can_raise": "what _write() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMChunkTimestampedBuffer.__init__::super": {
+   "can_raise": "what RegionBuffer.__init__() raises: its bytearray(size) is caught there (asy_base_classes.py:158-163)",
+   "verdict": "handled",
+   "proof": "as FRAMChunkBuffer.__init__ at :482"
+  },
+  "FRAMChunkTimestampedBuffer.get_ts_buf::memoryview": {
+   "can_raise": "MemoryError for the memoryview and its slice",
+   "verdict": "handled",
+   "proof": "_buf is a bytearray (None returned at :533-534); two small fixed objects: I.4(a) (conventions)"
+  },
+  "FRAMTimestampedChunk.__init__::super": {
+   "can_raise": "what _FRAMBaseChunk.__init__() raises (its rows)",
+   "verdict": "handled",
+   "proof": "construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMTimestampedChunk.__init__::struct.calcsize": {
+   "can_raise": "ValueError('bad typecode') for an unknown format (py/binary.c:153)",
+   "verdict": "unreachable",
+   "proof": "the format is the constant '<Q', 8 bytes; calcsize() returns a small int (py/modstruct.c:115-120)"
+  },
+  "FRAMTimestampedChunk.get_buffer::FRAMChunkTimestampedBuffer": {
+   "can_raise": "MemoryError for the instance; its buffer's allocation is caught in RegionBuffer (asy_base_classes.py:160)",
+   "verdict": "handled",
+   "proof": "as FRAMChunk.get_buffer at :487"
+  },
+  "FRAMTimestampedChunk.get_buffer::struct.calcsize": {
+   "can_raise": "ValueError('bad typecode') (py/binary.c:153)",
+   "verdict": "unreachable",
+   "proof": "the constant '<Q' (py/modstruct.c:115-120)"
+  },
+  "FRAMTimestampedChunk.get_buffer::self.crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "FRAMTimestampedChunk.read::self.get_buffer": {
+   "can_raise": "what get_buffer() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.read::self.read_into": {
+   "can_raise": "what read_into() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.read::self._copy_out": {
+   "can_raise": "what _copy_out() raises: its MemoryError is caught there (:197)",
+   "verdict": "handled",
+   "proof": "the coroutine is small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.read_into::self._read": {
+   "can_raise": "what _read() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.read_into::buf.get_ts_buf": {
+   "can_raise": "what get_ts_buf() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.read_into::int": {
+   "can_raise": "nothing for an int: int(x) returns x through MP_UNARY_OP_INT_MAYBE (py/objint.c:51-53)",
+   "verdict": "unreachable",
+   "proof": "unpack_from()'s 'Q' item is an int"
+  },
+  "FRAMTimestampedChunk.read_into::struct.unpack_from": {
+   "can_raise": "ValueError('buffer too small') (py/modstruct.c:146, :155); MemoryError for the result tuple and, past the small-int range, its long int",
+   "verdict": "handled",
+   "proof": "the ValueError cannot occur: tbuf is the 8-byte head (data_start = calcsize('<Q'), :555) and the offset 0; the tuple and the int are small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.write::self.get_buffer": {
+   "can_raise": "what get_buffer() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.write::len": {
+   "can_raise": "TypeError for an object without a length (py/modbuiltins.c mp_builtin_len)",
+   "verdict": "unreachable",
+   "proof": "every argument is a bytearray, bytes or memoryview by its signature's type (mypy-checked); len() of a buffer is a small int and allocates nothing"
+  },
+  "FRAMTimestampedChunk.write::self.write_into": {
+   "can_raise": "what write_into() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.write_into::buf.get_ts_buf": {
+   "can_raise": "what get_ts_buf() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMTimestampedChunk.write_into::struct.pack_into": {
+   "can_raise": "ValueError('buffer too small') (py/modstruct.c:242, :252); TypeError for a non-int value",
+   "verdict": "unreachable",
+   "proof": "tbuf is the 8-byte head and the offset 0, so '<Q' fits; utc is utc_now()'s int or _TS_UNINIT[0], and an int packs without a check or an allocation (struct_pack_into_internal truncates silently, Part F)"
+  },
+  "FRAMTimestampedChunk.write_into::self._write": {
+   "can_raise": "what _write() raises (its rows)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAMManager.__init__::PrintLogHistory": {
+   "can_raise": "MemoryError for the logger and its history, sized by log.history_length",
+   "verdict": "handled",
+   "proof": "construction only, inside build_system(): the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867)"
+  },
+  "FRAMManager.__init__::FRAM_SPI": {
+   "can_raise": "what FRAM_SPI.__init__() raises (the driver's rows)",
+   "verdict": "handled",
+   "proof": "construction only: the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867)"
+  },
+  "FRAMManager._watch_chip_loop::self.fram.lost.is_set": {
+   "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method returning an attribute; no allocation"
+  },
+  "FRAMManager._watch_chip_loop::self.setup": {
+   "can_raise": "what setup() raises: its fram.setup() is caught there (:829); the logger's setup() and small allocations remain",
+   "verdict": "handled",
+   "proof": "a supervised task's top (start_asy_watch_chip()): what remains ends the task and reaches _log_dead_task()'s except Exception (asy_system_service.py:326)"
+  },
+  "FRAMManager._watch_chip_loop::self.fram.lost.wait": {
+   "can_raise": "CancelledError when the task is cancelled while it waits; MemoryError for its generator (extmod/asyncio/event.py:28-35)",
+   "verdict": "handled",
+   "proof": "the shutdown cancels it and awaits it in an except (asyncio.CancelledError, Exception) (asy_system_service.py:467-473); its generator is small and fixed, which ends the task and reaches _log_dead_task()'s except Exception (asy_system_service.py:326)"
+  },
+  "FRAMManager.start_asy_watch_chip::asyncio.get_event_loop": {
+   "can_raise": "nothing: it returns the Loop class (extmod/asyncio/core.py:304-305)",
+   "verdict": "unreachable",
+   "proof": "default arguments only; no allocation"
+  },
+  "FRAMManager.start_asy_watch_chip::evtloop.create_task": {
+   "can_raise": "TypeError('coroutine expected') for an object without send; MemoryError for the Task (extmod/asyncio/core.py:143-146)",
+   "verdict": "handled",
+   "proof": "the argument is a coroutine, so the TypeError cannot occur; the Task's allocation reaches _start_task()'s except Exception (asy_system_service.py:506), which persists TASK_STARTER_RAISED"
+  },
+  "FRAMManager.start_asy_watch_chip::self._watch_chip_loop": {
+   "can_raise": "MemoryError for its generator (py/objgenerator.c:53-66)",
+   "verdict": "handled",
+   "proof": "_start_task()'s except Exception (asy_system_service.py:506)"
+  },
+  "FRAMManager.get_chunk::CRCPass": {
+   "can_raise": "MemoryError for the instance (asy_crc_checks.py:169-171)",
+   "verdict": "handled",
+   "proof": "construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMManager.get_chunk::crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "FRAMManager.get_chunk::FRAMChunk": {
+   "can_raise": "what _FRAMBaseChunk.__init__() raises (its rows)",
+   "verdict": "handled",
+   "proof": "construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMManager.get_chunk::_owner_seed": {
+   "can_raise": "what _owner_seed() raises: encode()'s small allocation",
+   "verdict": "handled",
+   "proof": "construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMManager.get_chunk::self._chunks.append": {
+   "can_raise": "MemoryError when the list grows (py/objlist.c)",
+   "verdict": "handled",
+   "proof": "one entry per declared chunk, at construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMManager.get_timestamped_chunk::CRCPass": {
+   "can_raise": "MemoryError for the instance (asy_crc_checks.py:169-171)",
+   "verdict": "handled",
+   "proof": "construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMManager.get_timestamped_chunk::struct.calcsize": {
+   "can_raise": "ValueError('bad typecode') (py/binary.c:153)",
+   "verdict": "unreachable",
+   "proof": "the constant '<Q' (py/modstruct.c:115-120)"
+  },
+  "FRAMManager.get_timestamped_chunk::crc.length": {
+   "can_raise": "nothing: CRCBase.length() returns an attribute (asy_crc_checks.py:148-151)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method on a CRCBase every constructor sets up (asy_crc_checks.py:21-32); no allocation"
+  },
+  "FRAMManager.get_timestamped_chunk::FRAMTimestampedChunk": {
+   "can_raise": "what FRAMTimestampedChunk.__init__() raises (its rows)",
+   "verdict": "handled",
+   "proof": "construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMManager.get_timestamped_chunk::_owner_seed": {
+   "can_raise": "what _owner_seed() raises: encode()'s small allocation",
+   "verdict": "handled",
+   "proof": "construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMManager.get_timestamped_chunk::self._chunks.append": {
+   "can_raise": "MemoryError when the list grows (py/objlist.c)",
+   "verdict": "handled",
+   "proof": "one entry per declared chunk, at construction only (get_chunk()/get_timestamped_chunk(), whose callers catch MemoryError, asy_print_log.py:294 and asy_sgp40_driver.py:246); the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds the rest"
+  },
+  "FRAMManager.erase_chip::self.erase_ready": {
+   "can_raise": "what erase_ready() raises (its rows)",
+   "verdict": "handled",
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.erase_chip::chunk.invalidate": {
+   "can_raise": "what invalidate() raises (its rows)",
+   "verdict": "handled",
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.erase_chip::step_done": {
+   "can_raise": "what the caller's callback raises: the shutdown's _own_feed (asy_system_service.py:483)",
+   "verdict": "handled",
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.erase_chip::bytearray": {
+   "can_raise": "MemoryError (py/gc.c via m_malloc_fail)",
+   "verdict": "handled",
+   "proof": "the narrow except MemoryError at :795 prints the failure and returns False with the chunks blanked"
+  },
+  "FRAMManager.erase_chip::self.fram.get_size": {
+   "can_raise": "MemoryError for its coroutine; it returns an attribute (asy_fram_driver.py:320-321)",
+   "verdict": "handled",
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.erase_chip::range": {
+   "can_raise": "TypeError for a non-int; MemoryError for a range object",
+   "verdict": "unreachable",
+   "proof": "size is get_size()'s int and the step the constant 256; the compiler turns `for x in range(...)` into a counter loop with no range object (py/compile.c:1430, :1563)"
+  },
+  "FRAMManager.erase_chip::fram.set_values_sync": {
+   "can_raise": "nothing (the driver's rows)",
+   "verdict": "unreachable",
+   "proof": "write-only transfers and 1-byte reads under the hold taken at :800"
+  },
+  "FRAMManager.erase_chip::self.fram.report_set_values": {
+   "can_raise": "its err_s/wrn_s calls, _report_chip_lost() and its coroutine (the driver's rows)",
+   "verdict": "handled",
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.erase_chip::asyncio.sleep": {
+   "can_raise": "nothing: sleep(0) is sleep_ms(0), which re-arms and returns the module's one SingletonGenerator (extmod/asyncio/core.py:55-63) with small-int arithmetic, so it allocates nothing; its assert holds because every sleep here is awaited at once",
+   "verdict": "unreachable",
+   "proof": "the call raises nothing; the await is a scheduling point where a cancelled task receives CancelledError, a BaseException (core.py:18) that propagates to the canceller by design (conventions)"
+  },
+  "FRAMManager.erase_ready::self.fram.is_ready": {
+   "can_raise": "nothing: it returns an attribute (asy_fram_driver.py:351-353)",
+   "verdict": "unreachable",
+   "proof": "no allocation"
+  },
+  "FRAMManager.erase_ready::self.fram.lost.is_set": {
+   "can_raise": "nothing: Event.is_set() returns its state (extmod/asyncio/event.py:13-14)",
+   "verdict": "unreachable",
+   "proof": "a fixed-arity method returning an attribute; no allocation"
+  },
+  "FRAMManager.erase_ready::self.fram.get_write_protected": {
+   "can_raise": "its err_s call and its coroutine (the driver's rows)",
+   "verdict": "handled",
+   "proof": "called only by erase_chip() :783, inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.quiesce::self.set_pause": {
+   "can_raise": "what set_pause() raises: its evt call (asy_print_log.py's rows)",
+   "verdict": "handled",
+   "proof": "called only by the shutdown (asy_system_service.py:464), inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.quiesce::chunk.wait_idle": {
+   "can_raise": "CancelledError while waiting for the chunk's lock; MemoryError for the generators (extmod/asyncio/lock.py); its release cannot raise, the lock being held",
+   "verdict": "handled",
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.quiesce::step_done": {
+   "can_raise": "what the caller's callback raises: the shutdown's _own_feed (asy_system_service.py:464)",
+   "verdict": "handled",
+   "proof": "inside the shutdown sequence's try (asy_system_service.py:445, except Exception :498)"
+  },
+  "FRAMManager.get_error_counter::self.pr.get_log": {
+   "can_raise": "what PrintLogHistory.get_log() raises (asy_print_log.py's rows): MemoryError growing its two lists to the configured history_length, and a small fixed allocation",
+   "verdict": "handled",
+   "proof": "get_error_counter() runs only inside WebserverService._write_errcount_entry() (handed over at asy_webserver_service.py:720, awaited at :1004), whose except Exception at :1005 logs the failure and writes this module's entry as unavailable"
+  },
+  "FRAMManager.reset_error_counter::self.pr.reset": {
+   "can_raise": "what PrintLogHistory.reset() or PrintLogHistoryStore.reset() raises (asy_print_log.py's rows): small fixed allocations",
+   "verdict": "handled",
+   "proof": "reset_error_counter() is called only by the ResetErrors fan-out, asyncio.gather(..., return_exceptions=True) at asy_webserver_service.py:871, which returns the raise as this store's outcome (extmod/asyncio/funcs.py:131-133); :876-880 log it and answer the key Failed"
+  }
+ }
+}

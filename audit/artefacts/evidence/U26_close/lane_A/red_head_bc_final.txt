@@ -1,0 +1,20 @@
+____________ test_a_failed_qdisc_delete_with_no_netem_left_is_clean ____________
+    def test_a_failed_qdisc_delete_with_no_netem_left_is_clean(monkeypatch: pytest.MonkeyPatch) -> None:
+        # a failed del passes only once `tc qdisc show` proves no netem is left.
+>           raise HardwareTestFailureError(f"restore left a netem qdisc on {iface}: tc qdisc del failed ({proc.stderr.strip()})")
+E           harness.HardwareTestFailureError: restore left a netem qdisc on wlan1: tc qdisc del failed (Cannot delete qdisc with handle of zero)
+_____ test_a_failed_profile_delete_with_the_profile_gone_is_a_clean_leave ______
+    def test_a_failed_profile_delete_with_the_profile_gone_is_a_clean_leave(monkeypatch: pytest.MonkeyPatch) -> None:
+_ test_a_failed_profile_delete_with_the_profile_still_listed_raises_naming_it __
+    def test_a_failed_profile_delete_with_the_profile_still_listed_raises_naming_it(monkeypatch: pytest.MonkeyPatch) -> None:
+FAILED tests_scripts/test_bench_control_restore.py::test_a_failed_qdisc_delete_with_no_netem_left_is_clean
+FAILED tests_scripts/test_bench_control_restore.py::test_bringing_the_ap_up_leaves_an_active_ap_alone
+FAILED tests_scripts/test_bench_control_restore.py::test_leaving_the_dut_hotspot_deletes_the_client_profile_and_leaves_the_ap_down
+FAILED tests_scripts/test_bench_control_restore.py::test_a_failed_profile_delete_with_the_profile_gone_is_a_clean_leave
+FAILED tests_scripts/test_bench_control_restore.py::test_a_failed_profile_delete_with_the_profile_still_listed_raises_naming_it
+FAILED tests_scripts/test_bench_control_restore.py::test_the_udp_capture_keeps_tcpdumps_error_stream
+FAILED tests_scripts/test_bench_control_restore.py::test_a_capture_that_never_started_raises_naming_tcpdump_and_why[1-sudo: a password is required]
+FAILED tests_scripts/test_bench_control_restore.py::test_a_capture_that_never_started_raises_naming_tcpdump_and_why[127-sudo: tcpdump: command not found]
+FAILED tests_scripts/test_bench_control_restore.py::test_a_capture_that_never_started_raises_naming_tcpdump_and_why[1-tcpdump: wlan1: No such device exists]
+FAILED tests_scripts/test_bench_control_restore.py::test_a_qdisc_listing_without_the_interface_raises_rather_than_reading_as_clean
+10 failed, 65 passed in 0.42s

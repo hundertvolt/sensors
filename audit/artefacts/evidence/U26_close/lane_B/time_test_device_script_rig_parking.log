@@ -1,0 +1,24 @@
+F.....                                                                   [100%]
+=================================== FAILURES ===================================
+_______ test_every_neopixel_a_script_constructs_is_parked_on_every_path ________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9208/test_every_neopixel_a_script_c0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f0721799d50>
+
+    def test_every_neopixel_a_script_constructs_is_parked_on_every_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(harness, "RENDERED_SCRIPTS_DIR", tmp_path)
+        # A static check reads the includes a render inlines; no fact value enters it, so the render takes the device
+        # module's name alone instead of a cold build of every fact.
+        module = f"sensortask_{harness.bench_device()}"
+        monkeypatch.setattr(bench_facts, "build", lambda _device: {"device_module": module})
+        rendered = {path.name: harness.render_device_script(path).read_text(encoding="utf-8") for path in sorted(_SCRIPTS.glob("*.py"))}
+        assert any(_call_name(n) in _CONSTRUCTORS for source in rendered.values() for n in ast.walk(ast.parse(source))), "no script constructs a NeoPixel - the scan reads nothing"
+        found = {name: lines for name, source in rendered.items() if (lines := _unparked(source))}
+>       assert not found, f"a NeoPixel constructed outside a try that parks it dark (script: lines): {found}"
+E       AssertionError: a NeoPixel constructed outside a try that parks it dark (script: lines): {'isl29125_lighting_scenarios.py': [323], 'isl29125_mechanism_envelope.py': [216], 'isl29125_plausibility_read.py': [32], 'isl29125_real_irq_edge.py': [83]}
+E       assert not {'isl29125_lighting_scenarios.py': [323], 'isl29125_mechanism_envelope.py': [216], 'isl29125_plausibility_read.py': [32], 'isl29125_real_irq_edge.py': [83]}
+
+tests_scripts/test_device_script_rig_parking.py:61: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_rig_parking.py::test_every_neopixel_a_script_constructs_is_parked_on_every_path
+1 failed, 5 passed in 0.31s

@@ -1,0 +1,25 @@
+F....................................................................... [ 14%]
+........................................................................ [ 28%]
+........................................................................ [ 42%]
+........................................................................ [ 56%]
+........................................................................ [ 70%]
+........................................................................ [ 85%]
+........................................................................ [ 99%]
+....                                                                     [100%]
+=================================== FAILURES ===================================
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_decision_vocabulary_names_its_actor_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           src/asy_base_classes.py: The store closed by an accepted system command refuses this module's PUTs.
+E           tests/test_asy_base_classes.py: A store closed by an accepted system command: the module's PUT answers "Failed"
+E       assert not [('src/asy_base_classes.py', "The store closed by an accepted system command refuses this module's PUTs."), ('tests/test_asy_base_classes.py', 'A store closed by an accepted system command: the module\'s PUT answers "Failed"')]
+
+tests_scripts/test_decision_vocabulary.py:89: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+1 failed, 507 passed in 49.30s

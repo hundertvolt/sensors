@@ -1,0 +1,19 @@
+F..............                                                          [100%]
+=================================== FAILURES ===================================
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           SPECIFICATION.md: digital_twin/_unix_port_udp_addr_shim.py
+E           SPECIFICATION.md: digital_twin/_unix_port_udp_addr_shim.py
+E           SPECIFICATION.md: digital_twin/_unix_port_udp_addr_shim.py
+E       assert not [('SPECIFICATION.md', 'digital_twin/_unix_port_udp_addr_shim.py'), ('SPECIFICATION.md', 'digital_twin/_unix_port_udp_addr_shim.py'), ('SPECIFICATION.md', 'digital_twin/_unix_port_udp_addr_shim.py')]
+
+tests_scripts/test_citations.py:251: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+1 failed, 14 passed in 9.48s

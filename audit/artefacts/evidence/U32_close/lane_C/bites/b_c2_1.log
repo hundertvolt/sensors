@@ -1,0 +1,117 @@
+...........F............................................................ [ 51%]
+..............................................................FFFFFF.    [100%]
+=================================== FAILURES ===================================
+____________ test_shape_corpus_agrees[a readonly lasttaskend field] ____________
+
+case = {'name': 'a readonly lasttaskend field', 'definitions': {'schemaVersion': '1.0.0', 'device': {'id': 'fixture-device', 'displayName': 'Fixture Device'}, 'landingSection': 'measurements', 'defaultPollIntervalMs': 3000, ...}, 'valid': True}
+
+    @pytest.mark.parametrize("case", _SHAPE_CASES, ids=[c["name"] for c in _SHAPE_CASES])
+    def test_shape_corpus_agrees(case: "JsonDict") -> None:
+        # The same corpus tests_js/definitions-shape-corpus.test.js runs through the real validator.
+>       assert (_shape_problems(case["definitions"]) == []) == case["valid"], _shape_problems(case["definitions"])
+E       AssertionError: ['sections[0].groups[0].fields[0].format']
+E       assert (['sections[0]...ds[0].format'] == []
+E         
+E         Left contains one more item: 'sections[0].groups[0].fields[0].format'
+E         Use -v to get more diff) == True
+
+tests_scripts/test_buildgen_definitions.py:1093: AssertionError
+____________ test_generated_definitions_pass_shape_validation[arzi] ____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2/src')
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_generated_definitions_pass_shape_validation(repo_root: Path, src_dir: Path, device: str) -> None:
+>       assert _shape_problems(_generate(repo_root, src_dir, device)) == []
+E       AssertionError: assert ['sections[4]...ds[8].format'] == []
+E         
+E         Left contains one more item: 'sections[4].groups[1].fields[8].format'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_definitions.py:1098: AssertionError
+____________ test_generated_definitions_pass_shape_validation[dev] _____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2/src')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_generated_definitions_pass_shape_validation(repo_root: Path, src_dir: Path, device: str) -> None:
+>       assert _shape_problems(_generate(repo_root, src_dir, device)) == []
+E       AssertionError: assert ['sections[4]...ds[8].format'] == []
+E         
+E         Left contains one more item: 'sections[4].groups[1].fields[8].format'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_definitions.py:1098: AssertionError
+___________ test_generated_definitions_pass_shape_validation[grkizi] ___________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2/src')
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_generated_definitions_pass_shape_validation(repo_root: Path, src_dir: Path, device: str) -> None:
+>       assert _shape_problems(_generate(repo_root, src_dir, device)) == []
+E       AssertionError: assert ['sections[4]...ds[8].format'] == []
+E         
+E         Left contains one more item: 'sections[4].groups[1].fields[8].format'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_definitions.py:1098: AssertionError
+___________ test_generated_definitions_pass_shape_validation[klkizi] ___________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2/src')
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_generated_definitions_pass_shape_validation(repo_root: Path, src_dir: Path, device: str) -> None:
+>       assert _shape_problems(_generate(repo_root, src_dir, device)) == []
+E       AssertionError: assert ['sections[4]...ds[8].format'] == []
+E         
+E         Left contains one more item: 'sections[4].groups[1].fields[8].format'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_definitions.py:1098: AssertionError
+__________ test_generated_definitions_pass_shape_validation[schlafzi] __________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2/src')
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_generated_definitions_pass_shape_validation(repo_root: Path, src_dir: Path, device: str) -> None:
+>       assert _shape_problems(_generate(repo_root, src_dir, device)) == []
+E       AssertionError: assert ['sections[4]...ds[8].format'] == []
+E         
+E         Left contains one more item: 'sections[4].groups[1].fields[8].format'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_definitions.py:1098: AssertionError
+____________ test_generated_definitions_pass_shape_validation[wozi] ____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u32/laneC/bites/c2/src')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_generated_definitions_pass_shape_validation(repo_root: Path, src_dir: Path, device: str) -> None:
+>       assert _shape_problems(_generate(repo_root, src_dir, device)) == []
+E       AssertionError: assert ['sections[4]...ds[8].format'] == []
+E         
+E         Left contains one more item: 'sections[4].groups[1].fields[8].format'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_definitions.py:1098: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_definitions.py::test_shape_corpus_agrees[a readonly lasttaskend field]
+FAILED tests_scripts/test_buildgen_definitions.py::test_generated_definitions_pass_shape_validation[arzi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_generated_definitions_pass_shape_validation[dev]
+FAILED tests_scripts/test_buildgen_definitions.py::test_generated_definitions_pass_shape_validation[grkizi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_generated_definitions_pass_shape_validation[klkizi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_generated_definitions_pass_shape_validation[schlafzi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_generated_definitions_pass_shape_validation[wozi]
+7 failed, 134 passed, 260 deselected in 1.01s

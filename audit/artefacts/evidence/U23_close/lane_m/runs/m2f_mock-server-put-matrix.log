@@ -1,0 +1,23 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23m
+
+ ✓ |chromium| tests_js/mock-server-put-matrix.test.js (433 tests) 264ms
+
+ Test Files  1 passed (1)
+      Tests  433 passed (433)
+   Start at  07:15:38
+   Duration  1.57s (tests 45%, worker 31%, import 24%)
+
+== Summary: npm test ==
+Commit: 3d29af9 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 433 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

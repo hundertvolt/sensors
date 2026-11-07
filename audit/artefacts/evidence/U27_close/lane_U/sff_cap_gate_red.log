@@ -1,0 +1,154 @@
+........................................................................ [ 12%]
+.........................F.............................................. [ 24%]
+......................F.F...F.....F..................................... [ 36%]
+........................................................................ [ 49%]
+........................................................................ [ 61%]
+........................................................................ [ 73%]
+........................................................................ [ 86%]
+................................................................FFF.F... [ 98%]
+.........                                                                [100%]
+=================================== FAILURES ===================================
+_ test_no_comment_or_docstring_block_exceeds_three_lines[src/asy_scd30_driver.py] _
+
+source = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27u/src/asy_scd30_driver.py')
+
+    @pytest.mark.parametrize("source", _sources(), ids=lambda p: str(p.relative_to(REPO_ROOT)))
+    def test_no_comment_or_docstring_block_exceeds_three_lines(source: Path) -> None:
+        found = _findings(str(source.relative_to(REPO_ROOT)), source.read_text(encoding="utf-8"))
+>       assert found == [], f"CLAUDE.md caps every header and inline comment block at {CAP} lines: {found}"
+E       AssertionError: CLAUDE.md caps every header and inline comment block at 3 lines: ['src/asy_scd30_driver.py:172: 7-line comment block']
+E       assert ['src/asy_scd...omment block'] == []
+E         
+E         Left contains one more item: 'src/asy_scd30_driver.py:172: 7-line comment block'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:205: AssertionError
+_ test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_ntp_client.py] _
+
+source = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27u/tests/test_asy_ntp_client.py')
+
+    @pytest.mark.parametrize("source", _sources(), ids=lambda p: str(p.relative_to(REPO_ROOT)))
+    def test_no_comment_or_docstring_block_exceeds_three_lines(source: Path) -> None:
+        found = _findings(str(source.relative_to(REPO_ROOT)), source.read_text(encoding="utf-8"))
+>       assert found == [], f"CLAUDE.md caps every header and inline comment block at {CAP} lines: {found}"
+E       AssertionError: CLAUDE.md caps every header and inline comment block at 3 lines: ['tests/test_asy_ntp_client.py:2535: 5-line comment block']
+E       assert ['tests/test_...omment block'] == []
+E         
+E         Left contains one more item: 'tests/test_asy_ntp_client.py:2535: 5-line comment block'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:205: AssertionError
+_ test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_scd30_driver.py] _
+
+source = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27u/tests/test_asy_scd30_driver.py')
+
+    @pytest.mark.parametrize("source", _sources(), ids=lambda p: str(p.relative_to(REPO_ROOT)))
+    def test_no_comment_or_docstring_block_exceeds_three_lines(source: Path) -> None:
+        found = _findings(str(source.relative_to(REPO_ROOT)), source.read_text(encoding="utf-8"))
+>       assert found == [], f"CLAUDE.md caps every header and inline comment block at {CAP} lines: {found}"
+E       AssertionError: CLAUDE.md caps every header and inline comment block at 3 lines: ['tests/test_asy_scd30_driver.py:753: 4-line comment block']
+E       assert ['tests/test_...omment block'] == []
+E         
+E         Left contains one more item: 'tests/test_asy_scd30_driver.py:753: 4-line comment block'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:205: AssertionError
+_ test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_uart_comm.py] _
+
+source = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27u/tests/test_asy_uart_comm.py')
+
+    @pytest.mark.parametrize("source", _sources(), ids=lambda p: str(p.relative_to(REPO_ROOT)))
+    def test_no_comment_or_docstring_block_exceeds_three_lines(source: Path) -> None:
+        found = _findings(str(source.relative_to(REPO_ROOT)), source.read_text(encoding="utf-8"))
+>       assert found == [], f"CLAUDE.md caps every header and inline comment block at {CAP} lines: {found}"
+E       AssertionError: CLAUDE.md caps every header and inline comment block at 3 lines: ['tests/test_asy_uart_comm.py:151: 4-line comment block', 'tests/test_asy_uart_comm.py:3024: 6-line comment block']
+E       assert ['tests/test_...omment block'] == []
+E         
+E         Left contains 2 more items, first extra item: 'tests/test_asy_uart_comm.py:151: 4-line comment block'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:205: AssertionError
+_ test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_wifi_service.py] _
+
+source = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27u/tests/test_asy_wifi_service.py')
+
+    @pytest.mark.parametrize("source", _sources(), ids=lambda p: str(p.relative_to(REPO_ROOT)))
+    def test_no_comment_or_docstring_block_exceeds_three_lines(source: Path) -> None:
+        found = _findings(str(source.relative_to(REPO_ROOT)), source.read_text(encoding="utf-8"))
+>       assert found == [], f"CLAUDE.md caps every header and inline comment block at {CAP} lines: {found}"
+E       AssertionError: CLAUDE.md caps every header and inline comment block at 3 lines: ['tests/test_asy_wifi_service.py:3887: 4-line comment block', 'tests/test_asy_wifi_service.py:3892: 4-line comment block', 'tests/test_asy_wifi_service.py:4021: 5-line comment block']
+E       assert ['tests/test_...omment block'] == []
+E         
+E         Left contains 3 more items, first extra item: 'tests/test_asy_wifi_service.py:3887: 4-line comment block'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:205: AssertionError
+_____________ test_every_python_and_shell_file_opens_with_a_header _____________
+
+    def test_every_python_and_shell_file_opens_with_a_header() -> None:
+        sources = _sources()
+        assert sources, "the scan found no Python or shell file"
+        found = [str(p.relative_to(REPO_ROOT)) for p in sources if not _has_header(str(p.relative_to(REPO_ROOT)), p.read_text(encoding="utf-8"))]
+>       assert found == [], f"CLAUDE.md: every module opens with one header block (a docstring in Python, a comment after the shebang in shell): {found}"
+E       AssertionError: CLAUDE.md: every module opens with one header block (a docstring in Python, a comment after the shebang in shell): ['tests/_boot_contiguity_probe.py', 'tests/test_asy_api_response.py', 'tests/test_asy_base_classes.py', 'tests/test_asy_bmp3xx_driver.py', 'tests/test_asy_captive_dns.py', 'tests/test_asy_config_manager.py', 'tests/test_asy_crc_checks.py', 'tests/test_asy_dns_client.py', 'tests/test_asy_fram_driver.py', 'tests/test_asy_fram_manager.py', 'tests/test_asy_i2c_driver.py', 'tests/test_asy_isl29125_driver.py', 'tests/test_asy_neopixel_driver.py', 'tests/test_asy_notification_service.py', 'tests/test_asy_ntp_client.py', 'tests/test_asy_print_log.py', 'tests/test_asy_spi_driver.py', 'tests/test_asy_system_service.py', 'tests/test_asy_uart_driver.py', 'tests/test_asy_uart_link_driver.py', 'tests/test_asy_udp_socket.py', 'tests/test_asy_wifi_service.py', 'tests/test_math_helpers.py', 'tests/test_voc_algorithm.py', 'tests/test_write_counters.py']
+E       assert ['tests/_boot...ager.py', ...] == []
+E         
+E         Left contains 25 more items, first extra item: 'tests/_boot_contiguity_probe.py'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:218: AssertionError
+__________ test_every_js_css_page_and_config_file_opens_with_a_header __________
+
+    def test_every_js_css_page_and_config_file_opens_with_a_header() -> None:
+        headed = _headed_files()
+        assert headed, "the listing found no JS, CSS, page or config file"
+        found = [p for p in headed if p not in _HEADER_PENDING and not _has_header(p, (REPO_ROOT / p).read_text(encoding="utf-8"))]
+>       assert found == [], f"CLAUDE.md: every file opens with one header block (a leading comment): {found}"
+E       AssertionError: CLAUDE.md: every file opens with one header block (a leading comment): ['html/index.html', 'tests_js/app.test.js', 'tests_js/definitions.test.js', 'tests_js/main.test.js', 'tests_js/mock-server.test.js', 'tests_js/nav.test.js', 'tests_js/poll-manager.test.js', 'tests_js/render.test.js', 'tests_js/templates.test.js']
+E       assert ['html/index....test.js', ...] == []
+E         
+E         Left contains 9 more items, first extra item: 'html/index.html'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:225: AssertionError
+___________ test_the_page_header_follows_the_doctype_within_the_cap ____________
+
+    def test_the_page_header_follows_the_doctype_within_the_cap() -> None:
+        text = (REPO_ROOT / _PAGE).read_text(encoding="utf-8")
+>       assert _has_header(_PAGE, text), f"{_PAGE}: no <!-- ... --> header directly after the doctype"
+E       AssertionError: html/index.html: no <!-- ... --> header directly after the doctype
+E       assert False
+E        +  where False = _has_header('html/index.html', '<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=devic... inlinedDefinitionsEl: document.getElementById("inlined-definitions"),\n        });\n    </script>\n</body>\n</html>\n')
+
+tests_scripts/test_comment_block_cap.py:230: AssertionError
+__________ test_no_comment_line_is_a_rule_of_any_character_but_dashes __________
+
+generated = {'build/generated_src/sensortask_arzi.py': '"""Generated by buildgen from devices/arzi.toml - do not edit.\nConstructi...2)\n    await ntp.ntp_force_sync()\n    sysfunct.boot_phase(BOOT_DONE)\n    await sysfunct.supervise_tasks()\n\n', ...}
+
+    def test_no_comment_line_is_a_rule_of_any_character_but_dashes(generated: dict[str, str]) -> None:
+        texts = {str(p.relative_to(REPO_ROOT)): p.read_text(encoding="utf-8") for p in _sources()} | generated
+        assert texts, "the scan found no file"
+        found = [f"{rel}:{n}" for rel, text in texts.items() for n, line in enumerate(text.splitlines(), 1) if _OTHER_RULE.match(line.strip())]
+>       assert found == [], f"a section divider is a `# ----` rule (CLAUDE.md): {found}"
+E       AssertionError: a section divider is a `# ----` rule (CLAUDE.md): ['tests/test_asy_ntp_client.py:2535', 'tests/test_asy_ntp_client.py:2539', 'tests/test_asy_scd30_driver.py:753', 'tests/test_asy_scd30_driver.py:756', 'tests/test_asy_uart_comm.py:151', 'tests/test_asy_uart_comm.py:153', 'tests/test_asy_uart_comm.py:795', 'tests/test_asy_uart_comm.py:797', 'tests/test_asy_uart_comm.py:1104', 'tests/test_asy_uart_comm.py:1106', 'tests/test_asy_uart_comm.py:1564', 'tests/test_asy_uart_comm.py:1566', 'tests/test_asy_uart_comm.py:2333', 'tests/test_asy_uart_comm.py:2335', 'tests/test_asy_uart_comm.py:2644', 'tests/test_asy_uart_comm.py:2646', 'tests/test_asy_uart_comm.py:3024', 'tests/test_asy_uart_comm.py:3026', 'tests/test_asy_wifi_service.py:3887', 'tests/test_asy_wifi_service.py:3895', 'tests/test_asy_wifi_service.py:4021', 'tests/test_asy_wifi_service.py:4025']
+E       assert ['tests/test_....py:153', ...] == []
+E         
+E         Left contains 22 more items, first extra item: 'tests/test_asy_ntp_client.py:2535'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:244: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[src/asy_scd30_driver.py]
+FAILED tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_ntp_client.py]
+FAILED tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_scd30_driver.py]
+FAILED tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_uart_comm.py]
+FAILED tests_scripts/test_comment_block_cap.py::test_no_comment_or_docstring_block_exceeds_three_lines[tests/test_asy_wifi_service.py]
+FAILED tests_scripts/test_comment_block_cap.py::test_every_python_and_shell_file_opens_with_a_header
+FAILED tests_scripts/test_comment_block_cap.py::test_every_js_css_page_and_config_file_opens_with_a_header
+FAILED tests_scripts/test_comment_block_cap.py::test_the_page_header_follows_the_doctype_within_the_cap
+FAILED tests_scripts/test_comment_block_cap.py::test_no_comment_line_is_a_rule_of_any_character_but_dashes
+9 failed, 576 passed in 11.00s
+
+real	0m11.777s
+user	0m11.186s
+sys	0m0.438s

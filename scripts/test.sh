@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
-# Runs the tests/ suite under a real MicroPython Unix-port interpreter, not CPython/pytest
-# (SPECIFICATION.md Part E.1's "Why not pytest"; Part E.3 for the runner), plus the backgrounded
-# tests_scripts/ pytest tier. Builds the toolchain on first run and reuses the cache after.
+# Runs tests/ under the real MicroPython Unix port (one process per test file, per derived device for PER_DEVICE files),
+# the lwIP host files, the host-side twin scenario harness per derived device, and the backgrounded tests_scripts/
+# pytest tier; ends with the SPECIFICATION.md E.10 summary block.
 #
-# PICO_TOOLCHAIN_DIR relocates that cache; SKIP_APT=1 skips the system-package step. The build is
-# `setup_toolchain.py setup`, which verifies all four artifacts together - there is no lighter
-# Unix-port-only entry point (SPECIFICATION.md Part B).
+# --coverage runs the same files under build-settrace, the only build flavour compiled with MICROPY_PY_SYS_SETTRACE,
+# and renders src/, digital_twin/, the generated modules and the host build chain (E.5, E.5.2).
 #
-# --coverage runs the same tests under build-settrace, the only variant compiled with
-# MICROPY_PY_SYS_SETTRACE, and renders two reports (src/ and digital_twin/) from one raw dump.
-# The whole pipeline, and why it needs its own binary: SPECIFICATION.md Parts E.5 and E.5.2.
-#
-# Also rebuilds frozen_modules/frozen_html.py before every run - the real wozi website every
-# generated sensortask_<device>.py imports at module level. Why frozen_modules/ rather than
-# .frozen/, which is a hardcoded MicroPython import sentinel: SPECIFICATION.md Part A.9.
+# Rebuilds frozen_modules/frozen_html.py from the first derived device every run (A.9 for why not .frozen/).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -21,17 +14,48 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # firmware's TZ-agnostic override - so src/'s time.mktime(time.gmtime()) idiom is only a no-op round
 # trip under UTC. Not a production bug; CLAUDE.md's "Local test runs pin $TZ" has the account.
 export TZ=UTC
+# Every file job is given a TEST_TWIN_HOST of its own below; a caller's would reach the tests_scripts/ tier's and the
+# scenario jobs' twins, and could be the address a running file job holds.
+unset TEST_TWIN_HOST
 
-# Ahead of every sweep below, not after them: these two checks are pure argument validation, and
-# a rejected invocation must leave the live tree exactly as it found it. tests_scripts/ runs a
-# nested test.sh to prove the rejection, concurrently with 85 files holding tests/_tmp scratch.
+usage() {
+    cat <<'EOF'
+Usage: scripts/test.sh [--coverage]
+Runs tests/ under the MicroPython Unix port, one process per file, plus the backgrounded
+tests_scripts/ pytest tier, and ends with the summary block (SPECIFICATION.md E.10).
+
+Options:
+  --coverage    run under build-settrace and render the coverage reports
+  -h, --help    print this help and exit
+
+Environment:
+  PICO_TOOLCHAIN_DIR        toolchain cache (default: ~/pico-toolchain)
+  SKIP_APT=1                skip the system-package step of a toolchain build (default: 0)
+  PER_FILE_TIMEOUT_S        per-file timeout, a positive integer of seconds (default: 240)
+  TESTS_SCRIPTS_TIMEOUT_S   tests_scripts/ timeout, a positive integer of seconds (default: 1200)
+  TEST_PARALLELISM          test files run at once (default: detected from core count and speed)
+  GC_THRESHOLD              gc.threshold() for every test file, e.g. 32768 (default: unset, the reactive -1)
+
+Exit codes: 0 every test passed; 1 a test failed, an allocation failure was seen, or the run left
+a path in the checkout; 2 a usage or setting error; 3 (--coverage only) every test passed and only
+the coverage is short: a report failed to render, or a file's tracer ended early (listed under Notes).
+EOF
+}
+
+# Ahead of every sweep below, not after them: these checks are pure argument validation, and
+# a rejected invocation must leave the live tree exactly as it found it. tests_scripts/ runs a nested
+# test.sh to prove the rejection, concurrently with every test file holding tests/_tmp scratch.
 coverage=0
 for arg in "$@"; do
     case "$arg" in
         --coverage) coverage=1 ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
         *)
-            echo "Unknown argument: $arg (only --coverage is supported)" >&2
-            exit 1
+            echo "error: unknown argument $arg (scripts/test.sh --help)" >&2
+            exit 2
             ;;
     esac
 done
@@ -40,19 +64,19 @@ done
 # gc.threshold() set, which is CLAUDE.md's (f) stage. Unset (the default) is the (e) stage: the
 # interpreter's own reactive -1, where the design has to stand up on its own first.
 if [ -n "${GC_THRESHOLD:-}" ]; then
-    # Validated once here rather than 85 times inside the runner: an unparseable value would
+    # Validated once here rather than once per test file inside the runner: an unparseable value would
     # otherwise surface as one ValueError traceback per test file, each retried twice, with the
     # actual mistake nowhere in the rolled-up summary.
     if [[ ! "$GC_THRESHOLD" =~ ^-?[0-9]+$ ]]; then
         echo "error: GC_THRESHOLD must be an integer - 32768 is what the firmware ships, -1 the reactive default - not '$GC_THRESHOLD'" >&2
-        exit 1
+        exit 2
     fi
     # Range as well as shape, on the FIRMWARE's 32-bit word rather than this 64-bit host's: a value
     # above it can match no shippable setting, and one past the host's own word raises OverflowError
     # inside the runner instead, once per file. Length first, so bash's own arithmetic can't overflow.
     if [ "${#GC_THRESHOLD}" -gt 11 ] || [ "$GC_THRESHOLD" -gt 2147483647 ] || [ "$GC_THRESHOLD" -lt -2147483648 ]; then
         echo "error: GC_THRESHOLD=$GC_THRESHOLD is outside the rp2040's own 32-bit machine word - any negative value means the reactive default (-1 by convention, see py/modgc.c) and the firmware ships 32768" >&2
-        exit 1
+        exit 2
     fi
     if [ "$coverage" = "1" ]; then
         # Said out loud rather than silently dropped: --coverage has its own runner, and a run that
@@ -61,65 +85,220 @@ if [ -n "${GC_THRESHOLD:-}" ]; then
     fi
 fi
 
+# Both timeouts are checked here, before any sweep: 0 would disable `timeout` altogether (coreutils),
+# turning the standing hang backstop off without a word.
+# @tunable runner.per_file_timeout_s = 240
+per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
+# @tunable runner.tests_scripts_timeout_s = 1200
+tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
+# A timeout is retried twice, every per-file job, scenario job and the pytest tier alike, and nothing else (E.3.1).
+# @tunable runner.per_file_attempts = 3
+max_attempts=3
+_require_seconds() {
+    if [[ ! "$2" =~ ^[1-9][0-9]{0,5}$ ]]; then
+        echo "error: $1 must be a positive integer number of seconds, not '$2'" >&2
+        exit 2
+    fi
+}
+_require_seconds PER_FILE_TIMEOUT_S "$per_file_timeout_s"
+_require_seconds TESTS_SCRIPTS_TIMEOUT_S "$tests_scripts_timeout_s"
+# Empty means autodetect; 0, negative or a non-integer would leave the dispatch loop dispatching nothing.
+if [ -n "${TEST_PARALLELISM:-}" ] && [[ ! "$TEST_PARALLELISM" =~ ^[1-9][0-9]*$ ]]; then
+    echo "error: TEST_PARALLELISM must be a positive integer, not '$TEST_PARALLELISM'" >&2
+    exit 2
+fi
+
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_port_lock.sh
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_devices.sh
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_unix_port.sh
+
+# The one EXIT trap, armed before anything it removes exists: bash does not kill background jobs when the parent
+# exits, and any later step can abort under `set -e`, leaving an orphaned pytest to re-open Part E.1's zz_test_ glob
+# hazard. Every name it reads is declared here, empty until its step runs (`rm -rf ""` is a no-op).
+raw_dir=""
+results_dir=""
+tests_scripts_status_file=""
+tests_scripts_inner_pidfile=""
+tests_scripts_pid=""
+evidence_archived=0
+# shellcheck disable=SC2329  # invoked indirectly, by the `trap _cleanup EXIT` below
+_cleanup() {
+    # Every background job still running (`jobs -rp`, so never a reaped, recycled pid) and the timeout each runs, by
+    # its recorded pid and group (timeout leads one): a killed subshell's timeout child would be reparented and run
+    # out its budget. No pkill/procps either, which a --variant=minbase chroot lacks.
+    local pid running groups="" left signalled=" " sig=TERM pids=()
+    # @tunable runner.kill_after_s = 10
+    local kill_after_s=10
+    local deadline=$((SECONDS + 2 * kill_after_s))
+    running=" $(jobs -rp | tr '\n' ' ')"
+    if [ -n "$tests_scripts_pid" ] && [[ "$running" == *" $tests_scripts_pid "* ]]; then
+        groups="$(cat "$tests_scripts_inner_pidfile" 2>/dev/null || true)"
+    fi
+    # Waited for until none is left (a zombie awaiting its reaper counts as gone), so port 53 below is never released
+    # under a test still holding it; timeout's own --kill-after is the hard stop, this loop's SIGKILL the backstop.
+    while :; do
+        left=""
+        # One pid per line from each source, read into an array; a line that is not a pid (an empty one) is passed over.
+        mapfile -t pids <<<"$(jobs -rp; printf '%s\n' "$groups"; [ -z "$results_dir" ] || cat "$results_dir"/*.attempt_pid 2>/dev/null || true)"
+        for pid in "${pids[@]}"; do
+            if [[ ! "$pid" =~ ^[1-9][0-9]*$ ]] || [ ! -r "/proc/$pid/stat" ] || [[ "$(cat "/proc/$pid/stat" 2>/dev/null || true)" == *") Z "* ]]; then
+                continue
+            fi
+            left+=" $pid"
+            if [[ "$signalled" != *" $pid "* ]] || [ "$sig" = KILL ]; then
+                kill -s "$sig" -- "$pid" "-$pid" 2>/dev/null || true
+                signalled+="$pid "
+            fi
+        done
+        if [ -z "$left" ]; then
+            break
+        fi
+        if [ "$SECONDS" -ge "$deadline" ] && [ "$sig" = TERM ]; then
+            echo "== background jobs still running $((2 * kill_after_s))s after the stop:$left - killing them" >&2
+            sig=KILL
+        fi
+        sleep 0.1
+    done
+    wait 2>/dev/null || true
+    # A run that ended before its own archive step (an abort under `set -e`) moves every log it has
+    # into build/archive/test_sh/ first; if even that fails, the results dir is kept and named.
+    if [ -n "$results_dir" ] && [ -d "$results_dir" ] && [ "${evidence_archived:-0}" = "0" ]; then
+        if uv run scripts/_archive_evidence.py --runner test_sh "$results_dir" >&2; then
+            evidence_archived=1
+        else
+            echo "== the per-file logs could not be archived - kept in $results_dir" >&2
+            results_dir=""
+        fi
+    fi
+    rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file" "$tests_scripts_inner_pidfile"
+    port_lock_release_all
+}
+trap _cleanup EXIT
+
+# The derived devices (scripts/_devices.sh), read once, before the tests_scripts/ tier can plant its zz_test_ fixtures:
+# the intern check, the PER_DEVICE jobs, the scenario harness jobs and the site build all take this one list.
+devices_text="$(derived_devices)"
+mapfile -t devices <<<"$devices_text"
+site_device="${devices[0]}"
+unit_micropypath="$(micropypath unit)"
+# --coverage's data directory, made here for the intern check: the one EXIT trap above removes it, as it does results_dir
+# (bash replaces an EXIT handler rather than stacking, so every cleanup has to live in that one trap).
+if [ "$coverage" = "1" ]; then
+    raw_dir="$(mktemp -d)"
+fi
+
+# Past this many bytes the Unix port cannot intern a string as a qstr: scripts/_twin_process.py's _QSTR_MAX_BYTES, read
+# against the interpreter there and pinned to this copy by tests_scripts/test_test_sh.py.
+qstr_max_bytes=255
+# _uninternable: each string run_test_file's launches hand the interpreter to intern before a file starts and that it
+# cannot, "<what> <string> (<bytes> bytes)" per line, once each: the script's real directory, every MICROPYPATH entry
+# but a ~/ one it builds from $HOME, every argument from the script on (ports/unix/main.c:412, :560, :688).
+_uninternable() {
+    local LC_ALL=C file tag device value i files=() scripts=() resolved=() entries=() strings=()
+    local -A per_device=() seen=()
+    for file in tests/test_*.py tests/lwip_host/test_*.py; do
+        if [ -f "$file" ] && { [ "$coverage" = "0" ] || [[ "$file" != tests/lwip_host/* ]]; }; then
+            files+=("$file")
+        fi
+    done
+    if [ "$coverage" = "1" ]; then
+        scripts=(tests/_coverage_runner.py)
+    elif [ -n "${GC_THRESHOLD:-}" ]; then
+        scripts=(tests/_threshold_runner.py)
+    else
+        scripts=("${files[@]}")
+    fi
+    if [ "${#scripts[@]}" -gt 0 ]; then
+        mapfile -t resolved < <(realpath -m -- "${scripts[@]}")
+    fi
+    for value in "${resolved[@]}"; do
+        strings+=("the script's directory" "${value%/*}")
+    done
+    IFS=: read -ra entries <<<"$unit_micropypath"
+    for i in "${!entries[@]}"; do
+        if [[ "${entries[i]}" != \~/* || -z "${HOME+set}" ]]; then
+            strings+=("MICROPYPATH entry $((i + 1))" "${entries[i]}")
+        fi
+    done
+    # The PER_DEVICE files, whose --coverage data files carry the device; an unreadable one stops the job list, before any job.
+    if [ "$coverage" = "1" ] && [ "${#files[@]}" -gt 0 ]; then
+        while IFS= read -r file; do
+            per_device[$file]=1
+        done < <(grep -lx 'PER_DEVICE = True' -- "${files[@]}" 2>/dev/null || true)
+    fi
+    for file in "${files[@]}"; do
+        if [ "$coverage" = "1" ]; then
+            tag="${file##*/}"
+            tag="${tag%.py}"
+            strings+=("argument 0" "${scripts[0]}" "argument 1" "$file")
+            if [ -n "${per_device[$file]:-}" ]; then
+                for device in "${devices[@]}"; do
+                    strings+=("argument 2" "$raw_dir/${tag}[$device].json")
+                done
+            else
+                strings+=("argument 2" "$raw_dir/$tag.json")
+            fi
+        elif [ -n "${GC_THRESHOLD:-}" ]; then
+            strings+=("argument 0" "${scripts[0]}" "argument 1" "$file" "argument 2" "$GC_THRESHOLD")
+        else
+            strings+=("argument 0" "$file")
+        fi
+    done
+    for ((i = 0; i < ${#strings[@]}; i += 2)); do
+        value="${strings[i + 1]}"
+        if [ "${#value}" -gt "$qstr_max_bytes" ] && [ -z "${seen[$value]:-}" ]; then
+            seen[$value]=1
+            printf '%s %s (%s bytes)\n' "${strings[i]}" "$value" "${#value}"
+        fi
+    done
+}
+# Refused once, before the lock, a sweep or a build: each such string kills every file at start ("FATAL: uncaught NLR",
+# exit 1), which reads as a broken suite. The first five are named, the rest counted.
+uninternable="$(_uninternable)"
+if [ -n "$uninternable" ]; then
+    mapfile -t refused <<<"$uninternable"
+    shown="$(printf '%s, ' "${refused[@]:0:5}")"
+    shown="${shown%, }"
+    [ "${#refused[@]}" -le 5 ] || shown+=", +$((${#refused[@]} - 5)) more"
+    echo "error: no test file was started: $shown - the Unix port interns each as a qstr of at most $qstr_max_bytes bytes and dies before a file starts" >&2
+    exit 2
+fi
+
+# Port 53 is the product's, bound by the twin tests: one suite holds it at a time and a second exits 1
+# here, before anything is swept or built (CLAUDE.md); the EXIT trap above releases it.
+port_lock_take 53 scripts/test.sh
+
+# The previous coverage reports are evidence too: moved into build/archive/test_sh_coverage/ (the
+# newest three runs kept), never overwritten in place.
+if [ "$coverage" = "1" ]; then
+    uv run scripts/_archive_evidence.py --runner test_sh_coverage htmlcov htmlcov_digital_twin htmlcov_generated htmlcov_host coverage_summary.md coverage_summary_digital_twin.md coverage_summary_generated.md coverage_summary_host.md
+fi
+
 # One bounded sweep of the whole tests/_tmp tree before any test file runs, not a per-file one -
 # SPECIFICATION.md Part E.1 has why it exists at all and why it is `rm -rf` rather than a
 # MicroPython listdir loop.
 rm -rf tests/_tmp
 
-# Same reasoning, for the one test fixture that has to live in the real tree. What the reserved
-# devices/zz_test_*.toml namespace is, what a leaked one breaks, and why this sweep must precede the
-# generation step: SPECIFICATION.md Part E.1.
+# Same reasoning for the test fixtures that live in the real tree (a nested run's sentinel, the device-websites skip
+# case). What the reserved devices/zz_test_*.toml namespace is and why this sweep precedes the generation step:
+# SPECIFICATION.md Part E.1.
 rm -f devices/zz_test_*.toml
 
-toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
-# Two variants, built together by setup_toolchain.py. The plain run takes the settrace-FREE one:
-# compiling MICROPY_PY_SYS_SETTRACE in allocates a frame and a code object per call and per
-# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.2).
-unix_dir="$toolchain_dir/micropython/ports/unix"
+# Every binary comes from the one Unix-port probe (scripts/_unix_port.sh), by the build flavour it reports: a missing or
+# wrong one, or a stale toolchain record, runs one setup (its exclusive lock fails a concurrent build fast), then this
+# run holds the lock shared. tests_scripts/' twins boot build-standard, the settrace-free rig, in both modes (E.5.2).
 if [ "$coverage" = "1" ]; then
-    micropython_bin="$unix_dir/build-settrace/micropython"   # --coverage needs sys.settrace itself
-    want_variant="settrace"
+    unix_port_ensure standard settrace  # --coverage needs sys.settrace itself
+    micropython_bin="$(unix_port_bin settrace)"
+    lwip_bin=""
 else
-    micropython_bin="$unix_dir/build-standard/micropython"
-    want_variant="plain"
-fi
-
-skip_apt_flag=()
-if [ "${SKIP_APT:-0}" = "1" ]; then
-    skip_apt_flag=(--skip-apt)
-fi
-
-# Asks the binary which variant it is instead of trusting its path, and whether its frozen asyncio
-# imports: a build interrupted between its two passes lacks it (Part E.5.2). Always exits 0,
-# reporting an unusable binary as such, so `set -e` never fires inside the substitution below.
-unix_port_variant() {
-    local probe=""
-    probe="$("$1" -c 'import sys, asyncio; print("settrace" if hasattr(sys, "settrace") else "plain")' 2>/dev/null)" || true
-    case "$probe" in
-        settrace | plain) echo "$probe" ;;
-        *) echo "unusable" ;;
-    esac
-}
-
-if [ ! -x "$micropython_bin" ]; then
-    echo "MicroPython Unix port not found at $micropython_bin - building it now" >&2
-    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
-elif [ "$(unix_port_variant "$micropython_bin")" != "$want_variant" ]; then
-    # The path stopped identifying the variant when the two builds split: a toolchain dir predating
-    # that has a build-standard still carrying settrace, and it is executable - so an existence
-    # check passes and the plain suite would silently measure on the 4-5x inflated binary.
-    echo "== $micropython_bin is not the '$want_variant' variant - rebuilding both Unix ports" >&2
-    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
-fi
-
-if [ ! -x "$micropython_bin" ]; then
-    echo "error: $micropython_bin is still missing after setup - rebuild with --clean" >&2
-    exit 1
-fi
-got_variant="$(unix_port_variant "$micropython_bin")"
-if [ "$got_variant" != "$want_variant" ]; then
-    echo "error: $micropython_bin reports itself as '$got_variant', not the '$want_variant' variant this run needs - rebuild with: uv run toolchain/setup_toolchain.py setup --clean" >&2
-    exit 1
+    # The lwIP host files run on the third build, the standard flavour over loopback lwIP (SPECIFICATION.md B.14).
+    unix_port_ensure standard lwip
+    micropython_bin="$(unix_port_bin standard)"
+    lwip_bin="$(unix_port_bin lwip)"
 fi
 
 # TEST_PARALLELISM: how many test_*.py files run at once. Each file is its own Unix-port process
@@ -146,7 +325,8 @@ fi
 # run writes ~46MB and spends ~8.7s of system time today, and CLAUDE.md's rule against avoidable
 # wear on the host's own disk is what retired the one file that made it ~10x that.
 _detect_parallelism() {
-    local cores quota period probe_start probe_end probe_ms multiplier
+    local cores quota period up_start="" up_end="" probe_iterations probe_ms=0 multiplier failed=0
+    # @tunable runner.nproc_fallback = 4
     cores="$(nproc 2>/dev/null || echo 4)"
     # A container's CPU quota bounds real parallelism far below what nproc reports (cgroup v2; v1
     # and "max" both fall through to the nproc value unchanged).
@@ -157,267 +337,384 @@ _detect_parallelism() {
             [ "$quota_cores" -ge 1 ] && [ "$quota_cores" -lt "$cores" ] && cores="$quota_cores"
         fi
     fi
-    # Speed probe. Never allowed to fail the run: any error, and we fall through to the fast-host
-    # multiplier, i.e. exactly the previous behaviour.
-    probe_start="$(date +%s%N 2>/dev/null || echo 0)"
-    "$micropython_bin" -c 'x=0
-for i in range(500000):
-    x+=i' >/dev/null 2>&1 || true
-    probe_end="$(date +%s%N 2>/dev/null || echo 0)"
-    # An unusable clock resolves to 0, never to whatever the arithmetic produces: a failed FIRST
-    # `date` would otherwise leave probe_start at 0 and make probe_ms the epoch, picking the SLOWEST
-    # branch from a failure that is meant to always pick the fastest.
-    #
-    # The -gt guards also absorb a `date` printing a literal "%N" rather than nanoseconds, which is
-    # the realistic way to get here at all - GNU coreutils never fails outright.
-    if [ "$probe_start" -gt 0 ] 2>/dev/null && [ "$probe_end" -gt "$probe_start" ] 2>/dev/null; then
-        probe_ms=$(( (probe_end - probe_start) / 1000000 ))
-    else
-        probe_ms=0
+    # Speed probe, timed on /proc/uptime (CLOCK_BOOTTIME: monotonic, 10ms steps), so a wall-clock step
+    # cannot move it and the bands keep measuring interpreter start to exit. Integer arithmetic on the
+    # two-decimal fields; 10# keeps a leading zero from reading as octal.
+    { read -r up_start _ </proc/uptime; } 2>/dev/null || failed=1
+    # @tunable runner.probe_iterations = 500000
+    probe_iterations=500000
+    "$micropython_bin" -c "x=0
+for i in range($probe_iterations):
+    x+=i" >/dev/null 2>&1 || failed=1
+    { read -r up_end _ </proc/uptime; } 2>/dev/null || failed=1
+    if [ "$failed" -eq 0 ] && [[ "$up_start" =~ ^[0-9]+\.[0-9]{2}$ && "$up_end" =~ ^[0-9]+\.[0-9]{2}$ ]]; then
+        probe_ms=$(( (10#${up_end/./} - 10#${up_start/./}) * 10 ))
     fi
-    # A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which picks the
-    # fast-host multiplier, i.e. exactly the behaviour this autodetection replaced. Never silently
-    # slower than before because the probe itself broke.
-    if [ "$probe_ms" -le 250 ]; then
+    # A failed probe (no clock, an interpreter that did not run, no time elapsed) says nothing about
+    # the host, so it takes 1x, the setting known never to starve a slow one, and says so.
+    if [ "$probe_ms" -le 0 ]; then
+        echo "== speed probe failed - running at 1x" >&2
+        multiplier=1
+    # @tunable runner.band_fast_ms = 250
+    elif [ "$probe_ms" -le 250 ]; then
+        # @tunable runner.mult_fast = 4
         multiplier=4            # fast host (measured: 131-141ms on this project's own x86 sandbox)
+    # @tunable runner.band_mid_ms = 900
     elif [ "$probe_ms" -le 900 ]; then
+        # @tunable runner.mult_mid = 2
         multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription
     else                        # that starved a twin test's real-time budget at 4x
         multiplier=1
     fi
     echo "$(( cores * multiplier )) $cores $multiplier $probe_ms"
 }
+# A --coverage run is CPU-bound, not sleep-bound: settrace turns a 0.4 s file into 72 s of CPU, so the
+# oversubscription above queued CI's files for a core past the per-file timeout. One file per usable core.
+_coverage_parallelism() {
+    local jobs="$1" cores="$2" multiplier="$3"
+    if [ "$multiplier" -gt 1 ]; then
+        jobs="$cores"
+        multiplier=1
+    fi
+    echo "$jobs $multiplier"
+}
 if [ -n "${TEST_PARALLELISM:-}" ]; then
     max_parallel="$TEST_PARALLELISM"
     echo "== Test parallelism: $max_parallel (TEST_PARALLELISM override)"
 else
     read -r max_parallel _cores _multiplier _probe_ms < <(_detect_parallelism)
+    if [ "$coverage" = "1" ]; then
+        read -r max_parallel _multiplier < <(_coverage_parallelism "$max_parallel" "$_cores" "$_multiplier")
+    fi
     echo "== Test parallelism: $max_parallel ($_cores usable cores x $_multiplier, interpreter speed probe ${_probe_ms}ms)"
 fi
-# Clamped to >= 1: the dispatch loop blocks while running jobs >= max_parallel, so 0 or negative (a
-# plausible "turn parallelism off" guess - 1 is what does that) spins `wait -n` forever without
-# dispatching anything. A hang is what this script's standing backstops exist to rule out.
+# Clamped to >= 1 as a backstop behind the validation above: the dispatch loop blocks while running
+# jobs >= max_parallel, so 0 or negative would spin `wait -n` forever without dispatching anything.
 if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
     echo "== TEST_PARALLELISM=${TEST_PARALLELISM:-} is not a positive integer - falling back to 1 (sequential)" >&2
     max_parallel=1
 fi
 
-# No static src/sensortask_<device>.py exists any more (SPECIFICATION.md Part L.2): each is
-# generated fresh here into gitignored build/generated_src/, which MICROPYPATH below puts first so
-# every static and dynamic import of one resolves to the fresh module.
-#
-# Runs BEFORE tests_scripts/ is backgrounded, not after - Part E.1 has the devices/*.toml race that
-# ordering closes.
+# Generated fresh into build/generated_src/ (SPECIFICATION.md L.2), which the unit MICROPYPATH puts first.
+# It runs before tests_scripts/ is backgrounded: that tier creates and deletes zz_test_ device fixtures, and the
+# generator globs devices/*.toml, so generating first keeps every fixture out of the generated tree.
 echo "== Generating buildgen device modules into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 
-# tests_scripts/ needs nothing from the setcap or frozen-module steps below: it is real CPython
-# touching only pytest's tmp_path fixtures and OS-assigned free ports, never this repo's real
-# build/generated_src/ or frozen_modules/ (tests_scripts/conftest.py's docstring).
-#
-# So it is backgrounded HERE, overlapping its own ~248s with essentially the whole rest of this
-# script rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
+# Every twin boot binds privileged ports (its NTP responder's 123, a hotspot's DNS 53), the tests_scripts/ tier's twins
+# too, so the grant comes before that tier, for the build it boots (build-standard) and this run's own interpreter;
+# fresh every invocation, for the reason run_digital_twin_ci.sh's identical grant gives (xattrs).
+cap_bins=("$(unix_port_bin standard)")
+[ "$micropython_bin" = "${cap_bins[0]}" ] || cap_bins+=("$micropython_bin")
+for cap_bin in "${cap_bins[@]}"; do
+    echo "== Granting CAP_NET_BIND_SERVICE to $cap_bin (the twins' NTP responder and DNS server bind ports 123 and 53)"
+    if [ "$(id -u)" -eq 0 ]; then
+        setcap 'cap_net_bind_service=+ep' "$cap_bin"
+    else
+        sudo setcap 'cap_net_bind_service=+ep' "$cap_bin"
+    fi
+done
+
+# _build_sites: every generated sensortask_<device>.py imports frozen_html at module level, so the unit tier needs one
+# site on its path; any derived device serves, so the first is built and no device is named here (Part A.9). The
+# scenario harness boots each device on its own site, build/generated_html/<device>/, so a plain run builds those too.
+_build_sites() {
+    echo "== Building frozen_modules/frozen_html.py (the $site_device website, the first derived device)"
+    scripts/build_website.sh "$site_device"
+    if [ "$coverage" = "0" ]; then
+        echo "== Building every derived device's website into build/generated_html/ (the scenario harness boots each)"
+        scripts/build_device_websites.sh
+    fi
+}
+# Before tests_scripts/ starts: its twin boots import frozen_modules/'s frozen_html (25 tests fail and 1 errors without
+# it, measured 2026-10-27), and the device-websites build globs devices/, where the tier plants its zz_test_ fixtures.
+_build_sites
+
+# The checkout-write guard (a test leaves nothing in the checkout): every untracked, ignored or modified path, listed
+# here, once everything above is built and before either tier starts, and again once both have ended. The tool
+# environments (.venv/, node_modules/) are not repository content and are left out.
+_checkout_paths() {
+    local listing
+    listing="$(git --no-optional-locks status --porcelain=v1 -z --no-renames --ignored --untracked-files=all -- . ':(exclude).venv' ':(exclude)node_modules' | tr '\0' '\n')" || return 1
+    printf '%s\n' "$listing" | cut -c4- | LC_ALL=C sort
+}
+# The tiers' own outputs, the guard's only exemptions: the unit tier's scratch (swept at the next run's start), and the
+# host tier's CPython bytecode caches and pytest's cache directory.
+checkout_outputs=("tests/_tmp/*" "__pycache__/*" "*/__pycache__/*" ".pytest_cache/*")
+# _checkout_left <before> <after>: each path of the second listing missing from the first, one per line, the tiers' own
+# outputs left out.
+_checkout_left() {
+    local path pattern
+    while IFS= read -r path; do
+        for pattern in "${checkout_outputs[@]}"; do
+            # shellcheck disable=SC2053  # the pattern is a glob on purpose
+            [[ "$path" != $pattern ]] || continue 2
+        done
+        [ -z "$path" ] || printf '%s\n' "$path"
+    done < <(LC_ALL=C comm -13 <(printf '%s\n' "$1") <(printf '%s\n' "$2"))
+}
+checkout_listed=0
+checkout_before=""
+if checkout_before="$(_checkout_paths)"; then
+    checkout_listed=1
+fi
+
+# tests_scripts/ is backgrounded HERE, once everything it reads is built, overlapping its own run with the whole
+# MicroPython tier rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
 # max_parallel like any other job, not as an extra process on top of that budget.
 #
-# timeout-wrapped for the standing "hanging tests are never allowed" rule: a hung pytest would hold
-# the final `wait` open forever and nothing else here would time it out. 1200s is ~5x its measured
-# ~248s, so it fires only on a real hang; CI's timeout-minutes stays the outer backstop, not this.
+# timeout-wrapped for the standing "hanging tests are never allowed" rule: a hung pytest would hold the final `wait`
+# open forever. Its 1200 s is a hang backstop over the tier's measured 698 s (2026-10-15, either GC stage, beside the
+# MicroPython tier; CI's figure: Part N, runner.tests_scripts_timeout_s); CI's timeout-minutes stays the outer one.
 #
-# No retry, unlike the per-file loop - that one absorbs transient contention on a single file's
-# budget, whereas a whole-suite pytest timeout is a real failure worth reporting as one.
+# The timeout retry rule (E.3.1): a timed-out run is retried like a timed-out file, up to max_attempts in all, and a
+# pass after a retry is RETRIED-PASS; any other exit fails at once.
 #
-# MUST stay behind the generation step above, which globs devices/*.toml - Part E.1's reserved
-# zz_test_ namespace has the race. build_website.sh resolves devices/<device>.toml from the repo
-# root, so that one test cannot be handed a tmp_path tree instead.
-#
-# Nothing else in the foreground re-globs devices/ once generation is done: the test loop reads the
-# generated wiring plans, and build_website.sh below names one device explicitly.
+# MUST stay behind the generation and site steps above, which glob devices/*.toml - Part E.1's reserved
+# zz_test_ namespace has the race: the tier writes its live-tree fixtures there for the length of one test.
+# Nothing in the foreground re-globs devices/ once the tier runs: every later step takes the device list read above.
 
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
-tests_scripts_status_file="$(mktemp)"
-tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
-# Pre-declared empty and the trap armed HERE, before the background job exists: bash does not kill
-# background jobs when the parent exits, and every step between here and the mktemp calls below can
-# abort under `set -e`, leaving an orphaned pytest to re-open Part E.1's zz_test_ glob hazard.
-#
-# `rm -rf ""` is a harmless no-op for either dir before its mktemp has run, and tests_scripts_pid is
-# cleared once the job is reaped, so this can never signal a recycled PID.
-raw_dir=""
-results_dir=""
-tests_scripts_pid=""
-tests_scripts_inner_pidfile="$(mktemp)"
-# shellcheck disable=SC2329  # invoked indirectly, by the `trap _cleanup EXIT` below
-_cleanup() {
-    # Killing the subshell alone is not enough: its `timeout` child would be reparented and run out
-    # its budget with pytest under it. The subshell records that pid, so both are signalled exactly,
-    # with no dependency on pkill/procps that a --variant=minbase chroot lacks.
-    if [ -n "$tests_scripts_pid" ]; then
-        inner="$(cat "$tests_scripts_inner_pidfile" 2>/dev/null || true)"
-        if [ -n "$inner" ]; then
-            kill "$inner" 2>/dev/null || true
-        fi
-        kill "$tests_scripts_pid" 2>/dev/null || true
-    fi
-    rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file" "$tests_scripts_inner_pidfile"
-}
-trap _cleanup EXIT
+# Created before the pytest job, which writes its run record, status and pid into it. One shared results_dir
+# regardless of --coverage: each parallel job writes its own status here, since a background subshell
+# cannot mutate a bash array the parent would see.
+results_dir="$(mktemp -d)"
+tests_scripts_status_file="$results_dir/tests_scripts.status"
+tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"
 (
-    timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q &
-    inner_pid=$!
-    echo "$inner_pid" >"$tests_scripts_inner_pidfile"
-    if wait "$inner_pid"; then
-        echo "PASS" >"$tests_scripts_status_file"
-    else
-        ec=$?
-        if [ "$ec" -eq 124 ]; then
-            echo "== tests_scripts/ exceeded ${tests_scripts_timeout_s}s - treating as a real failure instead of hanging the job" >&2
+    # _run_with_retries' attempts without its memory gate: this tier is CPython, and a failing check whose own text names
+    # a marker, as test_summary_block.py's do, prints it in its traceback. Each attempt's timeout pid is the one the EXIT
+    # trap kills; the record is removed first, so the summary reads the last attempt's.
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+        rm -f "$results_dir/tests_scripts.json"
+        attempt_start=$SECONDS
+        # --coverage runs this same tier under coverage.py over the host build chain, report-only: its data
+        # stays in results_dir for the render step at the end, and the test result is the tier's own.
+        if [ "$coverage" = "1" ]; then
+            # @tunable runner.kill_after_s = 10
+            PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run coverage run --data-file="$results_dir/host.coverage" "--source=buildgen,scripts,toolchain" -m pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
+        else
+            # @tunable runner.kill_after_s = 10
+            PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
         fi
-        echo "FAIL" >"$tests_scripts_status_file"
-    fi
+        inner_pid=$!
+        echo "$inner_pid" >"$tests_scripts_inner_pidfile"
+        ec=0
+        wait "$inner_pid" || ec=$?
+        rm -f "$tests_scripts_inner_pidfile"
+        if [ "$ec" -eq 0 ]; then
+            if [ "$attempt" -eq 1 ]; then
+                echo "PASS" >"$tests_scripts_status_file"
+            else
+                echo "RETRIED-PASS $attempt/$max_attempts" >"$tests_scripts_status_file"
+            fi
+            exit 0
+        fi
+        # 124, or --kill-after's SIGKILL (137) past the bound, is a timeout, exactly as _run_with_retries reads it.
+        if [ "$ec" -ne 124 ] && { [ "$ec" -ne 137 ] || [ $((SECONDS - attempt_start)) -lt "$tests_scripts_timeout_s" ]; }; then
+            break
+        fi
+        if [ "$attempt" -lt "$max_attempts" ]; then
+            echo "== tests_scripts/ exceeded ${tests_scripts_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
+        else
+            echo "== tests_scripts/ exceeded ${tests_scripts_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
+        fi
+    done
+    echo "FAIL" >"$tests_scripts_status_file"
 ) &
 tests_scripts_pid=$!
 
-# One twin test reaches a real hotspot scenario that binds the real privileged port 53, which a
-# non-root environment cannot do without this capability on the interpreter binary. Granted fresh
-# every invocation, for the reason run_digital_twin_ci.sh's identical grant gives (xattrs).
-echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for the real port-53 DNS server test)"
-if [ "$(id -u)" -eq 0 ]; then
-    setcap 'cap_net_bind_service=+ep' "$micropython_bin"
-else
-    sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
-fi
+# RUN_SLOW_FIRMWARE_BUILD stays unset for the backgrounded tests_scripts/, keeping the one real ARM firmware compile
+# opt-in for local iteration; ci.yml's firmware-build-verify job sets it.
 
-# The real wozi website, a gitignored artifact rebuilt every run - sub-second, no toolchain (Part
-# A.9). Every generated device module does a module-level `import frozen_html`, so it has to exist
-# on MICROPYPATH before the loop below, not only for the webserver-specific files.
-echo "== Building frozen_modules/frozen_html.py (the real wozi website)"
-scripts/build_website.sh wozi
-
-# tests_scripts/ is already running in the background, launched right after the toolchain check -
-# nothing to do here. RUN_SLOW_FIRMWARE_BUILD stays unset for it, keeping the one real ARM firmware
-# compile opt-in for local iteration; ci.yml's firmware-build-verify job is what sets it.
-
-if [ "$coverage" = "1" ]; then
-    raw_dir="$(mktemp -d)"
-fi
-# One shared results_dir regardless of --coverage: each parallel job writes its own PASS/FAIL here,
-# since a background subshell cannot mutate a bash array the parent would see.
-#
-# Both dirs are cleaned by the single EXIT trap armed with the pytest job above - bash replaces an
-# EXIT handler rather than stacking, so every cleanup has to live in that one trap.
-results_dir="$(mktemp -d)"
-
-failed=0
 # Per-file timeout with two retries, plus stdbuf line buffering and -X heapsize=16M below. All
 # three are standing backstops rather than fixes for any specific hang, and the heap value is a
-# measured floor that must never be RAISED as a fix - SPECIFICATION.md Part E.3.1 has the history.
-per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
-# Per-file overrides for anything that outgrows the default - deliberately empty since the
-# per-device splits, and deliberately not solved by raising everyone's default, which would make a
-# genuine future hang 2-3x slower to detect. Measured figures: Part E.3.1.
+# measured floor, never raised as a fix (SPECIFICATION.md E.3.1). The timeout is validated above.
+#
+# Per-file overrides for anything that outgrows the default - no test file has one since the per-device splits, and
+# none is solved by raising everyone's default, which would make a genuine future hang 2-3x slower to detect. The
+# scenario harness has its own: one job boots a twin per scenario (measured figures: Part E.3.1 and Part N).
 declare -A per_file_timeout_overrides_s=()
-max_attempts=3
+# @tunable runner.scenarios_timeout_s = 2555
+per_file_timeout_overrides_s[scenarios]=2555
 
 # SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged included - a caught
 # allocation failure is a design defect, not a passing result. The twin tier already asserts this
 # on its own logs (_digital_twin_ci_suite.py); this is the same check for the tier (e)/(f) run in.
 _flag_memory_errors() {
-    local tag="$1" log_file="$2"
+    local tag="$1" log_file="$2" rc=0
     # Both spellings, because src/'s degrade handlers log str(e) and not the class: a real caught
     # allocation failure prints "memory allocation failed, ..." (py/runtime.c:1692/1696) with no
     # "MemoryError" in it, so the class name alone only ever sees an UNCAUGHT traceback.
     local pattern="MemoryError|memory allocation failed"
-    if grep -qE "$pattern" "$log_file" 2>/dev/null; then
-        grep -m5 -E "$pattern" "$log_file" >"$results_dir/$tag.memerr"
+    # Fails closed: a log it cannot read, or a grep error (exit 2+), is no verdict - never "clean".
+    if [ ! -r "$log_file" ]; then
+        echo "memory gate: per-file log $log_file missing or unreadable - no verdict" >"$results_dir/$tag.noverdict"
+        return 0
+    fi
+    grep -qE "$pattern" "$log_file" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        grep -m5 -E "$pattern" "$log_file" >"$results_dir/$tag.memerr" || echo "memory gate: a marker matched in $log_file but its lines could not be copied" >"$results_dir/$tag.memerr"
+    elif [ "$rc" -ge 2 ]; then
+        echo "memory gate: grep exited $rc reading $log_file - no verdict" >"$results_dir/$tag.noverdict"
     fi
 }
 
-# Runs one test file's timeout+retry loop and writes PASS/FAIL to status_file. Never returns
-# nonzero itself - failure travels through the status file - so backgrounding it and reaping with
-# `wait`/`wait -n` can never trip this script's own `set -e`.
-run_test_file() {
-    local test_file="$1"
-    local status_file="$2"
-    local tag cmd file_timeout_s attempt ec log_file
-    tag="$(basename "$test_file" .py)"
+# _job_tag <job>: a job's tag, its file's basename then "[<device>]" for one device's job of a PER_DEVICE file;
+# each job's status, log and markers in $results_dir are named by it.
+_job_tag() {
+    local test_file="${1%%\[*}"
+    printf '%s%s' "$(basename "$test_file" .py)" "${1:${#test_file}}"
+}
+
+# _run_with_retries <tag> <what> <status_file> <timeout_s> <after> <command...>: one job's timeout+retry loop, writing
+# PASS, RETRIED-PASS <k>/<n> or FAIL to status_file; <after> runs after every attempt with the tag, log and attempt
+# number. Never returns nonzero itself, so backgrounding a job and reaping it with `wait -n` cannot trip `set -e`.
+_run_with_retries() {
+    local tag="$1" what="$2" status_file="$3" timeout_s="$4" after="$5" attempt attempt_start ec log_file attempt_pidfile
+    shift 5
     log_file="$results_dir/$tag.log"
+    # The EXIT trap's stop: it signals the running attempt's timeout through this pid file; the job then ends rather
+    # than start another attempt (the trap runs once the attempt's pipeline is done, sed and tee included).
+    attempt_pidfile="$results_dir/$tag.attempt_pid"
+    trap 'rm -f "$attempt_pidfile"; exit 143' TERM
+    # Truncated once per job: the memory gate reads every attempt's output, a timed-out one included (CLAUDE.md memory rule).
+    : >"$log_file"
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+        # Each attempt opens with this line, so the summary reads its counts and skips from the deciding one.
+        echo "[$tag] == attempt $attempt/$max_attempts" >>"$log_file"
+        attempt_start=$SECONDS
+        # 2>&1 | sed, not two streams: these run concurrently, so per-line tagging is what keeps
+        # a multi-file log readable. `set -o pipefail` makes the pipeline's status the command's
+        # own, so sed can never mask a real 124/1 from the command it pipes.
+        #
+        # SIGINT first (delivered at a safe point, SPECIFICATION.md B.14.1; microtest's ABORT line names the hung test), and
+        # --kill-after the hard stop. timeout signals its child, then its group, and a second SIGINT still pending makes the
+        # port exit(1) at once (unix_mphal.c): its child is a shell catching it, so the command gets one. The pid is timeout's.
+        # @tunable runner.kill_after_s = 10
+        if (echo "$BASHPID" >"$attempt_pidfile" && exec stdbuf -oL -eL timeout -s INT --kill-after=10 "$timeout_s" bash -c 'trap : INT; "$@"; exit' bash "$@") 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
+            ec=0
+        else
+            ec=$?
+        fi
+        rm -f "$attempt_pidfile"
+        "$after" "$tag" "$log_file" "$attempt"
+        if [ "$ec" -eq 0 ]; then
+            _flag_memory_errors "$tag" "$log_file"
+            # A pass that needed a retry is reported apart, a root-cause item (E.3.1), never a plain PASS.
+            if [ "$attempt" -eq 1 ]; then
+                echo "PASS" >"$status_file"
+            else
+                echo "RETRIED-PASS $attempt/$max_attempts" >"$status_file"
+            fi
+            return 0
+        elif [ "$ec" -eq 124 ] || { [ "$ec" -eq 137 ] && [ $((SECONDS - attempt_start)) -ge "$timeout_s" ]; }; then
+            if [ "$ec" -eq 137 ]; then
+                # Caught the interrupt and ran on: the hard stop's SIGKILL exits 137, not timeout's 124 - a timeout all the same.
+                echo "== $what did not end on the timeout's interrupt - killed by --kill-after on attempt $attempt/$max_attempts" >&2
+            fi
+            if [ "$attempt" -lt "$max_attempts" ]; then
+                echo "== $what exceeded ${timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
+                continue
+            fi
+            echo "== $what exceeded ${timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
+        fi
+        _flag_memory_errors "$tag" "$log_file"
+        echo "FAIL" >"$status_file"
+        return 0
+    done
+}
+
+# _append_twin_logs <tag> <log_file> <attempt>: every twin log of this attempt joins the job's log, so the memory gate
+# reads the twins' output too; the attempt's directory is kept, numbered (the harness empties a scenario's on a rerun).
+# shellcheck disable=SC2329  # invoked by name, as _run_with_retries' after-attempt hook
+_append_twin_logs() {
+    local tag="$1" log_file="$2" attempt="$3" twin_log
+    [ -d "$scenario_logs_dir" ] || return 0
+    while IFS= read -r -d '' twin_log; do
+        echo "[$tag] == twin log ${twin_log#"$scenario_logs_dir"/} (attempt $attempt)" >>"$log_file"
+        sed "s/^/[$tag] /" "$twin_log" >>"$log_file" || echo "[$tag] == twin log $twin_log could not be read" >>"$log_file"
+    done < <(find "$scenario_logs_dir" -type f -name '*.log' -print0 | LC_ALL=C sort -z)
+    mv "$scenario_logs_dir" "$scenario_logs_dir.attempt$attempt" || echo "[$tag] == the attempt's logs stay in $scenario_logs_dir" >>"$log_file"
+}
+
+# shellcheck disable=SC2329  # invoked by name, as _run_with_retries' after-attempt hook
+_no_twin_logs() {
+    return 0
+}
+
+# run_test_file <test_file> <status_file> [<device>] [<binary>] (default $micropython_bin) [<twin_host>]: one file's job
+# on the unit MICROPYPATH (scripts/micropypath.toml), TEST_DEVICE set to its device and TEST_TWIN_HOST to its address.
+run_test_file() {
+    local test_file="$1" status_file="$2" device="${3:-}" binary="${4:-$micropython_bin}" twin_host="${5:-}" runner cmd
     echo "== Running $test_file"
-    # Every segment of MICROPYPATH below is load-bearing. ".frozen" explicitly, because
-    # MICROPYPATH REPLACES the default sys.path rather than extending it, and that default is what
-    # makes frozen-in modules resolvable - drop it and `import asyncio` breaks with no clue why.
+    # Every segment of the unit layout is load-bearing. ".frozen" explicitly, because MICROPYPATH
+    # REPLACES the default sys.path rather than extending it, and that default is what makes
+    # frozen-in modules resolvable - drop it and `import asyncio` breaks with no clue why.
     #
     # "frozen_modules" for the generated module's own `import frozen_html` (Part A.9 for why that
     # cannot be ".frozen" itself), and "build/generated_src" FIRST so a device module resolves to
     # the freshly generated one rather than any same-named file elsewhere on the path.
     if [ "$coverage" = "1" ]; then
-        cmd=(tests/_coverage_runner.py "$test_file" "$raw_dir/$tag.json")
+        runner=(tests/_coverage_runner.py "$test_file" "$raw_dir/$(_job_tag "$test_file${device:+[$device]}").json")
     elif [ -n "${GC_THRESHOLD:-}" ]; then
         # CLAUDE.md's (f) stage: the same suite again with the value the firmware ships, layered on
         # a design that already passes at the reactive default. Never a substitute for that run.
-        cmd=(tests/_threshold_runner.py "$test_file" "$GC_THRESHOLD")
+        runner=(tests/_threshold_runner.py "$test_file" "$GC_THRESHOLD")
     else
-        cmd=("$test_file")
+        runner=("$test_file")
     fi
-    file_timeout_s="${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}"
-    for attempt in $(seq 1 "$max_attempts"); do
-        # Truncated per attempt: only the attempt that decided this file's verdict is searched for
-        # a MemoryError, so a timed-out earlier attempt's partial output cannot fail a passing file.
-        : >"$log_file"
-        # 2>&1 | sed, not two streams: these run concurrently, so per-line tagging is what keeps
-        # a multi-file log readable. `set -o pipefail` makes the pipeline's status the interpreter's
-        # own, so sed can never mask a real 124/1 from the command it pipes.
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
-            ec=0
-        else
-            ec=$?
-        fi
-        if [ "$ec" -eq 0 ]; then
-            _flag_memory_errors "$tag" "$log_file"
-            echo "PASS" >"$status_file"
-            return 0
-        elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
-            echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
-            continue
-        else
-            if [ "$ec" -eq 124 ]; then
-                echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
-            fi
-            _flag_memory_errors "$tag" "$log_file"
-            echo "FAIL" >"$status_file"
-            return 0
-        fi
-    done
+    # @tunable l1.unix_heapsize = 16M
+    cmd=(env -u TEST_DEVICE -u TEST_TWIN_HOST "MICROPYPATH=$unit_micropypath" ${device:+"TEST_DEVICE=$device"} ${twin_host:+"TEST_TWIN_HOST=$twin_host"} "$binary" -X heapsize=16M "${runner[@]}")
+    _run_with_retries "$(_job_tag "$test_file${device:+[$device]}")" "$test_file" "$status_file" "${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}" _no_twin_logs "${cmd[@]}"
 }
 
-# Dispatch order: the fifteen heaviest files first, not alphabetical glob order. Glob order
+# run_scenarios_job <device> <status_file>: the host-side twin scenario harness for one device at this run's GC stage,
+# on shared port 53 (the DNS scenarios deselected and listed: several devices' jobs run at once), its outcomes in a
+# run record the summary reads. Its twins boot build-standard; port 53's lock passes to it through the owner chain.
+run_scenarios_job() {
+    local device="$1" status_file="$2"
+    scenario_logs_dir="$results_dir/scenarios_$device"
+    echo "== Running the scenario harness for $device"
+    _run_with_retries "scenarios[$device]" "the scenario harness for $device" "$status_file" "${per_file_timeout_overrides_s[scenarios]}" _append_twin_logs \
+        uv run scripts/_digital_twin_scenarios.py --device "$device" --micropython-bin "$micropython_bin" --logs-dir "$scenario_logs_dir" --gc-threshold "${GC_THRESHOLD:--1}" --shared-port-53 --run-record "$results_dir/scenarios_$device.json"
+}
+
+# Dispatch order: the heaviest files first, not alphabetical glob order. Glob order
 # clusters same-prefix heavy files together, so they compete for the same few slots instead of
 # overlapping with the ~60 sub-second files that could fill in around them (Part E.3.1's figures).
 #
-# Order within these fifteen barely matters - they are comparable magnitude; what matters is each
+# Order within them barely matters - they are comparable magnitude; what matters is each
 # grabbing a slot immediately. Hand-curated from one measurement run, so re-measure and update it
 # if a new heavy file lands or one of these is split further.
 _heavy_files_priority=(
     tests/test_digital_twin_bus_hazard_concurrency.py
-    tests/test_sensortask_dev.py
-    tests/test_asy_wifi_service.py
-    tests/test_digital_twin_sensortask_integration.py
-    tests/test_sensortask_wozi.py
+    tests/test_sensortask.py
     tests/test_uart_comm_hazard.py
-    tests/test_asy_sgp40_driver.py
-    tests/test_sensortask_schlafzi.py
-    tests/test_sensortask_klkizi.py
-    tests/test_sensortask_grkizi.py
-    tests/test_sensortask_arzi.py
-    tests/test_bus_hazard_generated.py
-    tests/test_digital_twin_webserver_concurrency_dev.py
+    tests/test_digital_twin_wifi_modes.py
     tests/test_digital_twin_uart_link.py
-    tests/test_digital_twin_webserver_concurrency_wozi.py
+    tests/test_bus_hazard_generated.py
+    tests/test_asy_uart_comm.py
+    tests/test_digital_twin_sensortask_integration.py
+    tests/test_digital_twin_isl29125_autorange.py
+    tests/test_digital_twin_construction.py
 )
+# A name that no longer exists stops the run: a silently skipped entry would leave the order stale unnoticed.
+_check_heavy_list() {
+    local test_file
+    for test_file in "${_heavy_files_priority[@]}"; do
+        if [[ "$test_file" != tests/test_*.py ]] || [ ! -f "$test_file" ]; then
+            echo "scripts/test.sh: heavy-file list names $test_file, which does not exist - update _heavy_files_priority" >&2
+            exit 2
+        fi
+    done
+}
+_check_heavy_list
 all_test_files=(tests/test_*.py)
 declare -A _dispatched=()
 test_files=()
 for test_file in "${_heavy_files_priority[@]}"; do
-    if [ -f "$test_file" ] && [ -z "${_dispatched[$test_file]:-}" ]; then
+    if [ -z "${_dispatched[$test_file]:-}" ]; then
         test_files+=("$test_file")
         _dispatched[$test_file]=1
     fi
@@ -428,37 +725,231 @@ for test_file in "${all_test_files[@]}"; do
         _dispatched[$test_file]=1
     fi
 done
-
+# The lwIP host files go last, each on $lwip_bin; --coverage runs none of them (they exercise C code,
+# which line coverage cannot see) and lists them as skipped instead.
+lwip_host_files=()
+for test_file in tests/lwip_host/test_*.py; do
+    if [ -f "$test_file" ]; then
+        lwip_host_files+=("$test_file")
+    fi
+done
+if [ "$coverage" = "0" ]; then
+    test_files+=("${lwip_host_files[@]}")
+fi
+# One scenario harness job per derived device, dispatched first (each is the longest job of the run); --coverage runs
+# none and lists them as skipped. A file whose own line reads `PER_DEVICE = True` runs once per derived device.
+job_list=()
+if [ "$coverage" = "0" ]; then
+    for device in "${devices[@]}"; do
+        job_list+=("scenarios[$device]")
+    done
+fi
 for test_file in "${test_files[@]}"; do
+    marker=0
+    grep -qx 'PER_DEVICE = True' "$test_file" || marker=$?
+    if [ "$marker" -ge 2 ]; then  # fails closed, as the memory gate does: an unread file is no verdict on its marker
+        echo "error: cannot read $test_file for its PER_DEVICE marker" >&2
+        exit 1
+    elif [ "$marker" -eq 0 ]; then
+        for device in "${devices[@]}"; do
+            job_list+=("${test_file}[$device]")
+        done
+    else
+        job_list+=("$test_file")
+    fi
+done
+
+# Each running file job's twin binds its servers' wildcard on a loopback address no other running job holds
+# (TEST_TWIN_HOST, the UDP shim): on a shared one, the socket bound last takes every datagram sent to the port.
+# 127.0.0.101-254 is clear of 127.0.0.1, where host-side talkers reach a twin, and of resolvers on .11/.53/.54/.100.
+twin_hosts=()
+for ((host_octet = 101; host_octet <= 254; host_octet++)); do
+    twin_hosts+=("127.0.0.$host_octet")
+done
+declare -A twin_host_pid=()
+# _free_twin_host: sets twin_host to an address whose last holder (its job's pid) has stopped; returns 1 when none has.
+_free_twin_host() {
+    local running candidate
+    running=" $(jobs -rp | tr '\n' ' ') "
+    for candidate in "${twin_hosts[@]}"; do
+        if [[ "$running" != *" ${twin_host_pid[$candidate]:-none} "* ]]; then
+            twin_host="$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+for job in "${job_list[@]}"; do
     # Bound concurrency at max_parallel: reap one finished job before starting another. `|| true`
     # because a job body always returns 0 (run_test_file's own comment), so a nonzero `wait -n` can
     # only mean "no jobs left" - a harmless race, never a test failure to propagate.
     while [ "$(jobs -rp | wc -l)" -ge "$max_parallel" ]; do
         wait -n || true
     done
-    status_file="$results_dir/$(basename "$test_file" .py).status"
-    run_test_file "$test_file" "$status_file" &
+    test_file="${job%%\[*}"
+    device="${job:${#test_file}}"
+    device="${device#\[}"
+    status_file="$results_dir/$(_job_tag "$job").status"
+    if [ "$test_file" = "scenarios" ]; then
+        run_scenarios_job "${device%]}" "$status_file" &
+        continue
+    fi
+    binary="$micropython_bin"
+    if [[ "$test_file" == tests/lwip_host/* ]]; then
+        binary="$lwip_bin"
+    fi
+    # With every address held, a job waits for one to free: two running jobs never share one, at any parallelism.
+    while ! _free_twin_host; do
+        wait -n || true
+    done
+    run_test_file "$test_file" "$status_file" "${device%]}" "$binary" "$twin_host" &
+    twin_host_pid[$twin_host]=$!
 done
 wait || true
 tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap can't signal a recycled PID
-
-# The backgrounded tests_scripts/ job is reaped by the same unqualified `wait` above. Its status
-# file is written in both branches, so a missing or empty read here is a bug rather than a
-# legitimate "still running" - never treated as PASS by omission.
-tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null)"
-if [ "$tests_scripts_result" != "PASS" ]; then
-    tests_scripts_result="FAIL"
+# The guard's second listing, both tiers ended: its new paths go into the run's record for the verdict, or no verdict
+# when either listing failed.
+if [ "$checkout_listed" = "1" ] && checkout_after="$(_checkout_paths)"; then
+    _checkout_left "$checkout_before" "$checkout_after" >"$results_dir/checkout_left.txt"
+    echo "== Checkout-write guard: $(wc -l <"$results_dir/checkout_left.txt") new path(s) outside the tiers' own outputs"
+else
+    echo "no verdict (git status could not list the checkout, its error above)" >"$results_dir/checkout.noverdict"
 fi
 
+# ---------------------------------------------------------------------------------------------
+# The verdict: every job's status, log and run record read into the SPECIFICATION.md E.10 summary
+# block, the last thing printed. Each job's own output above stays the place to read a failure.
+# ---------------------------------------------------------------------------------------------
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_summary_block.sh
+summary_unit files
+
+# _failing_tests <tag> <failed>, the deciding attempt on stdin: " (FAIL <test>: <its first failure line>; ...)" in
+# microtest's own FAIL or ABORT line form, at most five, then "+N more" for the closing line's failures left unnamed.
+# Prints nothing when no such line is found, so the count alone stands as before.
+_failing_tests() {
+    awk -v p="[$1] " -v failed="$2" -v cap=5 '
+        function keep(detail) { if (pending != "") { n++; if (n <= cap) out = out (n > 1 ? "; " : "") pending (detail != "" ? " " detail : ""); pending = "" } }
+        index($0, p) != 1 { next }
+        { line = substr($0, length(p) + 1); sub(/[ \t\r]+$/, "", line) }
+        line ~ /^(FAIL|ABORT) [A-Za-z_][A-Za-z0-9_]*:$/ { keep(""); pending = line; next }
+        pending == "" { next }
+        line ~ /^(PASS|SKIP) / || line ~ /^[0-9]+\/[0-9]+ passed, / { keep(""); next }
+        line == "Traceback (most recent call last):" || line ~ /^  File / { next }
+        { keep(line) }
+        END {
+            keep("")
+            shown = n < cap ? n : cap
+            if (shown > 0 && failed - shown > 0) out = out "; +" (failed - shown) " more"
+            if (shown > 0) printf " (%s)", out
+        }'
+}
+
+# _scenario_outcomes <record>: the scenario harness's run record, one "<outcome>\t<name>\t<reason>" line per scenario;
+# fails on a missing or unreadable record, which its caller turns into no verdict.
+_scenario_outcomes() {
+    uv run python -c 'import json, sys
+for o in json.load(open(sys.argv[1], encoding="utf-8")):
+    print(o["outcome"], o["name"], " ".join(str(o["reason"]).split()), sep="\t")' "$1"
+}
+
+# _scenario_counts <tag>, the outcomes on stdin: "<passed> <failed> <skipped> <deselected> <what failed>", the last the
+# file reason's form: "N of M scenarios failed", then the first five failing ones with their reasons.
+_scenario_counts() {
+    local outcome name reason passed=0 failed=0 skipped=0 deselected=0 named=""
+    while IFS=$'\t' read -r outcome name reason; do
+        case "$outcome" in
+            passed) passed=$((passed + 1)) ;;
+            failed)
+                failed=$((failed + 1))
+                [ "$failed" -gt 5 ] || named+="${named:+; }FAIL $name: $reason"
+                ;;
+            skipped) skipped=$((skipped + 1)) ;;
+            deselected) deselected=$((deselected + 1)) ;;
+        esac
+    done
+    named="${named:+ ($named$([ "$failed" -le 5 ] || printf '; +%s more' "$((failed - 5))"))}"
+    printf '%s %s %s %s %s of %s scenarios failed%s\n' "$passed" "$failed" "$skipped" "$deselected" "$failed" "$((passed + failed))" "$named"
+}
+
+_join_reasons() {
+    local out="$1" reason
+    shift
+    for reason in "$@"; do
+        out+="; $reason"
+    done
+    printf '%s' "$out"
+}
+
+_level_verdict() {
+    if [ "$1" -ne 0 ]; then
+        printf 'FAIL'
+    elif [ "$2" -gt 0 ]; then
+        printf 'PASS (retried %s)' "$2"
+    else
+        printf 'PASS'
+    fi
+}
+
+failed=0
 failed_files=()
 memory_error_files=()
-passed_count=0
-for test_file in "${test_files[@]}"; do
-    tag="$(basename "$test_file" .py)"
-    status_file="$results_dir/$tag.status"
-    if [ "$(cat "$status_file" 2>/dev/null)" = "PASS" ]; then
-        passed_count=$((passed_count + 1))
+evidence_files=()
+tests_passed=0
+tests_failed=0
+tests_skipped=0
+tests_deselected=0
+declare -A level_failed=([L1]=0 [L2]=0) level_retried=([L1]=0 [L2]=0)
+for job in "${job_list[@]}"; do
+    test_file="$job"
+    tag="$(_job_tag "$job")"
+    level="L1"
+    if [[ "$tag" == test_digital_twin_* || "$tag" == scenarios\[* ]]; then
+        level="L2"
+    fi
+    status="$(cat "$results_dir/$tag.status" 2>/dev/null || true)"
+    log_file="$results_dir/$tag.log"
+    # The deciding attempt's lines: everything after the log's last attempt line, the whole log without one.
+    deciding="$(awk -v m="[$tag] == attempt " 'index($0, m) == 1 { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$log_file" 2>/dev/null || true)"
+    # Its microtest closing line; a log without one crashed or was killed.
+    count_line="$(awk -v p="[$tag] " 'index($0, p) == 1 && substr($0, length(p) + 1) ~ /^[0-9]+\/[0-9]+ passed, [0-9]+ failed, [0-9]+ skipped/ { last = $0 } END { printf "%s", last }' <<<"$deciding")"
+    reasons=()
+    scenario_outcomes=""
+    if [[ "$tag" == scenarios\[* ]]; then
+        # The harness prints no microtest closing line: its counts are its run record's, one test per scenario.
+        if scenario_outcomes="$(_scenario_outcomes "$results_dir/scenarios_${tag:10:-1}.json" 2>/dev/null)"; then
+            read -r scenario_passed scenario_failed scenario_skipped scenario_deselected file_failed_tests < <(_scenario_counts <<<"$scenario_outcomes")
+            tests_passed=$((tests_passed + scenario_passed))
+            tests_failed=$((tests_failed + scenario_failed))
+            tests_skipped=$((tests_skipped + scenario_skipped))
+            tests_deselected=$((tests_deselected + scenario_deselected))
+        else
+            scenario_outcomes=""
+            file_failed_tests="failed"
+            reasons+=("no verdict (run record missing or unreadable)")
+        fi
+    elif [[ "$count_line" =~ ([0-9]+)/([0-9]+)\ passed,\ ([0-9]+)\ failed,\ ([0-9]+)\ skipped ]]; then
+        tests_passed=$((tests_passed + BASH_REMATCH[1]))
+        tests_failed=$((tests_failed + BASH_REMATCH[3]))
+        tests_skipped=$((tests_skipped + BASH_REMATCH[4]))
+        file_failed_tests="${BASH_REMATCH[3]} of ${BASH_REMATCH[2]} tests failed"
+        if [ "${BASH_REMATCH[3]}" -gt 0 ]; then
+            file_failed_tests+="$(_failing_tests "$tag" "${BASH_REMATCH[3]}" <<<"$deciding")"
+        fi
     else
+        file_failed_tests="failed"
+        reasons+=("no test count (crashed or killed)")
+    fi
+    # A missing or empty status is a missing verdict, never a pass by omission.
+    case "$status" in
+        PASS | "RETRIED-PASS "*) ;;
+        FAIL) reasons=("$file_failed_tests" "${reasons[@]}") ;;
+        *) reasons=("no verdict" "${reasons[@]}") ;;
+    esac
+    if [ -s "$results_dir/$tag.noverdict" ]; then
+        reasons+=("no verdict (per-file log missing or unreadable)")
+    fi
+    if [ "${#reasons[@]}" -gt 0 ]; then
         failed=1
         failed_files+=("$test_file")
     fi
@@ -467,68 +958,234 @@ for test_file in "${test_files[@]}"; do
     if [ -s "$results_dir/$tag.memerr" ]; then
         failed=1
         memory_error_files+=("$test_file")
+        reasons+=("MemoryError seen")
     fi
+    # A failed file that also needed a retry keeps that fact in its reason rather than losing it.
+    if [ "${#reasons[@]}" -gt 0 ] && [[ "$status" == "RETRIED-PASS "* ]]; then
+        reasons+=("passed on attempt ${status#RETRIED-PASS }")
+    fi
+    if [ "${#reasons[@]}" -gt 0 ]; then
+        level_failed[$level]=1
+        evidence_files+=("$log_file" "$results_dir/$tag.memerr" "$results_dir/$tag.noverdict")
+        summary_add failed "$test_file" "$(_join_reasons "${reasons[@]}")"
+    elif [ "$status" != "PASS" ]; then
+        level_retried[$level]=$((level_retried[$level] + 1))
+        evidence_files+=("$log_file")
+        summary_add retried "$test_file" "${status#RETRIED-PASS }"
+        echo "root-cause item: $tag needed attempt ${status#RETRIED-PASS } - record it as a root-cause item"
+    else
+        summary_add passed "$test_file"
+    fi
+    # Each microtest SKIP line of the deciding attempt is named with its reason, not only counted.
+    while IFS= read -r skip_line; do
+        if [[ "$skip_line" =~ ^"[$tag] SKIP "([^:]+):\ ?(.*)$ ]]; then
+            summary_add skipped "$test_file::${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+        fi
+    done < <(printf '%s\n' "$deciding" | grep -F "[$tag] SKIP " || true)
+    # A scenario the harness did not run is named with its reason: a driver the device does not wire, or one its
+    # shared port 53 deselects (run_digital_twin_ci.sh holds the port and runs those).
+    while IFS=$'\t' read -r outcome name reason; do
+        case "$outcome" in
+            skipped) summary_add skipped "$test_file::$name" "$reason" ;;
+            deselected) summary_add deselected "$test_file::$name" "runner selection: $reason" ;;
+        esac
+    done <<<"$scenario_outcomes"
 done
-
-# Both `|| coverage_render_failed=1` rather than bare: under `set -e` a renderer failure would
-# abort here with ITS exit code, which the caller cannot tell from a failed test. Coverage is a
-# report and never gates, but the test result under this binary must (exit 3 below).
-coverage_render_failed=0
 if [ "$coverage" = "1" ]; then
-    echo "== Rendering coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md || coverage_render_failed=1
-    echo "== Rendering digital_twin/ coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md || coverage_render_failed=1
+    for test_file in "${lwip_host_files[@]}"; do
+        summary_add skipped "$test_file" "not run under --coverage (the plain pass runs them)"
+    done
+    for device in "${devices[@]}"; do
+        summary_add skipped "scenarios[$device]" "not run under --coverage (the plain pass runs them)"
+    done
 fi
 
-# One rolled-up summary at the very end - each test_*.py file and tests_scripts/ already print
-# their own pass/fail as they run, but nothing aggregated that across the whole suite before this;
-# a failure earlier in a long run was otherwise easy to miss without scrolling back through the log.
-total_files=$((passed_count + ${#failed_files[@]}))
-echo ""
-echo "== Test summary =="
-echo "tests_scripts/ (CPython/pytest): $tests_scripts_result"
-echo "tests/test_*.py (MicroPython Unix port): $passed_count/$total_files files passed"
-if [ "${#failed_files[@]}" -gt 0 ]; then
-    echo "Failed files:"
-    for f in "${failed_files[@]}"; do
-        echo "  - $f"
+# The backgrounded tests_scripts/ job is reaped by the same unqualified `wait` above. Its status
+# file is written in both branches, and its run record (scripts/_pytest_run_record.py) carries the
+# counts: a missing or unreadable either one is no verdict, never a PASS by omission.
+tests_scripts_record="$results_dir/tests_scripts.json"
+tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null || true)"
+l0_reasons=()
+case "$tests_scripts_result" in
+    PASS | "RETRIED-PASS "*) ;;
+    *) l0_reasons+=("pytest exited nonzero or timed out") ;;
+esac
+# One helper start reads the record for every listing below (a uv start costs about 0.3 s of environment lookup),
+# each listing opened by a "<RS><name>" line; an unreadable record leaves them all empty, which is no verdict.
+l0_listings="$(uv run python - "$tests_scripts_record" 2>/dev/null <<'PYEOF'
+import sys
+sys.path.insert(0, "scripts")
+import _summary_block
+for listing in ("failed", "skipped", "deselected", "recovered", "notes", "counts"):
+    print(f"\x1e{listing}", flush=True)
+    _summary_block.main(["--from-run-record", sys.argv[1], *(["--counts-only"] if listing == "counts" else ["--list", listing])])
+PYEOF
+)" || l0_listings=""
+_l0_listing() {
+    printf '%s\n' "$l0_listings" | awk -v want=$'\x1e'"$1" 'index($0, "\036") == 1 { on = ($0 == want); next } on'
+}
+# Its failed, skipped, deselected and recovered tests are named here, each with its reason, since the
+# block counts files: a skip is counted and named, never only a dot in pytest's -q line.
+l0_recovered=0
+for kind in failed skipped deselected recovered; do
+    listing="$(_l0_listing "$kind")"
+    if [ -n "$listing" ]; then
+        echo "tests_scripts/ $kind:"
+        printf '%s\n' "$listing" | sed -e 's/\t/: /' -e 's/^/  - /'
+        [ "$kind" != "recovered" ] || l0_recovered="$(printf '%s\n' "$listing" | wc -l)"
+    fi
+done
+l0_counts="$(_l0_listing counts)"
+if [[ "$l0_counts" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)$ ]]; then
+    summary_counts_line "tests_scripts tests" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" 0 "$l0_recovered" 0
+    if [ "${BASH_REMATCH[2]}" -ne 0 ]; then
+        l0_reasons+=("${BASH_REMATCH[2]} failed (listed above)")
+    fi
+else
+    l0_reasons+=("no verdict (run record missing or unreadable)")
+fi
+# Its result and session notes go into the block's Notes: list.
+while IFS=$'\t' read -r note_name note_text; do
+    summary_note "$note_name" "$note_text"
+done < <(_l0_listing notes)
+# A pass that needed a retry is reported apart, as a retried file is: a root-cause item, never a plain PASS.
+l0_retried=0
+if [ "${#l0_reasons[@]}" -gt 0 ]; then
+    [[ "$tests_scripts_result" != "RETRIED-PASS "* ]] || l0_reasons+=("passed on attempt ${tests_scripts_result#RETRIED-PASS }")
+    tests_scripts_result="FAIL"
+    failed=1
+    evidence_files+=("$tests_scripts_record")
+    summary_add failed "tests_scripts/ (pytest)" "$(_join_reasons "${l0_reasons[@]}")"
+elif [ "$tests_scripts_result" != "PASS" ]; then
+    l0_retried=1
+    evidence_files+=("$tests_scripts_record")
+    summary_add retried "tests_scripts/ (pytest)" "${tests_scripts_result#RETRIED-PASS }"
+    echo "root-cause item: tests_scripts/ needed attempt ${tests_scripts_result#RETRIED-PASS } - record it as a root-cause item"
+fi
+# The checkout-write guard's verdict: each path the run left behind is listed before the block, which names the first
+# five and counts the rest; a listing that failed is no verdict, never clean.
+checkout_paths_left=()
+checkout_verdict=""
+if [ -s "$results_dir/checkout_left.txt" ]; then
+    mapfile -t checkout_paths_left <"$results_dir/checkout_left.txt"
+    evidence_files+=("$results_dir/checkout_left.txt")
+    shown="$(printf '%s, ' "${checkout_paths_left[@]:0:5}")"
+    shown="${shown%, }"
+    [ "${#checkout_paths_left[@]}" -le 5 ] || shown+=", +$((${#checkout_paths_left[@]} - 5)) more"
+    checkout_verdict="${#checkout_paths_left[@]} path(s) left behind by the run: $shown"
+elif [ -s "$results_dir/checkout.noverdict" ]; then
+    evidence_files+=("$results_dir/checkout.noverdict")
+    checkout_verdict="$(<"$results_dir/checkout.noverdict")"
+fi
+if [ -n "$checkout_verdict" ]; then
+    failed=1
+    summary_add failed "the checkout" "$checkout_verdict"
+fi
+summary_counts_line tests "$tests_passed" "$tests_failed" "$tests_skipped" "$tests_deselected" 0 0 0
+l2_scope="tests/test_digital_twin_*.py and the scenario harness"
+[ "$coverage" = "0" ] || l2_scope="tests/test_digital_twin_*.py only"
+summary_levels "L0 $(_level_verdict "$([ "$tests_scripts_result" = "FAIL" ] && printf 1 || printf 0)" "$l0_retried") · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") ($l2_scope; run_digital_twin_ci.sh not run)"
+if [ "$coverage" = "1" ]; then
+    summary_gc_stage "coverage run (settrace)"
+elif [ -n "${GC_THRESHOLD:-}" ]; then
+    summary_gc_stage "$GC_THRESHOLD"
+else
+    summary_gc_stage "-1 (reactive default)"
+fi
+
+# Each `|| _unrendered <report> <data>` rather than bare: under `set -e` a renderer failure would abort here with ITS
+# exit code, which the caller cannot tell from a failed test. Coverage is a report and never gates, but the test
+# result under this binary must (exit 3 below).
+coverage_unrendered=()
+coverage_kept=()
+_unrendered() {
+    coverage_unrendered+=("$1")
+    [[ " ${coverage_kept[*]} " == *" $2 "* ]] || coverage_kept+=("$2")
+}
+if [ "$coverage" = "1" ]; then
+    echo "== Rendering coverage report"
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --markdown-file coverage_summary.md || _unrendered "src/ (htmlcov)" "$raw_dir"
+    echo "== Rendering digital_twin/ coverage report"
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --markdown-file coverage_summary_digital_twin.md || _unrendered "digital_twin/ (htmlcov_digital_twin)" "$raw_dir"
+    echo "== Rendering the generated modules' coverage report"
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir build/generated_src --html-dir htmlcov_generated --markdown-file coverage_summary_generated.md || _unrendered "the generated modules (htmlcov_generated)" "$raw_dir"
+    echo "== Rendering the host build chain's coverage report (buildgen/, scripts/, toolchain/)"
+    uv run coverage html --data-file="$results_dir/host.coverage" -d htmlcov_host || _unrendered "the host build chain (htmlcov_host)" "$results_dir/host.coverage"
+    uv run coverage report --data-file="$results_dir/host.coverage" --format=markdown >coverage_summary_host.md || _unrendered "the host build chain (coverage_summary_host.md)" "$results_dir/host.coverage"
+fi
+# A job whose tracer ended early has tests/_coverage_runner.py's note beside its dump: its tests passed and only its
+# coverage is short (SPECIFICATION.md E.5.1), so each note is listed and the run exits 3, as for a failed render.
+coverage_incomplete=0
+if [ "$coverage" = "1" ]; then
+    for job in "${job_list[@]}"; do
+        note_file="$raw_dir/$(_job_tag "$job").json.incomplete"
+        if [ -f "$note_file" ]; then
+            coverage_incomplete=$((coverage_incomplete + 1))
+            note_text="$(<"$note_file")"
+            summary_note "$job" "coverage incomplete: ${note_text#runner: }"
+        fi
     done
+fi
+
+# A failed render's data joins this run's evidence (build/archive/test_sh/, which later runs prune), not the EXIT trap's
+# removal, so the report can still be rendered from it; the dumps move into results_dir first, named coverage_raw.
+coverage_render_failed=0
+if [ "${#coverage_unrendered[@]}" -gt 0 ]; then
+    coverage_render_failed=1
+    for i in "${!coverage_kept[@]}"; do
+        if [ "${coverage_kept[i]}" = "$raw_dir" ] && [ -d "$raw_dir" ]; then
+            mv "$raw_dir" "$results_dir/coverage_raw"
+            coverage_kept[i]="$results_dir/coverage_raw"
+            raw_dir=""
+        fi
+    done
+    evidence_files+=("${coverage_kept[@]}")
+    unrendered="$(printf '%s, ' "${coverage_unrendered[@]}")"
+    summary_note "coverage" "not rendered: ${unrendered%, } - the data each read is kept in this run's evidence archive"
+fi
+
+if [ "${#checkout_paths_left[@]}" -gt 0 ]; then
+    echo "Left in the checkout by the run (only the tiers' own outputs are exempt: tests/_tmp/, __pycache__/, .pytest_cache/):"
+    printf '  - %s\n' "${checkout_paths_left[@]}"
 fi
 if [ "${#memory_error_files[@]}" -gt 0 ]; then
     echo "MemoryError seen (caught-and-logged counts too - SPECIFICATION.md Part I.4(e)):"
     for f in "${memory_error_files[@]}"; do
         echo "  - $f"
-        sed "s/^/      /" "$results_dir/$(basename "$f" .py).memerr"
+        sed "s/^/      /" "$results_dir/$(_job_tag "$f").memerr"
     done
 fi
 # A workflow-command annotation is the only channel that carries a failing file's own output off
 # the runner without reading the raw log, which GitHub serves from a storage host some environments
 # cannot reach at all - and it puts the failure on the PR page for a human too.
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
-    # GitHub keeps only 10 error annotations per step: the pytest tier's goes first, per-file ones
-    # stop at 8, and a last one counts the rest, so nothing past the cap vanishes without a trace.
-    if [ "$tests_scripts_result" != "PASS" ]; then
+    # GitHub keeps only 10 error annotations per step: the pytest tier's goes first, then the checkout's, per-file
+    # ones stop at 8 (7 after the checkout's), and a last one counts the rest, so nothing past the cap goes untraced.
+    if [ "$tests_scripts_result" = "FAIL" ]; then
         echo "::error title=tests_scripts/ (CPython/pytest)::the pytest tier failed - its own output is in this step's log, above the summary"
     fi
     annotations_left=8
+    if [ -n "${checkout_verdict:-}" ]; then
+        echo "::error title=the checkout::$checkout_verdict"
+        annotations_left=7
+    fi
     annotations_withheld=0
-    for f in ${failed_files[@]+"${failed_files[@]}"}; do
+    for f in "${failed_files[@]}"; do
         if [ "$annotations_left" -eq 0 ]; then
             annotations_withheld=$((annotations_withheld + 1))
             continue
         fi
-        annotation_tag="$(basename "$f" .py)"
+        annotation_tag="$(_job_tag "$f")"
         annotation_detail="$({ tail -n 40 "$results_dir/$annotation_tag.log" 2>/dev/null || true; } | sed -e 's/%/%25/g' -e 's/\r$//' | awk '{printf "%s%%0A", $0}')"
         echo "::error title=$f::$annotation_detail"
         annotations_left=$((annotations_left - 1))
     done
-    for f in ${memory_error_files[@]+"${memory_error_files[@]}"}; do
+    for f in "${memory_error_files[@]}"; do
         if [ "$annotations_left" -eq 0 ]; then
             annotations_withheld=$((annotations_withheld + 1))
             continue
         fi
-        annotation_tag="$(basename "$f" .py)"
+        annotation_tag="$(_job_tag "$f")"
         annotation_detail="$({ cat "$results_dir/$annotation_tag.memerr" 2>/dev/null || true; } | sed -e 's/%/%25/g' -e 's/\r$//' | awk '{printf "%s%%0A", $0}')"
         echo "::error title=$f (allocation failure)::$annotation_detail"
         annotations_left=$((annotations_left - 1))
@@ -537,21 +1194,38 @@ if [ -n "${GITHUB_ACTIONS:-}" ]; then
         echo "::error title=and $annotations_withheld more::$annotations_withheld further failing-file annotation(s) withheld at GitHub's 10-per-step cap - the step log's summary names every file"
     fi
 fi
-if [ "$tests_scripts_result" = "FAIL" ]; then
-    failed=1
-fi
-if [ "$failed" -eq 0 ] && [ "$coverage_render_failed" -eq 0 ]; then
-    echo "Result: ALL PASSED"
-elif [ "$failed" -eq 0 ]; then
-    echo "Result: TESTS PASSED, COVERAGE RENDERING FAILED"
-else
-    echo "Result: FAILED"
-fi
 
 # Three outcomes, three codes, because the caller acts differently on each: 1 = a test failed,
-# 3 = every test passed and only the report could not be rendered, 0 = both fine. CI gates on 1
-# and tolerates 3 (SPECIFICATION.md Part E.5.3); a test failure is never advisory.
-if [ "$failed" -eq 0 ] && [ "$coverage_render_failed" -eq 1 ]; then
-    exit 3
+# 3 = every test passed and only the coverage is short (a report not rendered, a tracer ended early), 0 = all fine.
+# CI gates on 1 and tolerates 3 (SPECIFICATION.md Part E.5.3); a test failure is never advisory.
+exit_code=0
+coverage_short=()
+[ "$coverage_render_failed" -eq 0 ] || coverage_short+=("coverage report not rendered")
+[ "$coverage_incomplete" -eq 0 ] || coverage_short+=("coverage incomplete in $coverage_incomplete job(s), listed under Notes")
+if [ "$failed" -ne 0 ]; then
+    exit_code=1
+elif [ "${#coverage_short[@]}" -gt 0 ]; then
+    exit_code=3
+    summary_result_reason "$(_join_reasons "${coverage_short[@]}")"
 fi
-exit "$failed"
+
+# The deciding logs of every failed, no-verdict, allocation-flagged and retried file, plus the
+# block itself, move into build/archive/test_sh/<ts>/ (newest three kept); a green run keeps the
+# block only. Archived before the block is printed, so nothing follows it on stdout.
+#
+# summary_print returns the code it printed (a failed item never leaves with 0 or 3); exit with it.
+summary_status=0
+summary_text="$(summary_print "scripts/test.sh" "$exit_code")" || summary_status=$?
+printf '%s\n' "$summary_text" >"$results_dir/summary.txt"
+if evidence_dir="$(uv run scripts/_archive_evidence.py --runner test_sh "${evidence_files[@]}" "$results_dir/summary.txt")"; then
+    evidence_archived=1
+    echo "== Evidence archived in $evidence_dir"
+    for item in "${coverage_kept[@]}"; do
+        echo "== Kept for the coverage report not rendered: $evidence_dir/${item##*/}"
+    done
+else
+    echo "== the evidence could not be archived - kept in $results_dir" >&2
+    results_dir=""
+fi
+printf '%s\n' "$summary_text"
+exit "$summary_status"

@@ -1,0 +1,4 @@
+PASS test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash
+PASS test_build_system_boots_against_the_real_twin_buses_without_exception
+PASS test_get_measurements_and_sensors_are_reachable_and_shaped_correctly
+3/3 passed, 0 failed, 0 skipped

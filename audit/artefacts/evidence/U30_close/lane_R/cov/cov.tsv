@@ -1,0 +1,4 @@
+test_asy_framing_codecs.py	stock	1	wt-u30r	4.095	4.009	0.034	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	r1024	1	wt-u30r2	4.629	4.549	0.037	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	r1024	2	wt-u30r	4.695	4.597	0.041	20/20 passed, 0 failed, 0 skipped	0
+test_asy_framing_codecs.py	stock	2	wt-u30r2	4.817	4.670	0.035	20/20 passed, 0 failed, 0 skipped	0

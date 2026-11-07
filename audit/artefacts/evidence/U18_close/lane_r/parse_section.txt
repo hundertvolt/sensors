@@ -1,0 +1,121 @@
+# ---------------------------------------------------------------------------
+# _parse_response - test fixture helpers build a realistic response by echoing the query's own
+# header/question section, matching how a real DNS server (and asy_captive_dns.py's own
+# DNSQuery.response()) builds a reply.
+# ---------------------------------------------------------------------------
+
+
+def _be16(n: int) -> bytes:
+    return bytes([(n >> 8) & 0xFF, n & 0xFF])
+
+
+def _make_response(query: "bytes | bytearray", answers: bytes, ancount: int, flags: bytes = b"\x81\x80") -> bytes:
+    header = bytes(query[0:2]) + flags + bytes(query[4:6]) + _be16(ancount) + b"\x00\x00\x00\x00"
+    question = bytes(query[12:])
+    return header + question + answers
+
+
+def _a_answer(ip: str, name_ptr: bytes = b"\xc0\x0c", ttl: int = 60) -> bytes:
+    ip_bytes = bytes(int(o) for o in ip.split("."))
+    return name_ptr + b"\x00\x01" + b"\x00\x01" + ttl.to_bytes(4, "big") + _be16(4) + ip_bytes
+
+
+def _cname_answer(target: bytes, name_ptr: bytes = b"\xc0\x0c", ttl: int = 60) -> bytes:
+    return name_ptr + b"\x00\x05" + b"\x00\x01" + ttl.to_bytes(4, "big") + _be16(len(target)) + target
+
+
+def test_parse_response_valid_single_a_answer() -> None:
+    query = _build_query(b"pool.ntp.org", b"\x11\x22")
+    rsp = _make_response(query, _a_answer("192.0.2.1"), ancount=1)
+    assert _parse_response(rsp, query) == "192.0.2.1"
+
+
+def test_parse_response_cname_then_a_answer_returns_the_a_records_ip() -> None:
+    query = _build_query(b"time.example.org", b"\x33\x44")
+    answers = _cname_answer(b"\xc0\x2a") + _a_answer("203.0.113.5", name_ptr=b"\xc0\x2a")
+    rsp = _make_response(query, answers, ancount=2)
+    assert _parse_response(rsp, query) == "203.0.113.5"
+
+
+def test_parse_response_rejects_transaction_id_mismatch() -> None:
+    query = _build_query(b"pool.ntp.org", b"\xaa\xbb")
+    rsp = _make_response(query, _a_answer("192.0.2.1"), ancount=1)
+    rsp = b"\xcc\xdd" + rsp[2:]  # a stale/spoofed reply carrying a different transaction ID
+    assert _parse_response(rsp, query) is None
+
+
+def test_parse_response_rejects_non_response_qr_bit() -> None:
+    query = _build_query(b"pool.ntp.org", b"\x01\x02")
+    rsp = _make_response(query, _a_answer("192.0.2.1"), ancount=1, flags=b"\x01\x00")  # QR=0
+    assert _parse_response(rsp, query) is None
+
+
+def test_parse_response_rejects_nxdomain_and_servfail_rcodes() -> None:
+    query = _build_query(b"bogus.invalid", b"\x03\x04")
+    for rcode_flags in (b"\x81\x83", b"\x81\x82"):  # NXDOMAIN=3, SERVFAIL=2
+        rsp = _make_response(query, b"", ancount=0, flags=rcode_flags)
+        assert _parse_response(rsp, query) is None
+
+
+def test_parse_response_rejects_truncated_header() -> None:
+    assert _parse_response(b"\x01\x02\x81\x80", b"\x01\x02" + b"\x00" * 10) is None
+
+
+def test_parse_response_zero_answer_count_returns_none() -> None:
+    query = _build_query(b"pool.ntp.org", b"\x05\x06")
+    rsp = _make_response(query, b"", ancount=0)
+    assert _parse_response(rsp, query) is None
+
+
+def test_parse_response_answer_section_truncated_mid_record() -> None:
+    query = _build_query(b"pool.ntp.org", b"\x07\x08")
+    rsp = _make_response(query, b"\xc0\x0c\x00\x01", ancount=1)  # cut off right after the name pointer
+    assert _parse_response(rsp, query) is None
+
+
+def test_parse_response_uncompressed_answer_name_is_not_parsed() -> None:
+    # Documented limitation (module docstring): only a bare 2-byte compression pointer is
+    # supported for an answer's own name field - a literal/uncompressed label sequence stops
+    # iteration cleanly instead of being decompressed or crashing.
+    query = _build_query(b"pool.ntp.org", b"\x09\x0a")
+    literal_name_answer = b"\x04pool\x00" + b"\x00\x01\x00\x01\x00\x00\x00\x3c" + _be16(4) + bytes([1, 2, 3, 4])
+    rsp = _make_response(query, literal_name_answer, ancount=1)
+    assert _parse_response(rsp, query) is None
+
+
+def test_parse_response_rdlength_beyond_buffer_is_rejected_not_crashed() -> None:
+    query = _build_query(b"pool.ntp.org", b"\x0b\x0c")
+    bogus = b"\xc0\x0c" + b"\x00\x01" + b"\x00\x01" + b"\x00\x00\x00\x3c" + _be16(4)  # claims 4 bytes of rdata that were never appended
+    rsp = _make_response(query, bogus, ancount=1)
+    assert _parse_response(rsp, query) is None
+
+
+def test_parse_response_skips_non_a_records_to_find_the_real_a_record() -> None:
+    # AAAA (type 28) first, A record second - proves type filtering, not just "first answer wins".
+    query = _build_query(b"dual-stack.example", b"\x0d\x0e")
+    aaaa = b"\xc0\x0c" + b"\x00\x1c" + b"\x00\x01" + b"\x00\x00\x00\x3c" + _be16(16) + bytes(range(16))
+    a = _a_answer("198.51.100.7")
+    rsp = _make_response(query, aaaa + a, ancount=2)
+    assert _parse_response(rsp, query) == "198.51.100.7"
+
+
+def test_parse_response_accepts_a_compression_pointer_targeting_offset_256_or_above() -> None:
+    # Regression test for a real bug found in review: RFC 1035 4.1.4 identifies a compression pointer by its
+    # top two bits (0xC0 mask), not by the leading byte literally being 0xC0, which only holds for targets
+    # below offset 256.
+    #
+    # A pointer to offset >= 256 is reachable within this file's 512-byte receive buffer - a second answer
+    # in a CNAME chain, say - and was misidentified as an uncompressed name, aborting parsing. The target
+    # offset is never followed, so any 0xC1-0xFF leading byte must be accepted like 0xC0.
+    query = _build_query(b"pool.ntp.org", b"\x11\x12")
+    rsp = _make_response(query, _a_answer("192.0.2.200", name_ptr=b"\xc1\x2c"), ancount=1)
+    assert _parse_response(rsp, query) == "192.0.2.200"
+
+
+def test_parse_response_no_a_record_present_returns_none() -> None:
+    query = _build_query(b"ipv6-only.example", b"\x0f\x10")
+    aaaa = b"\xc0\x0c" + b"\x00\x1c" + b"\x00\x01" + b"\x00\x00\x00\x3c" + _be16(16) + bytes(range(16))
+    rsp = _make_response(query, aaaa, ancount=1)
+    assert _parse_response(rsp, query) is None
+
+

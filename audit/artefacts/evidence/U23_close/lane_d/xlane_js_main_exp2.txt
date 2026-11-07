@@ -1,0 +1,75 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d
+
+ ❯ |chromium| tests_js/main.test.js (7 tests | 1 failed | 6 skipped) 236ms
+   ❯ startApp (production entry) (7)
+     ↓ loads definitions.json (no device segment, no mock install) and renders the landing section
+     ↓ marks the landing section current in the nav drawer
+     ↓ shows the error banner (and does not throw) when definitions.json fails to load
+     ↓ shows a clear error banner (not a crash) when definitions.json is torn/truncated JSON
+     × uses an inlined definitions element instead of fetching, when a real device build provides one 234ms
+     ↓ shows a clear error banner (not a crash) when the inlined definitions element holds corrupted JSON
+     ↓ falls back to fetching definitions.json when no inlined element is present (dev/preview mode)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/main.test.js > startApp (production entry) > uses an inlined definitions element instead of fetching, when a real device build provides one
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times[90m
+
+Received:
+
+[1m  1st vi.fn() call:
+
+[22m    Array [
+      "/measurements",
+      Object {
+        "signal": AbortSignal {},
+      },
+    ]
+[39m[90m
+
+Number of calls: [1m1[22m
+[39m
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/main.test.js/startApp--production-entry----uses-an-inlined-definitions-element-instead-of-fetching--when-a-real-device-build-provides-one.png
+
+ ❯ Proxy.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=4af87150:3673:51
+ ❯ Proxy.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=4af87150:3409:14
+ ❯ tests_js/main.test.js:137:31
+    135|         await startApp({ ...elements, inlinedDefinitionsEl: inlinedEl …
+    136|
+    137|         expect(fetchStub).not.toHaveBeenCalled();
+       |                               ^
+    138|         expect(elements.deviceNameEl.textContent).toBe("Fixture Device…
+    139|         expect(elements.errorBannerEl.classList.contains("hidden")).to…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 skipped (7)
+   Start at  06:49:11
+   Duration  1.48s (tests 53%, worker 36%, import 11%)
+
+== Summary: npm test ==
+Commit: 8fff76f (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/main.test.js > startApp (production entry) > uses an inlined definitions element instead of fetching, when a real device build provides one: expected "vi.fn()" to not be called at all, but actually been called 1 times[90m
+Skipped:
+  - tests_js/main.test.js > startApp (production entry) > loads definitions.json (no device segment, no mock install) and renders the landing section: skip
+  - tests_js/main.test.js > startApp (production entry) > marks the landing section current in the nav drawer: skip
+  - tests_js/main.test.js > startApp (production entry) > shows the error banner (and does not throw) when definitions.json fails to load: skip
+  - tests_js/main.test.js > startApp (production entry) > shows a clear error banner (not a crash) when definitions.json is torn/truncated JSON: skip
+  - tests_js/main.test.js > startApp (production entry) > shows a clear error banner (not a crash) when the inlined definitions element holds corrupted JSON: skip
+  - tests_js/main.test.js > startApp (production entry) > falls back to fetching definitions.json when no inlined element is present (dev/preview mode): skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

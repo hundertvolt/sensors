@@ -1,0 +1,57 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23c
+
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > pass the validator 4ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > load through the inlined element a device build serves 6ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the measurements section's every group, field and errcount row, with no error 27ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the sensors section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the networking section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the system section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the status section's every group, field and errcount row, with no error 24ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the notification section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > pass the validator 1ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > load through the inlined element a device build serves 5ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the measurements section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the sensors section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the networking section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the system section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the status section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the notification section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > pass the validator 1ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > load through the inlined element a device build serves 4ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the measurements section's every group, field and errcount row, with no error 24ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the sensors section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the networking section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the system section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the status section's every group, field and errcount row, with no error 24ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the notification section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > pass the validator 1ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > load through the inlined element a device build serves 3ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the measurements section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the sensors section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the networking section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the system section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the status section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the notification section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > pass the validator 1ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > load through the inlined element a device build serves 3ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the measurements section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the sensors section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the networking section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the system section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the status section's every group, field and errcount row, with no error 24ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the notification section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > pass the validator 0ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > load through the inlined element a device build serves 2ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the measurements section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the sensors section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the networking section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the system section's every group, field and errcount row, with no error 22ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the status section's every group, field and errcount row, with no error 23ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the notification section's every group, field and errcount row, with no error 22ms
+
+ Test Files  1 passed (1)
+      Tests  48 passed (48)
+   Start at  09:50:42
+   Duration  2.38s (tests 72%, worker 17%, import 11%)
+

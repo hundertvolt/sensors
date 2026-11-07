@@ -1,0 +1,21 @@
+# U22 close evidence
+
+Each lane folder holds the lane's final report (`report.md`) with its working logs, probes and tools. A report's scratch
+path maps to this tree: `u22w_runs/`, `u22w_tools/` to `lane_w/runs/`, `lane_w/tools/`; `u22p_runs/`, `u22p_tools/`,
+`u22p_alloc/` to `lane_p/runs/`, `lane_p/tools/`, `lane_p/alloc/`; `u22t_runs/` to `lane_t/runs/`; `u22d_tools/` to
+`lane_d/tools/`; `u22e_runs/` to `lane_e/runs/`. Paths inside the logs name the scratch worktrees they ran in, and files
+over 100 KB are gzipped. Product source was left out. Lane W's mutants are kept as their diff against the lane snapshot
+each was cut from (`mut/<name>/mutation.diff.txt`, with its `run.log`); one diff, three lines that all repeat tracked
+lines, is kept as a description instead (`m12_lock_over_wait/mutation.txt`). `EXCLUDED.txt` lists each file the checks
+refused, then the copies left out by construction, then the credential review.
+
+| folder | what it shows | cited by |
+|---|---|---|
+| lane_w/ | the Wi-Fi lane: the new tests seen failing on the unchanged product (`seen_failing_w1.log`: 20 failed) and on the pre-change module (`seen_failing_w2.log`: 13 failed), the two streak fixes seen failing first (`seen_failing_streak.log`, `seen_failing_arm.log`), the final runs at both GC stages and under settrace (`w2_final_*`, `fix_*`), every file that constructs a `WifiService` at both stages (`consumers2/`, `fix_consumers/`), the coverage JSONs, the mutants and their bites (`mut/`), the run and mutation tools | SF-U22-01, -02, -09; OF-129; the streak review rows; the lane-deviation row |
+| lane_p/ | the LED and notification lane: the tests seen failing first (`seen_*`), the before and after runs of both modules and the six device files at both stages and under settrace (`batch_*`, `test_asy_*`), the L0 sets (`l0*_`), the coverage JSONs, the allocation measurement of the overlay refresh (`alloc/measure.py`, the driver's change as `old_vs_new.diff.txt`), the datasheet text tool | SF-U22-03, -04, -08; OF-75, OF-128; the allocation row |
+| lane_t/ | the twin and bench lane: the A-19 stop (`a19_*`: the grown twin file at 211.7 / 216.1 / 220.7 s), the split file and the old file back at their base times (`si_*`, `nn_*`, `setter_*`), the cases seen failing first (`seenfail_*`, `wm_seenfail.log`, `nn_seen_failing.log`), the L0 sets, the coverage JSONs | SF-U22-12, -13; OF-131, OF-132, OF-133; the A-19 review row |
+| lane_d/ | the SPECIFICATION.md lane: its report (the scan that found SF-U22-02 and SF-U22-09, the six basis hashes) and the two datasheet text tools | SF-U22-02, -06, -07, -09; OF-129, OF-135 |
+| lane_e/ | the other docs: its report (the missing user sentence), the L0 checks on its tree and its two commit texts | SF-U22-05, -10, -14; OF-130, OF-134 |
+| lead/ | `rulings.md` (ruling 7 is A-19), `lane_plan.md` (the A-ids the register rows cite), the lead's timeline (`lead_todo.md`), the run ledger (`RUNS.md`) and `CONCURRENCY.md`; the merged-tree checks (`api2/` to `api4/`; `api5/` the post-gate1 check: the whole `tests_scripts/` tier, the changed twin file at both stages, the generic-runner twin file); `lwip_probe/` the EAGAIN spin probe, its idle runs at both stages and its contention run (three busy loops pinned to its CPU); after gate2, each alone: `alone/` the new twin file's CPU against its wall time and the lwIP file three times at each stage (`lwip_32768_2.log` the failing run), `steal/` the spin and 1 ms sleep probes (each gap or overshoot against the guest's run-queue wait), `l0ab/` the `tests_scripts/` tier on U21's and U22's trees side by side with per-test durations | SF-U22-15, -16, -17; OF-136; the process rows and the timing note |
+| gate1/ | the first close gate on `7362dbc` (three phases, nothing else running), red on SF-U22-15, -16 (tests_scripts, every stage) and SF-U22-17 (the lwIP file at 32768); `gate_timeline.txt`, `vmstat.log` the CPU samples | the scan record's Gates section; SF-U22-15, -16, -17 |
+| gate2/ | the final close gate on `8386afa` (same layout): every leg passed but the lwIP spin bound at the -1 stage (21,457 µs, SF-U22-17); `gate_timeline.txt` (rebuilt from each log's last write: the gate's own timeline went with the container restart), `vmstat.log` | the commit's local-gate paragraph, the scan record's Gates section |

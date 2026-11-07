@@ -1,0 +1,21 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_every_attributed_file_opens_with_its_header _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u34/laneA/bites_a2/udp_old')
+
+    def test_every_attributed_file_opens_with_its_header(repo_root: Path) -> None:
+        attributed = _attributed(repo_root)
+        problems = [problem for rel in attributed for problem in _header_problems(repo_root, rel)]
+        # An SPDX tag anywhere else in src/ is a header in another order, or one the shape check cannot see.
+        for path in sorted((repo_root / "src").glob("*.py")):
+            rel = f"src/{path.name}"
+            problems += [f"{rel}:{n}: SPDX tag outside a header's lines 1-2" for n, line in enumerate(_lines(repo_root, rel), 1) if "SPDX-" in line and (n > 2 or rel not in attributed)]
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_udp_socket.py: not three comment lines with no SPDX tag naming ('karfas', 'github.com/orgs/micropython/discussions/12967', 'THIRD_PARTY_LICENSES.md') (missing ['github.com/orgs/micropython/discussions/12967'])
+E       assert not ["src/asy_udp_socket.py: not three comment lines with no SPDX tag naming ('karfas', 'github.com/orgs/micropython/discussions/12967', 'THIRD_PARTY_LICENSES.md') (missing ['github.com/orgs/micropython/discussions/12967'])"]
+
+tests_scripts/test_third_party_attribution.py:95: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_third_party_attribution.py::test_every_attributed_file_opens_with_its_header
+1 failed, 3 deselected in 0.10s

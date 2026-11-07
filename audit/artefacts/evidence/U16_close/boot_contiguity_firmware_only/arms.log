@@ -1,0 +1,4 @@
+wt-u16int wozi collects batch_depth 591456 boot_depth 530592 boot_reach -32896 high 0
+wt-u16int wozi suppressed batch_depth 143904 boot_depth 343136 boot_reach 120128 high 423
+wt-u16int dev collects batch_depth 851008 boot_depth 780800 boot_reach -389024 high 0
+wt-u16int dev suppressed batch_depth 325184 boot_depth 470432 boot_reach 234944 high 997

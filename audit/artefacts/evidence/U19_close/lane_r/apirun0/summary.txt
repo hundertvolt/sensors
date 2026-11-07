@@ -1,0 +1,8 @@
+test_readiness_gates d rc=1 0s 13/14 passed, 1 failed, 0 skipped mem=0
+test_asy_base_classes d rc=0 1s 173/173 passed, 0 failed, 0 skipped mem=0
+test_readiness_gates t rc=1 1s 13/14 passed, 1 failed, 0 skipped mem=0
+test_asy_base_classes t rc=0 0s 173/173 passed, 0 failed, 0 skipped mem=0
+test_asy_wifi_service d rc=0 21s 231/231 passed, 0 failed, 0 skipped mem=0
+test_asy_ntp_client d rc=0 23s 177/177 passed, 0 failed, 0 skipped mem=0
+test_asy_wifi_service t rc=0 21s 231/231 passed, 0 failed, 0 skipped mem=0
+test_asy_ntp_client t rc=0 27s 177/177 passed, 0 failed, 0 skipped mem=0

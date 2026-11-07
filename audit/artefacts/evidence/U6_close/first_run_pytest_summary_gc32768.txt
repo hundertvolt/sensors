@@ -1,0 +1,5 @@
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_suppressing_the_emitted_collects_breaks_both_bounds[wozi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml]
+FAILED tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+4 failed, 2472 passed, 7 skipped, 3 warnings in 490.30s (0:08:10)

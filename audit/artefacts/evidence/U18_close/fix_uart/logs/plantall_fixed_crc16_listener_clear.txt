@@ -1,0 +1,4 @@
+test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 rep 0 PASS clean_awaits [82] last_k 83 max_ok_wait_vms 244 expired_waits 149 285252 ms
+SUMMARY test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 plant all 1500 1 / 1 passed 285252 ms
+test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 rep 0 PASS clean_awaits [99] last_k 100 max_ok_wait_vms 432 expired_waits 106 186474 ms
+SUMMARY test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 plant all 1500 1 / 1 passed 186474 ms

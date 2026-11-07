@@ -1,0 +1,204 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23t
+
+ ❯ |chromium| tests_js/generated-definitions-render.test.js (48 tests | 36 failed) 184054ms
+   ❯ arzi's generated definitions (8)
+     ✓ pass the validator 4ms
+     ✓ load through the inlined element a device build serves 6ms
+     × render the measurements section's every group, field and errcount row, with no error 5234ms
+     × render the sensors section's every group, field and errcount row, with no error 5102ms
+     × render the networking section's every group, field and errcount row, with no error 5120ms
+     × render the system section's every group, field and errcount row, with no error 5132ms
+     × render the status section's every group, field and errcount row, with no error 5115ms
+     × render the notification section's every group, field and errcount row, with no error 5120ms
+   ❯ dev's generated definitions (8)
+     ✓ pass the validator 1ms
+     ✓ load through the inlined element a device build serves 3ms
+     × render the measurements section's every group, field and errcount row, with no error 5117ms
+     × render the sensors section's every group, field and errcount row, with no error 5100ms
+     × render the networking section's every group, field and errcount row, with no error 5094ms
+     × render the system section's every group, field and errcount row, with no error 5106ms
+     × render the status section's every group, field and errcount row, with no error 5090ms
+     × render the notification section's every group, field and errcount row, with no error 5109ms
+   ❯ grkizi's generated definitions (8)
+     ✓ pass the validator 1ms
+     ✓ load through the inlined element a device build serves 7ms
+     × render the measurements section's every group, field and errcount row, with no error 5086ms
+     × render the sensors section's every group, field and errcount row, with no error 5107ms
+     × render the networking section's every group, field and errcount row, with no error 5115ms
+     × render the system section's every group, field and errcount row, with no error 5109ms
+     × render the status section's every group, field and errcount row, with no error 5106ms
+     × render the notification section's every group, field and errcount row, with no error 5092ms
+   ❯ klkizi's generated definitions (8)
+     ✓ pass the validator 1ms
+     ✓ load through the inlined element a device build serves 4ms
+     × render the measurements section's every group, field and errcount row, with no error 5097ms
+     × render the sensors section's every group, field and errcount row, with no error 5102ms
+     × render the networking section's every group, field and errcount row, with no error 5096ms
+     × render the system section's every group, field and errcount row, with no error 5122ms
+     × render the status section's every group, field and errcount row, with no error 5132ms
+     × render the notification section's every group, field and errcount row, with no error 5098ms
+   ❯ schlafzi's generated definitions (8)
+     ✓ pass the validator 1ms
+     ✓ load through the inlined element a device build serves 5ms
+     × render the measurements section's every group, field and errcount row, with no error 5089ms
+     × render the sensors section's every group, field and errcount row, with no error 5106ms
+     × render the networking section's every group, field and errcount row, with no error 5100ms
+     × render the system section's every group, field and errcount row, with no error 5096ms
+     × render the status section's every group, field and errcount row, with no error 5099ms
+     × render the notification section's every group, field and errcount row, with no error 5103ms
+   ❯ wozi's generated definitions (8)
+     ✓ pass the validator 0ms
+     ✓ load through the inlined element a device build serves 3ms
+     × render the measurements section's every group, field and errcount row, with no error 5096ms
+     × render the sensors section's every group, field and errcount row, with no error 5103ms
+     × render the networking section's every group, field and errcount row, with no error 5109ms
+     × render the system section's every group, field and errcount row, with no error 5134ms
+     × render the status section's every group, field and errcount row, with no error 5170ms
+     × render the notification section's every group, field and errcount row, with no error 5112ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 36 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the measurements section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the sensors section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the networking section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the system section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the status section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the notification section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the measurements section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the sensors section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the networking section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the system section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the status section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > dev's generated definitions > render the notification section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the measurements section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the sensors section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the networking section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the system section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the status section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the notification section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the measurements section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the sensors section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the networking section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the system section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the status section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the notification section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the measurements section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the sensors section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the networking section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the system section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the status section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the notification section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the measurements section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the sensors section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the networking section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the system section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the status section's every group, field and errcount row, with no error
+ FAIL  |chromium| tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the notification section's every group, field and errcount row, with no error
+Error: condition not met within 5000ms
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/arzi-s-generated-definitions---render-the-measurements-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/arzi-s-generated-definitions---render-the-sensors-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/arzi-s-generated-definitions---render-the-networking-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/arzi-s-generated-definitions---render-the-system-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/arzi-s-generated-definitions---render-the-status-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/arzi-s-generated-definitions---render-the-notification-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/dev-s-generated-definitions---render-the-measurements-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/dev-s-generated-definitions---render-the-sensors-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/dev-s-generated-definitions---render-the-networking-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/dev-s-generated-definitions---render-the-system-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/dev-s-generated-definitions---render-the-status-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/dev-s-generated-definitions---render-the-notification-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/grkizi-s-generated-definitions---render-the-measurements-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/grkizi-s-generated-definitions---render-the-sensors-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/grkizi-s-generated-definitions---render-the-networking-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/grkizi-s-generated-definitions---render-the-system-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/grkizi-s-generated-definitions---render-the-status-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/grkizi-s-generated-definitions---render-the-notification-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/klkizi-s-generated-definitions---render-the-measurements-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/klkizi-s-generated-definitions---render-the-sensors-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/klkizi-s-generated-definitions---render-the-networking-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/klkizi-s-generated-definitions---render-the-system-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/klkizi-s-generated-definitions---render-the-status-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/klkizi-s-generated-definitions---render-the-notification-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/schlafzi-s-generated-definitions---render-the-measurements-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/schlafzi-s-generated-definitions---render-the-sensors-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/schlafzi-s-generated-definitions---render-the-networking-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/schlafzi-s-generated-definitions---render-the-system-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/schlafzi-s-generated-definitions---render-the-status-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/schlafzi-s-generated-definitions---render-the-notification-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/wozi-s-generated-definitions---render-the-measurements-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/wozi-s-generated-definitions---render-the-sensors-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/wozi-s-generated-definitions---render-the-networking-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/wozi-s-generated-definitions---render-the-system-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/wozi-s-generated-definitions---render-the-status-section-s-every-group--field-and-errcount-row--with-no-error.png
+  - .vitest/attachments/failure-screenshots/generated-definitions-render.test.js/wozi-s-generated-definitions---render-the-notification-section-s-every-group--field-and-errcount-row--with-no-error.png
+
+ ❯ waitFor tests_js/generated-definitions-render.test.js:24:19
+     22|     while (!check()) {
+     23|         if (Date.now() - start > timeoutMs) {
+     24|             throw new Error(`condition not met within ${timeoutMs}ms`);
+       |                   ^
+     25|         }
+     26|         // eslint-disable-next-line no-await-in-loop -- each poll wait…
+ ❯ tests_js/generated-definitions-render.test.js:81:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/36]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  36 failed | 12 passed (48)
+   Start at  09:07:24
+   Duration  186.01s (tests 100%)
+
+== Summary: npm test ==
+Commit: d90bd96 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 12 · failed 36 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the measurements section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the sensors section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the networking section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the system section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the status section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > arzi's generated definitions > render the notification section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > dev's generated definitions > render the measurements section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > dev's generated definitions > render the sensors section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > dev's generated definitions > render the networking section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > dev's generated definitions > render the system section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > dev's generated definitions > render the status section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > dev's generated definitions > render the notification section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the measurements section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the sensors section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the networking section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the system section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the status section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > grkizi's generated definitions > render the notification section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the measurements section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the sensors section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the networking section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the system section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the status section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > klkizi's generated definitions > render the notification section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the measurements section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the sensors section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the networking section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the system section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the status section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > schlafzi's generated definitions > render the notification section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the measurements section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the sensors section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the networking section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the system section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the status section's every group, field and errcount row, with no error: condition not met within 5000ms
+  - tests_js/generated-definitions-render.test.js > wozi's generated definitions > render the notification section's every group, field and errcount row, with no error: condition not met within 5000ms
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

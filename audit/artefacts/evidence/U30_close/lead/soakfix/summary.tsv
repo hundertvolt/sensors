@@ -1,0 +1,6 @@
+ws_-1	rc=0	4.55s	mem=0	219/219 passed, 0 failed, 0 skipped
+ws_32768	rc=0	7.50s	mem=0	219/219 passed, 0 failed, 0 skipped
+ws_settrace	rc=0	5.17s	mem=0	219/219 passed, 0 failed, 0 skipped
+scans rc=0 923 passed, 1 warning in 66.63s (0:01:06)
+ruff rc=0
+gcsites rc=0 gc policy sites: 47 allowed, 0 outside the table; scopes checked: src/, tests/, digital_twin/, tests_hardware/; generated modules checked: 18 (build/generated_src/, its stamp current)

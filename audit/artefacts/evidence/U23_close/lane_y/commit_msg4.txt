@@ -1,0 +1,24 @@
+U23 lane Y: the build-environment entry's web-tier config and the frozen website's sizes today
+
+BACKLOG.md, the 2026-10-13 build-environment entry gains the web tier's
+config changes since the website stager (git diff 202a118 1af97e9 over
+the config and tooling files): vitest.config.js registers two more
+Commands API functions (runLiveBackendRestartRecovery,
+archiveErrcount), typed in tests_js/vitest-commands.d.ts, and
+eslint.config.js's complexity ceiling drops 41 -> 22, its measured
+maximum (formatFieldValue(), js/field-format.js); max-depth 4,
+max-nested-callbacks 4 and max-classes-per-file 1 already sat at
+theirs. No dependency, pin, lock or toolchain change, as the entry
+already says.
+
+digital_twin/README.md: the frozen website's sizes, measured on this
+tree's rebuild (each device's frozen_html.py size lines): GET /'s page
+is 16045 bytes on dev, the largest, and 13554-13989 bytes on the other
+five, so dev's lead is 2056-2491 bytes; the bundle /js/app.js is 28312
+bytes on every device. ":789" gives ~16KB for the largest device's
+GET / page and ~28KB for the bundle; ":799" keeps the CI failure's own
+figures as "then 7579 bytes, 168-483 bytes larger" and adds today's.
+Both paragraphs are rewrapped, their words otherwise unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

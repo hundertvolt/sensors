@@ -1,0 +1,16 @@
+FAIL test_collect_task_starters_and_their_names_include_every_constructed_module:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/_sensortask_scenarios.py", line 2980, in test
+  File "tests/_sensortask_scenarios.py", line 1064, in _scenario_collect_task_starters
+AssertionError: ('dev', ['WIFI.start_asy_connect', 'WIFI.start_asy_uptime', 'WIFI.start_asy_hotspot_timeout', 'NTP.start_asy_sync', 'NTP.start_asy_refresh', 'NTP.start_asy_sync_age', 'FRAM.start_asy_watch_chip', 'NEOPIXEL.start_asy_overlay', 'NEOPIXEL.start_asy_signal', 'SYSTEM.start_asy_status', 'SCD30.start_asy_read', 'SCD30.start_asy_irq', 'SGP40.start_asy_read', 'BMP3XX.start_asy_read', 'BMP3XX.start_asy_trigger', 'ISL29125.start_asy_read', 'ISL29125.start_asy_trigger', 'NOTIFY.start_asy_monitor', 'NOTIFY.start_asy_pause', 'UART_init.start_asy_exercise', 'UART_resp.start_asy_listen'])
+SYSTEM Task FRAM.start_asy_watch_chip ended: was cancelled
+FAIL test_every_task_starter_runs_under_the_real_supervisor_and_a_killed_one_is_named_in_status:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "tests/_sensortask_scenarios.py", line 2980, in test
+  File "tests/_sensortask_scenarios.py", line 1438, in _scenario_every_task_starter_runs_under_the_real_supervisor
+AssertionError: ('dev', {'Task': 'WIFI.start_asy_connect', 'Uptime': 0})
+PASS test_main_runs_setups_then_tasks_then_timers_then_force_sync_then_supervises_in_order
+PASS test_webserver_status_get_reflects_the_real_object_graph
+2/4 passed, 2 failed, 0 skipped

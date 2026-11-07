@@ -1,0 +1,5 @@
+test_asy_scd30_driver -1 rc=0 t=22.16 mem=0 | 131/131 passed, 0 failed, 0 skipped
+test_asy_scd30_driver 32768 rc=0 t=28.41 mem=0 | 131/131 passed, 0 failed, 0 skipped
+test_asy_bmp3xx_driver -1 rc=0 t=13.74 mem=0 | 138/138 passed, 0 failed, 0 skipped
+test_asy_bmp3xx_driver 32768 rc=0 t=13.83 mem=0 | 138/138 passed, 0 failed, 0 skipped
+BATCH-DONE

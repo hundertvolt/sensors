@@ -1,0 +1,66 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/laneS/preview_tree
+
+ ❯ |chromium| tests_js/shell.test.js (14 tests | 1 failed) 2543ms
+   ❯ startShell (12)
+     ✓ opens the landing section, and leaves no timer, listener or request behind once stopped 63ms
+     ✓ leaves one set of listeners after start, stop and start again 3ms
+     ✓ reloads once when the second watch sees a different build, stopping first 108ms
+     ✓ never reloads while the build stays the same, or when /system carries no build object 19ms
+     ✓ pauses the watch while the page is hidden and watches once on becoming visible 107ms
+     ✓ neither reloads nor rejects unhandled when the watch's /system request fails 112ms
+     ✓ shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes 679ms
+     × defers a reload for a changed build until the pending Apply has settled 1242ms
+     ✓ watches once more as soon as a section's failing episode ends, not only at its own cadence 103ms
+     ✓ pushes one history entry per menu selection of another section, none for the current one 2ms
+     ✓ selects the popped section without pushing: Back, then Forward, then back to the landing entry 1ms
+     ✓ opens a deep-linked section, and the landing section for an unknown key, pushing nothing 1ms
+   ✓ historyOf and visibilityOf (2)
+     ✓ reads the section from the URL hash, pushes one entry per key and reports a Back as a pop 103ms
+     ✓ reads the document's visibility and reports each change until released 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/shell.test.js > startShell > defers a reload for a changed build until the pending Apply has settled
+AssertionError: expected +0 to be 1 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/shell.test.js/startShell---defers-a-reload-for-a-changed-build-until-the-pending-Apply-has-settled.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ tests_js/shell.test.js:398:54
+    396|         /** @type {HTMLButtonElement} */ (shown.mainEl.querySelector("…
+    397|         heldStatus.release(json({ system: { UnixTime: 1_700_000_000 } …
+    398|         await vi.waitFor(() => expect(postWriteGets).toBe(1));
+       |                                                      ^
+    399|
+    400|         expect(requests.count("/system")).toBe(2);
+ ❯ checkCallback node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-BuZyXFq0.js?v=07e354f7:5412:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  09:37:47
+   Duration  3.79s (tests 92%, worker 7%, import 1%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 13 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/shell.test.js > startShell > defers a reload for a changed build until the pending Apply has settled: expected +0 to be 1 // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

@@ -1,0 +1,42 @@
+F..................F.................................................... [ 39%]
+........................................................................ [ 78%]
+........................................                                 [100%]
+=================================== FAILURES ===================================
+_______________ test_every_rule_in_buildgen_has_exactly_one_row ________________
+
+    def test_every_rule_in_buildgen_has_exactly_one_row() -> None:
+        literals = _rule_literals()
+        missing = {rule: sites for rule, sites in sorted(literals.items()) if rule not in _ROWS}
+        assert not missing, f"rule ids raised under buildgen/ with no row here - add one malformed input per id: {missing}"
+>       assert sorted(set(_ROWS) - set(literals)) == [], "rows for rule ids no buildgen/ site raises any more - delete them"
+E       AssertionError: rows for rule ids no buildgen/ site raises any more - delete them
+E       assert ['bus.i2c-timeout-consumer'] == []
+E         
+E         Left contains one more item: 'bus.i2c-timeout-consumer'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_error_contract.py:556: AssertionError
+_ test_each_rule_aborts_with_one_line_naming_place_and_fix[bus.i2c-timeout-consumer] _
+
+rule = 'bus.i2c-timeout-consumer'
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11547/test_each_rule_aborts_with_one18')
+capsys = <_pytest.capture.CaptureFixture object at 0x7f190034d5d0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f1902e9c5d0>
+
+    @pytest.mark.parametrize("rule", sorted(_ROWS))
+    def test_each_rule_aborts_with_one_line_naming_place_and_fix(rule: str, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+        row = _ROWS[rule]
+        code, err, built = _run(row, tmp_path, capsys, monkeypatch)
+>       assert code == 1, err
+E       AssertionError: 
+E       assert 0 == 1
+
+tests_scripts/test_buildgen_error_contract.py:563: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_error_contract.py::test_every_rule_in_buildgen_has_exactly_one_row
+FAILED tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[bus.i2c-timeout-consumer]
+2 failed, 182 passed in 7.26s
+
+real	0m9.425s
+user	0m8.360s
+sys	0m0.826s

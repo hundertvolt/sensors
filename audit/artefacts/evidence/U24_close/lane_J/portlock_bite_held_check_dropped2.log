@@ -1,0 +1,70 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/port-lock.test.js (15 tests | 1 failed) 3498ms
+   ❯ the JS port lock (15)
+     ✓ a live node holder refuses a node taker, naming the holder the same way 114ms
+     ✓ a live node holder refuses a bash taker, naming the holder the same way 91ms
+     ✓ a live bash holder refuses a node taker, naming the holder the same way 85ms
+     ✓ a live bash holder refuses a bash taker, naming the holder the same way 59ms
+     ✓ refuses a taker whose inherited chain lists the port but not the holder's pid 114ms
+     ✓ appends the port and its own pid to an inherited chain, once each, and releases the lock when its process exits 56ms
+     ✓ lets a node holder's child (bash, taking another port) and grandchild (node) pass on the held port 131ms
+     ✓ lets a bash holder's child (node, taking another port) and grandchild (bash) pass on the held port 100ms
+     × refuses the holder's own descendant once its inherited chain no longer lists the port 351ms
+     ✓ is re-entrant in one process: an inner release keeps the lock, the outer one removes it 61ms
+     ✓ takes over a lock recording a dead pid, leaving nothing behind 74ms
+     ✓ takes over a lock recording no pid at all, leaving nothing behind 2078ms
+     ✓ refuses port 0 with runner "runner" as a usage error 59ms
+     ✓ refuses port 65536 with runner "runner" as a usage error 60ms
+     ✓ refuses port 53 with runner "" as a usage error 61ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/port-lock.test.js > the JS port lock > refuses the holder's own descendant once its inherited chain no longer lists the port
+AssertionError: expected [ +0, '' ] to deeply equal [ 1, …(1) ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/port-lock.test.js/the-JS-port-lock---refuses-the-holder-s-own-descendant-once-its-inherited-chain-no-longer-lists-the-port.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   1,[39m
+[32m-   "port 53 is held by holder (pid 3939) - run the suites one after the other (CLAUDE.md)",[39m
+[31m+   0,[39m
+[31m+   "",[39m
+[2m  ][22m
+
+ ❯ tests_js/port-lock.test.js:60:51
+     58|         const probe = await commands.probePortLock({ taker: actor("nod…
+     59|         const holderPid = Number(/^took (?<pid>\d+)/mu.exec(probe.stdo…
+     60|         expect([probe.code, probe.stderr.trim()]).toEqual([1, heldBy("…
+       |                                                   ^
+     61|     });
+     62|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 passed (15)
+   Start at  17:05:06
+   Duration  4.80s (tests 94%, worker 6%)
+
+== Summary: npm test ==
+Commit: 032eb4c (uncommitted changes)
+Levels: L0
+Counts (tests): passed 14 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/port-lock.test.js > the JS port lock > refuses the holder's own descendant once its inherited chain no longer lists the port: expected [ +0, '' ] to deeply equal [ 1, …(1) ]
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

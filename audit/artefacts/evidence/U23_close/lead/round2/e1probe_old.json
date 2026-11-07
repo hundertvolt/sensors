@@ -1,0 +1,140 @@
+{
+ "switches": [
+  {
+   "i": 0,
+   "leftDurMs": 11.9,
+   "clickAfterStartMs": 1.5,
+   "clickDispatchMs": 9.8,
+   "leftEndAfterClickMs": 10.4,
+   "leftFailure": "net::ERR_ABORTED",
+   "nextStartAfterClickMs": 9.7
+  },
+  {
+   "i": 1,
+   "leftDurMs": 9.1,
+   "clickAfterStartMs": 1.3,
+   "clickDispatchMs": 5.9,
+   "leftEndAfterClickMs": 7.8,
+   "leftFailure": "net::ERR_ABORTED",
+   "nextStartAfterClickMs": 5.9
+  },
+  {
+   "i": 2,
+   "leftDurMs": 7.5,
+   "clickAfterStartMs": 0,
+   "clickDispatchMs": 7.3,
+   "leftEndAfterClickMs": 7.5,
+   "leftFailure": "net::ERR_ABORTED",
+   "nextStartAfterClickMs": 7.2
+  },
+  {
+   "i": 3,
+   "leftDurMs": 11.2,
+   "clickAfterStartMs": 0.1,
+   "clickDispatchMs": 10.5,
+   "leftEndAfterClickMs": 11.1,
+   "leftFailure": "net::ERR_ABORTED",
+   "nextStartAfterClickMs": 10.4
+  },
+  {
+   "i": 4,
+   "leftDurMs": 8.1,
+   "clickAfterStartMs": 0.3,
+   "clickDispatchMs": 7.1,
+   "leftEndAfterClickMs": 7.8,
+   "leftFailure": "net::ERR_ABORTED",
+   "nextStartAfterClickMs": 7.1
+  },
+  {
+   "i": 5,
+   "leftDurMs": 6.9,
+   "clickAfterStartMs": 0.1,
+   "clickDispatchMs": 6,
+   "leftEndAfterClickMs": 6.9,
+   "leftFailure": "net::ERR_ABORTED",
+   "nextStartAfterClickMs": 6
+  },
+  {
+   "i": 6,
+   "leftDurMs": 9.3,
+   "clickAfterStartMs": 1.4,
+   "clickDispatchMs": 7.6,
+   "leftEndAfterClickMs": 7.9,
+   "leftFailure": "net::ERR_ABORTED",
+   "nextStartAfterClickMs": 6
+  },
+  {
+   "i": 7,
+   "leftDurMs": 8.8,
+   "clickAfterStartMs": 1.9,
+   "clickDispatchMs": 6.2,
+   "leftEndAfterClickMs": 6.9,
+   "leftFailure": "net::ERR_ABORTED",
+   "nextStartAfterClickMs": 5.9
+  }
+ ],
+ "errcountRows": [
+  "Wi-Fi: 0",
+  "Wi-Fi Config Store: 0",
+  "NTP Client: 0",
+  "NTP Config Store: 0",
+  "FRAM Storage: 0",
+  "System: 0",
+  "System Config Store: 0",
+  "SCD30: 0",
+  "SCD30 Config Store: 0",
+  "SGP40: 0",
+  "SGP40 Config Store: 0",
+  "BMP3xx: 0",
+  "BMP3xx Config Store: 0",
+  "Neopixel LED: 0",
+  "Notification Service: 0",
+  "Notification Config Store: 0",
+  "Web Server: 8"
+ ],
+ "webserver": {
+  "history": [
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "W",
+    "num": 48
+   }
+  ],
+  "counter": 8
+ }
+}

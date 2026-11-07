@@ -1,0 +1,50 @@
+test_digital_twin_fram_crash_points.-1 rc=0 wall=9.33 mem=0 :: 3/3 passed, 0 failed, 0 skipped
+test_digital_twin_construction_dev.-1 rc=2 wall=0.02 mem=0 :: 
+test_digital_twin_uart_link.-1 rc=0 wall=77.18 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_uart_comm_hazard.-1 rc=1 wall=64.01 mem=0 :: 0/10 passed, 10 failed, 0 skipped
+FAIL test_both_ends_transmitting_crc16:
+FAIL test_both_ends_transmitting_nocrc:
+FAIL test_clear_racing_a_transaction_after_the_last_ack_crc16:
+FAIL test_clear_racing_a_transaction_after_the_last_ack_nocrc:
+FAIL test_clear_racing_a_transaction_before_the_first_frame_crc16:
+test_digital_twin_uart_field_sweep.-1 rc=1 wall=0.71 mem=0 :: 0/10 passed, 10 failed, 0 skipped
+FAIL test_chunks_boundaries_crc16:
+FAIL test_chunks_sweep_nocrc:
+FAIL test_cmd_boundaries_crc16:
+FAIL test_cmd_sweep_nocrc:
+FAIL test_cur_chunk_boundaries_crc16:
+test_digital_twin_clock_jump.-1 rc=1 wall=19.05 mem=0 :: 5/6 passed, 1 failed, 0 skipped
+FAIL test_the_first_sync_sets_a_boot_default_clock_and_restarts_its_age:
+test_digital_twin_wifi_modes.-1 rc=0 wall=112.17 mem=0 :: 1/1 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.arzi.-1 rc=1 wall=93.09 mem=0 :: 7/11 passed, 4 failed, 0 skipped
+FAIL test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick:
+FAIL test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server:
+FAIL test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state:
+FAIL test_the_captive_dns_listener_idles_at_its_idle_rate:
+test_digital_twin_sensortask_integration.dev.-1 rc=1 wall=22.32 mem=0 :: 2/11 passed, 2 failed, 7 skipped
+FAIL test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick:
+FAIL test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0:
+test_digital_twin_sensortask_integration.grkizi.-1 rc=1 wall=20.86 mem=0 :: 3/11 passed, 1 failed, 7 skipped
+FAIL test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick:
+test_digital_twin_sensortask_integration.klkizi.-1 rc=1 wall=20.94 mem=0 :: 3/11 passed, 1 failed, 7 skipped
+FAIL test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick:
+test_digital_twin_sensortask_integration.schlafzi.-1 rc=1 wall=20.79 mem=0 :: 3/11 passed, 1 failed, 7 skipped
+FAIL test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick:
+test_digital_twin_sensortask_integration.wozi.-1 rc=1 wall=21.33 mem=0 :: 3/11 passed, 1 failed, 7 skipped
+FAIL test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick:
+test_digital_twin_fram_crash_points.settrace rc=0 wall=69.71 mem=0 :: 3/3 passed, 0 failed, 0 skipped
+test_digital_twin_fram_crash_points.32768 rc=0 wall=17.04 mem=0 :: 3/3 passed, 0 failed, 0 skipped
+test_digital_twin_uart_link.32768 rc=0 wall=91.27 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_uart_comm_hazard.32768 rc=1 wall=122.07 mem=0 :: 0/10 passed, 10 failed, 0 skipped
+FAIL test_both_ends_transmitting_crc16:
+FAIL test_both_ends_transmitting_nocrc:
+FAIL test_clear_racing_a_transaction_after_the_last_ack_crc16:
+FAIL test_clear_racing_a_transaction_after_the_last_ack_nocrc:
+FAIL test_clear_racing_a_transaction_before_the_first_frame_crc16:
+test_digital_twin_uart_field_sweep.32768 rc=1 wall=60.66 mem=0 :: 0/10 passed, 10 failed, 0 skipped
+FAIL test_chunks_boundaries_crc16:
+FAIL test_chunks_sweep_nocrc:
+FAIL test_cmd_boundaries_crc16:
+FAIL test_cmd_sweep_nocrc:
+FAIL test_cur_chunk_boundaries_crc16:
+test_digital_twin_clock_jump.32768 rc=0 wall=27.24 mem=0 :: 6/6 passed, 0 failed, 0 skipped

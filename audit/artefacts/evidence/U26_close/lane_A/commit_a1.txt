@@ -1,0 +1,32 @@
+U26 lane A WIP A1: the hardware harness API - bench board by data, rendered facts, evidence, twin board
+
+The bench board is named by data: [device] bench (a bool, never emitted) in buildgen's device
+table, `bench = true` in devices/dev.toml, read by harness.bench_device() and _devices.bench_device()
+(none or several flagged refused naming the files; $BENCH_DEVICE overrides). Expected facts gain
+fram_backed_loggers, derived from the TOML and each driver's own _CFG_LOG_FRAM, checked equal to the
+built graph's FRAM-backed loggers for three devices.
+
+harness.py: board facts from the TOML and src/ (configured_max_connections, hotspot_password,
+dut_hostname_candidates, fram_backed_logger_names, get_routes from the generated REST reference);
+render_device_script() inlines the BENCH facts (bench_facts.build()), the device-module import and
+the _shared/ includes; parse_facts(); save_fram_raw(); run_isolated() runs a script once and a
+failed trailing soft reset never re-runs it; run_isolated_expect_reset() returns the output (or
+holds the console unread); _mpremote() runs `uv run --no-sync`, never retries a started script,
+records every retry, rebind and timeout interrupt in Board.recovery_events, and names a refused
+USB rebind; the boot/crash/fault-window observers; kick_then_reset(), recover_by_reset(), reflash()
+(exit 249 retried only); the board resolver delegates to setup_toolchain.resolve_board_serial();
+soft_reset() and its leftovers go.
+
+evidence.py and error_log_helpers.py: save, then clear - ResetErrors saves the verbatim /status
+first and fails unless it answered Valid; every errcount oracle fails closed on a missing or
+malformed entry. bench_control.py: every restore proves its injection absent by listing,
+clear_leftovers(), the source-port block, the single-radio scan check, workaround comments with
+bound and removal trigger; the unused helpers go.
+
+twin_board.TwinBoard (Board's API) runs a rendered script through the new
+digital_twin/run_device_script.py at either GC stage, with one watchdog as rp2 keeps one. The
+_shared/ includes (facts, watchdog, heap_probe, map_dump, settle, fixed_source) and the read-only
+fram_raw_dump.py device script land with their .pyi stubs. Members in D.15 order.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

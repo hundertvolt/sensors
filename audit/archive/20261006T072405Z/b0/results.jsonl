@@ -1,0 +1,20 @@
+{"label": "L0_pytest_tests_scripts", "cmd": "uv run pytest tests_scripts -q", "rc": 0, "wall_s": 302.3, "host_peak_ram_mb": 226.2, "max_child_rss_mb": 68.9, "ssd_writes_mb": 579.9, "utc": "2026-10-06T05:39:04Z"}
+{"label": "L0_npm_lint", "cmd": "npm run lint", "rc": 0, "wall_s": 1.6, "host_peak_ram_mb": 56.1, "max_child_rss_mb": 172.9, "ssd_writes_mb": 0.4, "utc": "2026-10-06T05:39:05Z"}
+{"label": "L0_npm_typecheck", "cmd": "npm run typecheck", "rc": 0, "wall_s": 0.8, "host_peak_ram_mb": 0.0, "max_child_rss_mb": 172.9, "ssd_writes_mb": 0.0, "utc": "2026-10-06T05:39:06Z"}
+{"label": "L0_npm_lint_html", "cmd": "npm run lint:html", "rc": 0, "wall_s": 0.5, "host_peak_ram_mb": 0.0, "max_child_rss_mb": 172.9, "ssd_writes_mb": 0.0, "utc": "2026-10-06T05:39:06Z"}
+{"label": "L0_npm_lint_css", "cmd": "npm run lint:css", "rc": 0, "wall_s": 0.8, "host_peak_ram_mb": 0.0, "max_child_rss_mb": 172.9, "ssd_writes_mb": 0.1, "utc": "2026-10-06T05:39:07Z"}
+{"label": "L0_npm_test", "cmd": "npm test", "rc": 0, "wall_s": 569.3, "host_peak_ram_mb": 1117.0, "max_child_rss_mb": 527.6, "ssd_writes_mb": 1241.7, "utc": "2026-10-06T05:48:37Z"}
+{"label": "L1_test_sh_gc_default", "cmd": "scripts/test.sh", "rc": 0, "wall_s": 308.7, "host_peak_ram_mb": 214.0, "max_child_rss_mb": 527.6, "ssd_writes_mb": 183.4, "utc": "2026-10-06T05:53:45Z"}
+{"label": "L1_test_sh_gc_32768", "cmd": "GC_THRESHOLD=32768 scripts/test.sh", "rc": 0, "wall_s": 319.5, "host_peak_ram_mb": 277.6, "max_child_rss_mb": 527.6, "ssd_writes_mb": 306.5, "utc": "2026-10-06T05:59:05Z"}
+{"label": "L1_test_sh_coverage", "cmd": "scripts/test.sh --coverage", "rc": 0, "wall_s": 347.1, "host_peak_ram_mb": 255.6, "max_child_rss_mb": 527.6, "ssd_writes_mb": 221.6, "utc": "2026-10-06T06:04:52Z"}
+{"label": "L2_twin_arzi", "cmd": "scripts/run_digital_twin_ci.sh arzi", "rc": 0, "wall_s": 714.2, "host_peak_ram_mb": 36.3, "max_child_rss_mb": 527.6, "ssd_writes_mb": 25.1, "utc": "2026-10-06T06:16:46Z"}
+{"label": "L2_twin_dev", "cmd": "scripts/run_digital_twin_ci.sh dev", "rc": 0, "wall_s": 861.2, "host_peak_ram_mb": 1104.5, "max_child_rss_mb": 527.6, "ssd_writes_mb": 621.4, "utc": "2026-10-06T06:31:07Z"}
+{"label": "L2_twin_grkizi", "cmd": "scripts/run_digital_twin_ci.sh grkizi", "rc": 0, "wall_s": 728.5, "host_peak_ram_mb": 2307.7, "max_child_rss_mb": 527.6, "ssd_writes_mb": 11682.5, "utc": "2026-10-06T06:43:16Z"}
+{"label": "L2_twin_klkizi", "cmd": "scripts/run_digital_twin_ci.sh klkizi", "rc": 0, "wall_s": 722.2, "host_peak_ram_mb": 208.9, "max_child_rss_mb": 527.6, "ssd_writes_mb": 1393.2, "utc": "2026-10-06T06:55:18Z"}
+{"label": "L2_twin_schlafzi", "cmd": "scripts/run_digital_twin_ci.sh schlafzi", "rc": 0, "wall_s": 695.9, "host_peak_ram_mb": 698.3, "max_child_rss_mb": 527.6, "ssd_writes_mb": 1237.5, "utc": "2026-10-06T07:06:54Z"}
+{"label": "L2_twin_wozi", "cmd": "scripts/run_digital_twin_ci.sh wozi", "rc": 0, "wall_s": 764.7, "host_peak_ram_mb": 1034.8, "max_child_rss_mb": 527.6, "ssd_writes_mb": 2145.0, "utc": "2026-10-06T07:19:39Z"}
+{"label": "L34_hw_collect_only", "cmd": "uv run pytest tests_hardware --collect-only -q", "rc": 0, "wall_s": 0.4, "host_peak_ram_mb": 0.0, "max_child_rss_mb": 527.6, "ssd_writes_mb": 1.1, "utc": "2026-10-06T07:19:39Z"}
+{"label": "lint_sh", "cmd": "scripts/lint.sh", "rc": 0, "wall_s": 1.2, "host_peak_ram_mb": 2.7, "max_child_rss_mb": 527.6, "ssd_writes_mb": 4.5, "utc": "2026-10-06T07:19:40Z"}
+{"label": "typecheck_sh", "cmd": "scripts/typecheck.sh", "rc": 0, "wall_s": 15.4, "host_peak_ram_mb": 103.1, "max_child_rss_mb": 527.6, "ssd_writes_mb": 54.1, "utc": "2026-10-06T07:19:56Z"}
+{"label": "firmware_build_verify", "cmd": "RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py -k test_real_firmware_build_produces_a_valid_uf2", "rc": 1, "wall_s": 166.2, "host_peak_ram_mb": 389.8, "max_child_rss_mb": 527.6, "ssd_writes_mb": 445.3, "utc": "2026-10-06T07:22:42Z"}
+{"label": "toolchain_test", "cmd": "uv run toolchain/setup_toolchain.py test", "rc": 0, "wall_s": 66.0, "host_peak_ram_mb": 309.1, "max_child_rss_mb": 527.6, "ssd_writes_mb": 137.3, "utc": "2026-10-06T07:23:48Z"}

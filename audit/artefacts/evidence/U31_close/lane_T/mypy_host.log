@@ -1,0 +1,6 @@
+tests_scripts/test_digital_twin_scenarios.py: note: In function "test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused":
+tests_scripts/test_digital_twin_scenarios.py:185:5: error: Name "body" already
+defined on line 181  [no-redef]
+        def body(_ctx: object) -> None:
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 1 error in 1 file (checked 302 source files)

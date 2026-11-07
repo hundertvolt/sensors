@@ -1,0 +1,20 @@
+F......                                                                  [100%]
+=================================== FAILURES ===================================
+__ test_every_heap_measuring_device_script_sets_and_reports_its_gc_threshold ___
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9207/test_every_heap_measuring_devi0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eff218a7690>
+
+    def test_every_heap_measuring_device_script_sets_and_reports_its_gc_threshold(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        measuring = _rendered_measuring_scripts(tmp_path, monkeypatch)
+        # Guards the detector itself: an empty or shrunken set would pass everything below vacuously.
+        assert {"serving_at_default_gc.py", "heap_under_connection_ceiling.py", "allocation_need_per_source.py", "heap_headroom_after_full_system_build.py", "heap_layout_after_full_boot_sequence.py"} <= set(measuring), sorted(measuring)
+        found = {name: problems for name, source in measuring.items() if (problems := _problems(source))}
+>       assert not found, found
+E       AssertionError: {'allocation_need_per_source.py': ['measures the heap but never reports fact("gc_threshold", ...) - its output cannot ...': ['measures the heap but never reports fact("gc_threshold", ...) - its output cannot say what it was taken at'], ...}
+E       assert not {'allocation_need_per_source.py': ['measures the heap but never reports fact("gc_threshold", ...) - its output cannot ...': ['measures the heap but never reports fact("gc_threshold", ...) - its output cannot say what it was taken at'], ...}
+
+tests_scripts/test_device_script_gc_threshold.py:75: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_gc_threshold.py::test_every_heap_measuring_device_script_sets_and_reports_its_gc_threshold
+1 failed, 6 passed in 0.30s

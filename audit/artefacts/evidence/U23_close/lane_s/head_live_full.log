@@ -1,0 +1,47 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/laneS/head_full
+
+ ✓ |chromium| tests_js/live-backend.test.js (12 tests) 49407ms
+   ✓ live digital-twin backend: arzi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 3358ms
+   ✓ live digital-twin backend: dev (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 3891ms
+   ✓ live digital-twin backend: grkizi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 3404ms
+   ✓ live digital-twin backend: klkizi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 3384ms
+   ✓ live digital-twin backend: schlafzi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 3310ms
+   ✓ live digital-twin backend: wozi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 3441ms
+   ✓ live digital-twin backend, concurrent browser sessions: arzi (1)
+     ✓ several real browser tabs load the real website at once against one live twin 4595ms
+   ✓ live digital-twin backend, concurrent browser sessions: dev (1)
+     ✓ several real browser tabs load the real website at once against one live twin 5411ms
+   ✓ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     ✓ several real browser tabs load the real website at once against one live twin 4607ms
+   ✓ live digital-twin backend, concurrent browser sessions: klkizi (1)
+     ✓ several real browser tabs load the real website at once against one live twin 4535ms
+   ✓ live digital-twin backend, concurrent browser sessions: schlafzi (1)
+     ✓ several real browser tabs load the real website at once against one live twin 4562ms
+   ✓ live digital-twin backend, concurrent browser sessions: wozi (1)
+     ✓ several real browser tabs load the real website at once against one live twin 4902ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  10:59:03
+   Duration  51.07s (tests 99%, worker 1%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 12 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

@@ -1,0 +1,35 @@
+== test_bench_control_restore (base harness/bench_control/error_log_helpers/http_client; new modules present)
+ERROR tests_scripts/test_bench_control_restore.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.24s
+== test_evidence_snapshot (base harness/bench_control/error_log_helpers/http_client; new modules present)
+>       error_log_helpers.reset_all_error_logs("dut", "test_x[param]")
+E       TypeError: reset_all_error_logs() takes 1 positional argument but 2 were given
+>           error_log_helpers.reset_all_error_logs("dut", "failed")
+E           TypeError: reset_all_error_logs() takes 1 positional argument but 2 were given
+>           error_log_helpers.reset_all_error_logs("dut", "failed")
+E           TypeError: reset_all_error_logs() takes 1 positional argument but 2 were given
+>           error_log_helpers.reset_all_error_logs("dut", "failed")
+E           TypeError: reset_all_error_logs() takes 1 positional argument but 2 were given
+FAILED tests_scripts/test_evidence_snapshot.py::test_reset_saves_the_verbatim_status_before_the_put
+FAILED tests_scripts/test_evidence_snapshot.py::test_a_reset_that_did_not_clear_raises[answer0]
+FAILED tests_scripts/test_evidence_snapshot.py::test_a_reset_that_did_not_clear_raises[answer1]
+FAILED tests_scripts/test_evidence_snapshot.py::test_a_reset_that_did_not_clear_raises[answer2]
+4 failed, 2 passed in 0.08s
+== test_bench_harness_helpers (base harness/bench_control/error_log_helpers/http_client; new modules present)
+ERROR tests_scripts/test_bench_harness_helpers.py - AttributeError: module 'h...
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.26s
+== test_device_tomls (base validate, dev.toml with bench = true)
+E           buildgen.errors.BuildError: [dev.bench] [device] declares unrecognized field(s) ['bench'] - typo, or copy-pasted from an unrelated table? - fix: remove or correct ['bench']
+FAILED tests_scripts/test_device_tomls.py::test_every_device_builds[dev] - bu...
+1 failed, 36 passed in 0.84s
+== test_buildgen_generate -k fram_backed/config_log (base generate)
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_expected_facts_name_the_fram_backed_loggers[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_expected_facts_name_the_fram_backed_loggers[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_expected_facts_name_the_fram_backed_loggers[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_expected_facts_name_the_fram_backed_loggers[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_expected_facts_name_the_fram_backed_loggers[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_expected_facts_name_the_fram_backed_loggers[wozi]
+FAILED tests_scripts/test_buildgen_generate.py::test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger
+7 failed, 344 deselected in 1.78s

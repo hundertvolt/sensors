@@ -1,0 +1,79 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23c
+
+ ❯ |chromium| tests_js/definitions-mockdata-coverage.test.js (10 tests | 1 failed | 9 skipped) 193ms
+   ❯ definitions and mockdata agree (10)
+     ↓ every readonly field arzi's definitions name resolves in its composed mock data
+     ↓ every readonly field dev's definitions name resolves in its composed mock data
+     ↓ every readonly field grkizi's definitions name resolves in its composed mock data
+     ↓ every readonly field klkizi's definitions name resolves in its composed mock data
+     ↓ every readonly field schlafzi's definitions name resolves in its composed mock data
+     ↓ every readonly field wozi's definitions name resolves in its composed mock data
+     ↓ reports a field whose mockdata is genuinely absent
+     ↓ reports a nested path that stops on a group instead of a leaf
+     × reads a maintenance field by its path and reports one whose instance is absent 191ms
+     ↓ takes a list of names as a leaf and still reports a list that holds a sub-object
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > reads a maintenance field by its path and reports one whose instance is absent
+AssertionError: expected [ …(2) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---reads-a-maintenance-field-by-its-path-and-reports-one-whose-instance-is-absent.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/sensors/SGP40_BackupTS",[39m
+[31m+   "status/sensors/SGP40_2_BackupTS",[39m
+[31m+ ][39m
+
+ ❯ tests_js/definitions-mockdata-coverage.test.js:136:129
+    134|         ];
+    135|         const defs = { sections: [{ key: "status", groups: [{ key: "se…
+    136|         expect(unrenderableReadonlyFields(defs, { status: { sensors: {…
+       |                                                                                                                                 ^
+    137|         expect(unrenderableReadonlyFields(defs, { status: { sensors: {…
+    138|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 skipped (10)
+   Start at  09:44:15
+   Duration  1.60s (worker 39%, tests 37%, import 24%)
+
+== Summary: npm test ==
+Commit: aa1d2a8 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 9 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > reads a maintenance field by its path and reports one whose instance is absent: expected [ …(2) ] to deeply equal []
+Skipped:
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field arzi's definitions name resolves in its composed mock data: skip
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field dev's definitions name resolves in its composed mock data: skip
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field grkizi's definitions name resolves in its composed mock data: skip
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field klkizi's definitions name resolves in its composed mock data: skip
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field schlafzi's definitions name resolves in its composed mock data: skip
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field wozi's definitions name resolves in its composed mock data: skip
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > reports a field whose mockdata is genuinely absent: skip
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > reports a nested path that stops on a group instead of a leaf: skip
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > takes a list of names as a leaf and still reports a list that holds a sub-object: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

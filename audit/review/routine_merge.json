@@ -1,0 +1,29 @@
+{
+  "note": "Lead merge of routine_A-D: overrides on the shares. 'to_owner' moves a settled id into an owner question; 'outcome' gives the decision that now stands where a settlement changed it.",
+  "to_owner": [
+    {
+      "id": "dynamic-import-scope",
+      "kind": "decision",
+      "topic": "system-and-memory",
+      "title": "How far the dynamic-import ban reaches",
+      "question": "Does the dynamic-import ban cover host tools and tests?",
+      "context": "Your rule says dynamic imports must never be used anywhere in this codebase, so that a build tool can read the firmware's import graph without running code. Several files outside the firmware load a module by path or by name today: the loader the build-script tests use, the build generator's validator, the twin's runner, and test helpers that pick the generated device module by its name. The plan keeps these as named exceptions, which narrows your 'anywhere', so it needs your word.",
+      "options": [
+        {"label": "Firmware graph only, named exceptions", "consequence": "Everything frozen into the image, and everything it imports, stays free of dynamic imports. The host and test loaders are listed by name, and a check fails on any new site outside the list. No code change."},
+        {"label": "Zero exceptions", "consequence": "Every loader is rewritten to plain import statements: device modules through a generated import table, build scripts through their folder on the import path. Purer, but more code in the test tooling and one more generated file; a loader that cannot be rewritten comes back to you."}
+      ],
+      "recommended": "Firmware graph only, named exceptions",
+      "members": ["dynamic-import-ban"],
+      "refs": ["SPECIFICATION.md F.1", "G10/R22", "tests_scripts/_script_loader.py", "buildgen/validate.py", "digital_twin/run_generic_integration.py", "tests/_sensortask_scenarios.py"]
+    }
+  ],
+  "outcome": {
+    "unit-test-d-t27": "A log whose two copies were both left half-written reads as 'blank or invalid' and is started fresh; the test expects that, not 'unreadable'.",
+    "initialized-flags": "The 'initialized' flag stays only where product code reads it (the FRAM, SPI, UART and logging classes). It is not added to the reader base class, the web server, the NeoPixel driver or the notification service, where only a test would read it.",
+    "ntp-malformed-text": "An allocation failure in the NTP reply parser logs the shared allocation error code; error 69 keeps meaning only 'the reply is malformed'.",
+    "status-ip-and-ipv4": "/status keeps only 'IPv4'. The 'IP' key, added during the refactor and carrying the identical address, goes.",
+    "twin-choice-17": "A clock-jump file is added. With the twin's new local NTP responder, the two sync-dependent cases now run in the twin too, keeping their unit-level proofs.",
+    "device-script-sleeps": "Each fixed wait in the device scripts becomes a bounded check for the state it waits on wherever that state can be read. It stays a named, measured delay only where there is nothing to read or a check would disturb the test.",
+    "decision-tag-form": "A decision taken on your behalf keeps '(agent, date)'. 'owner-reviewed, date' is added only where you answered it on this page; where you ruled differently, your words and '(owner, date)' replace it."
+  }
+}

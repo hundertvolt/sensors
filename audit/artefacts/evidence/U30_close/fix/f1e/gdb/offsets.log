@@ -1,0 +1,98 @@
+BASE 0x5616d5c09000
+MAP 5616d5c09000-5616d5c2b000 r--p 00000000 fe:00 1822700                    /root/pico-toolchain/micropython/ports/unix/build-standard/micropython
+MAP 5616d5c2b000-5616d5c9a000 r-xp 00022000 fe:00 1822700                    /root/pico-toolchain/micropython/ports/unix/build-standard/micropython
+MAP 5616d5c9a000-5616d5ccd000 r--p 00091000 fe:00 1822700                    /root/pico-toolchain/micropython/ports/unix/build-standard/micropython
+MAP 5616d5ccd000-5616d5cdf000 r--p 000c3000 fe:00 1822700                    /root/pico-toolchain/micropython/ports/unix/build-standard/micropython
+MAP 5616d5cdf000-5616d5ce0000 rw-p 000d5000 fe:00 1822700                    /root/pico-toolchain/micropython/ports/unix/build-standard/micropython
+MAP 5616d5ce0000-5616d5ce2000 rw-p 00000000 00:00 0 
+MAP 5616dc603000-5616dc624000 rw-p 00000000 00:00 0                          [heap]
+MAP 7f49735ff000-7f4974600000 rw-p 00000000 00:00 0 
+MAP 7f4974600000-7f4974628000 r--p 00000000 fe:00 152035                     /usr/lib/x86_64-linux-gnu/libc.so.6
+MAP 7f4974628000-7f49747b0000 r-xp 00028000 fe:00 152035                     /usr/lib/x86_64-linux-gnu/libc.so.6
+MAP 7f49747b0000-7f49747ff000 r--p 001b0000 fe:00 152035                     /usr/lib/x86_64-linux-gnu/libc.so.6
+MAP 7f49747ff000-7f4974803000 r--p 001fe000 fe:00 152035                     /usr/lib/x86_64-linux-gnu/libc.so.6
+MAP 7f4974803000-7f4974805000 rw-p 00202000 fe:00 152035                     /usr/lib/x86_64-linux-gnu/libc.so.6
+MAP 7f4974805000-7f4974812000 rw-p 00000000 00:00 0 
+MAP 7f4974924000-7f4974926000 rw-p 00000000 00:00 0 
+MAP 7f4974926000-7f4974928000 r--p 00000000 fe:00 152057                     /usr/lib/x86_64-linux-gnu/libffi.so.8.1.4
+MAP 7f4974928000-7f497492f000 r-xp 00002000 fe:00 152057                     /usr/lib/x86_64-linux-gnu/libffi.so.8.1.4
+MAP 7f497492f000-7f4974930000 r--p 00009000 fe:00 152057                     /usr/lib/x86_64-linux-gnu/libffi.so.8.1.4
+MAP 7f4974930000-7f4974931000 r--p 0000a000 fe:00 152057                     /usr/lib/x86_64-linux-gnu/libffi.so.8.1.4
+MAP 7f4974931000-7f4974932000 rw-p 0000b000 fe:00 152057                     /usr/lib/x86_64-linux-gnu/libffi.so.8.1.4
+MAP 7f4974932000-7f4974942000 r--p 00000000 fe:00 152077                     /usr/lib/x86_64-linux-gnu/libm.so.6
+MAP 7f4974942000-7f49749c1000 r-xp 00010000 fe:00 152077                     /usr/lib/x86_64-linux-gnu/libm.so.6
+MAP 7f49749c1000-7f4974a19000 r--p 0008f000 fe:00 152077                     /usr/lib/x86_64-linux-gnu/libm.so.6
+MAP 7f4974a19000-7f4974a1a000 r--p 000e7000 fe:00 152077                     /usr/lib/x86_64-linux-gnu/libm.so.6
+MAP 7f4974a1a000-7f4974a1b000 rw-p 000e8000 fe:00 152077                     /usr/lib/x86_64-linux-gnu/libm.so.6
+MAP 7f4974a24000-7f4974a26000 rw-p 00000000 00:00 0 
+MAP 7f4974a26000-7f4974a2a000 r--p 00000000 00:00 0                          [vvar]
+MAP 7f4974a2a000-7f4974a2c000 r--p 00000000 00:00 0                          [vvar_vclock]
+MAP 7f4974a2c000-7f4974a2e000 r-xp 00000000 00:00 0                          [vdso]
+MAP 7f4974a2e000-7f4974a2f000 r--p 00000000 fe:00 152017                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+MAP 7f4974a2f000-7f4974a5a000 r-xp 00001000 fe:00 152017                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+MAP 7f4974a5a000-7f4974a64000 r--p 0002c000 fe:00 152017                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+MAP 7f4974a64000-7f4974a66000 r--p 00036000 fe:00 152017                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+MAP 7f4974a66000-7f4974a68000 rw-p 00038000 fe:00 152017                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+MAP 7ffc63a7b000-7ffc63a9e000 rw-p 00000000 00:00 0                          [stack]
+MAP ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]
+MAP 
+MEMFREE_OBJ_OFF 0xd0c90 FUN_OFF 0x4b67c
+COLLECT_FUN_OFF 0x4b662
+TYPE KeyError 0xce330
+TYPE ValueError 0xce0b0
+TYPE memoryview 0xcda10
+TYPE frozenset 0xcf5c0
+TYPE OSError 0xce270
+TYPE property 0xcf050
+TYPE tuple 0xcfed0
+TYPE coro 0xce8f0
+TYPE module 0xceef0
+TYPE fun 0xce9c0
+TYPE staticmethod 0xc6cc0
+TYPE object 0xcef20
+TYPE OrderedDict 0xcdfe0
+TYPE gen 0xce8f0
+TYPE list 0xcec20
+TYPE int 0xceab0
+TYPE boundmeth 0xcdb80
+TYPE Task 0xd2c10
+TYPE Exception 0xce630
+TYPE RuntimeError 0xce230
+TYPE deque 0xcdc70
+TYPE bigint 0xceab0
+TYPE str 0xcfcc0
+TYPE classmethod 0xc6ca0
+TYPE AssertionError 0xce4b0
+TYPE set 0xcf610
+TYPE type 0xc6d10
+TYPE float 0xce790
+TYPE CancelledError heap:0x7f4973631120
+TYPE dict 0xcdf90
+TYPE bytes 0xcfc70
+TYPE TaskQueue 0xd2c40
+TYPE NT 0xc6d10
+TYPE range 0xcf100
+TYPE StopIteration 0xce5b0
+TYPE closure 0xcdbe0
+TYPE TimeoutError heap:0x7f4973632bc0
+TYPE bytearray 0xcda90
+mem: total=44663, current=23713, peak=23713
+stack: 944 out of 80000
+GC: total: 16582784, used: 26304, free: 16556480
+ No. of 1-blocks: 297, 2-blocks: 21, max blk sz: 117, max free sz: 517390
+GC memory layout; from 7f497362e780:
+00000000: h=Sh=hhLhh=hhh========h=h=======hhBShhhSLLSShSSh====Sh====Sh====
+00000800: Sh====SSSShShh====h=Sh==SShh=h===SSSSh===h===Sh===Sh===Sh=Sh=Sh=
+00001000: ==SSSShh===Sh===SSSh===h===h===h===h===h===SSSh===h===h=h=======
+00001800: ========h===h==Sh==Sh==Sh===Sh===Sh===Sh===h===============h==h=
+00002000: =hShAThShh=hhSh=h=hhhhhhSSAThShh=LhShShDhBDBBMhh=h===DBhhShTDBMD
+00002800: BTT=Dh=BDBDhTh===BDhTBBBh=======================================
+00003000: =========h=====================hhhhhhhh======h==================
+00003800: ================================================================
+00004000: ==================================h===hhhTB=BBh==h===TB=BhBDBBDB
+00004800: BBBBBBh===Bh====BTB=BBhhh=hDhBBBBBBBh===h=Bh=====h==============
+00005000: h====hSThSThSThSTh===h==============h===================hhhhTh==
+00005800: ============hSThSThSThSThSThSThSThSThSThSThSThSThSThSThSThSThSTh
+00006000: STThSThSThSThSThSThSThShSThSThSThSThSThSThSThSThShSThS..........
+       (8084 lines all free)
+00fd0800: ....

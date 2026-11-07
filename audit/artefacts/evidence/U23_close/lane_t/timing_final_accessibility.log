@@ -1,0 +1,54 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23t
+
+ ✓ |chromium| tests_js/accessibility.test.js > the accessibility checks > find a repeated id, a label naming nothing, a label naming a span and a labelledby naming nothing 9ms
+ ✓ |chromium| tests_js/accessibility.test.js > the accessibility checks > find a button, an input and a select with no name, and accept each way a control can have one 3ms
+ ✓ |chromium| tests_js/accessibility.test.js > the accessibility checks > find a masked input without autocomplete=new-password 1ms
+ ✓ |chromium| tests_js/accessibility.test.js > arzi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 37ms
+ ✓ |chromium| tests_js/accessibility.test.js > arzi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 26ms
+ ✓ |chromium| tests_js/accessibility.test.js > arzi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input 27ms
+ ✓ |chromium| tests_js/accessibility.test.js > arzi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input 27ms
+ ✓ |chromium| tests_js/accessibility.test.js > arzi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input 27ms
+ ✓ |chromium| tests_js/accessibility.test.js > arzi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input 27ms
+ ✓ |chromium| tests_js/accessibility.test.js > arzi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close 59ms
+ ✓ |chromium| tests_js/accessibility.test.js > dev's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 27ms
+ ✓ |chromium| tests_js/accessibility.test.js > dev's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 31ms
+ ✓ |chromium| tests_js/accessibility.test.js > dev's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input 36ms
+ ✓ |chromium| tests_js/accessibility.test.js > dev's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input 28ms
+ ✓ |chromium| tests_js/accessibility.test.js > dev's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input 28ms
+ ✓ |chromium| tests_js/accessibility.test.js > dev's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input 26ms
+ ✓ |chromium| tests_js/accessibility.test.js > dev's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close 34ms
+ ✓ |chromium| tests_js/accessibility.test.js > grkizi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 24ms
+ ✓ |chromium| tests_js/accessibility.test.js > grkizi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 24ms
+ ✓ |chromium| tests_js/accessibility.test.js > grkizi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input 25ms
+ ✓ |chromium| tests_js/accessibility.test.js > grkizi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input 25ms
+ ✓ |chromium| tests_js/accessibility.test.js > grkizi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input 25ms
+ ✓ |chromium| tests_js/accessibility.test.js > grkizi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input 24ms
+ ✓ |chromium| tests_js/accessibility.test.js > grkizi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close 55ms
+ ✓ |chromium| tests_js/accessibility.test.js > klkizi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 30ms
+ ✓ |chromium| tests_js/accessibility.test.js > klkizi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 29ms
+ ✓ |chromium| tests_js/accessibility.test.js > klkizi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input 28ms
+ ✓ |chromium| tests_js/accessibility.test.js > klkizi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input 32ms
+ ✓ |chromium| tests_js/accessibility.test.js > klkizi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input 31ms
+ ✓ |chromium| tests_js/accessibility.test.js > klkizi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input 24ms
+ ✓ |chromium| tests_js/accessibility.test.js > klkizi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close 38ms
+ ✓ |chromium| tests_js/accessibility.test.js > schlafzi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 27ms
+ ✓ |chromium| tests_js/accessibility.test.js > schlafzi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 26ms
+ ✓ |chromium| tests_js/accessibility.test.js > schlafzi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input 25ms
+ ✓ |chromium| tests_js/accessibility.test.js > schlafzi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input 28ms
+ ✓ |chromium| tests_js/accessibility.test.js > schlafzi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input 40ms
+ ✓ |chromium| tests_js/accessibility.test.js > schlafzi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input 26ms
+ ✓ |chromium| tests_js/accessibility.test.js > schlafzi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close 49ms
+ ✓ |chromium| tests_js/accessibility.test.js > wozi's page > measurements section: unique ids, bound labels, a name on every control, no autofillable masked input 24ms
+ ✓ |chromium| tests_js/accessibility.test.js > wozi's page > sensors section: unique ids, bound labels, a name on every control, no autofillable masked input 25ms
+ ✓ |chromium| tests_js/accessibility.test.js > wozi's page > networking section: unique ids, bound labels, a name on every control, no autofillable masked input 26ms
+ ✓ |chromium| tests_js/accessibility.test.js > wozi's page > system section: unique ids, bound labels, a name on every control, no autofillable masked input 27ms
+ ✓ |chromium| tests_js/accessibility.test.js > wozi's page > status section: unique ids, bound labels, a name on every control, no autofillable masked input 42ms
+ ✓ |chromium| tests_js/accessibility.test.js > wozi's page > notification section: unique ids, bound labels, a name on every control, no autofillable masked input 26ms
+ ✓ |chromium| tests_js/accessibility.test.js > wozi's page > keeps the closed drawer inert, focuses its first link on open and returns the focus on close 46ms
+
+ Test Files  1 passed (1)
+      Tests  45 passed (45)
+   Start at  09:39:51
+   Duration  2.92s (tests 77%, worker 13%, import 9%)
+

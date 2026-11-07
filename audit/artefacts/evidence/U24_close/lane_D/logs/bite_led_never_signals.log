@@ -1,0 +1,7 @@
+FAIL test_webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/led_never_signals/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/led_never_signals/tests/_sensortask_scenarios.py", line 2932, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/led_never_signals/tests/_sensortask_scenarios.py", line 2324, in _scenario_notification_put_light_cmd_led
+AssertionError: []
+0/1 passed, 1 failed, 0 skipped

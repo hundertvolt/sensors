@@ -1,0 +1,12 @@
+ 16:44:45 up 10:53,  0 user,  load average: 0.68, 3.21, 5.05
+old rc=0 167.844276098 s 42/42 passed, 0 failed, 0 skipped
+new rc=0 162.997735397 s 42/42 passed, 0 failed, 0 skipped
+drift new: PROBE drift [858752, 858976, 857728, 858272, 857184, 857152, 857696, 858432, 858432, 858976] span 224 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1] 1/1 passed, 0 failed, 0 skipped 
+drift new: PROBE drift [858752, 858976, 859008, 858272, 857184, 857184, 857728, 858464, 858464, 858464] span 256 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1] 1/1 passed, 0 failed, 0 skipped 
+drift new: PROBE drift [858752, 858976, 857728, 858272, 857184, 857184, 857728, 858464, 858464, 858464] span 224 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1] 1/1 passed, 0 failed, 0 skipped 
+ M SPECIFICATION.md
+ M tests/_coverage_runner.py
+ M tests_scripts/test_coverage_runner.py
+ 16:50:37 up 10:59,  0 user,  load average: 1.67, 2.34, 4.06
+
+[exited with code 0]

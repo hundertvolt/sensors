@@ -1,0 +1,140 @@
+{
+ "switches": [
+  {
+   "i": 0,
+   "leftDurMs": 202.4,
+   "clickAfterStartMs": 0.1,
+   "clickDispatchMs": 9.5,
+   "leftEndAfterClickMs": 202.3,
+   "leftFailure": null,
+   "nextStartAfterClickMs": 203.5
+  },
+  {
+   "i": 1,
+   "leftDurMs": 215.6,
+   "clickAfterStartMs": 0.3,
+   "clickDispatchMs": 4.3,
+   "leftEndAfterClickMs": 215.2,
+   "leftFailure": null,
+   "nextStartAfterClickMs": 216.1
+  },
+  {
+   "i": 2,
+   "leftDurMs": 219.9,
+   "clickAfterStartMs": 0.1,
+   "clickDispatchMs": 5.3,
+   "leftEndAfterClickMs": 219.8,
+   "leftFailure": null,
+   "nextStartAfterClickMs": 221.1
+  },
+  {
+   "i": 3,
+   "leftDurMs": 212,
+   "clickAfterStartMs": 0,
+   "clickDispatchMs": 6.4,
+   "leftEndAfterClickMs": 212,
+   "leftFailure": null,
+   "nextStartAfterClickMs": 213.2
+  },
+  {
+   "i": 4,
+   "leftDurMs": 204.4,
+   "clickAfterStartMs": 0.2,
+   "clickDispatchMs": 5.6,
+   "leftEndAfterClickMs": 204.3,
+   "leftFailure": null,
+   "nextStartAfterClickMs": 205
+  },
+  {
+   "i": 5,
+   "leftDurMs": 234.3,
+   "clickAfterStartMs": 1.4,
+   "clickDispatchMs": 5.9,
+   "leftEndAfterClickMs": 232.8,
+   "leftFailure": null,
+   "nextStartAfterClickMs": 233.8
+  },
+  {
+   "i": 6,
+   "leftDurMs": 227.3,
+   "clickAfterStartMs": 0.5,
+   "clickDispatchMs": 4.2,
+   "leftEndAfterClickMs": 226.8,
+   "leftFailure": null,
+   "nextStartAfterClickMs": 227.7
+  },
+  {
+   "i": 7,
+   "leftDurMs": 217.8,
+   "clickAfterStartMs": 1.6,
+   "clickDispatchMs": 4.8,
+   "leftEndAfterClickMs": 216.2,
+   "leftFailure": null,
+   "nextStartAfterClickMs": 217.1
+  }
+ ],
+ "errcountRows": [
+  "Wi-Fi: 0",
+  "Wi-Fi Config Store: 0",
+  "NTP Client: 0",
+  "NTP Config Store: 0",
+  "FRAM Storage: 0",
+  "System: 0",
+  "System Config Store: 0",
+  "SCD30: 0",
+  "SCD30 Config Store: 0",
+  "SGP40: 0",
+  "SGP40 Config Store: 0",
+  "BMP3xx: 0",
+  "BMP3xx Config Store: 0",
+  "Neopixel LED: 0",
+  "Notification Service: 0",
+  "Notification Config Store: 0",
+  "Web Server: 0"
+ ],
+ "webserver": {
+  "history": [
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   },
+   {
+    "type": "N",
+    "num": 0
+   }
+  ],
+  "counter": 0
+ }
+}

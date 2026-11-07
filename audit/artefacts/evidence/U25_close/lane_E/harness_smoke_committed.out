@@ -1,0 +1,25 @@
+== every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly: Every GET route answers 200 in its published shape, the settings routes with the device's own defaults.
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/build/generated_src/sensortask_wozi_wiring_plan.json --device wozi --host 127.0.0.1 --port 20830 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/shared_boots/state_01/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/shared_boots/state_01/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/shared_boots/state_01/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/shared_boots/state_01/config/ --gc-threshold -1 --test-conn-status-interval-ms 20 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/shared_boots/twin_01.log)
+PASSED: every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly - 4.7s
+== negative_content_length_is_refused: A PUT declaring Content-Length -1 with a 3,000-byte body answers 400 and allocates nothing; the device serves on.
+PASSED: negative_content_length_is_refused - 0.4s
+== static_site_is_served_over_real_http: GET / serves the device's site, behind every API route.
+PASSED: static_site_is_served_over_real_http - 0.8s
+== put_round_trips_through_a_real_twin_backed_driver_over_real_http: PUT /notification WarnCO2 answers Valid, reads back over GET and lands in the module's config file.
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25sh/build/generated_src/sensortask_wozi_wiring_plan.json --device wozi --host 127.0.0.1 --port 20831 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/put_round_trips_through_a_real_twin_backed_driver_over_real_http/state_01/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/put_round_trips_through_a_real_twin_backed_driver_over_real_http/state_01/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/put_round_trips_through_a_real_twin_backed_driver_over_real_http/state_01/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/put_round_trips_through_a_real_twin_backed_driver_over_real_http/state_01/config/ --gc-threshold -1 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneE/hlogs/smoke_committed/put_round_trips_through_a_real_twin_backed_driver_over_real_http/twin_01.log)
+PASSED: put_round_trips_through_a_real_twin_backed_driver_over_real_http - 3.7s
+== Summary: scripts/_digital_twin_scenarios.py ==
+Commit: 26fb9be
+Levels: L2 (wozi)
+GC stage: -1
+Counts (scenarios): passed 4 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0
+rc=0 wall=10s

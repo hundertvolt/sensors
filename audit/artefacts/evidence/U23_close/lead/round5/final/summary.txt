@@ -1,0 +1,10 @@
+rebuild rc=0 wall 8s
+ruff rc=0 wall 0s
+mypy_noargs rc=0 wall 10s
+mypy_ci rc=0 wall 9s
+mypy_twin rc=0 wall 2s
+mypy_host rc=0 wall 8s
+npm_lint rc=0 wall 3s
+npm_typecheck rc=0 wall 1s
+pytest6 rc=0 wall 34s
+done

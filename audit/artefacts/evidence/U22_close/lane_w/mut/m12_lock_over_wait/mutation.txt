@@ -1,0 +1,3 @@
+# mutant m12_lock_over_wait against the lane snapshot prestreak/asy_wifi_service.py (hunk @@ -428,7 +428,8 @@)
+The one change: the 5 s refresh sleep at the end of _connect_loop()'s iteration is moved inside an
+async with self.wifi_mode_lock: block, so the loop holds the mode lock across its wait.

@@ -1,0 +1,6 @@
+PASS test_clear_waits_out_a_stretched_clock_and_still_sends_nine_effective_pulses polls 22 k 0 D 46
+PASS test_clear_waits_out_a_stretched_clock_and_still_sends_nine_effective_pulses polls 22 k 0 D 60
+PASS test_clear_waits_out_a_stretched_clock_and_still_sends_nine_effective_pulses polls 22 k 1 D 46
+FAIL test_clear_waits_out_a_stretched_clock_and_still_sends_nine_effective_pulses polls 1 k 1 D 60 AssertionError()
+PASS test_clear_waits_out_a_stretched_clock_and_still_sends_nine_effective_pulses polls 22 k 3 D 46
+FAIL test_clear_waits_out_a_stretched_clock_and_still_sends_nine_effective_pulses polls 3 k 3 D 60 AssertionError()

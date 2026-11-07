@@ -1,0 +1,11 @@
+FAIL test_a_restart_in_the_silent_mode_keeps_it_dark_and_re_arms_the_period
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2869, in test_a_restart_in_the_silent_mode_keeps_it_dark_and_re_arms_the_period
+AssertionError: 
+FAIL test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2800, in test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode
+AssertionError: the give-up left the silent mode
+selected: 2 failed: 2

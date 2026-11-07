@@ -1,0 +1,3 @@
+test_bus_hazard_multi_device [plain] rc=0 2s :: 18/18 passed, 0 failed, 0 skipped :: mem=0 :: 
+test_bus_hazard_multi_device [gc] rc=0 1s :: 18/18 passed, 0 failed, 0 skipped :: mem=0 :: 
+DONE

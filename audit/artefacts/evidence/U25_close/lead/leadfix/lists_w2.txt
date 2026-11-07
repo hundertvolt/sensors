@@ -1,0 +1,125 @@
+.F..F..FF....FF..............F..................FF.F.................F.. [ 93%]
+.....                                                                    [100%]
+=================================== FAILURES ===================================
+______________________ test_the_pending_list_only_shrinks ______________________
+tests_scripts/test_import_placement.py:210: in test_the_pending_list_only_shrinks
+    assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E   AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E       ('scripts/_digital_twin_ci_suite.py', '_configured_max_connections', 'buildgen.validate')
+E       ('tests/test_digital_twin_real_website_integration.py', '_decompress', 'deflate')
+E       ('tests/test_digital_twin_real_website_integration.py', '_decompress', 'io')
+E       ('tests/test_digital_twin_sensortask_integration.py', 'test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list.scenario', 'asy_system_service')
+E       ('tests/test_digital_twin_sensortask_integration.py', 'test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led.scenario', 'network')
+E   assert not [('scripts/_digital_twin_ci_suite.py', '_configured_max_connections', 'buildgen.validate'), ('tests/test_digital_twin_....py', 'test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led.scenario', 'network')]
+______________ test_the_named_exceptions_mirror_specification_f1 _______________
+tests_scripts/test_import_placement.py:262: in test_the_named_exceptions_mirror_specification_f1
+    assert not missing, f"named in F.1 but no such file: {missing}"
+E   AssertionError: named in F.1 but no such file: ['tests/_webserver_concurrency_scenarios.py']
+E   assert not ['tests/_webserver_concurrency_scenarios.py']
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+tests_scripts/test_decision_vocabulary.py:89: in test_decision_vocabulary_names_its_actor_or_is_allow_listed
+    assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E   AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E       tests/test_digital_twin_sensortask_integration.py: No seeded SCD30 data, deliberately: the point is the real startup race, the SCD3
+E   assert not [('tests/test_digital_twin_sensortask_integration.py', 'No seeded SCD30 data, deliberately: the point is the real startup race, the SCD3')]
+_______________________ test_the_allowlist_only_shrinks ________________________
+tests_scripts/test_decision_vocabulary.py:94: in test_the_allowlist_only_shrinks
+    assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E   AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E       scripts/_digital_twin_ci_suite.py	---- Run 5c: the case that must NEVER lose anything, a commanded reboot.
+E       scripts/_digital_twin_ci_suite.py	It deliberately does NOT assert that SGP40's history survived Run 3, which it ca
+E       scripts/_digital_twin_ci_suite.py	Not device- or driver-specific, and deliberately small: each one ends the driver
+E       scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
+E       tests/_webserver_concurrency_scenarios.py	Both the scratch key and the port range are keyed per device, not shared across
+E       tests/_webserver_concurrency_scenarios.py	One thing this file deliberately does NOT attempt is a "different source host" v
+E       tests/_webserver_concurrency_scenarios.py	Opens a real connection, sends a deliberately incomplete request (no terminating
+E       tests/_webserver_concurrency_scenarios.py	Settled, pinned at each device's own ceiling (SPECIFICATION.md H.7): a slot is f
+E       tests/_webserver_concurrency_scenarios.py	This deliberately revisits that exact scale, repeated, as an in-process regressi
+E       tests/_webserver_concurrency_scenarios.py	the stall: no await, so nothing is accepted until it ends
+E       tests/test_digital_twin_bus_hazard_concurrency.py	Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy(): its share
+E       tests/test_digital_twin_bus_hazard_concurrency.py	wozi's own SGP40+BMP3xx-on-i2c1 pairing can never be confirmed on real hardware
+E       tests/test_digital_twin_real_website_integration.py	"wozi" is hardcoded deliberately, not a stale device-specific leftover (Part L.4
+E       tests/test_digital_twin_sensortask_integration.py	A second real backup mutates the twin's in-memory FRAM image but is deliberately
+E       tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT drive this through main()/supervise_tasks().
+E       tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT pre-seed scd30's measurement data the way every other SGP4
+E       tests/test_digital_twin_sensortask_integration.py	Deliberately does not wait out an auto-unpause: the command's duration is a hard
+E       tests/test_digital_twin_sensortask_integration.py	Deliberately wozi-only - SPECIFICATION.md Part E.2.1 says why.
+E       tests/test_digital_twin_sensortask_integration.py	PauseTime is deliberately excluded from GET /notification's flat settings, so it
+E       tests/test_digital_twin_sensortask_integration.py	See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ
+E       tests/test_digital_twin_sensortask_integration.py	The generated sensortask_wozi.py's module-level `conn` is typed "Any | None" rat
+E   assert not [('scripts/_digital_twin_ci_suite.py', '---- Run 5c: the case that must NEVER lose anything, a commanded reboot.'), ('...er_concurrency_scenarios.py', 'One thing this file deliberately does NOT attempt is a "different source host" v'), ...]
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+tests_scripts/test_citations.py:251: in test_every_citation_resolves_or_is_allow_listed
+    assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E   AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E       CLAUDE.md: digital_twin/unix_port_gc_unwedge.py
+E       SPECIFICATION.md: digital_twin/segfault_stress_repro.py
+E       SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E       SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E       SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E       SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E       SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E       SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E       SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E       SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+E       SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+E       SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+E       SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+E       SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+E       SPECIFICATION.md: tests/test_digital_twin_unix_port_gc_unwedge.py
+E       SPECIFICATION.md: tests/test_sensortask_dev.py
+E       SPECIFICATION.md: tests/test_sensortask_dev.py
+E       tests/_sensortask_scenarios.py: tests/_webserver_concurrency_scenarios.py
+E       tests/_sensortask_scenarios.py: tests/_webserver_concurrency_scenarios.py
+E   assert not [('CLAUDE.md', 'digital_twin/unix_port_gc_unwedge.py'), ('SPECIFICATION.md', 'digital_twin/segfault_stress_repro.py'),...N.md', 'digital_twin/unix_port_gc_unwedge.py'), ('SPECIFICATION.md', 'tests/_webserver_concurrency_scenarios.py'), ...]
+_______________________ test_the_allowlist_only_shrinks ________________________
+tests_scripts/test_citations.py:256: in test_the_allowlist_only_shrinks
+    assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{t}" for p, t in stale)
+E   AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E       scripts/_digital_twin_ci_suite.py	WP1
+E       scripts/_digital_twin_ci_suite.py	WP1
+E       scripts/_digital_twin_ci_suite.py	WP2
+E       scripts/run_digital_twin_ci.sh	digital_twin/*.json
+E       tests/test_digital_twin_sensortask_integration.py	measure A
+E   assert not [('scripts/_digital_twin_ci_suite.py', 'WP1'), ('scripts/_digital_twin_ci_suite.py', 'WP1'), ('scripts/_digital_twin_c...ts/run_digital_twin_ci.sh', 'digital_twin/*.json'), ('tests/test_digital_twin_sensortask_integration.py', 'measure A')]
+___________ test_every_not_yet_cleaned_entry_still_carries_a_literal ___________
+tests_scripts/test_no_variant_literals.py:155: in test_every_not_yet_cleaned_entry_still_carries_a_literal
+    assert not stale, f"these files are clean now - remove their _NOT_YET_CLEANED entries: {stale}"
+E   AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['scripts/run_digital_twin_ci.sh', 'tests/_webserver_concurrency_scenarios.py', 'tests/test_digital_twin_generic_wiring.py', 'tests/test_digital_twin_isl29125_autorange.py', 'tests/test_digital_twin_real_website_integration.py', 'tests/test_digital_twin_sensortask_integration.py', 'tests/test_digital_twin_uart_link.py', 'tests/test_digital_twin_webserver_concurrency_arzi.py', 'tests/test_digital_twin_webserver_concurrency_dev.py', 'tests/test_digital_twin_webserver_concurrency_grkizi.py', 'tests/test_digital_twin_webserver_concurrency_klkizi.py', 'tests/test_digital_twin_webserver_concurrency_schlafzi.py', 'tests/test_digital_twin_webserver_concurrency_wozi.py']
+E   assert not ['scripts/run_digital_twin_ci.sh', 'tests/_webserver_concurrency_scenarios.py', 'tests/test_digital_twin_generic_wirin...e.py', 'tests/test_digital_twin_real_website_integration.py', 'tests/test_digital_twin_sensortask_integration.py', ...]
+____ test_every_twin_scenario_is_covered_or_an_exception_row_with_a_reason _____
+tests_scripts/test_level_containment.py:112: in test_every_twin_scenario_is_covered_or_an_exception_row_with_a_reason
+    assert not uncovered, f"twin scenarios with neither an L3/L4 counterpart nor an E.6.6 row with a reason: {uncovered}"
+E   AssertionError: twin scenarios with neither an L3/L4 counterpart nor an E.6.6 row with a reason: ['ci_suite._run_12_reset_reasons', 'ci_suite._run_13_system_commands', 'clock_jump', 'fram_crash_points', 'hot_replug', 'ntp', 'rp2_constants', 'timer_pool', 'uart_comm_hazard', 'uart_field_sweep']
+E   assert not ['ci_suite._run_12_reset_reasons', 'ci_suite._run_13_system_commands', 'clock_jump', 'fram_crash_points', 'hot_replug', 'ntp', ...]
+__________________ test_every_scenario_named_anywhere_exists ___________________
+tests_scripts/test_level_containment.py:118: in test_every_scenario_named_anywhere_exists
+    assert not unknown, f"COVERS_TWIN_SCENARIOS names scenarios that do not exist: {unknown}"
+E   AssertionError: COVERS_TWIN_SCENARIOS names scenarios that do not exist: {'webserver_concurrency': ['tests_hardware/bench/test_end_to_end_timing.py', 'tests_hardware/bench/test_heap_under_connection_ceiling.py', 'tests_hardware/bench/test_memory_stress_bench.py', 'tests_hardware/bench/test_network_resilience.py', 'tests_hardware/bench/test_serving_heap_at_default_gc.py'], 'real_website_integration': ['tests_hardware/bench/test_hotspot_role_reversal.py', 'tests_hardware/bench/test_rest_endpoints_over_sta.py']}
+E   assert not {'webserver_concurrency': ['tests_hardware/bench/test_end_to_end_timing.py', 'tests_hardware/bench/test_heap_under_con...ation': ['tests_hardware/bench/test_hotspot_role_reversal.py', 'tests_hardware/bench/test_rest_endpoints_over_sta.py']}
+______________ test_every_per_device_family_spans_the_device_set _______________
+tests_scripts/test_level_containment.py:132: in test_every_per_device_family_spans_the_device_set
+    assert families, "no per-device twin family found - the collapse has stopped seeing them"
+E   AssertionError: no per-device twin family found - the collapse has stopped seeing them
+E   assert {}
+_________ test_every_booting_twin_test_file_prewarms_then_shims_first __________
+tests_scripts/test_twin_entry_point_order.py:112: in test_every_booting_twin_test_file_prewarms_then_shims_first
+    assert problems == [], problems
+E   AssertionError: ["test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, no...start ['require_fresh', 'bytes'] with the shim absent, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']"]
+E   assert ["test_digita..._unix_port']"] == []
+E     
+E     Left contains 2 more items, first extra item: "test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']"
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+FAILED tests_scripts/test_import_placement.py::test_the_named_exceptions_mirror_specification_f1
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+FAILED tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal
+FAILED tests_scripts/test_level_containment.py::test_every_twin_scenario_is_covered_or_an_exception_row_with_a_reason
+FAILED tests_scripts/test_level_containment.py::test_every_scenario_named_anywhere_exists
+FAILED tests_scripts/test_level_containment.py::test_every_per_device_family_spans_the_device_set
+FAILED tests_scripts/test_twin_entry_point_order.py::test_every_booting_twin_test_file_prewarms_then_shims_first
+11 failed, 66 passed in 36.34s

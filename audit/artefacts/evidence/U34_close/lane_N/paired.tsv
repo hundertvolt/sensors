@@ -1,0 +1,21 @@
+wt-u33plan	test_asy_udp_socket.py	-1	rc=0	7.24	mem=0	70/70 passed, 0 failed, 0 skipped
+wt-u34n	test_asy_udp_socket.py	-1	rc=0	6.43	mem=0	64/64 passed, 0 failed, 0 skipped
+wt-u33plan	test_asy_dns_client.py	-1	rc=0	0.87	mem=0	46/46 passed, 0 failed, 0 skipped
+wt-u34n	test_asy_dns_client.py	-1	rc=0	0.88	mem=0	46/46 passed, 0 failed, 0 skipped
+wt-u33plan	test_asy_ntp_client.py	-1	rc=0	24.57	mem=0	188/188 passed, 0 failed, 0 skipped
+wt-u34n	test_asy_ntp_client.py	-1	rc=0	24.53	mem=0	188/188 passed, 0 failed, 0 skipped
+wt-u33plan	test_asy_captive_dns.py	-1	rc=0	25.59	mem=0	64/64 passed, 0 failed, 0 skipped
+wt-u34n	test_asy_captive_dns.py	-1	rc=0	25.59	mem=0	64/64 passed, 0 failed, 0 skipped
+wt-u33plan	test_asy_udp_socket.py	32768	rc=0	7.24	mem=0	70/70 passed, 0 failed, 0 skipped
+wt-u34n	test_asy_udp_socket.py	32768	rc=0	6.47	mem=0	64/64 passed, 0 failed, 0 skipped
+wt-u33plan	test_asy_dns_client.py	32768	rc=0	0.87	mem=0	46/46 passed, 0 failed, 0 skipped
+wt-u34n	test_asy_dns_client.py	32768	rc=0	0.86	mem=0	46/46 passed, 0 failed, 0 skipped
+wt-u33plan	test_asy_ntp_client.py	32768	rc=0	24.91	mem=0	188/188 passed, 0 failed, 0 skipped
+wt-u34n	test_asy_ntp_client.py	32768	rc=0	24.72	mem=0	188/188 passed, 0 failed, 0 skipped
+wt-u33plan	test_asy_captive_dns.py	32768	rc=0	25.61	mem=0	64/64 passed, 0 failed, 0 skipped
+wt-u34n	test_asy_captive_dns.py	32768	rc=0	25.59	mem=0	64/64 passed, 0 failed, 0 skipped
+heavy at start: 2
+wt-u34n	test_digital_twin_sensortask_integration.py	-1	rc=1	0.15	mem=0	
+heavy at start: 2
+wt-u34n	test_digital_twin_sensortask_integration.py	32768	rc=1	0.14	mem=0	
+END

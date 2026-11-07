@@ -1,0 +1,23 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api
+
+ ✓ |chromium| tests_js/api-reference-agreement.test.js (19 tests) 8ms
+
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+   Start at  10:06:05
+   Duration  1.44s (worker 58%, import 40%, tests 2%)
+
+== Summary: npm test ==
+Commit: 9a8700f
+Levels: L0
+Counts (tests): passed 19 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

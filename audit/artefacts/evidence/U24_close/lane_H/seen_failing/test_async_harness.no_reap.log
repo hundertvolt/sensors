@@ -1,0 +1,36 @@
+FAIL test_a_base_exception_ending_the_loop_leaves_a_later_run_possible:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 130, in test_a_base_exception_ending_the_loop_leaves_a_later_run_possible
+AssertionError: 
+FAIL test_a_base_exception_ending_the_loop_leaves_a_later_run_possible: left a task parked on the scheduler
+FAIL test_a_child_raising_while_cancelled_fails_the_run:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 103, in test_a_child_raising_while_cancelled_fails_the_run
+AssertionError: 
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_async_harness.py", line 90, in stubborn
+OSError: [Errno 5] EIO: cleanup failed
+FAIL test_a_child_raising_while_cancelled_fails_the_run: left a task parked on the scheduler
+FAIL test_a_raising_coroutine_still_cancels_its_children:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 81, in test_a_raising_coroutine_still_cancels_its_children
+AssertionError: 
+FAIL test_a_raising_coroutine_still_cancels_its_children: left a task parked on the scheduler
+PASS test_cancel_and_cancel_all_end_their_tasks_and_wait_for_them
+PASS test_create_task_is_the_real_one_again_after_run_on_every_path
+PASS test_run_from_inside_a_coroutine_is_refused_not_crashed
+PASS test_run_returns_the_coroutines_value_and_a_bound_raises_timeout
+PASS test_run_timed_bounds_the_coroutine_and_leaves_nothing_parked
+FAIL test_three_sleepers_the_coroutine_spawned_are_gone_after_run:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 63, in test_three_sleepers_the_coroutine_spawned_are_gone_after_run
+AssertionError: 
+FAIL test_three_sleepers_the_coroutine_spawned_are_gone_after_run: left a task parked on the scheduler
+5/9 passed, 4 failed, 0 skipped
+RESULT tests/test_async_harness.py stage=-1 rc=1 wall=0.1s

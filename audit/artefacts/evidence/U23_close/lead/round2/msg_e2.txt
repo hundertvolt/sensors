@@ -1,0 +1,10 @@
+U23 lead: the live full-ceiling tabs check prints its counts on every run
+
+The check asserted its first-pass and reload counts but printed nothing when it passed, so a green
+run kept no evidence of how many tabs needed their reload. It now prints one line per device before
+it asserts, on a pass and a failure alike: the tab count, the tabs loaded on the first pass, the
+tabs loaded on their reload and the tabs not loaded at all. First run (wozi and the five others):
+6 tabs, 5 on the first pass, 1 on its reload, 0 not at all, on every device.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

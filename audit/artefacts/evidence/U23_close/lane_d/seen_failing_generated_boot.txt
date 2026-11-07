@@ -1,0 +1,222 @@
+....FFFFFFFF                                                             [100%]
+=================================== FAILURES ===================================
+_ test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/ext')
+fixtures_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/tests_scripts/buildgen_fixtures')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7674/test_synthetic_fixture_boots_a0')
+device_toml_name = 'multi_instance.toml'
+
+    @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)
+    def test_synthetic_fixture_boots_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
+    ) -> None:
+        # The two mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
+        # the generic wiring mechanism handles a hardware combination none of the 6 real devices use,
+        # not just wozi/dev's own two already-hand-verified layouts.
+        device_toml = fixtures_dir / device_toml_name
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_a_BackupTS', 'sensors.SGP40_a_RestoreTS', 'sensors.SGP40_b_BackupTS', 'sensors.SGP40_b_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:361: AssertionError
+___ test_synthetic_fixture_boots_and_serves_over_real_http[novel_combo.toml] ___
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/ext')
+fixtures_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/tests_scripts/buildgen_fixtures')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7674/test_synthetic_fixture_boots_a1')
+device_toml_name = 'novel_combo.toml'
+
+    @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)
+    def test_synthetic_fixture_boots_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
+    ) -> None:
+        # The two mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
+        # the generic wiring mechanism handles a hardware combination none of the 6 real devices use,
+        # not just wozi/dev's own two already-hand-verified layouts.
+        device_toml = fixtures_dir / device_toml_name
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page...K_Failures']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS', 'sensors.UARTLINK_Transfers', 'sensors.UARTLINK_Failures']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:361: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[arzi] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7674/test_real_device_boots_its_gen0')
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+__ test_real_device_boots_its_generated_module_and_serves_over_real_http[dev] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7674/test_real_device_boots_its_gen1')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page...K_Failures']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS', 'sensors.UARTLINK_Transfers', 'sensors.UARTLINK_Failures']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[grkizi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7674/test_real_device_boots_its_gen2')
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[klkizi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7674/test_real_device_boots_its_gen3')
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[schlafzi] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7674/test_real_device_boots_its_gen4')
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+_ test_real_device_boots_its_generated_module_and_serves_over_real_http[wozi] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7674/test_real_device_boots_its_gen5')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_boots_its_generated_module_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    ) -> None:
+        # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
+        # generator produces a module that runs, for every real device, not just ast.parse()s
+        # (SPECIFICATION.md Part L.4: "ideally every" entry point).
+        toml_path = device_toml_path(device)
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:374: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[novel_combo.toml]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[arzi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[dev]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[grkizi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[klkizi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[schlafzi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[wozi]
+8 failed, 4 passed in 21.99s

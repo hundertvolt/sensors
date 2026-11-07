@@ -1,0 +1,3 @@
+valid True
+write True {'A': 'Valid'}
+log {'CFGMGR_T': {'ErrType': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'W', 'E'], 'ErrCount': 2, 'ErrNum': [0, 0, 0, 0, 0, 0, 0, 0, 3, 14]}}

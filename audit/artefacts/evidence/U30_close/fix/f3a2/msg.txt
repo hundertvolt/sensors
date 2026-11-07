@@ -1,0 +1,20 @@
+U30 fix F3a2: the await-depth model is precise where a construction or a call says which class it is
+
+A construction yields exactly the class it names (a classmethod's cls() still any class of its family), and a
+construction whose value is dropped still makes its class concrete. A parameter takes its annotation only where a
+call the walk cannot bind may fill it: the function is called by the interpreter or a decorator, never called here,
+called with a starred argument or a ** mapping, or named by a value, a string, an unresolved call or a call inside a
+lambda, decorator, default, class body or comprehension; or one call passes it a value the flow does not know.
+Otherwise it takes what its calls pass and its default. Every opening is decided at a fixpoint from that pass's own
+records (the static ones after the first pass), so the solve stays a monotone iteration.
+
+Each precision rule is seen failing on the previous model and each soundness case is a guard bitten in a scratch
+copy. The live check now finds 28: the GET /status chain to the FRAM manager's log of a lost chip; the six boot
+entries are at 22. A statement's calls and nested statements are walked once, and plain values join a store without
+renormalising, so the file runs in 4.5 s against 5.4 s before.
+
+Decisions (agent, 2026-10-20): a parameter whose argument the flow does not know keeps its annotation (stricter than
+"every call resolved"); calls inside a comprehension count as unbound.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

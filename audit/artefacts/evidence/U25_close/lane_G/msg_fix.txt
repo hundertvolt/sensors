@@ -1,0 +1,9 @@
+U25 lane G: crash points skip a cut only for a byte-identical image
+
+The write count said nothing about a data transaction that follows its WRITE
+header, so a cut could reuse a verdict for an image it did not check (an
+untraced blank then passed). A cut is now skipped only when its chip image
+equals the last checked one page by page.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

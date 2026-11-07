@@ -1,0 +1,16 @@
+FAIL test_the_window_end_keeps_its_meaning
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 1992, in test_the_window_end_keeps_its_meaning
+AssertionError: 
+FAIL test_hotspot_timeout_watcher_ends_the_window_when_woken
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 1887, in test_hotspot_timeout_watcher_ends_the_window_when_woken
+AssertionError: 
+FAIL test_the_watcher_dispatches_by_phase
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 1964, in test_the_watcher_dispatches_by_phase
+AssertionError: [(2, True, True, False), (0, True, True, False), (1, True, True, False), (3, True, True, False)]
+selected: 3 failed: 3

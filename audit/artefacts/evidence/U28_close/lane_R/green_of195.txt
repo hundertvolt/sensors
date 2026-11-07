@@ -1,0 +1,2 @@
+SKIPPED [6] tests_scripts/test_build_firmware.py:709: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as .github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the toolchain lock has the build's own lock refused
+6 skipped in 0.18s

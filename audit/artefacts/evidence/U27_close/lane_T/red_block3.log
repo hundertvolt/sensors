@@ -1,0 +1,21 @@
+_ ERROR at setup of test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[build] _
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9921/test_a_failed_rollover_prepara0')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9921/test_a_failed_rollover_prepara0/repo/scripts/run_bench_rollover_test.sh')
+_ ERROR at setup of test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[bench-device] _
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9921/test_a_failed_rollover_prepara1')
+dst = PosixPath('/tmp/pytest-of-root/pytest-9921/test_a_failed_rollover_prepara1/repo/scripts/run_bench_rollover_test.sh')
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+FAILED tests_scripts/test_hardware_runners.py::test_every_uv_run_line_in_the_script_carries_no_sync[run_bench_rollover_test.sh]
+FAILED tests_scripts/test_hardware_runners.py::test_every_uv_run_line_in_the_script_carries_no_sync[run_bench_soak_tests.sh]
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_pytest_runs_once_with_the_record_plugin_and_the_callers_arguments_before_v
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[floor-only]
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[narrowed]
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[attached-form]
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_a_callers_marker_expression_narrows_the_floor_and_never_replaces_it[last-of-several]
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_without_a_floor_the_callers_last_marker_expression_is_the_selection
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_a_marker_flag_without_its_expression_is_a_usage_error_before_any_run[caller-m]
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_a_marker_flag_without_its_expression_is_a_usage_error_before_any_run[floor]
+ERROR tests_scripts/test_hardware_runners.py::test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[build]
+ERROR tests_scripts/test_hardware_runners.py::test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[bench-device]
+10 failed, 15 passed, 47 errors in 5.20s

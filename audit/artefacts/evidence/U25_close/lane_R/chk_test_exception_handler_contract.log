@@ -1,0 +1,18 @@
+...F........................................................             [100%]
+=================================== FAILURES ===================================
+_ test_every_pc_entry_point_installs_the_pc_report_before_the_firmware_starts __
+
+    def test_every_pc_entry_point_installs_the_pc_report_before_the_firmware_starts() -> None:
+        entries = _entry_points(REPO_ROOT)
+        labels = {label for label, _tree, _entry in entries}
+        # Discovery's own premise: the twin runner and the unit runner are found, or this checks nothing.
+        assert {_MICROTEST_FILE, "digital_twin/run_generic_integration.py"} <= labels, sorted(labels)
+        findings = [f for label, tree, entry in entries for f in entry_findings(label, tree, entry)]
+>       assert not findings, "\n".join(findings)
+E       AssertionError: digital_twin/run_generic_integration.py:415 main() does not open with the PC report's install() from unix_port_unretrieved_report - the firmware would then install its level-gated one
+E       assert not ["digital_twin/run_generic_integration.py:415 main() does not open with the PC report's install() from unix_port_unretrieved_report - the firmware would then install its level-gated one"]
+
+tests_scripts/test_exception_handler_contract.py:296: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_exception_handler_contract.py::test_every_pc_entry_point_installs_the_pc_report_before_the_firmware_starts
+1 failed, 59 passed in 3.79s

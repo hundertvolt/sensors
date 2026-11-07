@@ -1,0 +1,40 @@
+U23 lane D: final - ResetErrors waits for every reset, the reference's failure shapes, the status clock scenario
+
+PUT /status {"ResetErrors": true} gathers every source's reset with
+return_exceptions=True: a reset that raised or returned False answers
+the key "Failed", only after every other reset has run (before, one
+raise ended the gather at once, left the rest unawaited and turned the
+answer into a 500), and each raise is logged once to this service's own
+log (E CALLBACK) after the resets, so the cleared log keeps it.
+
+The REST reference carries the two failure shapes the server sends:
+unavailableMarker {"error": UNAVAILABLE} and unknownCodeText
+(_UNKNOWN_DESCR), each read from src/ by AST; a value that is not a
+string fails the build under the new rule api.wire-text-not-string.
+
+Tests: ResetErrors with a raising source beside a slow one, and with
+this service's own reset raising; the shared sensortask scenario reads
+system.UnixTime as null before the first sync, then within 1 s of the
+clock; the definitions tests pin codeTones to the catalog's tones,
+every statusPath to a key its generated status source returns, float
+to the schema's float, and every field's decimals to its source (the
+tag, else the resolution, else the site default; derived and default
+counts 0..3). The twin boot's status parity check reads maintenance
+fields by path on the nested body (the flattening went with the
+generator's per-field path). One reworded comment in
+tests_js/_source_constants.js.
+
+Efficiency: test_buildgen_definitions.py caches one generation per
+device (definitions as JSON text, the module source), so it runs faster
+than at the start of the unit with 142 more cases; the loader's
+single-flight case polls every 1 ms instead of vitest's default 50 ms.
+
+Decided on the owner's behalf (agent, 2026-10-13), conservative and
+reversible: a raise during the error reset is logged under the existing
+CALLBACK code rather than a new one; the reference's wire-text rule is
+one new id (its error-contract row is listed for the lead) instead of
+reusing api.result-word-not-string, whose fix text names the result
+words.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

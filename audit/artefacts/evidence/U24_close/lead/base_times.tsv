@@ -1,0 +1,195 @@
+file	stage	wall_s	rc	passed	failed	first_failing_test	first_failing_line	mem_errors	total	skipped	user_s	sys_s	parked_fails	nonparked_failing_tests	start_utc	end_utc
+tests/test_asy_api_response.py	-1	0.305	1	28	4	test_handle_set_cmd_async_post_fct_fires_only_when_something_actually_changed	- parked: left a task parked on the scheduler	0	32	0	0.106	0.192	4	0	18:12:27	18:12:28
+tests/test_asy_api_response.py	32768	0.541	1	28	4	test_handle_set_cmd_async_post_fct_fires_only_when_something_actually_changed	- parked: left a task parked on the scheduler	0	32	0	0.305	0.231	4	0	18:22:06	18:22:06
+tests/test_asy_base_classes.py	-1	0.460	1	183	5	test_a_key_without_a_push_callback_triggers_no_pre_write_read	- parked: left a task parked on the scheduler	0	188	0	0.234	0.060	5	0	18:10:50	18:10:50
+tests/test_asy_base_classes.py	32768	0.658	1	183	5	test_a_key_without_a_push_callback_triggers_no_pre_write_read	- parked: left a task parked on the scheduler	0	188	0	0.429	0.045	5	0	18:22:05	18:22:06
+tests/test_asy_bmp3xx_driver.py	-1	12.480	0	134	0			0	134	0	0.210	0.111	0	0	18:09:48	18:10:01
+tests/test_asy_bmp3xx_driver.py	32768	12.741	0	134	0			0	134	0	0.628	0.073	0	0	18:20:28	18:20:41
+tests/test_asy_captive_dns.py	-1	25.557	0	63	0			0	63	0	0.216	0.047	0	0	18:08:57	18:09:23
+tests/test_asy_captive_dns.py	32768	25.601	0	63	0			0	63	0	0.276	0.048	0	0	18:19:07	18:19:33
+tests/test_asy_config_manager.py	-1	0.179	1	230	2	test_configmanager_large_mixed_type_schema	- parked: left a task parked on the scheduler	0	232	0	0.087	0.063	2	0	18:10:52	18:10:52
+tests/test_asy_config_manager.py	32768	0.308	1	230	2	test_configmanager_large_mixed_type_schema	- parked: left a task parked on the scheduler	0	232	0	0.240	0.046	2	0	18:22:07	18:22:07
+tests/test_asy_crc_checks.py	-1	0.037	0	75	0			0	75	0	0.032	0.006	0	0	18:10:53	18:10:53
+tests/test_asy_crc_checks.py	32768	0.059	0	75	0			0	75	0	0.051	0.008	0	0	18:22:09	18:22:09
+tests/test_asy_dns_client.py	-1	0.793	0	44	0			0	44	0	0.032	0.019	0	0	18:10:49	18:10:50
+tests/test_asy_dns_client.py	32768	0.830	0	44	0			0	44	0	0.081	0.016	0	0	18:22:04	18:22:05
+tests/test_asy_fram_allocation_budget.py	-1	0.094	0	3	0			0	3	0	0.068	0.009	0	0	18:10:53	18:10:53
+tests/test_asy_fram_allocation_budget.py	32768	0.122	0	3	0			0	3	0	0.094	0.010	0	0	18:22:09	18:22:09
+tests/test_asy_fram_driver.py	-1	0.187	0	103	0			0	103	0	0.112	0.009	0	0	18:10:51	18:10:51
+tests/test_asy_fram_driver.py	32768	0.328	0	103	0			0	103	0	0.227	0.020	0	0	18:22:06	18:22:06
+tests/test_asy_fram_manager.py	-1	6.509	1	140	1	test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untouched	test_asy_fram_manager.py:721 exception: AssertionError:	0	141	0	2.447	0.376	0	1	18:10:10	18:10:17
+tests/test_asy_fram_manager.py	32768	8.566	1	140	1	test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untouched	test_asy_fram_manager.py:721 exception: AssertionError:	0	141	0	4.675	0.236	0	1	18:20:58	18:21:07
+tests/test_asy_fram_wire_trace.py	-1	0.163	1	0	9	test_a_single_dropped_wrdi_breaks_the_blank_golden	test_asy_fram_wire_trace.py:585>116 exception: AssertionError: event 0: expected 'init 1000000/0/0/8/0', got 'init 1000000/0/0/8/1'	0	9	0	0.096	0.013	0	9	18:10:52	18:10:52
+tests/test_asy_fram_wire_trace.py	32768	0.258	1	0	9	test_a_single_dropped_wrdi_breaks_the_blank_golden	test_asy_fram_wire_trace.py:585>116 exception: AssertionError: event 0: expected 'init 1000000/0/0/8/0', got 'init 1000000/0/0/8/1'	0	9	0	0.178	0.024	0	9	18:22:07	18:22:07
+tests/test_asy_framing_codecs.py	-1	0.817	0	19	0			0	19	0	0.748	0.031	0	0	18:10:49	18:10:49
+tests/test_asy_framing_codecs.py	32768	1.034	0	19	0			0	19	0	0.963	0.042	0	0	18:22:04	18:22:05
+tests/test_asy_i2c_driver.py	-1	1.480	1	106	6	test_a_short_ack_count_raises_eio_and_a_no_stop_write_then_sends_the_stop	test_asy_i2c_driver.py:1179 exception: AssertionError:	0	112	0	0.121	0.021	0	6	18:10:53	18:10:55
+tests/test_asy_i2c_driver.py	32768	1.584	1	106	6	test_a_short_ack_count_raises_eio_and_a_no_stop_write_then_sends_the_stop	test_asy_i2c_driver.py:1179 exception: AssertionError:	0	112	0	0.223	0.020	0	6	18:21:59	18:22:01
+tests/test_asy_isl29125_driver.py	-1	2.680	1	232	8	test_a_failed_push_recovers_through_the_getter_then_the_snapshot_then_the_default	- parked: left a task parked on the scheduler	0	240	0	0.266	0.160	3	5	18:10:39	18:10:42
+tests/test_asy_isl29125_driver.py	32768	3.657	1	232	8	test_a_failed_push_recovers_through_the_getter_then_the_snapshot_then_the_default	- parked: left a task parked on the scheduler	0	240	0	1.297	0.076	3	5	18:21:52	18:21:55
+tests/test_asy_neopixel_driver.py	-1	9.478	0	53	0			0	53	0	0.229	0.039	0	0	18:10:01	18:10:11
+tests/test_asy_neopixel_driver.py	32768	9.615	0	53	0			0	53	0	0.359	0.043	0	0	18:20:41	18:20:50
+tests/test_asy_notification_service.py	-1	19.086	1	57	9	test_auto_on_bool_both_values_valid	- parked: left a task parked on the scheduler	0	66	0	0.068	0.069	9	0	18:09:46	18:10:05
+tests/test_asy_notification_service.py	32768	19.233	1	57	9	test_auto_on_bool_both_values_valid	- parked: left a task parked on the scheduler	0	66	0	0.241	0.033	9	0	18:22:07	18:22:26
+tests/test_asy_ntp_client.py	-1	22.574	1	171	6	test_a_zero_transmit_timestamp_is_rejected	test_asy_ntp_client.py:1284 exception: AttributeError: type object 'RTC' has no attribute '_shared_datetime'	0	177	0	0.976	0.300	3	4	18:09:24	18:09:46
+tests/test_asy_ntp_client.py	32768	24.142	1	171	6	test_a_zero_transmit_timestamp_is_rejected	test_asy_ntp_client.py:1284 exception: AttributeError: type object 'RTC' has no attribute '_shared_datetime'	0	177	0	2.430	0.268	3	4	18:19:47	18:20:11
+tests/test_asy_print_log.py	-1	0.416	0	88	0			0	88	0	0.191	0.022	0	0	18:10:50	18:10:51
+tests/test_asy_print_log.py	32768	0.505	0	88	0			0	88	0	0.283	0.031	0	0	18:22:06	18:22:06
+tests/test_asy_scd30_driver.py	-1	22.191	1	120	5	test_fault_injected_read_half_failure_after_a_successful_write_half	test_asy_scd30_driver.py:753>42 exception: TypeError: 'OSError' object isn't callable	0	125	0	2.097	0.112	0	5	18:09:26	18:09:48
+tests/test_asy_scd30_driver.py	32768	43.789	1	120	5	test_fault_injected_read_half_failure_after_a_successful_write_half	test_asy_scd30_driver.py:753>42 exception: TypeError: 'OSError' object isn't callable	0	125	0	23.319	0.105	0	5	18:19:41	18:20:24
+tests/test_asy_sgp40_driver.py	-1	29.804	1	109	46	test_a_backup_dated_in_the_future_is_refused_under_a_limit	test_asy_sgp40_driver.py:1879>1319 exception: AssertionError:	0	155	0	1.074	0.219	0	46	18:08:54	18:09:24
+tests/test_asy_sgp40_driver.py	32768	30.950	1	109	46	test_a_backup_dated_in_the_future_is_refused_under_a_limit	test_asy_sgp40_driver.py:1879>1319 exception: AssertionError:	0	155	0	2.270	0.095	0	46	18:18:36	18:19:07
+tests/test_asy_spi_driver.py	-1	0.285	1	64	3	test_configure_is_applied_fresh_on_every_synchronous_session	test_asy_spi_driver.py:1087 exception: AssertionError:	0	67	0	0.065	0.005	0	3	18:10:51	18:10:51
+tests/test_asy_spi_driver.py	32768	0.299	1	64	3	test_configure_is_applied_fresh_on_every_synchronous_session	test_asy_spi_driver.py:1087 exception: AssertionError:	0	67	0	0.082	0.008	0	3	18:22:06	18:22:07
+tests/test_asy_system_service.py	-1	23.671	1	137	30	test_a_chunk_that_cannot_be_blanked_stops_the_erase_before_any_overwrite	test_asy_system_service.py:1650>67 reset: SimulatedResetError: machine.reset() never returns	0	167	0	3.233	0.458	30	24	18:09:23	18:09:46
+tests/test_asy_system_service.py	32768	27.397	1	137	30	test_a_chunk_that_cannot_be_blanked_stops_the_erase_before_any_overwrite	test_asy_system_service.py:1650>67 reset: SimulatedResetError: machine.reset() never returns	0	167	0	6.899	0.396	30	24	18:22:09	18:22:36
+tests/test_asy_uart_comm.py	-1	61.304	0	191	0			0	191	0	4.943	0.334	0	0	18:05:55	18:06:56
+tests/test_asy_uart_comm.py	32768	64.575	0	191	0			0	191	0	12.122	0.294	0	0	18:14:09	18:15:13
+tests/test_asy_uart_driver.py	-1	6.355	1	156	3	test_bad_tx_pin_wins_over_bad_port_id	test_asy_uart_driver.py:310 exception: AssertionError:	0	159	0	2.492	0.059	0	3	18:10:50	18:10:57
+tests/test_asy_uart_driver.py	32768	20.596	1	156	3	test_bad_tx_pin_wins_over_bad_port_id	test_asy_uart_driver.py:310 exception: AssertionError:	0	159	0	16.771	0.032	0	3	18:21:07	18:21:28
+tests/test_asy_uart_link_driver.py	-1	1.722	1	24	2	test_initiator_task_starters_include_exercise_loop	- parked: left a task parked on the scheduler	0	26	0	0.173	0.016	2	0	18:10:42	18:10:43
+tests/test_asy_uart_link_driver.py	32768	1.808	1	24	2	test_initiator_task_starters_include_exercise_loop	- parked: left a task parked on the scheduler	0	26	0	0.319	0.018	2	0	18:21:55	18:21:57
+tests/test_asy_udp_socket.py	-1	7.185	0	67	0			0	67	0	0.056	0.008	0	0	18:10:11	18:10:18
+tests/test_asy_udp_socket.py	32768	7.189	0	67	0			0	67	0	0.064	0.025	0	0	18:21:00	18:21:07
+tests/test_asy_webserver_connections.py	-1	1.213	0	23	0			0	23	0	0.999	0.057	0	0	18:10:48	18:10:49
+tests/test_asy_webserver_connections.py	32768	1.415	0	23	0			0	23	0	1.272	0.050	0	0	18:22:03	18:22:04
+tests/test_asy_webserver_service.py	-1	15.952	1	219	3	test_a_config_put_mid_write_when_a_command_arrives_is_waited_out_then_flushed	- parked: left a task parked on the scheduler	0	222	0	12.828	0.048	3	1	18:09:46	18:10:02
+tests/test_asy_webserver_service.py	32768	16.570	1	219	3	test_a_config_put_mid_write_when_a_command_arrives_is_waited_out_then_flushed	- parked: left a task parked on the scheduler	0	222	0	13.537	0.056	3	1	18:20:11	18:20:28
+tests/test_asy_wifi_service.py	-1	19.534	1	241	24	test_a_raising_stations_query_under_a_client_arms_the_window_until_the_next_good_check	test_asy_wifi_service.py:3352 exception: AssertionError:	0	265	0	0.438	0.239	13	12	18:09:26	18:09:46
+tests/test_asy_wifi_service.py	32768	21.152	1	241	24	test_a_raising_stations_query_under_a_client_arms_the_window_until_the_next_good_check	test_asy_wifi_service.py:3352 exception: AssertionError:	0	265	0	2.024	0.266	13	12	18:19:47	18:20:08
+tests/test_async_harness.py	-1	0.128	0	9	0			0	9	0	0.018	0.010	0	0	18:10:53	18:10:53
+tests/test_async_harness.py	32768	0.130	0	9	0			0	9	0	0.016	0.013	0	0	18:22:09	18:22:09
+tests/test_bus_hazard_generated.py	-1	83.849	1	35	1	test_dev_i2c1_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets	test_bus_hazard_generated.py:100>_bus_hazard_catalog.py:499 exception: AssertionError: 'isl29125': 5/6 timing offset(s) reproduced a same-device hazard: ["offset=0: a concurrent hazard tore ISL29125's CONFIG snapshot: b'\\x00\\x14\	0	36	0	2.969	0.101	0	1	18:04:14	18:05:37
+tests/test_bus_hazard_generated.py	32768	84.324	1	35	1	test_dev_i2c1_same_occupant_own_write_does_not_disturb_own_concurrent_read_across_timing_offsets	test_bus_hazard_generated.py:100>_bus_hazard_catalog.py:499 exception: AssertionError: 'isl29125': 5/6 timing offset(s) reproduced a same-device hazard: ["offset=0: a concurrent hazard tore ISL29125's CONFIG snapshot: b'\\x00\\x14\	0	36	0	3.530	0.069	0	1	18:12:28	18:13:52
+tests/test_bus_hazard_multi_device.py	-1	1.484	0	19	0			0	19	0	0.162	0.020	0	0	18:10:45	18:10:47
+tests/test_bus_hazard_multi_device.py	32768	1.843	0	19	0			0	19	0	0.521	0.015	0	0	18:21:59	18:22:01
+tests/test_digital_twin_bmp3xx.py	-1	0.022	0	22	0			0	22	0	0.018	0.004	0	0	18:10:53	18:10:53
+tests/test_digital_twin_bmp3xx.py	32768	0.033	0	22	0			0	22	0	0.033	0.000	0	0	18:22:09	18:22:09
+tests/test_digital_twin_bus_hazard_concurrency.py	-1	151.641	1	2	18	test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared	- parked: left a task parked on the scheduler	0	20	0	7.078	2.231	18	0	18:04:14	18:06:45
+tests/test_digital_twin_bus_hazard_concurrency.py	32768	155.154	1	2	18	test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared	- parked: left a task parked on the scheduler	0	20	0	12.471	1.963	18	0	18:10:55	18:13:31
+tests/test_digital_twin_construction_arzi.py	-1	3.338	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.594	0.113	3	0	18:10:27	18:10:30
+tests/test_digital_twin_construction_arzi.py	32768	3.751	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	1.017	0.075	3	0	18:21:40	18:21:44
+tests/test_digital_twin_construction_dev.py	-1	3.481	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.617	0.078	3	0	18:10:26	18:10:29
+tests/test_digital_twin_construction_dev.py	32768	4.402	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	1.454	0.091	3	0	18:21:36	18:21:40
+tests/test_digital_twin_construction_grkizi.py	-1	3.269	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.561	0.076	3	0	18:10:30	18:10:33
+tests/test_digital_twin_construction_grkizi.py	32768	3.652	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.947	0.055	3	0	18:21:44	18:21:48
+tests/test_digital_twin_construction_klkizi.py	-1	3.122	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.427	0.069	3	0	18:10:33	18:10:37
+tests/test_digital_twin_construction_klkizi.py	32768	3.726	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.995	0.078	3	0	18:21:48	18:21:52
+tests/test_digital_twin_construction_schlafzi.py	-1	3.198	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.442	0.118	3	0	18:10:33	18:10:36
+tests/test_digital_twin_construction_schlafzi.py	32768	3.838	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	1.133	0.060	3	0	18:21:44	18:21:48
+tests/test_digital_twin_construction_wozi.py	-1	3.258	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.490	0.115	3	0	18:10:29	18:10:33
+tests/test_digital_twin_construction_wozi.py	32768	3.745	1	0	3	test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash	- parked: left a task parked on the scheduler	0	3	0	0.965	0.080	3	0	18:21:41	18:21:44
+tests/test_digital_twin_fram.py	-1	0.188	0	30	0			0	30	0	0.096	0.026	0	0	18:10:52	18:10:52
+tests/test_digital_twin_fram.py	32768	0.319	0	30	0			0	30	0	0.184	0.018	0	0	18:22:07	18:22:07
+tests/test_digital_twin_generic_wiring.py	-1	0.050	1	9	7	test_configure_i2c_wiring_dev_matches_the_documented_layout	- parked: left a task parked on the scheduler	0	16	0	0.034	0.016	7	0	18:10:53	18:10:53
+tests/test_digital_twin_generic_wiring.py	32768	0.060	1	9	7	test_configure_i2c_wiring_dev_matches_the_documented_layout	- parked: left a task parked on the scheduler	0	16	0	0.049	0.011	7	0	18:22:27	18:22:27
+tests/test_digital_twin_http_client.py	-1	0.065	0	32	0			0	32	0	0.012	0.012	0	0	18:10:55	18:10:55
+tests/test_digital_twin_http_client.py	32768	0.056	0	32	0			0	32	0	0.032	0.004	0	0	18:22:26	18:22:26
+tests/test_digital_twin_isl29125.py	-1	0.023	0	41	0			0	41	0	0.012	0.010	0	0	18:10:55	18:10:55
+tests/test_digital_twin_isl29125.py	32768	0.032	0	41	0			0	41	0	0.024	0.007	0	0	18:22:27	18:22:27
+tests/test_digital_twin_isl29125_autorange.py	-1	51.300	1	0	20	test_a_calibration_run_measures_the_chips_own_real_ratio	- parked: left a task parked on the scheduler	0	20	0	0.518	0.311	20	0	18:06:45	18:07:36
+tests/test_digital_twin_isl29125_autorange.py	32768	51.653	1	0	20	test_a_calibration_run_measures_the_chips_own_real_ratio	- parked: left a task parked on the scheduler	0	20	0	1.054	0.171	20	0	18:14:08	18:14:59
+tests/test_digital_twin_launch.py	-1	8.057	1	25	4	test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary	- parked: left a task parked on the scheduler	0	29	0	0.062	0.004	4	0	18:10:02	18:10:10
+tests/test_digital_twin_launch.py	32768	8.052	1	25	4	test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary	- parked: left a task parked on the scheduler	0	29	0	0.050	0.015	4	0	18:20:50	18:20:58
+tests/test_digital_twin_machine.py	-1	1.325	0	63	0			0	63	0	0.066	0.016	0	0	18:10:47	18:10:48
+tests/test_digital_twin_machine.py	32768	1.347	0	63	0			0	63	0	0.089	0.018	0	0	18:22:01	18:22:03
+tests/test_digital_twin_machine_uart.py	-1	3.796	0	12	0			0	12	0	0.805	0.104	0	0	18:10:22	18:10:26
+tests/test_digital_twin_machine_uart.py	32768	4.370	0	12	0			0	12	0	1.439	0.051	0	0	18:21:28	18:21:32
+tests/test_digital_twin_network_neopixel.py	-1	14.824	1	25	1	test_wlan_connect_calls_stays_bounded_across_many_calls	- parked: left a task parked on the scheduler	0	26	0	0.049	0.034	1	0	18:09:46	18:10:01
+tests/test_digital_twin_network_neopixel.py	32768	14.794	1	25	1	test_wlan_connect_calls_stays_bounded_across_many_calls	- parked: left a task parked on the scheduler	0	26	0	0.061	0.021	1	0	18:20:24	18:20:39
+tests/test_digital_twin_poll_prewarm.py	-1	0.018	0	6	0			0	6	0	0.007	0.011	0	0	18:10:55	18:10:55
+tests/test_digital_twin_poll_prewarm.py	32768	0.022	0	6	0			0	6	0	0.012	0.009	0	0	18:22:27	18:22:27
+tests/test_digital_twin_real_website_integration.py	-1	11.282	1	0	9	test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website	- parked: left a task parked on the scheduler	0	9	0	1.104	0.257	9	0	18:10:01	18:10:12
+tests/test_digital_twin_real_website_integration.py	32768	12.647	1	0	9	test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website	- parked: left a task parked on the scheduler	0	9	0	2.578	0.145	9	0	18:20:39	18:20:52
+tests/test_digital_twin_run_generic_integration.py	-1	1.320	1	23	3	test_collect_chips_keys_a_multi_instance_driver_by_its_qualified_name_too	- parked: left a task parked on the scheduler	0	26	0	0.164	0.041	3	0	18:10:47	18:10:49
+tests/test_digital_twin_run_generic_integration.py	32768	1.412	1	23	3	test_collect_chips_keys_a_multi_instance_driver_by_its_qualified_name_too	- parked: left a task parked on the scheduler	0	26	0	0.279	0.025	3	0	18:22:02	18:22:04
+tests/test_digital_twin_scd30.py	-1	1.629	1	39	1	test_auto_refresh_true_starts_a_real_timer_and_setting_interval_re_arms_it	- parked: left a task parked on the scheduler	0	40	0	0.143	0.012	1	0	18:10:43	18:10:45
+tests/test_digital_twin_scd30.py	32768	1.902	1	39	1	test_auto_refresh_true_starts_a_real_timer_and_setting_interval_re_arms_it	- parked: left a task parked on the scheduler	0	40	0	0.401	0.016	1	0	18:21:57	18:21:59
+tests/test_digital_twin_sensortask_integration.py	-1	60.790	1	0	15	test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0	- parked: left a task parked on the scheduler	0	15	0	4.312	0.654	15	0	18:05:58	18:06:59
+tests/test_digital_twin_sensortask_integration.py	32768	63.545	1	0	15	test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0	- parked: left a task parked on the scheduler	0	15	0	7.236	0.651	15	0	18:15:51	18:16:54
+tests/test_digital_twin_sgp40.py	-1	0.019	0	17	0			0	17	0	0.016	0.002	0	0	18:10:55	18:10:55
+tests/test_digital_twin_sgp40.py	32768	0.042	0	17	0			0	17	0	0.028	0.012	0	0	18:22:27	18:22:27
+tests/test_digital_twin_uart_link.py	-1	67.205	1	0	19	test_a_collection_length_pause_mid_transfer_does_not_break_the_link	- parked: left a task parked on the scheduler	0	19	0	14.642	0.707	19	0	18:05:38	18:06:45
+tests/test_digital_twin_uart_link.py	32768	78.046	1	0	19	test_a_collection_length_pause_mid_transfer_does_not_break_the_link	- parked: left a task parked on the scheduler	0	19	0	33.785	0.595	19	0	18:12:50	18:14:08
+tests/test_digital_twin_unix_port_gc_unwedge.py	-1	0.027	0	2	0			0	2	0	0.019	0.006	0	0	18:10:55	18:10:55
+tests/test_digital_twin_unix_port_gc_unwedge.py	32768	0.030	0	2	0			0	2	0	0.019	0.006	0	0	18:22:27	18:22:27
+tests/test_digital_twin_unix_port_unretrieved_report.py	-1	0.055	0	9	0			0	9	0	0.025	0.006	0	0	18:10:55	18:10:55
+tests/test_digital_twin_unix_port_unretrieved_report.py	32768	0.032	0	9	0			0	9	0	0.024	0.008	0	0	18:22:27	18:22:27
+tests/test_digital_twin_webserver_concurrency_arzi.py	-1	40.956	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	4.289	0.506	20	0	18:07:40	18:08:21
+tests/test_digital_twin_webserver_concurrency_arzi.py	32768	44.684	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	9.293	0.447	20	0	18:16:09	18:16:53
+tests/test_digital_twin_webserver_concurrency_dev.py	-1	43.991	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	6.360	0.518	20	0	18:06:56	18:07:40
+tests/test_digital_twin_webserver_concurrency_dev.py	32768	50.838	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	14.773	0.508	20	0	18:15:50	18:16:41
+tests/test_digital_twin_webserver_concurrency_grkizi.py	-1	40.845	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	4.143	0.553	20	0	18:07:40	18:08:21
+tests/test_digital_twin_webserver_concurrency_grkizi.py	32768	44.940	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	9.415	0.560	20	0	18:18:56	18:19:41
+tests/test_digital_twin_webserver_concurrency_klkizi.py	-1	40.516	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	3.981	0.474	20	0	18:07:36	18:08:17
+tests/test_digital_twin_webserver_concurrency_klkizi.py	32768	44.708	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	9.202	0.505	20	0	18:16:00	18:16:44
+tests/test_digital_twin_webserver_concurrency_schlafzi.py	-1	40.836	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	4.252	0.485	20	0	18:07:35	18:08:15
+tests/test_digital_twin_webserver_concurrency_schlafzi.py	32768	45.015	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	9.802	0.513	20	0	18:15:24	18:16:09
+tests/test_digital_twin_webserver_concurrency_wozi.py	-1	41.754	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	4.881	0.449	20	0	18:06:59	18:07:40
+tests/test_digital_twin_webserver_concurrency_wozi.py	32768	46.136	1	0	20	test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response	- parked: left a task parked on the scheduler	0	20	0	10.509	0.555	20	0	18:15:13	18:16:00
+tests/test_digital_twin_wifi_modes.py	-1	101.245	1	0	1	test_stations_rule_settings_change_and_silent_mode_in_one_boot	- parked: left a task parked on the scheduler	0	1	0	2.032	1.719	1	0	18:04:14	18:05:55
+tests/test_digital_twin_wifi_modes.py	32768	101.409	1	0	1	test_stations_rule_settings_change_and_silent_mode_in_one_boot	- parked: left a task parked on the scheduler	0	1	0	2.317	1.748	1	0	18:12:27	18:14:09
+tests/test_fakes.py	-1	0.071	0	50	0			0	50	0	0.055	0.016	0	0	18:10:55	18:10:55
+tests/test_fakes.py	32768	0.209	0	50	0			0	50	0	0.198	0.010	0	0	18:22:26	18:22:27
+tests/test_fram_integration.py	-1	1.686	0	12	0			0	12	0	0.709	0.089	0	0	18:10:43	18:10:45
+tests/test_fram_integration.py	32768	2.128	0	12	0			0	12	0	1.261	0.051	0	0	18:21:57	18:21:59
+tests/test_generated_boot_entry.py	-1	0.117	0	4	0			0	4	0	0.095	0.019	0	0	18:10:55	18:10:55
+tests/test_generated_boot_entry.py	32768	0.088	0	4	0			0	4	0	0.080	0.008	0	0	18:22:27	18:22:27
+tests/test_machine_uart_link.py	-1	0.209	0	18	0			0	18	0	0.193	0.011	0	0	18:10:52	18:10:52
+tests/test_machine_uart_link.py	32768	1.164	0	18	0			0	18	0	1.134	0.007	0	0	18:22:07	18:22:08
+tests/test_math_helpers.py	-1	0.043	0	90	0			0	90	0	0.014	0.010	0	0	18:10:55	18:10:55
+tests/test_math_helpers.py	32768	0.044	0	90	0			0	90	0	0.036	0.007	0	0	18:22:27	18:22:27
+tests/test_microtest_hooks.py	-1	0.095	0	6	0			0	6	0	0.054	0.038	0	0	18:10:55	18:10:55
+tests/test_microtest_hooks.py	32768	0.074	0	6	0			0	6	0	0.046	0.025	0	0	18:22:27	18:22:27
+tests/test_neopixel_wifi_integration.py	-1	2.792	1	3	5	test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it	- parked: left a task parked on the scheduler	0	8	0	0.421	0.049	5	0	18:10:37	18:10:39
+tests/test_neopixel_wifi_integration.py	32768	3.260	1	3	5	test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it	- parked: left a task parked on the scheduler	0	8	0	0.875	0.060	5	0	18:21:51	18:21:55
+tests/test_notification_fram_integration.py	-1	0.256	0	3	0			0	3	0	0.137	0.028	0	0	18:10:51	18:10:51
+tests/test_notification_fram_integration.py	32768	0.276	0	3	0			0	3	0	0.171	0.012	0	0	18:22:07	18:22:07
+tests/test_notification_neopixel_integration.py	-1	6.464	0	6	0			0	6	0	0.172	0.056	0	0	18:10:13	18:10:19
+tests/test_notification_neopixel_integration.py	32768	6.510	0	6	0			0	6	0	0.245	0.037	0	0	18:21:07	18:21:13
+tests/test_notification_scd30_integration.py	-1	4.507	0	4	0			0	4	0	0.134	0.043	0	0	18:10:39	18:10:43
+tests/test_notification_scd30_integration.py	32768	4.529	0	4	0			0	4	0	0.170	0.046	0	0	18:21:14	18:21:18
+tests/test_notification_scd30_sgp40_integration.py	-1	4.273	0	2	0			0	2	0	0.322	0.036	0	0	18:10:18	18:10:22
+tests/test_notification_scd30_sgp40_integration.py	32768	4.644	0	2	0			0	2	0	0.697	0.035	0	0	18:21:18	18:21:23
+tests/test_notification_sgp40_integration.py	-1	2.961	0	3	0			0	3	0	0.171	0.030	0	0	18:10:36	18:10:39
+tests/test_notification_sgp40_integration.py	32768	3.288	0	3	0			0	3	0	0.527	0.020	0	0	18:21:48	18:21:51
+tests/test_ntp_fram_system_integration.py	-1	7.574	1	7	5	test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_concurrent_real_sync	- parked: left a task parked on the scheduler	0	12	0	0.272	0.056	5	0	18:10:05	18:10:13
+tests/test_ntp_fram_system_integration.py	32768	7.766	1	7	5	test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_concurrent_real_sync	- parked: left a task parked on the scheduler	0	12	0	0.453	0.056	5	0	18:20:52	18:21:00
+tests/test_ntp_wifi_dns_integration.py	-1	1.519	1	12	1	test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch	- parked: left a task parked on the scheduler	0	13	0	0.103	0.066	1	0	18:10:46	18:10:47
+tests/test_ntp_wifi_dns_integration.py	32768	1.563	1	12	1	test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch	- parked: left a task parked on the scheduler	0	13	0	0.201	0.011	1	0	18:22:01	18:22:02
+tests/test_readiness_gates.py	-1	0.145	0	14	0			0	14	0	0.107	0.030	0	0	18:10:52	18:10:52
+tests/test_readiness_gates.py	32768	0.236	0	14	0			0	14	0	0.218	0.008	0	0	18:22:28	18:22:28
+tests/test_reset_call_site_invariant.py	-1	0.311	0	3	0			0	3	0	0.285	0.021	0	0	18:10:50	18:10:51
+tests/test_reset_call_site_invariant.py	32768	0.363	0	3	0			0	3	0	0.341	0.018	0	0	18:22:06	18:22:06
+tests/test_sensortask_arzi.py	-1	32.485	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	15.712	1.258	10	5	18:08:21	18:08:54
+tests/test_sensortask_arzi.py	32768	48.964	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	31.129	1.305	10	5	18:16:54	18:17:43
+tests/test_sensortask_dev.py	-1	49.172	1	79	10	test_boot_sequence_matches_the_generated_expectation	tests/machine.py:1521 teardown: teardown: AssertionError('a real select.poll() queried a UART fake 1 times',)	0	89	0	23.892	1.556	10	7	18:06:45	18:07:34
+tests/test_sensortask_dev.py	32768	74.686	1	79	10	test_boot_sequence_matches_the_generated_expectation	tests/machine.py:1521 teardown: teardown: AssertionError('a real select.poll() queried a UART fake 1 times',)	0	89	0	48.536	1.326	10	7	18:14:09	18:15:24
+tests/test_sensortask_grkizi.py	-1	32.482	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	15.946	1.154	10	5	18:08:21	18:08:54
+tests/test_sensortask_grkizi.py	32768	48.273	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	30.634	1.269	10	5	18:17:43	18:18:32
+tests/test_sensortask_klkizi.py	-1	32.504	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	15.692	1.574	10	5	18:08:54	18:09:26
+tests/test_sensortask_klkizi.py	32768	47.950	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	30.296	1.476	10	5	18:17:48	18:18:36
+tests/test_sensortask_schlafzi.py	-1	32.603	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	15.744	1.622	10	5	18:08:54	18:09:26
+tests/test_sensortask_schlafzi.py	32768	48.216	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	30.783	1.429	10	5	18:18:32	18:19:20
+tests/test_sensortask_wozi.py	-1	36.920	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	18.255	1.342	10	5	18:08:17	18:08:54
+tests/test_sensortask_wozi.py	32768	55.088	1	79	10	test_boot_sequence_matches_the_generated_expectation	- parked: left a task parked on the scheduler	0	89	0	35.400	1.333	10	5	18:16:53	18:17:48
+tests/test_setter_microdot_integration.py	-1	2.161	1	36	4	test_an_identity_change_lands_the_unit_in_the_fresh_boot_state	- parked: left a task parked on the scheduler	0	40	0	0.134	0.067	3	1	18:10:43	18:10:46
+tests/test_setter_microdot_integration.py	32768	2.351	1	36	4	test_an_identity_change_lands_the_unit_in_the_fresh_boot_state	- parked: left a task parked on the scheduler	0	40	0	0.377	0.039	3	1	18:21:55	18:21:57
+tests/test_shared_helpers.py	-1	0.474	0	31	0			0	31	0	0.161	0.188	0	0	18:10:49	18:10:50
+tests/test_shared_helpers.py	32768	0.697	0	31	0			0	31	0	0.401	0.171	0	0	18:22:05	18:22:05
+tests/test_strict_json.py	-1	0.035	0	8	0			0	8	0	0.011	0.008	0	0	18:10:55	18:10:55
+tests/test_strict_json.py	32768	0.027	0	8	0			0	8	0	0.025	0.000	0	0	18:22:27	18:22:27
+tests/test_ticks_rollover.py	-1	3.769	0	22	0			0	22	0	0.238	0.036	0	0	18:10:23	18:10:27
+tests/test_ticks_rollover.py	32768	4.018	0	22	0			0	22	0	0.504	0.032	0	0	18:21:32	18:21:36
+tests/test_tmp_scratch.py	-1	0.064	0	14	0			0	14	0	0.008	0.030	0	0	18:10:55	18:10:55
+tests/test_tmp_scratch.py	32768	0.048	0	14	0			0	14	0	0.016	0.017	0	0	18:22:27	18:22:27
+tests/test_uart_comm_cancel_sweep.py	-1	41.576	0	10	0			0	10	0	2.798	0.277	0	0	18:08:15	18:08:57
+tests/test_uart_comm_cancel_sweep.py	32768	51.839	0	10	0			0	10	0	9.806	0.233	0	0	18:18:55	18:19:47
+tests/test_uart_comm_hazard.py	-1	104.115	0	121	0			0	121	0	14.698	0.482	0	0	18:04:14	18:05:58
+tests/test_uart_comm_hazard.py	32768	114.290	0	121	0			0	121	0	25.715	0.571	0	0	18:10:55	18:12:50
+tests/test_voc_algorithm.py	-1	3.857	0	42	0			0	42	0	3.758	0.017	0	0	18:10:19	18:10:23
+tests/test_voc_algorithm.py	32768	17.772	0	42	0			0	42	0	17.458	0.038	0	0	18:21:23	18:21:41
+tests/test_website_build_integration.py	-1	0.170	0	7	0			0	7	0	0.086	0.083	0	0	18:10:53	18:10:53
+tests/test_website_build_integration.py	32768	0.270	0	7	0			0	7	0	0.208	0.057	0	0	18:22:08	18:22:09
+tests/test_write_counters.py	-1	0.047	0	9	0			0	9	0	0.034	0.003	0	0	18:10:55	18:10:55
+tests/test_write_counters.py	32768	0.071	0	9	0			0	9	0	0.070	0.001	0	0	18:22:27	18:22:27

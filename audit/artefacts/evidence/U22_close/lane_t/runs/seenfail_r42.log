@@ -1,0 +1,5 @@
+FAIL test_an_identity_change_lands_the_unit_in_the_fresh_boot_state 0.024 AttributeError("'WifiService' object has no attribute '_reconnect_fresh'",)
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22t_runs/run_mod.py", line 8, in <module>
+  File "tests/test_setter_microdot_integration.py", line 338, in test_an_identity_change_lands_the_unit_in_the_fresh_boot_state
+AttributeError: 'WifiService' object has no attribute '_reconnect_fresh'

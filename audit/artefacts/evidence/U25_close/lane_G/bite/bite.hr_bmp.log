@@ -1,0 +1,19 @@
+FAIL test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_hot_replug.py", line 195, in test_a_power_cycled_bmp3xx_is_reconfigured_without_a_ladder_step
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_hot_replug.py", line 193, in scenario
+  File "tests/test_digital_twin_hot_replug.py", line 111, in _supervised
+  File "tests/test_digital_twin_hot_replug.py", line 189, in body
+AssertionError: dev: OSR/CONFIG 0x2/0x0 after the reset, not 0x0/0x0
+PASS test_every_bus_attached_driver_recovers_from_a_replug_without_a_reboot
+1/2 passed, 1 failed, 0 skipped

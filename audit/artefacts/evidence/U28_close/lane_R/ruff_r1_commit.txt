@@ -1,0 +1,93 @@
+digital_twin/_flash_stall.py:74:37: RUF100 [*] Unused `noqa` directive (non-enabled: `B010`)
+digital_twin/_http_client.py:103:105: RUF100 [*] Unused `noqa` directive (non-enabled: `B904`)
+digital_twin/_http_client.py:127:90: RUF100 [*] Unused `noqa` directive (non-enabled: `B904`)
+digital_twin/_scd30_chip.py:191:92: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+digital_twin/_wall_clock.py:67:46: RUF100 [*] Unused `noqa` directive (non-enabled: `B010`)
+digital_twin/_wall_clock.py:80:41: RUF100 [*] Unused `noqa` directive (non-enabled: `B010`)
+digital_twin/machine.py:175:169: RUF100 [*] Unused `noqa` directive (non-enabled: `ARG002`)
+digital_twin/machine.py:1044:19: RUF100 [*] Unused `noqa` directive (non-enabled: `ARG002`)
+digital_twin/run_device_script.py:129:104: RUF100 [*] Unused `noqa` directive (non-enabled: `S102`)
+scripts/_render_coverage.py:21:19: PTH100 `os.path.abspath()` should be replaced by `Path.resolve()`
+scripts/_render_coverage.py:21:47: PTH207 Replace `glob` with `Path.glob` or `Path.rglob`
+scripts/_render_coverage.py:21:57: PTH118 `os.path.join()` should be replaced by `Path` with `/` operator
+scripts/_render_coverage.py:34:17: PTH109 `os.getcwd()` should be replaced by `Path.cwd()`
+scripts/_render_coverage.py:37:17: PTH118 `os.path.join()` should be replaced by `Path` with `/` operator
+scripts/_render_coverage.py:38:8: PTH110 `os.path.exists()` should be replaced by `Path.exists()`
+scripts/_render_coverage.py:39:9: PTH107 `os.remove()` should be replaced by `Path.unlink()`
+scripts/_render_coverage.py:49:48: PTH118 `os.path.join()` should be replaced by `Path` with `/` operator
+scripts/_render_coverage.py:51:49: PTH118 `os.path.join()` should be replaced by `Path` with `/` operator
+scripts/_render_coverage.py:52:10: PTH123 `open()` should be replaced by `Path.open()`
+scripts/_render_coverage.py:52:15: PTH118 `os.path.join()` should be replaced by `Path` with `/` operator
+scripts/_render_coverage.py:64:24: PTH207 Replace `glob` with `Path.glob` or `Path.rglob`
+scripts/_render_coverage.py:64:34: PTH118 `os.path.join()` should be replaced by `Path` with `/` operator
+scripts/_render_coverage.py:69:14: PTH123 `open()` should be replaced by `Path.open()`
+scripts/_render_coverage.py:72:24: PTH118 `os.path.join()` should be replaced by `Path` with `/` operator
+src/asy_api_response.py:27:36: RUF100 [*] Unused `noqa` directive (non-enabled: `PYI046`)
+src/asy_scd30_driver.py:291:57: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+src/asy_webserver_service.py:1032:81: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+src/asy_wifi_service.py:374:55: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+src/asy_wifi_service.py:651:51: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/_coverage_runner.py:112:70: RUF100 [*] Unused `noqa` directive (non-enabled: `S102`)
+tests/_protocols.py:15:111: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/_protocols.py:17:112: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/_protocols.py:28:58: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`)
+tests/_sensortask_scenarios.py:2017:56: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests/_src_const.py:50:40: RUF100 [*] Unused `noqa` directive (non-enabled: `S307`)
+tests/_src_const.py:78:62: RUF100 [*] Unused `noqa` directive (non-enabled: `S307`)
+tests/_threshold_runner.py:20:100: RUF100 [*] Unused `noqa` directive (non-enabled: `S102`)
+tests/_udp_port_redirect.py:18:27: RUF100 [*] Unused `noqa` directive (non-enabled: `N801`)
+tests/microtest.py:30:25: RUF100 [*] Unused `noqa` directive (non-enabled: `N818`)
+tests/test_asy_api_response.py:47:81: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_bmp3xx_driver.py:1763:83: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_bmp3xx_driver.py:1994:83: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_config_manager.py:2593:63: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_i2c_driver.py:583:88: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_i2c_driver.py:1205:80: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_i2c_driver.py:1231:90: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_i2c_driver.py:1459:169: RUF100 [*] Unused `noqa` directive (non-enabled: `A002`)
+tests/test_asy_isl29125_driver.py:165:72: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_isl29125_driver.py:183:109: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_isl29125_driver.py:1081:87: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests/test_asy_isl29125_driver.py:1297:53: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests/test_asy_isl29125_driver.py:2401:98: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_isl29125_driver.py:2422:83: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_isl29125_driver.py:2541:87: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_notification_service.py:1276:71: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests/test_asy_ntp_client.py:490:63: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_scd30_driver.py:490:97: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_scd30_driver.py:500:67: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_scd30_driver.py:506:67: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_scd30_driver.py:529:97: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_scd30_driver.py:1604:81: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_asy_sgp40_driver.py:295:74: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_asy_uart_driver.py:2498:109: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_async_harness.py:357:72: RUF100 [*] Unused `noqa` directive (non-enabled: `S605`)
+tests/test_async_harness.py:382:72: RUF100 [*] Unused `noqa` directive (non-enabled: `S605`)
+tests/test_bus_hazard_multi_device.py:404:73: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_digital_twin_isl29125_autorange.py:110:96: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_digital_twin_isl29125_autorange.py:486:73: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests/test_digital_twin_isl29125_autorange.py:505:73: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests/test_digital_twin_ntp.py:124:105: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_digital_twin_scd30.py:619:134: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_digital_twin_uart_link.py:710:83: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests/test_digital_twin_wifi_modes.py:212:77: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests/test_generated_boot_entry.py:66:92: RUF100 [*] Unused `noqa` directive (non-enabled: `S102`)
+tests/test_math_helpers.py:467:5: N802 Function name `test_rgb_to_xyz_pure_red_matches_the_sRGB_matrix_column` should be lowercase
+tests/test_microtest_hooks.py:23:72: RUF100 [*] Unused `noqa` directive (non-enabled: `S605`)
+tests/test_setter_microdot_integration.py:145:93: RUF100 [*] Unused `noqa` directive (non-enabled: `FBT001`, `FBT002`)
+tests/test_setter_microdot_integration.py:267:55: RUF100 [*] Unused `noqa` directive (non-enabled: `S307`)
+tests/test_tmp_scratch.py:208:20: RUF100 [*] Unused `noqa` directive (non-enabled: `N801`)
+tests_hardware/device_scripts/isl29125_mechanism_envelope.py:133:81: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py:66:88: RUF100 [*] Unused `noqa` directive (non-enabled: `B905`)
+tests_hardware/device_scripts/system_command_fram_erase.py:159:83: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests_hardware/device_scripts/uart_comm_hazards.py:146:54: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py:373:86: RUF100 [*] Unused `noqa` directive (non-enabled: `PERF401`)
+tests_scripts/test_device_tomls.py:37:10: PTH123 `open()` should be replaced by `Path.open()`
+tests_scripts/test_setup_toolchain_env.py:126:5: PTH211 `os.symlink` should be replaced by `Path.symlink_to`
+tests_scripts/test_setup_toolchain_env.py:167:5: PTH211 `os.symlink` should be replaced by `Path.symlink_to`
+tests_scripts/test_setup_toolchain_env.py:1918:5: PTH211 `os.symlink` should be replaced by `Path.symlink_to`
+toolchain/setup_toolchain.py:577:5: PTH105 `os.replace()` should be replaced by `Path.replace()`
+toolchain/setup_toolchain.py:1169:5: PTH105 `os.replace()` should be replaced by `Path.replace()`
+toolchain/setup_toolchain.py:1845:5: PTH105 `os.replace()` should be replaced by `Path.replace()`
+Found 91 errors.
+[*] 68 fixable with the `--fix` option.

@@ -1,0 +1,15 @@
+--- /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L/js/shell.js	2026-10-13 10:16:11.234544698 +0000
++++ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/round4/bite_tree2/js/shell.js	2026-10-13 13:24:49.813676860 +0000
+@@ -123,9 +123,10 @@
+             history.push(key);
+         }
+         currentKey = key;
+-        stopSection();
+         nav.setCurrent(key);
+-        stopSection = renderSection(defs, section, mainEl, { visibility, deviceClock, onRecovered: watchNow, applyTracker });
++        const next = renderSection(defs, section, mainEl, { visibility, deviceClock, onRecovered: watchNow, applyTracker });
++        stopSection(); // PLANTED: the old stop after the new render, both still synchronous
++        stopSection = next;
+     }
+ 
+     function reloadIfDue() {

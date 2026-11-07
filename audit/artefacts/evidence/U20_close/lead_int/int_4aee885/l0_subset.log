@@ -1,0 +1,172 @@
+........................................................................ [  6%]
+........................................................................ [ 12%]
+........................................................................ [ 18%]
+........................................................................ [ 24%]
+........................................................................ [ 30%]
+........................................................................ [ 36%]
+........FF.............................................................. [ 42%]
+........................................................................ [ 48%]
+........................................................................ [ 54%]
+........................................................................ [ 60%]
+........................................................................ [ 66%]
+........................................................................ [ 72%]
+........................................................................ [ 78%]
+........................................................................ [ 84%]
+........................................................F..............F [ 91%]
+......F..............F.....F............................................ [ 97%]
+...F....F.........................                                       [100%]
+=================================== FAILURES ===================================
+________________ test_the_l3_key_table_equals_the_builds_tables ________________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+
+    def test_the_l3_key_table_equals_the_builds_tables(spec_text: str, repo_root: Path) -> None:
+>       documented, built = _spec_rows(spec_text), _build_rows(repo_root / "src")
+                            ^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_toml_schema_contract.py:69: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+
+    def _spec_rows(spec_text: str) -> "set[_Row]":
+        # The marked table's (table, key, required) rows: backticks dropped, Required read as yes/no.
+>       assert _BEGIN in spec_text and _END in spec_text, f"SPECIFICATION.md carries no {_BEGIN} ... {_END} block in Part L.3"
+E       AssertionError: SPECIFICATION.md carries no <!-- toml-schema-table --> ... <!-- /toml-schema-table --> block in Part L.3
+E       assert ('<!-- toml-schema-table -->' in '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n')
+
+tests_scripts/test_toml_schema_contract.py:29: AssertionError
+____________________ test_the_l3_key_table_names_no_device _____________________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+
+    def test_the_l3_key_table_names_no_device(spec_text: str) -> None:
+        # The schema is the same for every device: the table carries no device name, the devices carry their values.
+>       rows = _spec_rows(spec_text)
+               ^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_toml_schema_contract.py:76: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+
+    def _spec_rows(spec_text: str) -> "set[_Row]":
+        # The marked table's (table, key, required) rows: backticks dropped, Required read as yes/no.
+>       assert _BEGIN in spec_text and _END in spec_text, f"SPECIFICATION.md carries no {_BEGIN} ... {_END} block in Part L.3"
+E       AssertionError: SPECIFICATION.md carries no <!-- toml-schema-table --> ... <!-- /toml-schema-table --> block in Part L.3
+E       assert ('<!-- toml-schema-table -->' in '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n')
+
+tests_scripts/test_toml_schema_contract.py:29: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+real_tags = [Tag(path='vitest.config.js', line=35, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=761, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: buildgen/codegen.py:814: gc.emergency_exc_buf_bytes is tagged but has no SPECIFICATION.md Part N row
+E         tests_scripts/test_buildgen_reproducible.py:16: l0.buildgen_reproducible_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         devices/dev.toml:56: dev.uart_rx_ring is tagged but has no SPECIFICATION.md Part N row
+E         devices/dev.toml:71: dev.uart_rx_ring is tagged but has no SPECIFICATION.md Part N row
+E         devices/dev.toml:177: dev.uart_max_transfer_bytes is tagged but has no SPECIFICATION.md Part N row
+E         devices/dev.toml:188: dev.uart_max_transfer_bytes is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:9023: wdt.timeout_ms: Sites list [('buildgen/codegen.py', '8000'), ('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py', '8000'), ('tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_pause_unpause_and_gating.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_cross_device_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_lighting_scenarios.py', '8000'), ('tests_hardware/device_scripts/isl29125_mechanism_envelope.py', '8000'), ('tests_hardware/device_scripts/isl29125_mock_conformance_probe.py', '8000'), ('tests_hardware/device_scripts/isl29125_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/isl29125_real_irq_edge.py', '8000'), ('tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/scd30_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '8000'), ('tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py', '8000'), ('tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py', '8000'), ('tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py', '8000'), ('tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '8000'), ('tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py', '8000'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '8000'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '8000'), ('tests_hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')], the tags say [('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('digital_twin/run_generic_integration.py', '8000'), ('tests_hardware/device_scripts/allocation_need_per_source.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py', '8000'), ('tests_hardware/device_scripts/fram_capacity_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_pause_unpause_and_gating.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/heap_headroom_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py', '8000'), ('tests_hardware/device_scripts/heap_under_connection_ceiling.py', '8000'), ('tests_hardware/device_scripts/isl29125_cross_device_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_lighting_scenarios.py', '8000'), ('tests_hardware/device_scripts/isl29125_mechanism_envelope.py', '8000'), ('tests_hardware/device_scripts/isl29125_mock_conformance_probe.py', '8000'), ('tests_hardware/device_scripts/isl29125_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/isl29125_real_irq_edge.py', '8000'), ('tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/scd30_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/serving_at_default_gc.py', '8000'), ('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '8000'), ('tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py', '8000'), ('tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py', '8000'), ('tests_hardware/device_scripts/sgp40_sample_cadence.py', '8000'), ('tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py', '8000'), ('tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '8000'), ('tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py', '8000'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '8000'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '8000'), ('tests_hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')]
+E         SPECIFICATION.md:9038: ntp.check_interval_s: Sites list [('buildgen/validate.py', '10'), ('src/asy_ntp_client.py', '10'), ('tests/test_asy_ntp_client.py', '10')], the tags say [('src/asy_ntp_client.py', '10'), ('tests/test_asy_ntp_client.py', '10')]
+E         SPECIFICATION.md:9788: l3.heap_layout_after_full_boot_sequence_starter_loop_grace_ms is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:9789: l3.heap_layout_after_full_boot_sequence_starter_poll_ms is a tuned row, but no file carries its @tunable tag
+E       assert not ['buildgen/codegen.py:814: gc.emergency_exc_buf_bytes is tagged but has no SPECIFICATION.md Part N row', 'tests_script...Part N row', 'devices/dev.toml:188: dev.uart_max_transfer_bytes is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests_scripts/test_buildgen_validate.py', 'test_every_shipped_device_passes_the_uart_link_bus_check', 'buildgen.validate')
+E           ('tests_scripts/test_device_tomls.py', 'test_no_fixed_driver_address_falls_in_a_reserved_range', 'buildgen.twin_wiring')
+E       assert not [('tests_scripts/test_buildgen_validate.py', 'test_every_shipped_device_passes_the_uart_link_bus_check', 'buildgen.val...tests_scripts/test_device_tomls.py', 'test_no_fixed_driver_address_falls_in_a_reserved_range', 'buildgen.twin_wiring')]
+
+tests_scripts/test_import_placement.py:260: AssertionError
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{t}" for p, t in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           devices/dev.toml	WP3
+E           tests_scripts/test_buildgen_validate.py	Phase 2
+E           tests_scripts/test_device_tomls.py	Session 3
+E       assert not [('devices/dev.toml', 'WP3'), ('tests_scripts/test_buildgen_validate.py', 'Phase 2'), ('tests_scripts/test_device_tomls.py', 'Session 3')]
+
+tests_scripts/test_citations.py:256: AssertionError
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests_scripts/test_device_tomls.py	wifi/ntp/system must never appear as [[instance]] entries.
+E       assert not [('tests_scripts/test_device_tomls.py', 'wifi/ntp/system must never appear as [[instance]] entries.')]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+___________ test_every_not_yet_cleaned_entry_still_carries_a_literal ___________
+
+    def test_every_not_yet_cleaned_entry_still_carries_a_literal() -> None:
+        found = collect_findings()
+        stale = sorted(path for path in _NOT_YET_CLEANED if path not in found)
+>       assert not stale, f"these files are clean now - remove their _NOT_YET_CLEANED entries: {stale}"
+E       AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['tests_scripts/test_buildgen_validate.py', 'tests_scripts/test_device_tomls.py']
+E       assert not ['tests_scripts/test_buildgen_validate.py', 'tests_scripts/test_device_tomls.py']
+
+tests_scripts/test_no_variant_literals.py:209: AssertionError
+_______________ test_every_rule_in_buildgen_has_exactly_one_row ________________
+
+    def test_every_rule_in_buildgen_has_exactly_one_row() -> None:
+        literals = _rule_literals()
+        missing = {rule: sites for rule, sites in sorted(literals.items()) if rule not in _ROWS}
+>       assert not missing, f"rule ids raised under buildgen/ with no row here - add one malformed input per id: {missing}"
+E       AssertionError: rule ids raised under buildgen/ with no row here - add one malformed input per id: {'api.envelope-codes-malformed': ['buildgen/api_reference.py:136'], 'api.field-key-unclassified': ['buildgen/api_reference.py:38'], 'api.result-word-not-string': ['buildgen/api_reference.py:101'], 'api.route-unregistered': ['buildgen/api_reference.py:176'], 'api.routes-duplicate': ['buildgen/api_reference.py:125'], 'api.routes-not-tuple': ['buildgen/api_reference.py:113'], 'api.routes-row-malformed': ['buildgen/api_reference.py:120'], 'api.source-name-missing': ['buildgen/api_reference.py:90'], 'api.source-not-literal': ['buildgen/api_reference.py:85'], 'api.source-unreadable': ['buildgen/api_reference.py:69'], 'bus.address-collision': ['buildgen/validate.py:1163'], 'bus.boot-clear-budget': ['buildgen/validate.py:753'], 'bus.field-missing': ['buildgen/validate.py:672', 'buildgen/validate.py:708', 'buildgen/validate.py:647'], 'bus.field-type': ['buildgen/validate.py:686', 'buildgen/validate.py:720'], 'bus.field-unknown': ['buildgen/validate.py:649', 'buildgen/validate.py:651', 'buildgen/validate.py:661'], 'bus.fixed-address-collision': ['buildgen/validate.py:1176'], 'bus.i2c-frequency-range': ['buildgen/validate.py:678'], 'bus.i2c-timeout-max': ['buildgen/validate.py:699'], 'bus.i2c-timeout-range': ['buildgen/validate.py:691'], 'bus.not-a-table': ['buildgen/validate.py:639', 'buildgen/validate.py:643'], 'bus.uart-baudrate-range': ['buildgen/validate.py:714'], 'bus.uart-poll-idle-range': ['buildgen/validate.py:551'], 'bus.uart-poll-wait-range': ['buildgen/validate.py:541'], 'bus.uart-rx-ring': ['buildgen/validate.py:597', 'buildgen/validate.py:602', 'buildgen/validate.py:614'], 'bus.uart-rxbuf-floor': ['buildgen/validate.py:590'], 'bus.uart-rxbuf-range': ['buildgen/validate.py:726'], 'bus.uart-shared': ['buildgen/validate.py:994'], 'bus.uart-timeout-floor': ['buildgen/validate.py:570'], 'bus.uart-txbuf-range': ['buildgen/validate.py:734'], 'bus.unknown-id': ['buildgen/validate.py:159'], 'bus.unused': ['buildgen/validate.py:975'], 'device.backlog-above-ceiling': ['buildgen/validate.py:456'], 'device.backlog-below-ceiling': ['buildgen/validate.py:446'], 'device.conn-fail-to-hotspot-range': ['buildgen/validate.py:303'], 'device.field-missing': ['buildgen/validate.py:222'], 'device.field-type': ['buildgen/validate.py:228', 'buildgen/validate.py:232', 'buildgen/validate.py:252', 'buildgen/validate.py:225'], 'device.field-unknown': ['buildgen/validate.py:242'], 'device.hostname-convention': ['buildgen/validate.py:265'], 'device.hostname-label': ['buildgen/validate.py:270'], 'device.hostname-length': ['buildgen/validate.py:281'], 'device.hotspot-password-length': ['buildgen/validate.py:259'], 'device.hotspot-time-min-range': ['buildgen/validate.py:294'], 'device.max-connections-lwip': ['buildgen/validate.py:435'], 'device.max-connections-range': ['buildgen/validate.py:424'], 'device.ntp-retry-below-tick': ['buildgen/validate.py:482'], 'device.ntp-retry-max-below-retry': ['buildgen/validate.py:490'], 'device.ntp-retry-max-range': ['buildgen/validate.py:499'], 'device.table-missing': ['buildgen/validate.py:219'], 'device.wiring-field-missing': ['buildgen/validate.py:1484'], 'device.wiring-field-unknown': ['buildgen/validate.py:1460'], 'device.wiring-no-tag': ['buildgen/validate.py:1469'], 'device.wiring-not-table': ['buildgen/validate.py:235'], 'driver.ambiguous-reader-class': ['buildgen/driver_registry.py:124'], 'driver.module-missing': ['buildgen/driver_registry.py:93'], 'driver.no-reader-class': ['buildgen/driver_registry.py:116'], 'driver.unknown': ['buildgen/driver_registry.py:106'], 'gpio.claimed-twice': ['buildgen/validate.py:1093'], 'gpio.no-function': ['buildgen/validate.py:1119'], 'gpio.not-usable': ['buildgen/validate.py:1086'], 'gpio.type': ['buildgen/validate.py:1079'], 'gpio.wrong-bus': ['buildgen/validate.py:1129'], 'gpio.wrong-role': ['buildgen/validate.py:1138'], 'instance.address-not-selectable': ['buildgen/validate.py:828'], 'instance.bus-kind': ['buildgen/validate.py:862'], 'instance.bus-undeclared': ['buildgen/validate.py:845'], 'instance.driver-missing': ['buildgen/model.py:113'], 'instance.driver-not-a-string': ['buildgen/model.py:119'], 'instance.duplicate': ['buildgen/model.py:153'], 'instance.field-missing': ['buildgen/validate.py:821'], 'instance.field-not-finite': ['buildgen/validate.py:952'], 'instance.field-not-in-set': ['buildgen/validate.py:938'], 'instance.field-out-of-range': ['buildgen/validate.py:961'], 'instance.field-type': ['buildgen/validate.py:843', 'buildgen/validate.py:900', 'buildgen/validate.py:945'], 'instance.field-unknown': ['buildgen/validate.py:918'], 'instance.irq-pull-up-type': ['buildgen/validate.py:905'], 'instance.name-ext-missing': ['buildgen/validate.py:814'], 'instance.name-ext-not-a-string': ['buildgen/model.py:130'], 'instance.name-ext-singleton': ['buildgen/validate.py:786'], 'instance.no-buildspec-row': ['buildgen/validate.py:806'], 'instance.no-bus-kind-row': ['buildgen/validate.py:850'], 'instance.not-an-array': ['buildgen/model.py:110'], 'instance.requires-without-bus': ['buildgen/validate.py:1496'], 'instance.single-table': ['buildgen/model.py:106'], 'instance.uart-baud-mismatch': ['buildgen/validate.py:1206'], 'instance.uart-crc-mismatch': ['buildgen/validate.py:1216'], 'instance.uart-crc-mode': ['buildgen/validate.py:888'], 'instance.uart-link-pair': ['buildgen/validate.py:1196'], 'instance.uart-role': ['buildgen/validate.py:878'], 'instance.uart-timeout-max': ['buildgen/validate.py:561'], 'instance.uart-transfer-cap': ['buildgen/validate.py:626'], 'limits.checks-nothing': ['buildgen/limits.py:100'], 'limits.choice-not-int': ['buildgen/limits.py:66'], 'limits.empty-choice-set': ['buildgen/limits.py:54'], 'limits.inverted-range': ['buildgen/limits.py:109'], 'limits.missing-bound': ['buildgen/limits.py:89'], 'limits.payload-shape': ['buildgen/limits.py:79'], 'names.label-collision': ['buildgen/validate.py:1065'], 'names.logger-collision': ['buildgen/validate.py:1028'], 'names.settings-key-collision': ['buildgen/validate.py:1046'], 'requires.missing-bus-field': ['buildgen/requires_tag.py:99'], 'requires.not-comparable': ['buildgen/requires_tag.py:110'], 'requires.unsatisfied': ['buildgen/requires_tag.py:119'], 'schema.malformed': ['buildgen/schema_ast.py:157'], 'schema.unreadable': ['buildgen/schema_ast.py:148'], 'schema.value-not-json': ['buildgen/definitions.py:206'], 'source.field-unknown': ['buildgen/validate.py:1289'], 'source.name-missing': ['buildgen/driver_registry.py:151'], 'source.name-not-literal': ['buildgen/driver_registry.py:147'], 'source.syntax-error': ['buildgen/defaults.py:28', 'buildgen/driver_registry.py:50', 'buildgen/tag_comments.py:203'], 'src.const-missing': ['buildgen/validate.py:356'], 'src.default-missing': ['buildgen/validate.py:332'], 'src.schema-missing': ['buildgen/validate.py:183'], 'src.unreadable': ['buildgen/validate.py:179', 'buildgen/validate.py:198', 'buildgen/validate.py:317', 'buildgen/validate.py:345'], 'tag.duplicate-field': ['buildgen/limits.py:141', 'buildgen/value_wiring.py:48', 'buildgen/web_tag.py:417', 'buildgen/wiring.py:56'], 'tag.malformed': ['buildgen/tag_comments.py:279'], 'tag.missing-sigil': ['buildgen/tag_comments.py:286'], 'tag.misspelled': ['buildgen/tag_comments.py:297'], 'tag.non-finite-number': ['buildgen/limits.py:42', 'buildgen/requires_tag.py:83', 'buildgen/web_tag.py:156'], 'tag.not-a-number': ['buildgen/limits.py:39', 'buildgen/requires_tag.py:74'], 'tag.not-module-level': ['buildgen/limits.py:130', 'buildgen/requires_tag.py:64', 'buildgen/value_wiring.py:37', 'buildgen/web_tag.py:294', 'buildgen/web_tag.py:380', 'buildgen/wiring.py:46'], 'toml.not-a-table': ['buildgen/model.py:95'], 'toml.syntax': ['buildgen/model.py:90'], 'toml.unreadable': ['buildgen/model.py:92'], 'toolchain.lwip-table': ['buildgen/model.py:183', 'buildgen/model.py:175', 'buildgen/validate.py:409'], 'toolchain.overrides-unloadable': ['buildgen/validate.py:400'], 'web.always-executed-and-dispatch': ['buildgen/web_tag.py:225'], 'web.codes-unknown-table': ['buildgen/definitions.py:161'], 'web.decimals-range': ['buildgen/web_tag.py:136', 'buildgen/web_tag.py:134'], 'web.duplicate-group': ['buildgen/web_tag.py:444'], 'web.enum-without-choices': ['buildgen/definitions.py:322'], 'web.group-declared-twice': ['buildgen/definitions.py:458'], 'web.group-undeclared': ['buildgen/definitions.py:453'], 'web.group-without-fields': ['buildgen/definitions.py:468'], 'web.hidden-and-tagged': ['buildgen/web_tag.py:429'], 'web.hidden-no-reason': ['buildgen/web_tag.py:271'], 'web.hidden-not-alone': ['buildgen/web_tag.py:262'], 'web.instance-group-missing': ['buildgen/definitions.py:509'], 'web.key-needs-readonly': ['buildgen/web_tag.py:195', 'buildgen/web_tag.py:332'], 'web.key-needs-string': ['buildgen/web_tag.py:205'], 'web.kind-unknown': ['buildgen/web_tag.py:321'], 'web.kind-unresolved': ['buildgen/definitions.py:238'], 'web.maintenance-tag-missing': ['buildgen/definitions.py:610'], 'web.malformed-pairs': ['buildgen/web_tag.py:305', 'buildgen/web_tag.py:390'], 'web.missing-key': ['buildgen/web_tag.py:248'], 'web.not-a-bool': ['buildgen/web_tag.py:109'], 'web.path-malformed': ['buildgen/web_tag.py:122'], 'web.quoted-special-off-string': ['buildgen/definitions.py:314'], 'web.schema-field-untagged': ['buildgen/definitions.py:187'], 'web.special-not-in-schema': ['buildgen/definitions.py:274', 'buildgen/definitions.py:338'], 'web.special-unlabelled': ['buildgen/definitions.py:281', 'buildgen/definitions.py:331', 'buildgen/definitions.py:358'], 'web.string-key-off-string': ['buildgen/definitions.py:309'], 'web.string-special-unquoted': ['buildgen/definitions.py:267'], 'web.unknown-key': ['buildgen/web_tag.py:238'], 'web.value-not-in-set': ['buildgen/web_tag.py:215'], 'wiring.cycle': ['buildgen/graph.py:118'], 'wiring.default-attr-missing': ['buildgen/validate.py:1348'], 'wiring.default-class-missing': ['buildgen/validate.py:1307'], 'wiring.default-key-missing': ['buildgen/validate.py:1331'], 'wiring.default-key-unknown': ['buildgen/validate.py:1321'], 'wiring.field-missing': ['buildgen/validate.py:1423', 'buildgen/validate.py:1438'], 'wiring.field-unknown': ['buildgen/validate.py:1401'], 'wiring.source-shape': ['buildgen/validate.py:1262', 'buildgen/validate.py:1271'], 'wiring.source-unresolved': ['buildgen/validate.py:1277'], 'wiring.target-class': ['buildgen/validate.py:1248'], 'wiring.target-type': ['buildgen/validate.py:1462', 'buildgen/validate.py:1415'], 'wiring.target-unresolved': ['buildgen/validate.py:1237'], 'wiring.warn-outside-notification': ['buildgen/validate.py:1372'], 'wiring.warn-unknown': ['buildgen/validate.py:1381']}
+E       assert not {'api.envelope-codes-malformed': ['buildgen/api_reference.py:136'], 'api.field-key-unclassified': ['buildgen/api_refer...-word-not-string': ['buildgen/api_reference.py:101'], 'api.route-unregistered': ['buildgen/api_reference.py:176'], ...}
+
+tests_scripts/test_buildgen_error_contract.py:109: AssertionError
+_ test_each_rule_aborts_with_one_line_naming_place_and_fix[source.fields-unreadable] _
+
+rule = 'source.fields-unreadable'
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-6960/test_each_rule_aborts_with_one4')
+capsys = <_pytest.capture.CaptureFixture object at 0x7ff4600ecb10>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7ff45efd79d0>
+
+    @pytest.mark.parametrize("rule", sorted(_ROWS))
+    def test_each_rule_aborts_with_one_line_naming_place_and_fix(rule: str, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+        start, run = _ROWS[rule]
+        code, err = run(tmp_path, capsys, monkeypatch)
+        assert code == 1, err
+        lines = err.strip().splitlines()
+        assert len(lines) == 1, err
+>       assert lines[0].startswith(start), err
+E       AssertionError: buildgen: [contract/scd30] /tmp/pytest-of-root/pytest-6960/test_each_rule_aborts_with_one4/src/asy_scd30_driver.py: cannot read the fields of SCD30_Reader.get_data()'s result - fix: declare get_data()'s result as a module-level namedtuple with a literal field tuple
+E         
+E       assert False
+E        +  where False = <built-in method startswith of str object at 0x7ff46011afb0>('buildgen: [contract/sgp40')
+E        +    where <built-in method startswith of str object at 0x7ff46011afb0> = "buildgen: [contract/scd30] /tmp/pytest-of-root/pytest-6960/test_each_rule_aborts_with_one4/src/asy_scd30_driver.py: c..._Reader.get_data()'s result - fix: declare get_data()'s result as a module-level namedtuple with a literal field tuple".startswith
+
+tests_scripts/test_buildgen_error_contract.py:120: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_toml_schema_contract.py::test_the_l3_key_table_equals_the_builds_tables
+FAILED tests_scripts/test_toml_schema_contract.py::test_the_l3_key_table_names_no_device
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal
+FAILED tests_scripts/test_buildgen_error_contract.py::test_every_rule_in_buildgen_has_exactly_one_row
+FAILED tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[source.fields-unreadable]
+9 failed, 1177 passed in 180.43s (0:03:00)

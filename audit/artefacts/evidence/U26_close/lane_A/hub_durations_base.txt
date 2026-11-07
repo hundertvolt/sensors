@@ -1,0 +1,15 @@
+.............................                                            [100%]
+============================== slowest durations ===============================
+1.00s call     tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_gives_up_when_nothing_ever_answers
+0.50s call     tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_waits_out_main_pys_server_then_finds_the_scripts
+0.20s call     tests_scripts/test_bench_harness_helpers.py::test_wait_for_script_server_stops_waiting_for_the_script_when_its_test_ends
+0.06s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_network_resilience.py]
+0.02s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_bus_concurrency_under_api_load.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_hotspot_role_reversal.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_sensor_config_push_over_real_hardware.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_serving_heap_at_default_gc.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_uart_link_under_api_load.py]
+0.01s call     tests_scripts/test_bench_harness_helpers.py::test_every_bench_thread_worker_survives_a_cut_off_answer[test_rest_endpoints_over_sta.py]
+
+(77 durations < 0.005s hidden.  Use -vv to show these durations.)
+29 passed in 1.98s

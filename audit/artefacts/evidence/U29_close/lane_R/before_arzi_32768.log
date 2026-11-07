@@ -1,0 +1,73 @@
+PASS test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
+PASS test_a_restored_backup_reports_its_timestamp_without_ntp
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 356, in read
+RuntimeError: injected status fault
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+PASS test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server
+PASS test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error
+PASS test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk
+PASS test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state
+MEASURE udp.idle_wakeups_per_s=10.00
+PASS test_the_captive_dns_listener_idles_at_its_idle_rate
+PASS test_the_notification_window_spanning_midnight_flashes_red
+PASS test_the_supervisor_restarts_a_real_dead_task
+PASS test_watchdog_is_never_starved_while_every_real_task_runs_concurrently
+11/11 passed, 0 failed, 0 skipped

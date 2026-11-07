@@ -1,0 +1,21 @@
+# path<TAB>token: citations that did not resolve when the check landed. Only shrinks: fix the citing
+# text, then rerun `uv run python tests_scripts/test_citations.py --regenerate`.
+BACKLOG.md	HARDWARE_TEST_HANDOVER.md
+BACKLOG.md	REAL_HARDWARE_TEST_QUEUE.md
+HEAP_FRAGMENTATION_MEASUREMENTS.md	tests_hardware/combined_load_sweep.py
+SPECIFICATION.md	devices/zz_test_*.toml
+SPECIFICATION.md	devices/zz_test_*.toml
+SPECIFICATION.md	improved-quality/
+SPECIFICATION.md	measure B
+SPECIFICATION.md	src/sensortask_*.py
+SPECIFICATION.md	src/sensortask_*.py
+UART_C_PORT_CHANGELOG.md	WP3
+scripts/test.sh	devices/zz_test_*.toml
+src/asy_notification_service.py	improved-quality/neopixel_signal.py
+tests/test_asy_base_classes.py	Topic 6
+tests/test_asy_base_classes.py	WP4
+tests/test_asy_config_manager.py	WP5
+tests/test_digital_twin_uart_link.py	WP3
+tests_scripts/conftest.py	devices/zz_test_*.toml
+tests_scripts/test_device_tomls.py	tests_hardware/bus_topology.py
+tests_scripts/test_test_sh.py	devices/zz_test_*.toml

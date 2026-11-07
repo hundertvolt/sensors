@@ -1,0 +1,15 @@
+tests/test_asy_framing_codecs.py@-1 rc=0 t=.739897713s markers=0 :: 20/20 passed, 0 failed, 0 skipped
+tests/test_asy_framing_codecs.py@32768 rc=0 t=1.311187813s markers=0 :: 20/20 passed, 0 failed, 0 skipped
+tests/test_asy_fram_manager.py@-1 rc=0 t=5.299461393s markers=0 :: 143/143 passed, 0 failed, 0 skipped
+tests/test_asy_fram_manager.py@32768 rc=0 t=7.176383742s markers=0 :: 143/143 passed, 0 failed, 0 skipped
+tests/test_asy_fram_wire_trace.py@-1 rc=0 t=.440801047s markers=0 :: 9/9 passed, 0 failed, 0 skipped
+tests/test_asy_fram_wire_trace.py@32768 rc=0 t=.696302653s markers=0 :: 9/9 passed, 0 failed, 0 skipped
+tests/test_asy_uart_driver.py@-1 rc=0 t=5.948229006s markers=1 :: 160/160 passed, 0 failed, 0 skipped
+tests/test_asy_uart_driver.py@32768 rc=0 t=18.344471252s markers=1 :: 160/160 passed, 0 failed, 0 skipped
+tests/test_asy_sgp40_driver.py@-1 rc=0 t=7.813889477s markers=0 :: 155/155 passed, 0 failed, 0 skipped
+tests/test_asy_sgp40_driver.py@32768 rc=0 t=10.273172323s markers=0 :: 155/155 passed, 0 failed, 0 skipped
+tests/test_asy_system_service.py@-1 rc=0 t=23.980685206s markers=0 :: 167/167 passed, 0 failed, 0 skipped
+tests/test_asy_system_service.py@32768 rc=0 t=28.362679970s markers=0 :: 167/167 passed, 0 failed, 0 skipped
+tests/test_asy_uart_comm.py@-1 rc=0 t=61.383215821s markers=0 :: 192/192 passed, 0 failed, 0 skipped
+tests/test_asy_uart_comm.py@32768 rc=0 t=64.639832191s markers=0 :: 192/192 passed, 0 failed, 0 skipped
+DONE

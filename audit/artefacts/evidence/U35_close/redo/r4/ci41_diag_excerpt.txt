@@ -1,0 +1,22 @@
+[scenarios[arzi]] DIAG: arzi twin 7: SIGINT ignored for 15.0s (timeout=15.0s), about to SIGKILL pid=10568 - /proc fields: {'State': 'S (sleeping)', 'VmRSS': '3964 kB', 'Threads': '1', 'SigPnd': '0000000000000000', 'ShdPnd': '0000000000000000', 'SigBlk': '0000000000000000', 'SigIgn': '0000000000001000', 'SigCgt': '0000004000000002', 'wchan': '0', 'SIGINT': 'blocked in 0 of 1 threads, caught'}
+[scenarios[arzi]] DIAG: arzi twin 7: a second SIGINT: a clean exit: the first was raised and absorbed
+[scenarios[arzi]] DIAG: arzi twin 7: last 20 log lines before SIGKILL:
+[scenarios[arzi]] SGP40 No backup found!
+[scenarios[arzi]] WATCHDOG_WOULD_TRIGGER count=1
+[scenarios[arzi]] UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+[scenarios[arzi]] Traceback (most recent call last):
+[scenarios[arzi]]   File "asyncio/core.py", line 1, in run_until_complete
+[scenarios[arzi]]   File "src/asy_scd30_driver.py", line 463, in _read_loop
+[scenarios[arzi]]   File "src/asy_scd30_driver.py", line 512, in _store_scd
+[scenarios[arzi]] AttributeError: 'NoneType' object has no attribute '__aexit__'
+[scenarios[arzi]] WATCHDOG_WOULD_TRIGGER count=2
+[scenarios[arzi]] KBD_TRACEBACK
+[scenarios[arzi]] Traceback (most recent call last):
+[scenarios[arzi]]   File "src/asy_scd30_driver.py", line 512, in _store_scd
+[scenarios[arzi]] KeyboardInterrupt: 
+[scenarios[arzi]] WATCHDOG_WOULD_TRIGGER count=3
+[scenarios[arzi]] mem: total=7347035, current=2200960, peak=2201215
+[scenarios[arzi]] stack: 1264 out of 80000
+[scenarios[arzi]] GC: total: 2072832, used: 732832, free: 1340000
+[scenarios[arzi]]  No. of 1-blocks: 5782, 2-blocks: 1302, max blk sz: 1024, max free sz: 41280
+[scenarios[arzi]] digital_twin/run_generic_integration.py [arzi] shutdown: would_have_triggered_count=3 feed_count=12 largest_feed_gap_ms=1570 wdt_timeout_ms=8000 mem_backup: r0=0x2a5e0001,0x00000009,0x15a5a5ac,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=239 gc_block_bytes=32 fram_writes=36 fram_writes_by=CFGMGR_NOTIFY:4,CFGMGR_NTP:2,CFGMGR_SGP40:4,CFGMGR_SYSTEM:2,CFGMGR_WIFI:4,DNSSRV:2,NEOPIXEL:2,NOTIFY:2,NTP:2,SCD30:2,SGP40:4,SYSTEM:2,WEBSERVER:2,WIFI:2 fram_silent_writes=0 fram_silent_wrens=0

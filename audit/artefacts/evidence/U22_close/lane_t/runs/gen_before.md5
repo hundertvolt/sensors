@@ -1,0 +1,8 @@
+771e9407a8d3810eff23e182d173442c  build/generated_src/sensortask_arzi.py
+82256d65f01f37d6e171da835ae6892e  build/generated_src/sensortask_arzi_main.py
+0d55b1c914fe03e676a4c2807adabbce  build/generated_src/sensortask_arzi_main_noautostart.py
+de8b4996949ca78928aa7dd8d46b2ef9  build/generated_src/sensortask_dev.py
+6acf5bb3019e4d7ffe2f93e7f70b9e5e  build/generated_src/sensortask_dev_main.py
+72dad2f7bdcd448143a2498130349241  build/generated_src/sensortask_dev_main_noautostart.py
+95285aed22ecd747c8361ec9c9b4939f  build/generated_src/sensortask_grkizi.py
+708928bd603155b1d34f88fd28a2a410  build/generated_src/sensortask_grkizi_main.py

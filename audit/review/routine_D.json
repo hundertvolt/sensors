@@ -1,0 +1,473 @@
+{
+ "settled": [
+  {
+   "id": "twin-choice-1",
+   "step": "rule",
+   "why": "The owner wants one material with every helper written once, so the twin's small shared helpers live in one module, and a name another module imports is public because only names nobody else reads stay private.",
+   "cite": "OR24 (owner, 2026-09-25); REF/R05; G10/R07; M.TWIN.001"
+  },
+  {
+   "id": "twin-choice-2",
+   "step": "rule",
+   "why": "Giving all four chip fakes the same value-walk helper is the one-shape-per-job rule applied to the twin, and it also corrects a comment that wrongly called room ranges datasheet values.",
+   "cite": "OR24; G10/R07; SPECIFICATION.md D.10; G7/R03 (owner, OR17.a); M.TWIN.010"
+  },
+  {
+   "id": "twin-choice-3",
+   "step": "rule",
+   "why": "Two keywords that say the same thing become one, and one power-cycle name across the four chip fakes is the same one-material rule; nothing outside the twin changes.",
+   "cite": "OR24; REF/R05; SPECIFICATION.md D.10; M.TWIN.012"
+  },
+  {
+   "id": "twin-choice-4",
+   "step": "rule",
+   "why": "The owner set the argument limit at 8, and the SCD30 fake must count the commands that really write its memory, which is what proves the write-only-on-change fix.",
+   "cite": "OR46.b (3) (owner, 2026-09-26); OR42.a (1); OR42.c (4); M.TWIN.013"
+  },
+  {
+   "id": "twin-choice-5",
+   "step": "similar",
+   "why": "The SGP40 fake already corrupts its next reading through a method, so the SCD30 fake takes the same method instead of a public attribute: one shape for one job.",
+   "cite": "OR24; SPECIFICATION.md D.10; A.U25.11; M.TWIN.013"
+  },
+  {
+   "id": "twin-choice-6",
+   "step": "rule",
+   "why": "The twin and hardware HTTP clients must keep one call shape, and leaving the new timeout unset by default keeps today's behaviour exactly.",
+   "cite": "G7/R26; OR12 (owner, 2026-09-25); M.TWIN.016"
+  },
+  {
+   "id": "twin-choice-7",
+   "step": "rule",
+   "why": "Twin runs must never reach a public host, and the refusal arrives through the product's own socket call so the product's 'never raise' contract holds and its error handling sees nothing new; and the folder choice keeps the lint and type scopes unchanged (a local NTP responder for the twin is still a local destination).",
+   "cite": "G6/R34 (owner, OR56.a (2)); G7/R01 (owner, OR36.a); A.U25.33; CLAUDE.md lint/type scope list; answers.json twin-tolerates-ntp-offline; M.TWIN.017"
+  },
+  {
+   "id": "twin-choice-8",
+   "step": "rule",
+   "why": "The twin may never import the unit-test runner, so the reset function lives in the twin and each twin test file registers it.",
+   "cite": "G7/R02 (owner-confirmed, 2026-08-12); M.TWIN.035"
+  },
+  {
+   "id": "twin-choice-9",
+   "step": "rule",
+   "why": "The same chip lookup is needed by the launcher and the runner, and the owner's one-material rule puts the single copy beside the helpers the runner already imports.",
+   "cite": "OR24; REF/R05; M.TWIN.045"
+  },
+  {
+   "id": "twin-choice-10",
+   "step": "style",
+   "why": "Simulated resets already exit with their own codes 3 and 4, so a simulated power loss gets the next code, letting the host tell the cases apart; nothing in the product changes.",
+   "cite": "A.U25.09 (exit-code convention); M.TWIN.050"
+  },
+  {
+   "id": "twin-choice-11",
+   "step": "rule",
+   "why": "The owner chose named, test-only, off-by-default runner flags for every scenario that needs control inside the running twin; this interval setting is one more flag of that kind.",
+   "cite": "OR125.a (2)-(3) (owner, 2026-09-30); M.TWIN.051"
+  },
+  {
+   "id": "twin-choice-12",
+   "step": "rule",
+   "why": "Every runner and tool answers --help and the README's command reference must match that help, so the twin runner, which the README documents, answers it too.",
+   "cite": "OR15.a (1) (owner, 2026-09-25); A.U7.19; M.TWIN.047"
+  },
+  {
+   "id": "twin-choice-13",
+   "step": "rule",
+   "why": "Requests are driven from the host side, so the in-device cases read the reader's published data in-process while the real routes are covered by the host-side harness.",
+   "cite": "OR20.a (owner, 2026-09-25); G7/R19; A.U25.46; M.TWIN.122"
+  },
+  {
+   "id": "twin-choice-14",
+   "step": "rule",
+   "why": "Permanent docs may not cite temporary audit notes, so the fidelity table drops them; the Wi-Fi fake stores an exception's type and arguments so each fault is a fresh exception that cannot grow its traceback, as the fault injector already does.",
+   "cite": "G9/R12 (owner, OR68.a (4)); G7/R16 (owner, OR21.a (1)); OR110.a (owner, 2026-09-29); M.TWIN.059; M.TWIN.040"
+  },
+  {
+   "id": "twin-choice-15",
+   "step": "rule",
+   "why": "The twin runner may never import from the tests folder, so the shared NTP config writer lives in the twin's own import-safe folder; with the owner's local NTP responder it simply points the twin at that responder.",
+   "cite": "G7/R02 (owner-confirmed); A.U25.44; answers.json twin-tolerates-ntp-offline (owner, change); M.TWIN.053"
+  },
+  {
+   "id": "twin-choice-16",
+   "step": "rule",
+   "why": "Every assertion must be kept and request driving moves host-side, so the parts only visible inside the twin (LED, socket bind) stay in-process and the DNS answer and redirect move to the host harness.",
+   "cite": "OR19.a (4) (owner, 2026-09-25); OR20.a; G7/R19; M.TWIN.144"
+  },
+  {
+   "id": "twin-choice-17",
+   "step": "rule",
+   "why": "Overtaken by the owner's answer: a local NTP responder is built for the twin, so the twin can now sync and the two sync-dependent clock-jump cases are proven in the twin as well, keeping their unit-level proofs.",
+   "cite": "answers.json twin-tolerates-ntp-offline (owner, 2026-10-02, change); M.TWIN.146"
+  },
+  {
+   "id": "twin-choice-18",
+   "step": "rule",
+   "why": "The unit tests' UART harness already builds exactly this pair on whatever machine module is on the path, so the twin files reuse it instead of a third copy.",
+   "cite": "OR24; REF/R05; CLAUDE.md rule to check Part G for an existing primitive first; M.TWIN.154"
+  },
+  {
+   "id": "twin-choice-19",
+   "step": "similar",
+   "why": "The unit-level UART hammer and the web-server drop test already moved from an absolute heap delta to a calibrated per-operation rate, the form that does not depend on today's heap; the twin bound follows.",
+   "cite": "G7/R22; A.U24.64; M.TWIN.158"
+  },
+  {
+   "id": "twin-stack-fault-grammar",
+   "step": "rule",
+   "why": "The twin keeps one fault vocabulary for every injected fault, and the action itself asked for that vocabulary, so the stack fault is one more kind in it rather than a new flag.",
+   "cite": "G7/R16 (owner, OR21.a (1)); A.U30.19; GAPS_G3 G3-1"
+  },
+  {
+   "id": "twin-fram-writes-by-runner",
+   "step": "rule",
+   "why": "A real FRAM chip knows nothing about how the firmware lays out its logs, so the fake records writes by address only and the runner, which holds the booted firmware, maps them to loggers; the layout stays defined in one place.",
+   "cite": "G7/R03 (owner, OR17.a); REF/R05; GAPS_G3 G3-2"
+  },
+  {
+   "id": "twin-network-fake-typed",
+   "step": "rule",
+   "why": "The owner decided to switch on the 'no hand-written Any' type check in all three type-check passes, the twin's included.",
+   "cite": "OR81.a (owner, 2026-09-28); AC3_S S-09; M.TWIN.040"
+  },
+  {
+   "id": "twin-load-writer",
+   "step": "rule",
+   "why": "A reset-errors write would clear the very logs the FRAM rule says to read first, and load tests may only make reads, refused writes or unchanged writes; an unchanged debug-level write fits both.",
+   "cite": "CLAUDE.md FRAM-log rule; OR49.a (2) (owner, 2026-09-26); A.U35.29"
+  },
+  {
+   "id": "twin-watchdog-fault-flag",
+   "step": "rule",
+   "why": "The owner approved named, test-only, off-by-default runner flags for in-twin control, and the watchdog failure classes must be planted on the real supervisor feed site.",
+   "cite": "OR125.a (2)-(3) (owner, 2026-09-30); OR31.a (5) (owner, 2026-09-25); G7/R06; A.U35.31"
+  },
+  {
+   "id": "fidelity-table-rows",
+   "step": "rule",
+   "why": "The owner's twin-fidelity method is an inventory of every measured hardware fact and a table saying how the twin models each one, which is one row per fact.",
+   "cite": "OR17.a (1)-(2) (owner, 2026-09-25); HARVEST_REQUIREMENTS 3.3"
+  },
+  {
+   "id": "combined-faults-reboot",
+   "step": "rule",
+   "why": "A failing or stalled chip is meant to escalate up to a reboot, and the owner's rule for injected hardware faults is escalation, not containment, so combined chip faults assert the reboot.",
+   "cite": "OR18.a (owner, 2026-09-25); OR22.a (3); OR41.a (1); G7/R17"
+  },
+  {
+   "id": "dut-ip-option",
+   "step": "rule",
+   "why": "The error logs must be read and saved before anything can clear them, which over the network needs the board's address before the first reset; the option supplies it and nothing is written.",
+   "cite": "CLAUDE.md FRAM-log rule; G1/R02 (owner, A41); A.U26.22 (4); M.HW_BENCH.006 (D1)"
+  },
+  {
+   "id": "settle-polls",
+   "step": "rule",
+   "why": "The owner's rule is that tests wait by polling for the exact state with a deadline, never by fixed sleeps, so the two settle sleeps become bounded polls.",
+   "cite": "G7/R23 (owner, OR37.a (3)); M.HW_BENCH.011 (D2)"
+  },
+  {
+   "id": "spoof-source-range",
+   "step": "rule",
+   "why": "A forged packet from a real address could reach or implicate a third party, which the owner ruled out for every test; the reserved documentation range belongs to nobody.",
+   "cite": "OR37.a (1) (owner, 2026-09-26); G5/R59; RFC 5737; M.HW_BENCH.045 (D3)"
+  },
+  {
+   "id": "voc-plausibility-floor",
+   "step": "docs",
+   "why": "The VOC algorithm outputs 0 for its first 45 samples, which falls inside a bench session's first tests, so a floor of 1 would fail a healthy board.",
+   "cite": "src/voc_algorithm.py _VOCALGORITHM_INITIAL_BLACKOUT; G1/R41; M.HW_BENCH.043 (D4)"
+  },
+  {
+   "id": "manual-imports",
+   "step": "style",
+   "why": "Imports belong at the top of a module across the repo; in the manual runner that would be a circular import, so the registration imports move to the entry module, which loads the runner first.",
+   "cite": "A.U0.07 (import-placement rule, ruff PLC0415); M.HW_BENCH.100; M.HW_BENCH.106 (D6)"
+  },
+  {
+   "id": "bench-mac-not-written",
+   "step": "rule",
+   "why": "Real identifiers of the owner's hardware are not committed to the public repo; the docs only need the fact that the router's reservation points at a stale address.",
+   "cite": "G5/R59 (owner, 2026-09-25); OR52.a (7); M.HW_BENCH.111 (D7)"
+  },
+  {
+   "id": "bench-renames-and-carried",
+   "step": "rule",
+   "why": "Every follow-up another unit handed to the bench files must get its own change before execution, a renamed tuning id follows the existing rename rule, and the UART module list is derived instead of copied.",
+   "cite": "OR111.a (1)-(2) (owner, 2026-09-29); G1/R41; M.HW_BENCH.038; M.HW_BENCH.062; M.HW_BENCH.071; M.HW_BENCH.079; M.HW_BENCH.081; M.HW_BENCH.093"
+  },
+  {
+   "id": "device-script-sleeps",
+   "step": "rule",
+   "why": "The owner's waiting rule decides each sleep: where the awaited state can be read, the sleep becomes a bounded poll, as was done for the bench harness; only where there is nothing to read or a probe would disturb the test does it stay, as a named tunable with its measurement and margin.",
+   "cite": "G7/R23 (owner, OR37.a (3)); OR30.a (owner); M.HW_BENCH.011 (D2); M_HW_DEV AD-1"
+  },
+  {
+   "id": "shared-include-typing",
+   "step": "best-practice",
+   "why": "A type-checking-only import is the standard way to let the type checker see names that are pasted in at render time; it never runs on the board.",
+   "cite": "PEP 484 TYPE_CHECKING idiom; M.HW_DEV.001 (AD-2)"
+  },
+  {
+   "id": "reset-scripts-report-first",
+   "step": "docs",
+   "why": "Nothing a script prints after it resets the board can reach the host, so a script whose subject is a reset has to report before it.",
+   "cite": "machine.reset() / watchdog reset end the program (MicroPython rp2); M_HW_DEV AD-3"
+  },
+  {
+   "id": "repair-script-schema",
+   "step": "docs",
+   "why": "A constant whose name starts with an underscore is not a module attribute on the board, so the schema cannot be read there and is rendered on the host from the one source.",
+   "cite": "MicroPython docs library/micropython.rst (const, underscore names); G1/R41; M.HW_DEV.040 (AD-4)"
+  },
+  {
+   "id": "fram-wp-check",
+   "step": "rule",
+   "why": "Reading the write-protect bit from the read-only dump avoids a script writing FRAM chunks, which would overwrite or fake the error logs the FRAM rule protects.",
+   "cite": "CLAUDE.md FRAM-log rule (isolated-driver caveat); M.HW_DEV.061; M.HW_DEV.150 (AD-5)"
+  },
+  {
+   "id": "reset-race-nonce",
+   "step": "rule",
+   "why": "Log codes can only be 1 to 127 and the one global error catalog reserves a test band for seeded codes, so the test seeds stay inside it.",
+   "cite": "OR28.a (owner, 2026-09-25); A.U2.03; src/print_log.py entry code range; M.HW_DEV.063 (AD-6)"
+  },
+  {
+   "id": "dead-path-insert",
+   "step": "rule",
+   "why": "Confirmed leftovers are removed, and this line is dead by its own comment.",
+   "cite": "OR46.a (2) (owner, 2026-09-26); M.HW_DEV.109 (AD-7)"
+  },
+  {
+   "id": "fram-scratch-regions",
+   "step": "rule",
+   "why": "Tests must never share scratch locations, so each script gets its own FRAM region.",
+   "cite": "OR38.a (1) (owner, 2026-09-26); A.U26.24; M.HW_DEV.124; M.HW_DEV.132 (AD-8)"
+  },
+  {
+   "id": "sgp40-cadence-ram",
+   "step": "rule",
+   "why": "A test must not make writes it does not need; setting the period in RAM proves the same thing with no flash write.",
+   "cite": "CLAUDE.md wear rule (owner, 2026-09-17); OR37.a (1); M.HW_DEV.136 (AD-9)"
+  },
+  {
+   "id": "float-ranges-rendered",
+   "step": "rule",
+   "why": "Product values used by tests are read from their one source rather than copied, the same way the other board facts reach the scripts.",
+   "cite": "G1/R41; OR43.a (3) (owner); REF/R05; M.HW_DEV.153 (AD-10)"
+  },
+  {
+   "id": "bench-board-toml",
+   "step": "rule",
+   "why": "The owner requires the bench board to be named by data, a device-file property or a runner argument, never a literal; having the property with an override covers both, and where such keys are stored is already the owner's open question on build-metadata keys, whose answer applies here.",
+   "cite": "OR78.a (1)-(2) (owner, 2026-09-28); G1/R36; A.U26.01; answers.json toml-build-metadata (owner, ask)"
+  },
+  {
+   "id": "bench-facts-dict",
+   "step": "rule",
+   "why": "Board facts must come from the device file, and the device module's name cannot be pinned by a check, so rendering one dictionary on the host is the only way that covers pins, settings and the module name alike.",
+   "cite": "OR78.a (1) (owner, 2026-09-28); G1/R40 (owner-confirmed, OR32.a (3)); A.U26.44"
+  },
+  {
+   "id": "verdict-line-format",
+   "step": "rule",
+   "why": "The owner requires the pass or fail verdict to be given on the host, with the board sending only what exists nowhere else; plain fact lines and an end marker are the narrowest way to do that.",
+   "cite": "OR20.a (owner, 2026-09-25); G7/R19; A.U26.68"
+  },
+  {
+   "id": "scd30-prereq-scripts",
+   "step": "rule",
+   "why": "The start command may be sent at most once, decided by a guard on the host between reading the interval, waiting for data and sending; three small scripts give the host that decision point.",
+   "cite": "OR90.a (1); OR92.a (owner, 2026-09-29); A.U26.07"
+  },
+  {
+   "id": "image-record-file",
+   "step": "rule",
+   "why": "Each round must prove the board runs the image it just built, which needs the build date and the network settings kept on the host; one small record file per build does that.",
+   "cite": "G1/R02 (owner, A41, 2026-09-22); A.U26.02; A.U26.03"
+  },
+  {
+   "id": "destructive-last-marker",
+   "step": "rule",
+   "why": "The tests that can cut the board off must run after every read-only check, with that order enforced rather than left to file order; the marker is how it is enforced.",
+   "cite": "G1/R28 (owner-confirmed, 2026-08-11 and 2026-09-26); A.U26.39"
+  },
+  {
+   "id": "toolchain-reverify-gate",
+   "step": "rule",
+   "why": "A routine hardware pass may not need a full toolchain rebuild with network downloads; that work sits behind an opt-in gate.",
+   "cite": "G8/R44 (owner wear rule, 2026-09-17); OR37.a (1); A.U26.14"
+  },
+  {
+   "id": "spoof-sudo-rule",
+   "step": "docs",
+   "why": "Forging a source address needs a raw socket, which Linux only allows with root rights; the installer then checks and lists that one rule like the other bench sudo rules the owner approved.",
+   "cite": "OR79.a (owner, 2026-09-28); Linux raw(7) (CAP_NET_RAW); answers.json bench-sudo-checked (owner, ok); A.U26.56"
+  },
+  {
+   "id": "datasheet-text-after-move",
+   "step": "rule",
+   "why": "Docs state only current facts, and the owner's push-access step decides whether the move happens at all, so the text naming the new home is written only once it is true.",
+   "cite": "G9/R11 (owner, OR27.a); decisions.json owner step datasheets-push-access; M.DOCS.014; M.DOCS.068"
+  },
+  {
+   "id": "crc-status-as-built",
+   "step": "rule",
+   "why": "Docs state current facts, and the owner chose a per-link CRC setting in the device file, so the changelog says how it is built now instead of how it was merged.",
+   "cite": "G9/R11 (owner, OR27.a); OR123.a (owner, 2026-09-30); M.DOCS.021"
+  },
+  {
+   "id": "third-unix-build-named",
+   "step": "rule",
+   "why": "A doc that lists what the installer builds must list everything it builds.",
+   "cite": "OR13.a (owner, 2026-09-25: factual docs fixed in place); G9/R11; OR115.a; M.DOCS.035"
+  },
+  {
+   "id": "tier-parity-rule-home",
+   "step": "rule",
+   "why": "BACKLOG holds only open work and the owner's rule is not open work; the hardware README already carries it with the same owner tag, so it stays there once.",
+   "cite": "CLAUDE.md working agreement (BACKLOG is active working memory); OR87.a (a); OR51 (single point of truth); M.DOCS.062"
+  },
+  {
+   "id": "backlog-items-removed",
+   "step": "rule",
+   "why": "Resolved or stale items leave BACKLOG, and the chroot list stays because the owner made that check a periodic manual one.",
+   "cite": "CLAUDE.md working agreements; CLAUDE.md build-environment section (owner, 2026-09-18); G9/R11; M.DOCS.065"
+  },
+  {
+   "id": "claude-intro-fix",
+   "step": "rule",
+   "why": "A factual description that no longer matches the file it describes is corrected in place.",
+   "cite": "OR13.a (owner, 2026-09-25); M.DOCS.068"
+  },
+  {
+   "id": "microdot-count-deleted",
+   "step": "rule",
+   "why": "A dated count is cut from the docs unless it is the evidence behind a rule, and deleting it early means no stale figure stands in between.",
+   "cite": "G9/R11 (owner, OR27.a); M.DOCS.075"
+  },
+  {
+   "id": "class-a-clause-once",
+   "step": "rule",
+   "why": "The docs carry no duplicates.",
+   "cite": "OR51 (owner, 2026-09-26: no duplicates, single point of truth); M.DOCS.076"
+  },
+  {
+   "id": "backlog-lists-wording",
+   "step": "rule",
+   "why": "The owner set that open owner questions live in one BACKLOG list and owed hardware work in one owed list, so an unrelated issue is entered in one of those two.",
+   "cite": "OR68.a (4) (owner, 2026-09-26); G9/R31 (owner, OR8.a); M.DOCS.093"
+  },
+  {
+   "id": "ci-job-list-checked",
+   "step": "rule",
+   "why": "Factual docs that contradict the code are corrected during execution, and CLAUDE.md's job list is such a fact.",
+   "cite": "OR13.a (owner, 2026-09-25); M.DOCS.095"
+  },
+  {
+   "id": "hang-cause-phrase-kept",
+   "step": "rule",
+   "why": "Every citation must resolve, and short code comments cite this phrase, so it stays.",
+   "cite": "G9/R12 (owner, OR68.a (4)); M.DOCS.099"
+  },
+  {
+   "id": "microdot-version-once",
+   "step": "similar",
+   "why": "The planning already decided to name the Microdot tag only in the third-party licences file; the second mention follows that same rule.",
+   "cite": "A.U36.030; OR51 (single point of truth); M.DOCS.108"
+  },
+  {
+   "id": "spec-structure",
+   "step": "rule",
+   "why": "The owner asked for the design principles as a Part near the front of the specification, for Part D to stay the quality bar and for Part K to hold the procedure; the section numbers themselves change nothing, since the citation check keeps every pointer valid.",
+   "cite": "OR44.a (3) (owner, 2026-09-26); OR51.a (4); OR10.a (1); G9/R12; M_SPEC agent decisions; A.U36b open point 3"
+  },
+  {
+   "id": "spec-gap-fills",
+   "step": "rule",
+   "why": "Every documentation consequence of a merged change must have its own text before execution, and these gaps are filled from the changes' own wording; tuning values not yet measured are honestly marked 'estimated' and are re-checked later anyway.",
+   "cite": "OR111.a (1)-(2) (owner, 2026-09-29); OR30.a (2)-(3) (owner, 2026-09-25); M_SPEC agent decisions"
+  },
+  {
+   "id": "spec-placements",
+   "step": "net-effect",
+   "why": "Where a sentence sits inside the specification changes nothing for the device, a user or the owner as long as every pointer resolves, and the two dropped sentences are history, which the docs no longer carry.",
+   "cite": "G9/R11 (owner, OR27.a); G9/R12; M_SPEC agent decisions"
+  },
+  {
+   "id": "term-table",
+   "step": "rule",
+   "why": "The owner wants one material, and one term per concept is that rule for words; 'device' is already the word every public name uses, so choosing it renames no public interface, and the table notes it is the owner's 'board variant'.",
+   "cite": "OR24 (owner, 2026-09-25); OR24.a (2); OR78 (owner's term); REF/R01; A.U36.512"
+  },
+  {
+   "id": "readme-order",
+   "step": "rule",
+   "why": "The owner set the README's order and asked for a complete map of every document, with a new document joining it in the same change; the host check enforces that.",
+   "cite": "OR15.a (1) (owner, 2026-09-25); G9/R15; A.U36.547"
+  },
+  {
+   "id": "js-private-meaning",
+   "step": "best-practice",
+   "why": "In JavaScript modules a function that is not exported is private to its module, so the ordering rule's 'private first' reads 'not exported first' there.",
+   "cite": "ECMAScript module scoping; OR96.a (2) (owner, 2026-09-29); A.U36.038"
+  },
+  {
+   "id": "archive-gaps-closed",
+   "step": "rule",
+   "why": "The owner closed the heap-layout research, to be reopened only on a new layout symptom; the two further archive gaps fall under that same closure.",
+   "cite": "G4/R53 (owner, A34, 2026-09-24); A.U36.013"
+  },
+  {
+   "id": "dst-advice",
+   "step": "rule",
+   "why": "The legacy EU switch rule is kept and its limit must be documented as a known limitation; setting the DST offset to 0 and changing the GMT offset at the local switch is the one way the existing fields give correct local time elsewhere.",
+   "cite": "OR5.a (1) (owner, 2026-09-25); OR48; G6/R32; A.U36.029"
+  },
+  {
+   "id": "declined-checker-record",
+   "step": "rule",
+   "why": "Counts from a past tree are cut from the docs while each reason stays, and owed silicon work belongs in the one owed list.",
+   "cite": "G9/R11 (owner, OR27.a); G9/R31 (owner, OR8.a); A.U33.05; A.U33.07"
+  },
+  {
+   "id": "decision-tag-form",
+   "step": "rule",
+   "why": "Actors are never changed, so an agent decision keeps the agent as its actor; 'owner-reviewed' is added only to decisions the owner actually answered on the review page, never to the routine items settled without them, since the owner said a batch approval would record decisions as theirs that they never saw.",
+   "cite": "OR68.a (4) (owner, 2026-09-26); OR71.a (0); OR82.a; owner, 2026-10-02 (audit/sweeps/routine_prompt.md); LEAD/R16"
+  },
+  {
+   "id": "legacy-password-not-copied",
+   "step": "rule",
+   "why": "The hotspot password is the one accepted credential and must not gain new committed copies; a pointer to its one source does the job.",
+   "cite": "CLAUDE.md credentials rule; OR70.a (1); G5/R59; OR51 (single point of truth); M.DOCS.048"
+  },
+  {
+   "id": "runbook-home",
+   "step": "style",
+   "why": "Reflashing is already described in the README's flashing section, the owner approved the runbook's content there, and the one list of operator actions points to it.",
+   "cite": "answers.json reflash-runbook-erase (owner, ok); answers.json operator-actions-one-place (owner, ok); OR51; A.U32 open point 2"
+  },
+  {
+   "id": "scd30-calibration-help",
+   "step": "style",
+   "why": "The owner already chose to put the datasheet rule into the help text of a calibration-related SCD30 field (Altitude), and the preconditions are the datasheet's own; the calibration help text follows that precedent.",
+   "cite": "OR100.a (owner, 2026-09-29); OR98.a; REF/R06; answers.json scd30-calibration-readiness (owner, ok)"
+  },
+  {
+   "id": "timezone-on-system-page",
+   "step": "docs",
+   "why": "The two offsets only change the displayed local time and never touch the NTP sync, as their own field descriptions say, so they are system display settings where they already sit; moving them would only change the page layout.",
+   "cite": "src/asy_ntp_client.py @web GMTOffset/DSTOffset descriptions; OR43.a (2); HARVEST_REQUIREMENTS 3.3"
+  },
+  {
+   "id": "website-code-details",
+   "step": "rule",
+   "why": "Each detail follows an existing rule: grouped options instead of a long parameter list, no test-only parameter in the product, one copy of shared helpers, the mock matching the real API, readers waiting for the exact state, and recovery after the load stops as the pass condition.",
+   "cite": "OR46.b (owner, 2026-09-26) and SPECIFICATION.md D.10; OR36.a (1); G7/R35; REF/R05 and G2/R26; G7/R28; G7/R23; OR49.a (1) and OR89.a (2); M_WEB D1, D6-D13; A.U23.34"
+  }
+ ],
+ "for_owner": []
+}

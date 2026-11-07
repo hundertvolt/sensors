@@ -1,0 +1,189 @@
+
+######## SubagentHandback 2026-10-13T11:28:51.547Z
+WIP Y1 ecad205
+
+Lane Y stopped at WIP Y1, as the launch note orders. The commit is `ecad205` on `audit/u23-y` in `S/wt-u23y`, on top of `202a118`; nothing is pushed. It holds every READY, D-FINAL and READY-W2 fact plus the CLAUDE.md count. Two items wait for the S3/S-final section: Y3's addendum and Y10. The two red checks are the expected ones (details under Checks).
+
+## Facts Y1-Y10
+| # | status | what was written (line in `ecad205`) or why not |
+|---|---|---|
+| Y1 | applied | README.md `:258-259`: `npm run lint:html:built` runs html-validate over every device's staged page, staged into `build/staged_html/<device>/` first. It is marked "a local check, not a CI step yet", so `:283`'s "All five CI-covered checks" stays true. The block's comment column moved 3 columns right (whitespace only); the comment runs onto a second line, as README's `scripts/test.sh` lines already do. |
+| Y2 | applied | README.md `:326`: the lead-in now ends "..., for one device or for every device:". `:331-333` add `scripts/build_website.sh --stage-only wozi <dir>` (stages `index.html` and `js/app.js`, freezes nothing), `scripts/build_device_websites.sh` (→ `build/generated_html/<device>/frozen_html.py`) and `scripts/build_device_websites.sh --stage-only` (→ `build/staged_html/<device>/`). The defaults were checked in `build_device_websites.sh:27-45`. |
+| Y3 | applied, addendum pending | BACKLOG.md `:672-683`, the dated entry "**2026-10-13, the website stager and the staged-page lint...**", placed before "Kept here as the running list...". Every claim was checked against `git diff 8fff76f..202a118`: the stager imports only stdlib modules; `build_website.sh` already ran bare `python3` at `8fff76f`; the one new package.json script; the core rule `no-restricted-properties`; the two baseline entries; no lock, `.nvmrc`, toolchain or ci.yml change. **Addendum:** at `202a118`, wave 2 and the lead's four edits changed nothing in this class (no `vitest.config.js`, `tests_js/vitest-commands.d.ts`, package.json or ESLint-ceiling change since B's), so it waits for S3/S-final and the lead's four ceiling values. |
+| Y4 | applied | DEVICE_REFERENCE.md `:57-58`: "...empty means none. The Networking page's **Clear** button empties it, after asking "Clear Fallback DNS Servers?"." The label is "Fallback DNS Servers" (`src/asy_ntp_client.py:124`). The Clear handler is `js/render.js:220-239`. |
+| Y5 | applied | DEVICE_REFERENCE.md `:154-157`: "The page asks for confirmation ("Reset All Errors?") before it sends the reset (owner, 2026-10-01, asked about "A confirmation before clearing the DNS fallback list": '... add a dialog to all system commands and the clear error history as well. But only on the website, not on the API side.')." The quote was checked against `answers.json`; "Reset All Errors" is the submitLabel at `buildgen/definitions.py:90`. |
+| Y6 | applied | BACKLOG.md: both Deferred JS items are removed. At `202a118`, `initNav()` returns `dispose` (`js/nav.js:33-34`, `:90`) and both entries call `startShell()` (`js/main.js:34`, `js/app.js:87`). `selectSection()` now exists only in `js/shell.js:117`. |
+| Y7 | nothing at U23 | `## Owner questions` is empty and stays so, as the brief says. |
+| Y8 | applied | DEVICE_REFERENCE.md `:153`: "could not be written" → "could not be cleared". This matches `_put_status()` (`src/asy_webserver_service.py:824-845`): a reset that raises answers "Failed", and every reset is awaited. |
+| Y9 | applied | CLAUDE.md `:497`: "~37-line" → "~51-line" (lines 6-56 at `202a118`; 50 at `8fff76f`). The commit says "No meaning change". |
+| Y10 | pending | `digital_twin/README.md:789`, `:799` are untouched; they wait for the lead's `GET /` sizes per device on the final base. |
+
+## Deviations from the brief
+- **Y3:** I added one sentence the brief's text did not have. It names the four new pytest-tier files that join the host typecheck pass: `test_js_api_mirrors.py`, `test_stage_website.py`, `test_website_layering.py`, `test_website_tokens.py`. This follows the list's own 2026-10-08 form.
+- **Y2:** I wrote `build_device_websites.sh` as two runnable lines with their default outputs, instead of the usage form `[--stage-only] [out_root]`.
+- **Y5:** the doc carries the question as well as the quote. CLAUDE.md decision-records rule (2) asks for both in the doc, and the quote's "as well" needs its question to read right. U22's docs carried only the quote, so drop the "asked about ..." clause if you prefer that form.
+- **Scratch files:** my logs and the commit-message file are in the new `S/u23/laneY/`. One temporary file, `S/u23/.laneY_rebuild_rc`, was written and deleted at once.
+
+## False or stale sentences found (not changed)
+- **CLAUDE.md:499** (my file, but not named by my brief, so left as is): "the `# /// script` … `# ///` block four `uv run` scripts carry". There were 8 such files at `8fff76f`, so it was stale before U23; U23's `scripts/_stage_website.py` makes it 9. Smallest fix: "nine", or "every `uv run` script". It needs your OK at resume.
+- **README.md:255** (pre-U23, not false, only incomplete): the comment "ESLint (js/, tests_js/)" covers less than the script, which lints `js tests_js scripts html eslint.config.js vitest.config.js`.
+- **Nothing false outside my files.**
+- **The rest of the CLAUDE.md check:**
+  - `:611`'s host-tooling list gives examples and is still true.
+  - "Two suites that both bind real ports" is still true.
+  - The "Code quality tooling" bullets hold: the eight scopes, the host pass's `files =` scope (which covers the stager and the new pytest files), the per-file-ignores and the three Unix binaries.
+  - The memory-gate bullet naming `tests_js/_memory_markers.js` is true at `202a118`. Recheck it once S-final lands.
+- **README and DEVICE_REFERENCE checks:**
+  - README `:275-279` (preview, `?device=`) and `:307` ("staged by `scripts/build_website.sh`") are true.
+  - DEVICE_REFERENCE `:152`'s 15-second limit matches both sides (`js/poll-manager.js:9`, `src/asy_webserver_service.py:157`).
+
+## Allow-list rows my text retires
+- `tests_scripts/_decision_vocab_allowlist.txt:8`, `BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod` — for you to drop.
+- No `_citation_allowlist.txt` row is retired.
+
+## Checks (after `git add`, each in its own `unshare -n`, `nice -n 19`, one at a time)
+- `test_decision_vocabulary.py`: 1 failed, 5 passed. The only failure is the stale row above: "allow-list entries that no longer occur - delete these lines: BACKLOG.md Low priority: the two entry points are deliberately separate (prototype vs. prod". No new finding. It is green once you drop row 8.
+- `test_citations.py`: 15 passed.
+- `test_comment_block_cap.py`: 458 passed.
+- `test_legacy_paths.py`: 3 passed.
+- `test_tunables_register.py`: 1 failed, 14 passed. Every line is Part N, lane X's:
+  - `web.default_decimals` (`buildgen/definitions.py:39`, `tests_scripts/test_buildgen_definitions.py:377`)
+  - `l1.lwip_host_spin_window_rounds` (`tests/lwip_host/test_modlwip_eagain.py:34`)
+  - `web.clock_mismatch_s` (`js/field-format.js:15`)
+  - `web.poll_backoff_max_ms` (`js/poll-manager.js:12`)
+  - `web.device_watch_interval_ms` (`js/shell.js:16`)
+  - `l0.section_render_wait_ms` (`accessibility.test.js:16`, `generated-definitions-render.test.js:14`, `site-functions.test.js:19`)
+  - `SPECIFICATION.md:10161` (`l0.render_wait_timeout_ms`) and `:10162` (`l0.render_poll_ms`): their Sites lists lack `tests_js/site-functions.test.js`.
+
+## Runs (both exited; RUNS.md lines marked done; `ps` shows nothing of mine)
+- `u23/rebuild.sh wt-u23y` at 11:19:17, `unshare -n`: rc 0, 6 s.
+- The five pytest checks at 11:26:24, sequential, each in its own `unshare -n`: 32 s total.
+
+## Silent-failure scan
+No code file was touched. The doc text I wrote describes behaviour that is visible, not silent: a raising reset answers "Failed", and a declined confirmation shows "Not sent - the confirmation was declined." (`js/render.js:37`). No findings.
+
+## Needed at resume
+- Y3's addendum: S3/S-final's config and tooling file changes, and the four ESLint ceiling values.
+- Y10: each device's `GET /` body size on the final base.
+- Your call on the CLAUDE.md:499 count.
+
+######## SubagentHandback 2026-10-13T13:41:39.593Z
+WIP Y2 18117d2 — lane Y's resumed items are written and committed; the two API5 items (Y3's addendum, Y10) are not.
+
+`audit/u23-y` in `S/wt-u23y` is `202a118` + `ecad205` (WIP Y1) + `18117d2`; nothing is pushed. The API5 branch exists at `1af97e9`, but your second message (the hash and ceiling values) never reached me. I did not merge without it, and the harness made me hand back here. To finish, resume me with the API5 hash, or confirm it is `1af97e9`. I then merge it `--no-ff`, run `rebuild.sh`, write Y3's addendum and Y10, run the three checks and hand back the final.
+
+## What `18117d2` writes (your files only)
+- **DEVICE_REFERENCE.md "Clearing the error logs":**
+  - The general "Failed" sentence now holds "Outside the two cases below".
+  - **(a) Backup pause:** "During a backup pause ("Pause backups for 5 minutes") the reset answers "Failed", since the logs kept in FRAM cannot be written then; repeat it once the pause ends."
+    - Checked in code: `PrintLog.reset()` clears the RAM ring, then the FRAM chunk `_write()` refuses while paused and the reset returns False. The live tier's comment (`tests_js/live-backend-put-matrix.test.js:86-87`, `ee68c17`) says the same.
+  - **(b) Shutdown window (OF-111):** "From the moment a Reboot, Reboot into bootloader, Reset to defaults or Erase FRAM command is accepted until the unit restarts, the reset answers "Failed" and clears nothing (owner, 2026-10-13, asked "refuse `ResetErrors` once a reboot or erase command has been accepted?": '1 b', its option "Refuse it ("Failed") from the command's acceptance on"); clear the logs once the unit is back."
+- **DEVICE_REFERENCE.md Wi-Fi overlay bullet (OF-129, `:17-22`):**
+  - "Should the timer that ends a hotspot with no client fail to start, the Wi-Fi task restarts after a few 5-second checks and tries the stored network again, as a fresh boot does; repeated restarts reboot the unit (owner, 2026-10-13, asked "should a failed hotspot-window timer count as a hardware failure?": 'Take option b for 2', its option "Count it like the silent mode does: it feeds the streak, then the task restart, then the budget's reboot")."
+  - The 5 s is `_WIFI_REFRESH_S`; every device sets `_MAX_MODULE_ERROR` 5.
+  - The rest of the bullet is rewrapped only.
+- **README.md:255:** "ESLint (js/, tests_js/, scripts/*.mjs, the inline scripts in html/*.html, eslint.config.js, vitest.config.js)". This follows `package.json:18` and `eslint.config.js`'s file blocks. Stale-fact correction, no meaning change.
+- **CLAUDE.md:499:** "four `uv run` scripts" → "every `uv run` script". All 8 scripts the repo runs as `uv run <script>` carry the block. Stale-fact correction, no meaning change.
+- **Y5:** kept with both the question and the quote, per your ruling.
+- **Not written:**
+  - **W48:** none of my five files describes W48 or the web-server error count. W48 is described only in SPECIFICATION.md (`:948`, `:6918`), which is lane X's. I invented no new site; if you want one, a one-sentence text can go in DEVICE_REFERENCE.md.
+  - **MPRLS, SHTC3:** nothing written and no BACKLOG question, per the owner.
+- **Commit body:** carries both owner quotes with their full questions, the audit IDs only there.
+
+## Ready for the API5 merge (read from git, not yet written)
+- **Ceilings at `1af97e9`:** complexity 41 → 22 (`js/field-format.js` `formatFieldValue()`). max-depth 4, max-nested-callbacks 4 and max-classes-per-file 1 are unchanged.
+- **Y3 addendum on `audit/u23-api4`:** `vitest.config.js` registers two new Commands API functions (`runLiveBackendRestartRecovery`, `archiveErrcount`), and `tests_js/vitest-commands.d.ts` types them and their new fields. There is no package.json, lock, `.github` or `scripts/` change. I will re-diff `202a118..API5` before writing.
+- **Y10 measure:** `GET /` serves each device's `index.html.gz`, whose size is in the frozen module's `# /index.html.gz size=N` line.
+  - Preview on `202a118`: dev 16,045 B; the others 13,554-13,989 B, so dev leads by 2,056-2,491 B, against the README's 7,579.
+  - The bundle `js/app.js.gz` is 27,834 B on every device and is a separate fetch.
+  - I will write the API5 figures, keeping 7579 as that CI failure's own figure ("then 7579 bytes").
+
+## Checks on the staged tree before the commit (each its own `unshare -n`, `nice -n 19`)
+- `test_citations.py`: 15 passed.
+- `test_legacy_paths.py`: 3 passed.
+- `test_decision_vocabulary.py`: 1 failed, 5 passed. The only failure is the stale allow-list row 8 (`BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod`), which you drop at the docs merge. No new finding.
+
+## Runs (all exited; RUNS.md lines marked done; nothing of mine is running)
+- The three pytest checks at 13:26:07, 21 s.
+- A light background branch poll from 13:26:51, which ended when `audit/u23-api5` appeared.
+- From Y1: `rebuild.sh` at 11:19:17 and the five checks at 11:26:24.
+- Scratch files are in `S/u23/laneY/` (logs, both commit messages).
+
+######## SubagentHandback 2026-10-13T13:42:54.955Z
+WIP Y3 5341dab — the backup-pause sentence now states what the reset clears; waiting for your API5 message.
+
+`audit/u23-y` in `S/wt-u23y` is `202a118` + `ecad205` (WIP Y1) + `18117d2` + `5341dab` (WIP Y3); nothing is pushed or merged. API5 is not merged, as you said.
+
+**The change (DEVICE_REFERENCE.md `:159-162`)**, sentence (a) now reads: "During a backup pause ("Pause backups for 5 minutes") the reset answers "Failed", yet it still clears the logs held in memory, and their next save carries that into FRAM: read the logs before resetting, and repeat the reset after the pause if the answer matters."
+- I checked both halves in the code before writing:
+  - `PrintLog.reset()` clears the ring before the FRAM write is refused.
+  - `PrintLogHistoryStore._write()` packs the whole live ring on every save, so the cleared ring reaches FRAM at the next save.
+- No audit ID, no decision vocabulary.
+- The commit body names it a correction of a sentence written in this unit; the behaviour itself is unchanged.
+
+**W48:** nothing added, per your point 3.
+
+**Checks** (staged tree, each in its own `unshare -n`, `nice -n 19`):
+- `test_citations.py`: 15 passed.
+- `test_decision_vocabulary.py`: 1 failed, 5 passed. The only failure is the stale allow-list row 8 (`BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod`), which you drop at the docs merge. No new finding.
+
+**Runs:** one run, the two checks at 13:42:20 (18 s), exited. Its RUNS.md line is marked done and no lane Y line is still RUNNING. Nothing of mine is running.
+
+**Still to do once your message names the final API5 hash and the ceiling values:**
+1. Merge API5 `--no-ff` and run `S/u23/rebuild.sh S/wt-u23y`.
+2. Write Y3's addendum from `git diff 202a118 API5` over the config and tooling files, plus the ceiling values.
+3. Write Y10's `GET /` sizes, read from each rebuilt `frozen_html.py`'s `# /index.html.gz size=N` line.
+4. Run `test_citations`, `test_decision_vocabulary` and `test_legacy_paths`, then hand back the final.
+
+######## SubagentHandback 2026-10-13T13:56:09.974Z
+FINAL bb4dec5 — lane Y is complete: every fact is written or reported, on API5.
+
+`audit/u23-y` in `S/wt-u23y`, not pushed, is `202a118` → `ecad205` (WIP Y1) → `18117d2` → `5341dab` (WIP Y3) → `cf53b94` (`--no-ff` merge of API5 `1af97e9`, clean) → `bb4dec5`. API5 changed none of my five files. Every fact below was re-checked on the merged tree, after `S/u23/rebuild.sh S/wt-u23y` (rc 0).
+
+The one red check is `test_decision_vocabulary.py`, and only on allow-list row 8, which my text retires and which you drop at the docs merge (details under Allow-list rows).
+
+## Facts
+| # | status | written, line at `bb4dec5` |
+|---|---|---|
+| Y1 | applied | README.md `:258-259`: `npm run lint:html:built`, marked a local check and not a CI step yet, so "All five CI-covered checks" stays true. The block's comments moved 3 columns right (whitespace only). |
+| Y2 | applied | README.md `:327` lead-in ("for one device or for every device"). `:332-334` add `build_website.sh --stage-only wozi <dir>` and both forms of `build_device_websites.sh`, each with its default output. |
+| Y3 | applied | BACKLOG.md `:672-687`, the 2026-10-13 entry: the stager, `--stage-only`, `lint:html:built`, the core ESLint rule, the two baseline entries, the four new pytest-tier files, and no dependency, pin, lock or toolchain change. The addendum (`git diff 202a118 1af97e9`) adds: `vitest.config.js` registers `runLiveBackendRestartRecovery` and `archiveErrcount`, typed in `tests_js/vitest-commands.d.ts`; `complexity` drops 41 → 22, with max-depth 4, max-nested-callbacks 4 and max-classes-per-file 1 unchanged. |
+| Y4 | applied | DEVICE_REFERENCE.md `:62-63`: empty means none; the Networking page's **Clear** button empties the list after asking "Clear Fallback DNS Servers?". |
+| Y5 | applied | DEVICE_REFERENCE.md `:167-170`: the confirmation ("Reset All Errors?") with the question and the owner's quote (owner, 2026-10-01). |
+| Y6 | applied | BACKLOG.md: both Deferred JS items removed as done. On API5, `initNav()` returns `dispose` and both entries call `startShell()`. |
+| Y7 | nothing at U23 | The owner-question list stays empty. MPRLS and SHTC3: nothing written, per the owner. |
+| Y8 | applied | DEVICE_REFERENCE.md `:158-159`: "could not be cleared", now qualified by "Outside the two cases below". |
+| Y9 | applied | CLAUDE.md `:497`: ~51-line `@typedef` run (lines 6-56 on API5). No meaning change. |
+| Y10 | applied | digital_twin/README.md `:789-790`: ~16KB for the largest device's `GET /` page, and ~28KB for the bundle `/js/app.js` on every device. `:799-800`: dev's page "then 7579 bytes, 168-483 bytes larger … ; 16045 bytes and 2056-2491 bytes larger today". Measured from the rebuilt `frozen_html.py` size lines: dev 16045, the other five 13554-13989, the bundle 28312 on all six. Both paragraphs are rewrapped with their words unchanged (checked by a script). |
+| resume | applied | DEVICE_REFERENCE.md `:160-166`: during a backup pause the reset answers "Failed" yet still clears the logs held in memory, and their next save carries that into FRAM, so read first and repeat after the pause. The shutdown window (OF-111): "Failed" and clears nothing, with the owner's question and '1 b'. |
+| resume | applied | DEVICE_REFERENCE.md `:17-22`: the hotspot timer failure (OF-129) restarts the Wi-Fi task and then reboots, with the owner's question and 'Take option b for 2'. |
+| resume | applied | README.md `:255-256`: ESLint's real scope (from package.json and `eslint.config.js`). CLAUDE.md `:499`: "every `uv run` script" (8 of 8 carry the block, rechecked on API5). Both stale-fact corrections, no meaning change. |
+| W48 | nothing | No site in my files, per your ruling. |
+
+## Deviations
+- Y3 names the four new pytest-tier files, which the brief's text did not.
+- Y2 uses runnable lines rather than the brief's usage form.
+- Y10's `:789` also gives the bundle's size. Both static routes stream through `send_file()`, so the bundle is the twin client's largest single body.
+
+## Stale text found, not changed (pre-U23, needs your ruling)
+- **digital_twin/README.md `:783-787`** says the "Unsized (`GET /`) …" account is "the live path for that route", and **`:791`** says "Microdot's own 1KB `send_file_buffer_size` chunks". Both have been false since `db1866e` (2026-09-23). The static route sets `Content-Length` and `send_file_buffer_size = chunk_bytes` (256 B; `src/asy_webserver_service.py:526-534`), so the twin client reads `GET /` through `_read_exact()`/`_drain_exact()`, not the join.
+- **`digital_twin/_http_client.py:99-101`** (your file) has the same stale "live path for GET /" comment.
+
+## Allow-list rows
+`tests_scripts/_decision_vocab_allowlist.txt:8`, `BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod` (retired by Y6). No citation-allow-list row is retired.
+
+## Checks (staged final tree, each its own `unshare -n`, `nice -n 19`)
+- `test_citations.py`: 15 passed.
+- `test_legacy_paths.py`: 3 passed.
+- `test_decision_vocabulary.py`: 1 failed, 5 passed. The only failure is row 8 above; no new finding.
+- Earlier, at WIP Y1, `test_comment_block_cap.py` passed (458) and `test_tunables_register.py` was red on lane X's Part N rows only.
+
+## Runs (all exited; every lane Y RUNS.md line is done; `ps` shows nothing of mine)
+- `rebuild.sh` twice: 11:19:17 and 13:54, rc 0.
+- Pytest checks four times: 11:26:24, 13:26:07, 13:42:20, 13:55:15.
+- One light branch poll from 13:26:51, ended when `audit/u23-api5` appeared.
+
+Scratch files are in `S/u23/laneY/`.
+
+## Silent-failure scan
+No code was touched. The doc text states each failure visibly: the pause's "Failed" with memory cleared, the shutdown window's refusal, the declined confirmation.

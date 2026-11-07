@@ -1,101 +1,108 @@
-"""Pins that every device script measuring the heap sets gc.threshold itself and prints GC_THRESHOLD=.
-mpremote's raw-REPL soft reset keeps the boot entry's threshold (rp2 runs gc_init() once, outside that
-loop), so an unset one is inherited silently - a result not naming its threshold is void (MEASUREMENTS M3.8)."""
-
-from __future__ import annotations
+"""Pins that every device script measuring the heap sets gc.threshold itself and reports the gc_threshold fact first:
+mpremote's soft reset keeps the boot entry's threshold, so a figure not naming its stage is void
+(SPECIFICATION.md E.8). Read on the rendered scripts, so a measurement through an include counts."""
 
 import ast
+import sys
 from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests_hardware"))
+import bench_facts
+import harness
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "tests_hardware" / "device_scripts"
 
 # What makes a script a heap measurement: it reads the heap's own figures or its block map.
 _MEASURES = {("gc", "mem_free"), ("gc", "mem_alloc"), ("micropython", "mem_info")}
-_MARKER = "GC_THRESHOLD="
+_FACT = "gc_threshold"
 
 
-def _calls(tree: ast.Module) -> list[tuple[str, str, int]]:
-    # (module, function, argument count) for every plain `module.function(...)` call.
-    return [
-        (node.func.value.id, node.func.attr, len(node.args))
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
-    ]
+def _calls(tree: ast.Module) -> "list[tuple[str, str, ast.Call]]":
+    # (module, function, call) for every call of a module function in any spelling: gc.f(), g.f() after `import gc as
+    # g`, and f() or x() after `from gc import f [as x]`.
+    modules = {alias.asname or alias.name: alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+    functions = {alias.asname or alias.name: (node.module or "", alias.name) for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) for alias in node.names}
+    found: list[tuple[str, str, ast.Call]] = []
+    for node in [n for n in ast.walk(tree) if isinstance(n, ast.Call)]:
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            found.append((modules.get(node.func.value.id, node.func.value.id), node.func.attr, node))
+        elif isinstance(node.func, ast.Name) and node.func.id in functions:
+            found.append((*functions[node.func.id], node))
+    return found
 
 
-def _marker_print_lines(tree: ast.Module) -> list[int]:
-    # Lines of every print whose argument's literal text starts with the marker - an f-string's
-    # first piece included. Empty means the script never reports the threshold it ran at.
-    lines = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print" and node.args:
-            arg = node.args[0]
-            head = arg.values[0] if isinstance(arg, ast.JoinedStr) and arg.values else arg
-            if isinstance(head, ast.Constant) and isinstance(head.value, str) and head.value.startswith(_MARKER):
-                lines.append(node.lineno)
-    return lines
+def _report_lines(tree: ast.Module) -> "list[int]":
+    # Lines of every fact("gc_threshold", ...) call: the script's report of the stage it measured at.
+    return [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "fact" and n.args and isinstance(n.args[0], ast.Constant) and n.args[0].value == _FACT]
 
 
-def _set_lines(tree: ast.Module) -> list[int]:
-    # Lines of every gc.threshold(<value>) call - the no-argument form reads it back, never sets it.
-    return [
-        node.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "gc" and node.func.attr == "threshold" and node.args
-    ]
-
-
-def _problems(source: str) -> list[str]:
+def _problems(source: str) -> "list[str]":
     tree = ast.parse(source)
     calls = _calls(tree)
-    if not any((mod, fn) in _MEASURES for mod, fn, _n in calls):
+    if not any((mod, fn) in _MEASURES for mod, fn, _ in calls):
         return []
     problems = []
-    sets, reports = _set_lines(tree), _marker_print_lines(tree)
+    # The no-argument gc.threshold() reads the value back, never sets it.
+    sets = [call.lineno for mod, fn, call in calls if (mod, fn) == ("gc", "threshold") and call.args]
+    reports = _report_lines(tree)
     if not sets:
         problems.append("measures the heap but never sets gc.threshold - it runs under whatever main.py left")
     if not reports:
-        problems.append(f"measures the heap but never prints {_MARKER} - its output cannot say what it was taken at")
+        problems.append(f'measures the heap but never reports fact("{_FACT}", ...) - its output cannot say what it was taken at')
     if sets and reports and min(reports) < min(sets):
-        # A first arm run at whatever it inherited, made to look set by a later switch - the reason
-        # the pre-2026-09-24 flash-tier readings' threshold is unknown (MEASUREMENTS M3.8).
-        problems.append(f"reports {_MARKER} at line {min(reports)} before setting gc.threshold at line {min(sets)} - that first arm runs at whatever it inherited")
+        # A first arm run at whatever it inherited, made to look set by a later switch.
+        problems.append(f"reports {_FACT} at line {min(reports)} before setting gc.threshold at line {min(sets)} - that first arm runs at whatever it inherited")
     return problems
 
 
-def _measuring_scripts() -> list[Path]:
-    return sorted(p for p in DEVICE_SCRIPTS.glob("*.py") if any((m, f) in _MEASURES for m, f, _n in _calls(ast.parse(p.read_text()))))
+def _rendered_measuring_scripts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> "dict[str, str]":
+    monkeypatch.setattr(harness, "RENDERED_SCRIPTS_DIR", tmp_path)
+    # A static check reads the includes a render inlines; no fact value enters it, so the render takes the device
+    # module's name alone instead of a cold build of every fact.
+    module = f"sensortask_{harness.bench_device()}"
+    monkeypatch.setattr(bench_facts, "build", lambda _device: {"device_module": module})
+    rendered = {p.name: harness.render_device_script(p).read_text(encoding="utf-8") for p in sorted(DEVICE_SCRIPTS.glob("*.py"))}
+    return {name: source for name, source in rendered.items() if any((m, f) in _MEASURES for m, f, _ in _calls(ast.parse(source)))}
 
 
-def test_the_rule_covers_every_heap_measuring_script_there_is() -> None:
+def test_every_heap_measuring_device_script_sets_and_reports_its_gc_threshold(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    measuring = _rendered_measuring_scripts(tmp_path, monkeypatch)
     # Guards the detector itself: an empty or shrunken set would pass everything below vacuously.
-    names = {p.name for p in _measuring_scripts()}
-    assert {"serving_at_default_gc.py", "heap_under_connection_ceiling.py", "allocation_need_per_source.py", "heap_headroom_after_full_system_build.py", "heap_layout_after_full_boot_sequence.py"} <= names, names
+    assert {"serving_at_default_gc.py", "heap_under_connection_ceiling.py", "allocation_need_per_source.py", "heap_headroom_after_full_system_build.py", "heap_layout_after_full_boot_sequence.py"} <= set(measuring), sorted(measuring)
+    found = {name: problems for name, source in measuring.items() if (problems := _problems(source))}
+    assert not found, found
 
 
-@pytest.mark.parametrize("script", _measuring_scripts(), ids=lambda p: p.name)
-def test_every_heap_measuring_device_script_sets_and_reports_its_gc_threshold(script: Path) -> None:
-    assert _problems(script.read_text()) == [], script.name
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import gc as g\ng.threshold(-1)\nfact('gc_threshold', g.threshold())\ng.mem_free()\n",
+        "from gc import mem_free as free, threshold as limit\nlimit(32768)\nfact('gc_threshold', 32768)\nfree()\n",
+    ],
+    ids=["module-alias", "from-import-alias"],
+)
+def test_every_spelling_of_the_set_and_the_measurement_counts(source: str) -> None:
+    assert _problems(source) == []
 
 
 def test_a_threshold_named_only_in_a_comment_or_read_back_does_not_count_as_set() -> None:
-    # The shape heap_under_connection_ceiling.py had: the value in prose, the call nowhere.
-    source = 'import gc\n# at gc.threshold(-1) that is the real state\nprint(f"GC_THRESHOLD={gc.threshold()}")\ngc.mem_free()\n'
+    # The value in prose, the call nowhere.
+    source = "import gc\n# at gc.threshold(-1) that is the real state\nfact('gc_threshold', gc.threshold())\ngc.mem_free()\n"
     assert _problems(source) == ["measures the heap but never sets gc.threshold - it runs under whatever main.py left"]
 
 
 def test_a_threshold_set_but_never_reported_is_caught() -> None:
-    assert _problems("import gc\ngc.threshold(-1)\nprint(gc.mem_free())\n") == [f"measures the heap but never prints {_MARKER} - its output cannot say what it was taken at"]
+    assert _problems("from gc import mem_free\nimport gc\ngc.threshold(-1)\nprint(mem_free())\n") == [f'measures the heap but never reports fact("{_FACT}", ...) - its output cannot say what it was taken at']
 
 
 def test_a_threshold_set_only_after_the_first_reported_arm_is_caught() -> None:
-    # A set anywhere in the file is not enough: a later switch would make an inherited first arm
-    # look chosen, so the first report must follow the first set.
-    source = 'import gc\nprint(f"GC_THRESHOLD={gc.threshold()}")\nprint(gc.mem_free())\ngc.threshold(32768)\nprint(f"GC_THRESHOLD={gc.threshold()}")\n'
-    assert _problems(source) == ["reports GC_THRESHOLD= at line 2 before setting gc.threshold at line 4 - that first arm runs at whatever it inherited"]
+    # A set anywhere in the file is not enough: a later switch would make an inherited first arm look chosen.
+    # @tunable gc.threshold_bytes = 32768
+    source = "import gc\nfact('gc_threshold', gc.threshold())\nprint(gc.mem_free())\ngc.threshold(32768)\nfact('gc_threshold', 32768)\n"
+    assert _problems(source) == ["reports gc_threshold at line 2 before setting gc.threshold at line 4 - that first arm runs at whatever it inherited"]
 
 
 def test_a_script_that_does_not_measure_the_heap_owes_nothing() -> None:
-    assert _problems("import gc\ngc.collect()\nprint('RESULT: PASS')\n") == []
+    assert _problems("import gc\ngc.collect()\nfact('ok', True)\n") == []

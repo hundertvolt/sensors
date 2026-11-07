@@ -1,0 +1,16 @@
+cov	b	test_task_tops	3.06	3.651	2.884	0.179	0	19 passed in 2.32s
+plain	b	test_task_tops	1.95	2.030	1.810	0.142	0	19 passed in 1.19s
+cov	a	test_task_inventory	2.69	2.742	2.602	0.083	0	6 passed in 2.37s
+cov	b	test_task_inventory	2.92	2.965	2.816	0.100	0	6 passed in 2.63s
+cov	b	test_definitions_js_mirrors	0.53	0.616	0.453	0.074	0	9 passed in 0.18s
+cov	a	test_definitions_js_mirrors	0.42	0.452	0.383	0.040	0	5 passed in 0.13s
+cov	a	test_buildgen_generate	8.69	9.124	8.344	0.347	0	368 passed in 8.19s
+cov	b	test_buildgen_generate	9.07	9.455	8.686	0.385	0	380 passed in 8.63s
+cov	b	test_fault_or_warning_never_both	3.67	3.711	3.550	0.122	0	14 passed in 3.11s
+cov	a	test_fault_or_warning_never_both	3.88	3.945	3.761	0.118	0	11 passed in 3.26s
+cov	a	test_buildgen_definitions	6.56	6.967	6.238	0.326	0	399 passed in 5.85s
+cov	b	test_buildgen_definitions	6.35	6.619	6.054	0.300	0	401 passed in 5.60s
+cov	b	test_watchdog_feed_sites	27.86	28.476	27.538	0.321	0	22 passed in 27.75s
+cov	a	test_watchdog_feed_sites	28.36	28.751	28.151	0.208	0	22 passed in 28.11s
+cov	a	test_buildgen_web_tag	1.47	1.544	1.325	0.143	0	158 passed in 1.19s
+cov	b	test_buildgen_web_tag	1.49	1.612	1.324	0.162	0	159 passed in 1.23s

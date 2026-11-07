@@ -1,0 +1,86 @@
+FAIL test_a_held_lock_serves_the_snapshot_and_uptime_keeps_counting:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 404, in test_a_held_lock_serves_the_snapshot_and_uptime_keeps_counting
+  File "tests/test_zz_base_ntpwifi.py", line 70, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpwifi.py", line 387, in scenario
+  File "tests/test_zz_base_ntpwifi.py", line 368, in _ntp_holding_the_lock
+AssertionError: 
+FAIL test_a_held_lock_serves_the_snapshot_and_uptime_keeps_counting: left a task parked on the scheduler
+FAIL test_a_reconnect_asked_during_the_hold_runs_in_the_next_wifi_iteration:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 502, in test_a_reconnect_asked_during_the_hold_runs_in_the_next_wifi_iteration
+  File "tests/test_zz_base_ntpwifi.py", line 70, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpwifi.py", line 485, in scenario
+  File "tests/test_zz_base_ntpwifi.py", line 368, in _ntp_holding_the_lock
+AssertionError: 
+FAIL test_a_reconnect_asked_during_the_hold_runs_in_the_next_wifi_iteration: left a task parked on the scheduler
+FAIL test_dns_resolution_with_no_candidate_persists_the_dns_error:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 704, in test_dns_resolution_with_no_candidate_persists_the_dns_error
+AssertionError: 
+FAIL test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv4:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 196, in test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv4
+AssertionError: 
+FAIL test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 219, in test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service
+AssertionError: 
+FAIL test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 665, in test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers
+AssertionError: 
+FAIL test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_ip_ntp_host:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 620, in test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_ip_ntp_host
+  File "tests/test_zz_base_ntpwifi.py", line 70, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpwifi.py", line 608, in scenario
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_unavailable
+PASS test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated
+FAIL test_no_socket_is_built_without_a_dns_candidate:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 534, in test_no_socket_is_built_without_a_dns_candidate
+AssertionError: 
+FAIL test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 272, in test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch
+  File "tests/test_zz_base_ntpwifi.py", line 70, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpwifi.py", line 261, in scenario
+AssertionError: 
+FAIL test_the_wifi_loop_resumes_after_the_lock_without_a_fault:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24u2/tests/microtest.py", line 38, in _call
+  File "tests/test_zz_base_ntpwifi.py", line 467, in test_the_wifi_loop_resumes_after_the_lock_without_a_fault
+  File "tests/test_zz_base_ntpwifi.py", line 70, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_zz_base_ntpwifi.py", line 451, in scenario
+  File "tests/test_zz_base_ntpwifi.py", line 368, in _ntp_holding_the_lock
+AssertionError: 
+FAIL test_the_wifi_loop_resumes_after_the_lock_without_a_fault: left a task parked on the scheduler
+PASS test_wifi_mode_lock_is_the_same_instance_on_both_real_objects
+3/13 passed, 10 failed, 0 skipped

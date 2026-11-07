@@ -1,0 +1,94 @@
+........................................................................ [ 51%]
+....................................................................     [100%]
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u33s/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============================== slowest durations ===============================
+12.07s setup    tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+9.12s setup    tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+4.05s call     tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists
+3.99s call     tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+3.30s call     tests_scripts/test_tunables_register.py::test_every_tag_is_well_formed_and_sits_above_its_literal
+1.76s call     tests_scripts/test_legacy_paths.py::test_no_current_file_names_a_pre_move_legacy_path
+0.80s call     tests_scripts/test_task_inventory.py::test_an_untabled_task_fails_naming_its_site
+0.69s setup    tests_scripts/test_memory_catalog.py::test_no_unlisted_run_phase_long_lived_allocation
+0.68s call     tests_scripts/test_task_inventory.py::test_a_starter_dropped_from_its_list_fails
+0.61s call     tests_scripts/test_task_inventory.py::test_every_task_site_is_a_starter_or_a_tabled_row
+0.59s call     tests_scripts/test_task_inventory.py::test_a_stale_row_fails
+0.55s call     tests_scripts/test_lock_order.py::test_an_acquisition_the_table_cannot_name_fails
+0.51s call     tests_scripts/test_lock_order.py::test_an_acquire_call_holds_until_its_release
+0.49s call     tests_scripts/test_lock_order.py::test_a_lock_outside_a_self_attribute_fails
+0.47s call     tests_scripts/test_lock_order.py::test_a_stale_row_fails
+0.45s call     tests_scripts/test_lock_order.py::test_an_untabled_lock_attribute_fails
+0.44s call     tests_scripts/test_lock_order.py::test_a_lower_level_taken_before_a_higher_one_fails
+0.43s call     tests_scripts/test_lock_order.py::test_an_unlevelled_row_nested_with_another_fails
+0.43s call     tests_scripts/test_lock_order.py::test_every_lock_is_tabled_and_taken_in_order
+0.41s call     tests_scripts/test_lock_order.py::test_an_acquisition_inside_a_leaf_lock_fails
+0.38s call     tests_scripts/test_lock_order.py::test_every_acquisition_in_src_resolves_to_a_row
+0.31s call     tests_scripts/test_task_inventory.py::test_the_table_and_the_starters_both_carry_sites
+0.22s call     tests_scripts/test_memory_catalog.py::test_every_allowed_entry_still_matches_a_site
+0.21s call     tests_scripts/test_memory_catalog.py::test_no_unlisted_run_phase_long_lived_allocation
+0.20s call     tests_scripts/test_citations.py::test_every_scanned_text_file_has_a_prose_reader_or_is_listed_prose_free
+0.18s call     tests_scripts/test_level_containment.py::test_no_exception_row_names_a_covered_scenario
+0.16s setup    tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+0.14s call     tests_scripts/test_level_containment.py::test_every_twin_scenario_is_covered_or_an_exception_row_with_a_reason
+0.12s call     tests_scripts/test_level_containment.py::test_every_scenario_named_anywhere_exists
+0.12s call     tests_scripts/test_legacy_paths.py::test_the_legacy_tree_is_where_the_rules_say
+0.09s call     tests_scripts/test_threat_model_statement.py::test_a11_names_every_dispatch_field
+0.08s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[4 task ends-5 task ends-makes 4 task ends]
+0.07s call     tests_scripts/test_timing_budget.py::test_a_reset_delay_past_the_watchdog_bites
+0.07s call     tests_scripts/test_level_containment.py::test_every_level_module_declares_the_twin_scenarios_it_covers
+0.06s call     tests_scripts/test_timing_budget.py::test_the_code_derived_rows_match_the_code
+0.06s call     tests_scripts/test_timing_budget.py::test_an_i2c_timeout_above_its_register_bound_bites
+0.06s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| 10 s, the longest hold-| 20 s, the longest hold-`hold.wifi_lock`: its value opens]
+0.06s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| 2129 ms-| 400 ms-`stall.flash_program`: its value opens]
+0.05s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[`con.led_frame` (crossed: a stutter)-`con.led_frames` (crossed: a stutter)-which the consumer table lacks]
+0.05s call     tests_scripts/test_timing_budget.py::test_reply_slacks_that_differ_across_devices_bite
+0.05s call     tests_scripts/test_timing_budget.py::test_uart_bauds_that_differ_across_buses_bite
+0.05s call     tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+0.05s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| 50 ms per session-| 60 ms per session-the code gives 50000 \xb5s]
+0.05s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[`scd30.cmd_response_wait_ms` |-`scd30.cmd_wait_ms` |-`scd30.cmd_wait_ms`, which is not a Part N row]
+0.05s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[`con.led_frame` (crossed: a stutter)-`con.led_frame`-past it, and not marked crossed]
+0.04s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[`con.uart_reply` (its floor holds it)-`con.uart_reply` (crossed: its floor holds it)-a stale crossing]
+0.04s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| 1,533 \xb5s:-| 9,533 \xb5s:-`stall.uart_call`: its value opens]
+0.04s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| 5 \xb5s per wait-| 50 \xb5s per wait-`stall.sync_wait`: its value opens]
+0.04s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[50,000 \xb5s (`_DEFAULT_TIMEOUT_US`-the rp2 default (`_DEFAULT_TIMEOUT_US`-50000 \xb5s is a term of its derivation]
+0.04s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| 500 ms per server-| 900 ms per server-`con.dns_query`: its value opens]
+0.04s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| `hold.i2c_probe` |-| `hold.i2c_probe_settle` |-no `hold.i2c_probe` row]
+0.04s call     tests_scripts/test_timing_budget.py::test_each_failure_class_bites[| 5 s per stream call-| 7 s per stream call-`con.http_call`: its value opens]
+0.04s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_fram_hard_reset_race_during_write_and_recovery]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_same_device_concurrent_sessions_never_corrupt_each_other]
+0.02s call     tests_scripts/test_citations.py::test_a_listing_without_specification_md_raises
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_a_held_sda_line_is_cleared_and_every_device_answers]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_bmp3xx_same_device_read_write_concurrency]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_cross_device_concurrent_sessions_genuinely_interleave]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_bus_topology_autodetect_address_and_reserved_range_sweep]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_fram_cs_pin_hijack_fault_injection_and_recovery]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_bmp3xx_alone_survives_a_general_call]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_reboot_command_shuts_down_then_resets]
+0.02s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads]
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions]
+0.01s setup    tests_scripts/test_lock_order.py::test_an_acquisition_the_table_cannot_name_fails
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_fram_same_device_read_write_concurrency]
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_isl29125_same_device_read_write_concurrency]
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton]
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_isl29125_real_irq_edge_beats_the_periodic_fallback]
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_sgp40_concurrent_sessions_each_get_a_tick]
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours]
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_scd30_config_write_does_not_disturb_concurrent_sibling_reads]
+0.01s call     tests_scripts/test_level_containment.py::test_every_flash_bus_hazard_test_names_its_bench_counterpart_or_a_row[test_scd30_same_device_read_write_concurrency]
+0.01s call     tests_scripts/test_threat_model_statement.py::test_a11_names_every_put_route
+0.01s call     tests_scripts/test_threat_model_statement.py::test_a11_names_every_system_command_word
+0.01s setup    tests_scripts/test_task_inventory.py::test_a_starter_dropped_from_its_list_fails
+0.01s call     tests_scripts/test_toml_schema_contract.py::test_the_l3_key_table_equals_the_builds_tables
+0.01s setup    tests_scripts/test_lock_order.py::test_an_unlevelled_row_nested_with_another_fails
+0.01s setup    tests_scripts/test_lock_order.py::test_a_lock_outside_a_self_attribute_fails
+0.01s setup    tests_scripts/test_lock_order.py::test_an_acquire_call_holds_until_its_release
+0.01s setup    tests_scripts/test_task_inventory.py::test_an_untabled_task_fails_naming_its_site
+
+(338 durations < 0.005s hidden.  Use -vv to show these durations.)
+140 passed, 1 warning in 46.05s

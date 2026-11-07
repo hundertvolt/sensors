@@ -1,0 +1,15 @@
+..F...................................................                   [100%]
+=================================== FAILURES ===================================
+_________________ test_every_twin_launch_reads_the_layout_file _________________
+
+    def test_every_twin_launch_reads_the_layout_file() -> None:
+>       assert launch_site_problems(REPO_ROOT) == []
+E       assert ['scripts/_tw...'s twin", ...] == []
+E         
+E         Left contains 12 more items, first extra item: "scripts/_twin_process.py:24: the twin MICROPYPATH literal 'build/generated_src:src:digital_twin:ext:frozen_modules:.frozen' - read scripts/micropypath.toml's twin instead"
+E         Use -v to get more diff
+
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:144: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_every_twin_launch_reads_the_layout_file
+1 failed, 53 passed in 0.60s

@@ -1,0 +1,18 @@
+U22 lane E: DEVICE_REFERENCE states the fresh-boot settings change for users
+
+The networking-status section gains one paragraph: saving a changed SSID, PW,
+Country, Hostname or HotspotPW (the /networking identity group, whose
+generated hook is conn.reconnect_wifi) restarts the Wi-Fi connection as a
+fresh boot does, a fresh series of connection attempts with the fallback
+hotspot available once more, so a wrong password brings the hotspot back after
+its failed streak and the unit stays reachable for a correction. Checked
+against src/asy_wifi_service.py: reconnect_wifi() sets the reconnect trigger
+and _reconnect_fresh; _handle_reconnect_trigger() then zeroes
+_connection_failures and clears _hotspot_started_once. The hook runs only
+after a field saved as changed (asy_api_response.handle_set_cmd()), and
+LEDWifiOn's own group has none. Tagged (owner, 2026-10-08, paraphrase), as the
+tests_hardware item. No meaning change beyond the owner's settings-change
+requirement of 2026-10-08.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

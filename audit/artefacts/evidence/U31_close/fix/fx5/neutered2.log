@@ -1,0 +1,46 @@
+..FF......................................F..                            [100%]
+=================================== FAILURES ===================================
+_________________ test_a_removed_named_wait_is_a_stale_waiver __________________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11845/test_a_removed_named_wait_is_a0')
+
+    def test_a_removed_named_wait_is_a_stale_waiver(tmp_path: Path) -> None:
+        src = _src_copy(tmp_path, "asy_spi_driver.py", "self._cs_pin.value(not self._cs_active_value)\n        time.sleep_us(_CS_SETTLE_US)\n", "self._cs_pin.value(not self._cs_active_value)\n")
+>       assert named_wait_problems(src) == ["stale waiver: no asy_spi_driver.py:session_end() time.sleep*(_CS_SETTLE_US) left"]
+E       AssertionError: assert [] == ['stale waive...TLE_US) left']
+E         
+E         Right contains one more item: 'stale waiver: no asy_spi_driver.py:session_end() time.sleep*(_CS_SETTLE_US) left'
+E         Use -v to get more diff
+
+tests_scripts/test_zz_fx5_bite_sf.py:166: AssertionError
+_______________________ test_an_asyncio_blind_scan_bites _______________________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11845/test_an_asyncio_blind_scan_bit0')
+
+    def test_an_asyncio_blind_scan_bites(tmp_path: Path) -> None:
+        for path in SRC.glob("*.py"):  # every asyncio import renamed: the scan sees no asyncio module, so no asyncio sleep
+            (tmp_path / path.name).write_text(path.read_text(encoding="utf-8").replace("import asyncio", "import aio_unread"), encoding="utf-8")
+>       assert "the scan found no asyncio sleep - it reads nothing" in named_wait_problems(tmp_path)
+E       AssertionError: assert 'the scan found no asyncio sleep - it reads nothing' in []
+E        +  where [] = named_wait_problems(PosixPath('/tmp/pytest-of-root/pytest-11845/test_an_asyncio_blind_scan_bit0'))
+
+tests_scripts/test_zz_fx5_bite_sf.py:172: AssertionError
+________________ test_uart_bauds_that_differ_across_buses_bite _________________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31fx5')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc3d2d85b50>
+
+    def test_uart_bauds_that_differ_across_buses_bite(spec_text: str, repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        timeout_us, slacks, bauds = _device_terms(repo_root / "src")
+        monkeypatch.setattr(sys.modules[__name__], "_device_terms", lambda _src: (timeout_us, slacks, {*bauds, max(bauds) // 2}))
+>       assert any("the UART bauds differ across buses" in p for p in check_table(spec_text, repo_root / "src"))
+E       assert False
+E        +  where False = any(<generator object test_uart_bauds_that_differ_across_buses_bite.<locals>.<genexpr> at 0x7fc3d42fe670>)
+
+tests_scripts/test_zz_fx5_bite_tb.py:248: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_zz_fx5_bite_sf.py::test_a_removed_named_wait_is_a_stale_waiver
+FAILED tests_scripts/test_zz_fx5_bite_sf.py::test_an_asyncio_blind_scan_bites
+FAILED tests_scripts/test_zz_fx5_bite_tb.py::test_uart_bauds_that_differ_across_buses_bite
+3 failed, 42 passed in 2.11s

@@ -1,0 +1,22 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_every_uv_call_runs_without_an_implicit_sync _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27e2orig')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10517/test_every_uv_call_runs_withou0')
+
+    def test_every_uv_call_runs_without_an_implicit_sync(repo_root: Path, tmp_path: Path) -> None:
+        # A plain `uv run` syncs the whole dev group first, so a third-party fetch would sit inside a
+        # hardware run and an outage would read as a hardware failure.
+        _run(repo_root, tmp_path, *_ARGS)
+        raw = [written for _argv, written, _dir in _raw_calls(tmp_path)]
+        assert len(raw) == 3, raw
+        unsynced = [argv for argv in raw if argv[:2] != ["run", "--no-sync"]]
+>       assert not unsynced, f"these uv calls may sync: {unsynced}"
+E       AssertionError: these uv calls may sync: [['run', 'pytest', '-p', '_pytest_run_record', '--run-record=/tmp/pytest-of-root/pytest-10517/test_every_uv_call_runs_withou0/archive/run/run_record.json', 'tests_hardware/flash', '-m', 'not soak_duration and not multi_day_rollover', '-v']]
+E       assert not [['run', 'pytest', '-p', '_pytest_run_record', '--run-record=/tmp/pytest-of-root/pytest-10517/test_every_uv_call_runs_withou0/archive/run/run_record.json', 'tests_hardware/flash', ...]]
+
+tests_scripts/test_require_clean_hardware_run_sh.py:184: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_require_clean_hardware_run_sh.py::test_every_uv_call_runs_without_an_implicit_sync
+1 failed in 0.25s

@@ -1,0 +1,12 @@
+U23 lead: one shared plain-object check, isRecord, exported from js/definitions.js
+
+render.js's isRecord, definitions.js's isObject and mock-server.js's isPlainObject were one body
+(typeof "object", not null, not an array): the same answer for null, an array, a class instance and
+an Object.create(null) object. One export now serves all three (SPECIFICATION.md D.10; owner,
+2026-09-25: 'Change, don't flag, if not according.'). definitions.js is the module both
+render.js and the mock already import, so no import edge is added, the production bundle keeps one
+declaration of the name, and the stager's order is unchanged. Its cases sit beside
+resolveFieldValue's in definitions.test.js, seen failing first on the missing export.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

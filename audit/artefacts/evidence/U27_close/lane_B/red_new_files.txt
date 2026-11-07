@@ -1,0 +1,10 @@
+E           AttributeError: module 'build_firmware' has no attribute 'stage_python_modules'
+E         AttributeError: module 'build_firmware' has no attribute 'stage_python_modules'
+E        +  where 1 = CompletedProcess(args=['/home/user/sensors/.venv/bin/python', '-c', '\nimport importlib.util, sys\nfrom pathlib import...string>", line 12, in <module>\nAttributeError: module \'build_firmware\' has no attribute \'stage_python_modules\'\n').returncode
+ERROR tests_scripts/test_frozen_inputs_reproducible.py::test_every_manifest_names_its_files_and_freezes_no_bare_directory
+ERROR tests_scripts/test_frozen_inputs_reproducible.py::test_the_build_date_is_the_one_input_that_differs
+ERROR tests_scripts/test_frozen_inputs_reproducible.py::test_the_frozen_order_does_not_follow_the_host_s_directory_walk
+ERROR tests_scripts/test_frozen_inputs_reproducible.py::test_two_hash_seeds_stage_byte_identical_inputs
+ERROR tests_scripts/test_stripped_image_boots.py::test_each_image_holds_only_compiled_modules_and_the_stub_site
+ERROR tests_scripts/test_stripped_image_boots.py::test_every_compiled_image_boots_and_serves_like_its_source
+tests_scripts/test_stripped_image_boots.py:65: AttributeError

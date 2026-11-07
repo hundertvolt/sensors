@@ -1,0 +1,20 @@
+........................................................................ [ 18%]
+........................................................................ [ 36%]
+........................................................................ [ 55%]
+........................................................................ [ 73%]
+........................................................................ [ 91%]
+................................                                         [100%]
+============================= slowest 12 durations =============================
+0.28s call     tests_scripts/test_buildgen_definitions.py::test_every_tagged_field_lands_once_in_its_group[arzi]
+0.22s call     tests_scripts/test_buildgen_definitions.py::test_mandatory_group_never_declared_anywhere_fails_loud
+0.22s call     tests_scripts/test_buildgen_definitions.py::test_sgp40_maintenance_fields_carry_both_special_values_and_the_adapters_keys[arzi]
+0.21s call     tests_scripts/test_buildgen_definitions.py::test_every_tagged_field_lands_once_in_its_group[dev]
+0.21s call     tests_scripts/test_buildgen_definitions.py::test_a_field_ignored_while_a_hidden_or_absent_sibling_is_set_fails_the_build
+0.21s call     tests_scripts/test_buildgen_definitions.py::test_each_status_group_lists_the_keys_its_generated_source_returns[arzi]
+0.21s call     tests_scripts/test_buildgen_definitions.py::test_each_status_group_lists_the_keys_its_generated_source_returns[grkizi]
+0.16s call     tests_scripts/test_buildgen_definitions.py::test_every_field_codes_table_equals_its_catalog_status_table[arzi]
+0.16s call     tests_scripts/test_buildgen_definitions.py::test_every_status_path_resolves_in_the_generated_status_source[dev]
+0.15s call     tests_scripts/test_buildgen_definitions.py::test_each_status_group_lists_the_keys_its_generated_source_returns[dev]
+0.15s call     tests_scripts/test_buildgen_definitions.py::test_each_status_group_lists_the_keys_its_generated_source_returns[schlafzi]
+0.15s call     tests_scripts/test_buildgen_definitions.py::test_every_status_path_resolves_in_the_generated_status_source[schlafzi]
+392 passed in 8.20s

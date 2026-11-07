@@ -1,0 +1,78 @@
+EE....                                                                   [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_decision_vocabulary_names_its_actor_or_is_allow_listed _
+
+    @pytest.fixture(scope="module")
+    def findings() -> Counter[tuple[str, str]]:
+>       return collect_findings()
+               ^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_decision_vocabulary.py:84: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_decision_vocabulary.py:78: in collect_findings
+    findings.update((path, prefix) for block in prose_blocks(path, text) for prefix in block_findings(block))
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = '.gitmodules'
+text = '[submodule "datasheets"]\n\tpath = datasheets\n\turl = https://github.com/hundertvolt/datasheets.git\n'
+
+    def prose_blocks(path: str, text: str) -> list[Block]:
+        suffix = _suffix(path)
+        if suffix in _PLAIN_SUFFIXES:
+            return _markdown_blocks(path, text)
+        if suffix in {".py", ".pyi"}:  # a type stub is Python syntax
+            return _python_blocks(path, text)
+        if suffix in _HASH_SUFFIXES:
+            return _hash_blocks(path, text)
+        if suffix in _SLASH_SUFFIXES or (suffix == ".json" and Path(path).name.startswith("tsconfig")):
+            return _slash_blocks(path, text)
+        if suffix == ".html":
+            return _html_blocks(path, text)
+        if suffix in _NO_PROSE_SUFFIXES or any(fnmatch.fnmatch(Path(path).name, glob) for glob in _NO_PROSE_NAMES):
+            return []
+        msg = f"{path}: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there"
+>       raise ValueError(msg)
+E       ValueError: .gitmodules: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there
+
+tests_scripts/_repo_scan.py:253: ValueError
+______________ ERROR at setup of test_the_allowlist_only_shrinks _______________
+
+    @pytest.fixture(scope="module")
+    def findings() -> Counter[tuple[str, str]]:
+>       return collect_findings()
+               ^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_decision_vocabulary.py:84: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_decision_vocabulary.py:78: in collect_findings
+    findings.update((path, prefix) for block in prose_blocks(path, text) for prefix in block_findings(block))
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = '.gitmodules'
+text = '[submodule "datasheets"]\n\tpath = datasheets\n\turl = https://github.com/hundertvolt/datasheets.git\n'
+
+    def prose_blocks(path: str, text: str) -> list[Block]:
+        suffix = _suffix(path)
+        if suffix in _PLAIN_SUFFIXES:
+            return _markdown_blocks(path, text)
+        if suffix in {".py", ".pyi"}:  # a type stub is Python syntax
+            return _python_blocks(path, text)
+        if suffix in _HASH_SUFFIXES:
+            return _hash_blocks(path, text)
+        if suffix in _SLASH_SUFFIXES or (suffix == ".json" and Path(path).name.startswith("tsconfig")):
+            return _slash_blocks(path, text)
+        if suffix == ".html":
+            return _html_blocks(path, text)
+        if suffix in _NO_PROSE_SUFFIXES or any(fnmatch.fnmatch(Path(path).name, glob) for glob in _NO_PROSE_NAMES):
+            return []
+        msg = f"{path}: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there"
+>       raise ValueError(msg)
+E       ValueError: .gitmodules: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there
+
+tests_scripts/_repo_scan.py:253: ValueError
+=========================== short test summary info ============================
+ERROR tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+ERROR tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+4 passed, 2 errors in 0.17s

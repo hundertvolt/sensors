@@ -1,0 +1,16 @@
+eslint.config.js
+host_typecheck.ini
+html/favicon.ico
+html/index.html
+html/style.css
+package.json
+pyproject.toml
+scripts/_stage_website.py
+scripts/build_device_websites.sh
+scripts/build_website.sh
+tests/test_website_build_integration.py
+tests_scripts/test_build_device_websites_sh.py
+tests_scripts/test_build_website_sh.py
+tests_scripts/test_request_body_cap_headroom.py
+tests_scripts/test_stage_website.py
+tests_scripts/test_website_tokens.py

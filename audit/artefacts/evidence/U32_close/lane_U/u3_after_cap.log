@@ -1,0 +1,10 @@
+PASS test_a_transfer_over_the_own_cap_is_the_caps_refusal_at_every_cap
+PASS test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks
+PASS test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent
+PASS test_chunk_counts_at_the_payload_size_boundaries
+PASS test_an_oversize_payload_is_rejected_before_the_first_frame
+one-runner done fails 0
+
+real	0m0.834s
+user	0m0.187s
+sys	0m0.042s

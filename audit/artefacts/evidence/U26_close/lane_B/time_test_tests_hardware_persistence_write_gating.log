@@ -1,0 +1,90 @@
+FF.F....F.                                                               [100%]
+=================================== FAILURES ===================================
+_ test_no_flags_deselects_every_real_persistence_write_test_but_keeps_the_rest _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+
+    def test_no_flags_deselects_every_real_persistence_write_test_but_keeps_the_rest(repo_root: Path) -> None:
+        output = _collect(repo_root)
+        assert _OWNED_TEST not in output, "the SCD30 read-while-write test ran without --allow-persistence-write"
+        assert _EXTRA_TEST not in output, "extra-write SCD30 test ran without either flag"
+        assert _NON_SCD30_TEST in output, "a test with no SCD30 write dependency was wrongly deselected"
+>       assert "2 deselected" in output, f"expected exactly 2 deselected (the two tests owning an SCD30 write):\n{output}"
+E       AssertionError: expected exactly 2 deselected (the two tests owning an SCD30 write):
+E         tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency
+E         tests_hardware/flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency
+E         tests_hardware/flash/test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick
+E         tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback
+E         tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep
+E         tests_hardware/flash/test_bus_concurrency.py::test_fram_same_device_read_write_concurrency
+E         tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery
+E         tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery
+E         tests_hardware/flash/test_bus_concurrency.py::test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton
+E         
+E         9/16 tests collected (7 deselected) in 0.01s
+E         
+E       assert '2 deselected' in 'tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency\ntests_hardware/flash/te...t_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton\n\n9/16 tests collected (7 deselected) in 0.01s\n'
+
+tests_scripts/test_tests_hardware_persistence_write_gating.py:44: AssertionError
+_____________ test_the_scd30_dependents_are_collected_with_no_flag _____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+
+    def test_the_scd30_dependents_are_collected_with_no_flag(repo_root: Path) -> None:
+        output = _collect(repo_root)
+        missing = [name for name in _SCD30_DEPENDENTS if name not in output]
+>       assert not missing, f"deselected though they only need the SCD30 measuring, a shared prerequisite: {missing}"
+E       AssertionError: deselected though they only need the SCD30 measuring, a shared prerequisite: ['test_same_device_concurrent_sessions_never_corrupt_each_other', 'test_cross_device_concurrent_sessions_genuinely_interleave', 'test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions', 'test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours', 'test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads']
+E       assert not ['test_same_device_concurrent_sessions_never_corrupt_each_other', 'test_cross_device_concurrent_sessions_genuinely_int...s_device_concurrency_with_its_i2c1_neighbours', 'test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads']
+
+tests_scripts/test_tests_hardware_persistence_write_gating.py:50: AssertionError
+___ test_extra_flag_alone_without_the_global_flag_still_deselects_everything ___
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+
+    def test_extra_flag_alone_without_the_global_flag_still_deselects_everything(repo_root: Path) -> None:
+        # The AND-gate itself: --allow-scd30-extra-write must never substitute for --allow-persistence-write.
+        output = _collect(repo_root, "--allow-scd30-extra-write")
+        assert _OWNED_TEST not in output, "--allow-scd30-extra-write alone must not grant the global write permission"
+        assert _EXTRA_TEST not in output, "the extra-write test must not run without --allow-persistence-write too"
+>       assert "2 deselected" in output, f"expected the same 2 deselected as the no-flags case:\n{output}"
+E       AssertionError: expected the same 2 deselected as the no-flags case:
+E         tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency
+E         tests_hardware/flash/test_bus_concurrency.py::test_isl29125_same_device_read_write_concurrency
+E         tests_hardware/flash/test_bus_concurrency.py::test_sgp40_concurrent_sessions_each_get_a_tick
+E         tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback
+E         tests_hardware/flash/test_bus_concurrency.py::test_bus_topology_autodetect_address_and_reserved_range_sweep
+E         tests_hardware/flash/test_bus_concurrency.py::test_fram_same_device_read_write_concurrency
+E         tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery
+E         tests_hardware/flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery
+E         tests_hardware/flash/test_bus_concurrency.py::test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton
+E         
+E         9/16 tests collected (7 deselected) in 0.01s
+E         
+E       assert '2 deselected' in 'tests_hardware/flash/test_bus_concurrency.py::test_bmp3xx_same_device_read_write_concurrency\ntests_hardware/flash/te...t_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton\n\n9/16 tests collected (7 deselected) in 0.01s\n'
+
+tests_scripts/test_tests_hardware_persistence_write_gating.py:65: AssertionError
+____ test_every_wear_gate_deselection_carries_the_flag_that_would_select_it ____
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9214/test_every_wear_gate_deselecti0')
+
+    def test_every_wear_gate_deselection_carries_the_flag_that_would_select_it(repo_root: Path, tmp_path: Path) -> None:
+        # The run record tells a wear-gate deselection apart from a runner's -m exclusion only through
+        # this tag: an untagged one would read as "runner selection" and its advice would name no flag.
+        tags = _deselected_by(repo_root, tmp_path)
+>       assert sorted(tags) == sorted([_OWNED_TEST, _EXTRA_TEST]), f"expected the 2 persistence_write deselections, probe saw {sorted(tags)}"
+E       AssertionError: expected the 2 persistence_write deselections, probe saw ['test_cross_device_concurrent_sessions_genuinely_interleave', 'test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads', 'test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours', 'test_same_device_concurrent_sessions_never_corrupt_each_other', 'test_scd30_config_write_does_not_disturb_concurrent_sibling_reads', 'test_scd30_same_device_read_write_concurrency_and_continuous_measurement_trigger', 'test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions']
+E       assert ['test_cross_...trigger', ...] == ['test_scd30_..._concurrency']
+E         
+E         At index 0 diff: 'test_cross_device_concurrent_sessions_genuinely_interleave' != 'test_scd30_config_write_does_not_disturb_concurrent_sibling_reads'
+E         Left contains 5 more items, first extra item: 'test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours'
+E         Use -v to get more diff
+
+tests_scripts/test_tests_hardware_persistence_write_gating.py:140: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tests_hardware_persistence_write_gating.py::test_no_flags_deselects_every_real_persistence_write_test_but_keeps_the_rest
+FAILED tests_scripts/test_tests_hardware_persistence_write_gating.py::test_the_scd30_dependents_are_collected_with_no_flag
+FAILED tests_scripts/test_tests_hardware_persistence_write_gating.py::test_extra_flag_alone_without_the_global_flag_still_deselects_everything
+FAILED tests_scripts/test_tests_hardware_persistence_write_gating.py::test_every_wear_gate_deselection_carries_the_flag_that_would_select_it
+4 failed, 6 passed in 4.23s

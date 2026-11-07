@@ -1,0 +1,30 @@
+U22 lane W WIP W1: the silent mode, the fresh-boot reconnect, the stations rule
+
+The second failed STA streak after the hotspot ran no longer switches Wi-Fi off: it enters a
+silent phase (_PHASE_SILENT = 4) with no hotspot and the LED dark, persists one WLAN_SILENT
+(W80, its number kept), and makes one connect attempt per hotspot_time_min on the window's own
+PERIODIC timer, uncapped, until a link; WLAN.scan() is never used. A credentials change
+(reconnect_wifi(), the identity group's post hook) lands in the fresh-boot state; the window end
+keeps its meaning. A stations check that cannot confirm a client (a raise, or the chip-down
+32-entry answer) counts as no client and persists WLAN_STATIONS_UNKNOWN.
+
+Decided at execution (agent, 2026-10-08), each conservative and reversible:
+- the silent attempt is a method of its own, _run_silent_mode(), dispatched by _connect_loop()
+  beside _run_hotspot_mode()/_run_sta_mode(), so _run_sta_mode() keeps its seeking meaning;
+- the dark guard reads the phase inside _led_on(), _led_toggle() and _run_led_pattern() rather
+  than holding the LED handle back, since _attempt_sta_connect() and the LEDWifiOn push re-select
+  the handle on every attempt;
+- the window's arm is extracted into _arm_hotspot_timer() -> bool (async: it persists the TIMER
+  fault), shared by _hotspot_client_absent() and _run_silent_mode(), one arm path, one wording;
+- the private window-end trigger is _on_hotspot_window_end(); reconnect_wifi() is that teardown
+  plus the fresh-boot flag _reconnect_fresh; the watcher sets _silent_attempt_due while silent;
+- a task restart keeps the silent phase, and so does the restart's own plain reconnect;
+  _on_sta_disconnected() registers no failure while silent.
+
+Catalog: W80 renamed WLAN_SILENT with its new text, E65 WLAN_OFF retired (its one site goes),
+W77's text names the counted-as-no-client rule, and the status table NotifyState is added.
+The fault-or-warning table loses the permanent deactivation's pair. Tests written first and seen
+failing on the tree; the HEAD tests the change turns red are rewritten in place.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

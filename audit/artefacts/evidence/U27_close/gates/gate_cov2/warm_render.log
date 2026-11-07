@@ -1,0 +1,24 @@
+Installed 1 package in 4ms
+usage: _render_coverage.py [-h] --raw-dir RAW_DIR [--src-dir SRC_DIR]
+                           [--html-dir HTML_DIR] [--xml-file XML_FILE]
+                           [--markdown-file MARKDOWN_FILE]
+                           [--data-file DATA_FILE]
+
+Renders the Unix-port coverage dumps (tests/_coverage_runner.py's JSON) into coverage.py data, then HTML and a
+markdown summary for one traced directory, plus Cobertura XML when --xml-file names one (SPECIFICATION.md E.5).
+
+options:
+  -h, --help            show this help message and exit
+  --raw-dir RAW_DIR     Directory of *.json line-hit dumps from
+                        tests/_coverage_runner.py
+  --src-dir SRC_DIR     Directory whose *.py files, subdirectories included,
+                        anchor the report scope (default: src)
+  --html-dir HTML_DIR   Output directory for the HTML report (default:
+                        htmlcov)
+  --xml-file XML_FILE   Output path for a Cobertura XML report (default: none
+                        written)
+  --markdown-file MARKDOWN_FILE
+                        Output path for a markdown summary table (default:
+                        coverage_summary.md)
+  --data-file DATA_FILE
+                        coverage.py data file to write (default: .coverage)

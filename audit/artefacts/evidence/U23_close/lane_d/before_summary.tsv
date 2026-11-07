@@ -1,0 +1,6 @@
+before	test_buildgen_web_tag	rc=0	0.9s	129 passed in 0.64s
+before	test_buildgen_definitions	rc=0	11.0s	250 passed in 9.54s
+before	test_buildgen_generate	rc=0	27.0s	330 passed in 24.45s
+before	test_api_reference	rc=0	24.2s	75 passed in 21.09s
+before	test_error_catalog	rc=0	23.9s	33 passed in 14.98s
+before	test_definitions_js_mirrors	rc=0	0.3s	3 passed in 0.06s

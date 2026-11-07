@@ -1,0 +1,36 @@
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_retention_check_crc16: pass
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_retention_check_nocrc: pass
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_crc16: pass
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_nocrc: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_retention_check_crc16: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_retention_check_nocrc: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_crc16: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_nocrc: pass
+ok   k=3 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=3 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+FLIP k=3 D=300 test_a_host_stall_cannot_fail_the_retention_check_crc16: FAIL AssertionError: 119
+FLIP k=3 D=300 test_a_host_stall_cannot_fail_the_retention_check_nocrc: FAIL AssertionError: 119
+FLIP k=3 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_crc16: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=3 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_nocrc: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=4 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=4 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+FLIP k=4 D=300 test_a_host_stall_cannot_fail_the_retention_check_crc16: FAIL AssertionError: 119
+FLIP k=4 D=300 test_a_host_stall_cannot_fail_the_retention_check_nocrc: FAIL AssertionError: 119
+FLIP k=4 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_crc16: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=4 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_nocrc: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=5 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=5 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+FLIP k=5 D=300 test_a_host_stall_cannot_fail_the_retention_check_crc16: FAIL AssertionError: 119
+FLIP k=5 D=300 test_a_host_stall_cannot_fail_the_retention_check_nocrc: FAIL AssertionError: 119
+FLIP k=5 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_crc16: FAIL AssertionError: only 149/150 hammered transactions completed
+FLIP k=5 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_nocrc: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_retention_check_crc16: pass
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_retention_check_nocrc: pass
+FLIP k=6 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_crc16: FAIL AssertionError: only 149/150 hammered transactions completed
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_sustained_hammer_nocrc: pass

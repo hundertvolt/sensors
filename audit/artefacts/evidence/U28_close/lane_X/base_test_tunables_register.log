@@ -1,0 +1,34 @@
+.F.............                                                          [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28x')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: scripts/_unix_port.sh:18: runner.unix_port_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/cross_browser_smoke.mjs:33: l0.smoke_display_ready_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:49: ci.last_green_lookup_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:92: ci.devices_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:187: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:192: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:246: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:251: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:299: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:304: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:385: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         .github/workflows/ci.yml:390: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10810: tool.apt_acquire_timeout_s: Sites list [('toolchain/setup_toolchain.py', '30')], the tags say [('.github/workflows/ci.yml', '30'), ('scripts/setup_cross_browser_toolchain.sh', '30'), ('toolchain/setup_toolchain.py', '30')]
+E         SPECIFICATION.md:10811: tool.uv_sync_attempts: Sites list [('.github/actions/setup-micropython-toolchain/action.yml', '3'), ('.github/workflows/ci.yml', '3'), ('toolchain/setup_toolchain.py', '3')], the tags say [('.github/workflows/ci.yml', '3'), ('scripts/setup_cross_browser_toolchain.sh', '3'), ('scripts/uv_sync_retried.sh', '3'), ('toolchain/setup_toolchain.py', '3')]
+E         SPECIFICATION.md:10812: tool.uv_sync_backoff_step_s: Sites list [('.github/actions/setup-micropython-toolchain/action.yml', '10'), ('.github/workflows/ci.yml', '10'), ('toolchain/setup_toolchain.py', '10.0')], the tags say [('scripts/uv_sync_retried.sh', '10'), ('toolchain/setup_toolchain.py', '10.0')]
+E         SPECIFICATION.md:10857: l0.live_twin_ready_timeout_ms: Sites list [('scripts/cross_browser_smoke.mjs', '20000'), ('tests_js/_twin_process.js', '20000')], the tags say [('tests_js/_twin_process.js', '20000')]
+E         SPECIFICATION.md:10858: l0.live_twin_shutdown_timeout_ms: Sites list [('scripts/cross_browser_smoke.mjs', '15000'), ('tests_js/_twin_process.js', '15000')], the tags say [('tests_js/_twin_process.js', '15000')]
+E       assert not ['scripts/_unix_port.sh:18: runner.unix_port_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row', 'scrip....github/workflows/ci.yml:192: ci.playwright_install_timeout_min is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+1 failed, 14 passed in 3.86s

@@ -1,0 +1,41 @@
+F....F.                                                                  [100%]
+=================================== FAILURES ===================================
+_______ test_every_staged_write_is_flushed_on_the_manager_that_holds_it ________
+
+    def test_every_staged_write_is_flushed_on_the_manager_that_holds_it() -> None:
+        offenders = []
+        for path, _tree, sites in _writing_scripts():
+            if path.name in _JUSTIFIED_UNFLUSHED:
+                continue
+            for target, line in sorted(sites.write_targets.items()):
+                if target not in sites.flush_targets:
+                    offenders.append(f"{path.name}:{line} stages on `{target}`, never flushed")
+>       assert not offenders, (
+            "these managers hold a staged config write that no flush_pending() call reaches, so "
+            "asyncio.run() discards the flash write and the file keeps its defaults (MEASUREMENTS archive 7O). "
+            f"A second manager in the same file being flushed does NOT cover these: {offenders}"
+        )
+E       AssertionError: these managers hold a staged config write that no flush_pending() call reaches, so asyncio.run() discards the flash write and the file keeps its defaults (MEASUREMENTS archive 7O). A second manager in the same file being flushed does NOT cover these: ['isl29125_mechanism_envelope.py:168 stages on `reader.cfgmgr`, never flushed']
+E       assert not ['isl29125_mechanism_envelope.py:168 stages on `reader.cfgmgr`, never flushed']
+
+tests_scripts/test_device_script_config_flush.py:97: AssertionError
+__________________ test_every_scratch_config_file_is_removed ___________________
+
+    def test_every_scratch_config_file_is_removed() -> None:
+        hosts = sorted(p for p in _TESTS_HARDWARE.rglob("*.py") if "device_scripts" not in p.parts)
+        assert _host_runs(hosts, {p.name for p in DEVICE_SCRIPTS.glob("*.py")}), "no host function names a device script - the scan reads nothing"
+        found = scratch_findings(DEVICE_SCRIPTS, hosts)
+>       assert not found, "scratch config left on the board's flash after a run:\n  " + "\n  ".join(found)
+E       AssertionError: scratch config left on the board's flash after a run:
+E           isl29125_mechanism_envelope.py: config_HWTEST_ISL29125.cfg is removed in no finally of its own or of a script its host test runs
+E           reboot_persist_read.py: config_HWTEST_REBOOT.cfg is removed in no finally of its own or of a script its host test runs
+E           reboot_persist_write.py: config_HWTEST_REBOOT.cfg is removed in no finally of its own or of a script its host test runs
+E           system_debug_level_raise_for_boot_log_check.py: config_HWTEST_DEBUGLEVEL_BACKUP.cfg is removed in no finally of its own or of a script its host test runs
+E           system_debug_level_restore_after_boot_log_check.py: config_HWTEST_DEBUGLEVEL_BACKUP.cfg is removed in no finally of its own or of a script its host test runs
+E       assert not ['isl29125_mechanism_envelope.py: config_HWTEST_ISL29125.cfg is removed in no finally of its own or of a script its ho...g_check.py: config_HWTEST_DEBUGLEVEL_BACKUP.cfg is removed in no finally of its own or of a script its host test runs']
+
+tests_scripts/test_device_script_config_flush.py:247: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_config_flush.py::test_every_staged_write_is_flushed_on_the_manager_that_holds_it
+FAILED tests_scripts/test_device_script_config_flush.py::test_every_scratch_config_file_is_removed
+2 failed, 5 passed in 0.94s

@@ -1,0 +1,60 @@
+.........FFF                                                             [100%]
+=================================== FAILURES ===================================
+_____________ test_a_file_that_never_reaches_microtests_exit_fails _____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8064/test_a_file_that_never_reaches0')
+
+    def test_a_file_that_never_reaches_microtests_exit_fails(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
+        # Test functions without the trailer define everything and run nothing: the runner must not read that as a pass.
+        probe = _probe(tmp_path, "def test_a():\n    assert False\n")
+        completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
+>       assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+E       AssertionError: 
+E         
+E       assert 0 == 1
+E        +  where 0 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', 'tests/_threshold_run...ytest-of-root/pytest-8064/test_a_file_that_never_reaches0/probe_case.py', '32768'], returncode=0, stdout='', stderr='').returncode
+
+tests_scripts/test_threshold_runner.py:104: AssertionError
+______ test_an_exit_with_a_message_is_a_failure_not_a_crash_of_the_runner ______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8064/test_an_exit_with_a_message_is0')
+
+    def test_an_exit_with_a_message_is_a_failure_not_a_crash_of_the_runner(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
+        completed = _run(repo_root, micropython_bin, [_RUNNER, str(_probe(tmp_path, "import sys\nsys.exit('gave up')\n")), str(_SHIPPED_THRESHOLD)])
+        assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+>       assert "ValueError" not in completed.stdout + completed.stderr, "int() of the message must not be what fails"
+E       AssertionError: int() of the message must not be what fails
+E       assert 'ValueError' not in "Traceback (... 'gave up'\n"
+E         
+E         'ValueError' is contained here:
+E           , in _run
+E           ValueError: invalid syntax for integer with base 10: 'gave up'
+E         ? ++++++++++
+
+tests_scripts/test_threshold_runner.py:111: AssertionError
+______________ test_the_test_file_sees_only_its_own_name_in_argv _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8064/test_the_test_file_sees_only_i0')
+
+    def test_the_test_file_sees_only_its_own_name_in_argv(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
+        probe = _probe(tmp_path, "import sys\nprint('ARGV', sys.argv)\nsys.exit(0)\n")
+        completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
+        assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+>       assert f"ARGV ['{probe}']" in completed.stdout, completed.stdout
+E       AssertionError: ARGV ['tests/_threshold_runner.py', '/tmp/pytest-of-root/pytest-8064/test_the_test_file_sees_only_i0/probe_case.py', '32768']
+E         
+E       assert "ARGV ['/tmp/pytest-of-root/pytest-8064/test_the_test_file_sees_only_i0/probe_case.py']" in "ARGV ['tests/_threshold_runner.py', '/tmp/pytest-of-root/pytest-8064/test_the_test_file_sees_only_i0/probe_case.py', '32768']\n"
+E        +  where "ARGV ['tests/_threshold_runner.py', '/tmp/pytest-of-root/pytest-8064/test_the_test_file_sees_only_i0/probe_case.py', '32768']\n" = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', 'tests/_threshold_run...ld_runner.py', '/tmp/pytest-of-root/pytest-8064/test_the_test_file_sees_only_i0/probe_case.py', '32768']\n", stderr='').stdout
+
+tests_scripts/test_threshold_runner.py:118: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_threshold_runner.py::test_a_file_that_never_reaches_microtests_exit_fails
+FAILED tests_scripts/test_threshold_runner.py::test_an_exit_with_a_message_is_a_failure_not_a_crash_of_the_runner
+FAILED tests_scripts/test_threshold_runner.py::test_the_test_file_sees_only_its_own_name_in_argv
+3 failed, 9 passed in 0.19s

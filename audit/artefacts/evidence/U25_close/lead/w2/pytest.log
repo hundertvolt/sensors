@@ -1,0 +1,311 @@
+........................................................................ [  1%]
+........................................................................ [  2%]
+..................................................................ssssss [  4%]
+........................................................................ [  5%]
+........................................................................ [  7%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 11%]
+........................................................................ [ 12%]
+........................................................................ [ 14%]
+........................................................................ [ 15%]
+........................................................................ [ 17%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 21%]
+........................................................................ [ 23%]
+........................................................................ [ 24%]
+........................................................................ [ 25%]
+........................................................................ [ 27%]
+........................................................................ [ 28%]
+........................................................................ [ 30%]
+........................................................................ [ 31%]
+........................................................................ [ 33%]
+........................................................................ [ 34%]
+........................................................................ [ 35%]
+........................................................................ [ 37%]
+........................................................................ [ 38%]
+........................................................................ [ 40%]
+........................................................................ [ 41%]
+........................................................................ [ 43%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 47%]
+.........................FF............................................. [ 48%]
+........................................................................ [ 50%]
+........................................................................ [ 51%]
+........................................................................ [ 53%]
+........................................................................ [ 54%]
+........................................................................ [ 56%]
+........................................................................ [ 57%]
+................................................................F....... [ 58%]
+..................................................FF.................... [ 60%]
+.......................................F................................ [ 61%]
+........................................................................ [ 63%]
+........................................................................ [ 64%]
+........................................................................ [ 66%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 70%]
+........................................................................ [ 71%]
+.......................F..F............................................. [ 73%]
+.............................FF.F....................................... [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 77%]
+........................................................................ [ 79%]
+........................................................................ [ 80%]
+.............................................................F.......... [ 81%]
+......F...F............................................................. [ 83%]
+....................FF..F............................................... [ 84%]
+........................................................................ [ 86%]
+........................................................................ [ 87%]
+........................................................................ [ 89%]
+........................................................................ [ 90%]
+........................................................................ [ 92%]
+........................................................................ [ 93%]
+........................................................................ [ 94%]
+......................................F.............F................... [ 96%]
+........................................................................ [ 97%]
+........................................................................ [ 99%]
+......................................                                   [100%]
+=================================== FAILURES ===================================
+E   AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+        CLAUDE.md: digital_twin/unix_port_gc_unwedge.py
+        SPECIFICATION.md: digital_twin/segfault_stress_repro.py
+        SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+        SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+        SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+        SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+        SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+        SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+        SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+        SPECIFICATION.md: tests/_webserver_concurrency_scenarios.py
+        SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+        SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+        SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+        SPECIFICATION.md: tests/test_digital_twin_real_website_integration.py
+        SPECIFICATION.md: tests/test_digital_twin_unix_port_gc_unwedge.py
+        SPECIFICATION.md: tests/test_sensortask_dev.py
+        SPECIFICATION.md: tests/test_sensortask_dev.py
+        tests/_sensortask_scenarios.py: tests/_webserver_concurrency_scenarios.py
+        tests/_sensortask_scenarios.py: tests/_webserver_concurrency_scenarios.py
+    assert not [('CLAUDE.md', 'digital_twin/unix_port_gc_unwedge.py'), ('SPECIFICATION.md', 'digital_twin/segfault_stress_repro.py'),...N.md', 'digital_twin/unix_port_gc_unwedge.py'), ('SPECIFICATION.md', 'tests/_webserver_concurrency_scenarios.py'), ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_citations.py:251: AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E   AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+        scripts/_digital_twin_ci_suite.py	WP1
+        scripts/_digital_twin_ci_suite.py	WP1
+        scripts/_digital_twin_ci_suite.py	WP2
+        scripts/run_digital_twin_ci.sh	digital_twin/*.json
+        tests/test_digital_twin_sensortask_integration.py	measure A
+    assert not [('scripts/_digital_twin_ci_suite.py', 'WP1'), ('scripts/_digital_twin_ci_suite.py', 'WP1'), ('scripts/_digital_twin_c...ts/run_digital_twin_ci.sh', 'digital_twin/*.json'), ('tests/test_digital_twin_sensortask_integration.py', 'measure A')]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_citations.py:256: AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E   AssertionError: tests/test_digital_twin_bus_hazard_concurrency.py:92: _ERASE_UNIT = 256 copies src/'s [256] - read it with src_const(), or cite its source and pin it
+      tests/test_digital_twin_uart_comm_hazard.py:55: _CMD_GET = _uart_const('_CMD_GET') is no literal - read src/'s [2] with src_const()
+      tests/test_digital_twin_uart_field_sweep.py:56: _FIELDS = {'cmd': (_CMD, lambda v: v == _CMD_SET, (0, 1, 2, 3, 4, 5, 255)), 'size': (_SIZE, lambda v: v == 1, (0, 1, 2, 8, 9, 255)), 'chunks': (_CHUNKS, lambda v: v >= 2, (0, 1, 2, 255)), 'cur_chunk': (_CUR, lambda v: v == 1, (0, 1, 2, 255)), 'uid': (_UID, lambda v: v <= 254, (0, 254, 255))} is no literal - read src/'s [('Pres', 'Temp', 'SLPres', 'TS'), ('Lux', 'Red', 'Green', 'Blue', 'Hue', 'Sat', 'Bri', 'CCT', 'RangeAct', 'Overrange', 'GainMeas', 'CalLight', 'TS'), ('Triggered', 'State', 'TS'), ('Synced', 'LastSyncAge', 'TS'), ('CO2', 'Temp', 'Hum', 'WetBulb', 'DewPoint', 'FRCState', 'FRCWait', 'TS'), ('VOC', 'Raw', 'VOCState', 'TS'), ('Mode', 'Connected', 'IP', 'Subnet', 'Gateway', 'DNS', 'RSSI', 'TS')] with src_const()
+    assert ['tests/test_... src_const()'] == []
+      
+      Left contains 3 more items, first extra item: "tests/test_digital_twin_bus_hazard_concurrency.py:92: _ERASE_UNIT = 256 copies src/'s [256] - read it with src_const(), or cite its source and pin it"
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_const_mirrors.py:119: AssertionError: tests/test_digital_twin_bus_hazard_concurrency.py:92: _ERASE_UNIT = 256 copies src/'s [256] - read it with src_const(), or cite its source and pin it
+E   AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+        tests/test_digital_twin_sensortask_integration.py: No seeded SCD30 data, deliberately: the point is the real startup race, the SCD3
+    assert not [('tests/test_digital_twin_sensortask_integration.py', 'No seeded SCD30 data, deliberately: the point is the real startup race, the SCD3')]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_decision_vocabulary.py:89: AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E   AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+        scripts/_digital_twin_ci_suite.py	---- Run 5c: the case that must NEVER lose anything, a commanded reboot.
+        scripts/_digital_twin_ci_suite.py	It deliberately does NOT assert that SGP40's history survived Run 3, which it ca
+        scripts/_digital_twin_ci_suite.py	Not device- or driver-specific, and deliberately small: each one ends the driver
+        scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
+        tests/_webserver_concurrency_scenarios.py	Both the scratch key and the port range are keyed per device, not shared across
+        tests/_webserver_concurrency_scenarios.py	One thing this file deliberately does NOT attempt is a "different source host" v
+        tests/_webserver_concurrency_scenarios.py	Opens a real connection, sends a deliberately incomplete request (no terminating
+        tests/_webserver_concurrency_scenarios.py	Settled, pinned at each device's own ceiling (SPECIFICATION.md H.7): a slot is f
+        tests/_webserver_concurrency_scenarios.py	This deliberately revisits that exact scale, repeated, as an in-process regressi
+        tests/_webserver_concurrency_scenarios.py	the stall: no await, so nothing is accepted until it ends
+        tests/test_digital_twin_bus_hazard_concurrency.py	Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy(): its share
+        tests/test_digital_twin_bus_hazard_concurrency.py	wozi's own SGP40+BMP3xx-on-i2c1 pairing can never be confirmed on real hardware
+        tests/test_digital_twin_real_website_integration.py	"wozi" is hardcoded deliberately, not a stale device-specific leftover (Part L.4
+        tests/test_digital_twin_sensortask_integration.py	A second real backup mutates the twin's in-memory FRAM image but is deliberately
+        tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT drive this through main()/supervise_tasks().
+        tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT pre-seed scd30's measurement data the way every other SGP4
+        tests/test_digital_twin_sensortask_integration.py	Deliberately does not wait out an auto-unpause: the command's duration is a hard
+        tests/test_digital_twin_sensortask_integration.py	Deliberately wozi-only - SPECIFICATION.md Part E.2.1 says why.
+        tests/test_digital_twin_sensortask_integration.py	PauseTime is deliberately excluded from GET /notification's flat settings, so it
+        tests/test_digital_twin_sensortask_integration.py	See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ
+        tests/test_digital_twin_sensortask_integration.py	The generated sensortask_wozi.py's module-level `conn` is typed "Any | None" rat
+    assert not [('scripts/_digital_twin_ci_suite.py', '---- Run 5c: the case that must NEVER lose anything, a commanded reboot.'), ('...er_concurrency_scenarios.py', 'One thing this file deliberately does NOT attempt is a "different source host" v'), ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_decision_vocabulary.py:94: AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests/_webserver_concurrency_scenarios.py'
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests/_webserver_concurrency_scenarios.py'
+E   AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+        ('scripts/_digital_twin_ci_suite.py', '_configured_max_connections', 'buildgen.validate')
+        ('tests/test_digital_twin_real_website_integration.py', '_decompress', 'deflate')
+        ('tests/test_digital_twin_real_website_integration.py', '_decompress', 'io')
+        ('tests/test_digital_twin_sensortask_integration.py', 'test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list.scenario', 'asy_system_service')
+        ('tests/test_digital_twin_sensortask_integration.py', 'test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led.scenario', 'network')
+    assert not [('scripts/_digital_twin_ci_suite.py', '_configured_max_connections', 'buildgen.validate'), ('tests/test_digital_twin_....py', 'test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led.scenario', 'network')]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_import_placement.py:210: AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E   AssertionError: named in F.1 but no such file: ['tests/_webserver_concurrency_scenarios.py']
+    assert not ['tests/_webserver_concurrency_scenarios.py']
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_import_placement.py:262: AssertionError: named in F.1 but no such file: ['tests/_webserver_concurrency_scenarios.py']
+E   AssertionError: twin scenarios with neither an L3/L4 counterpart nor an E.6.6 row with a reason: ['ci_suite._run_12_reset_reasons', 'ci_suite._run_13_system_commands', 'clock_jump', 'fram_crash_points', 'hot_replug', 'ntp', 'rp2_constants', 'timer_pool', 'uart_comm_hazard', 'uart_field_sweep']
+    assert not ['ci_suite._run_12_reset_reasons', 'ci_suite._run_13_system_commands', 'clock_jump', 'fram_crash_points', 'hot_replug', 'ntp', ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_level_containment.py:112: AssertionError: twin scenarios with neither an L3/L4 counterpart nor an E.6.6 row with a reason: ['ci_suite._run_12_reset_reasons', 'ci_suite._run_13_system_commands', 'clock_jump', 'fram_crash_points', 'hot_replug', 'ntp', 'rp2_constants', 'timer_pool', 'uart_comm_hazard', 'uart_field_sweep']
+E   AssertionError: COVERS_TWIN_SCENARIOS names scenarios that do not exist: {'webserver_concurrency': ['tests_hardware/bench/test_end_to_end_timing.py', 'tests_hardware/bench/test_heap_under_connection_ceiling.py', 'tests_hardware/bench/test_memory_stress_bench.py', 'tests_hardware/bench/test_network_resilience.py', 'tests_hardware/bench/test_serving_heap_at_default_gc.py'], 'real_website_integration': ['tests_hardware/bench/test_hotspot_role_reversal.py', 'tests_hardware/bench/test_rest_endpoints_over_sta.py']}
+    assert not {'webserver_concurrency': ['tests_hardware/bench/test_end_to_end_timing.py', 'tests_hardware/bench/test_heap_under_con...ation': ['tests_hardware/bench/test_hotspot_role_reversal.py', 'tests_hardware/bench/test_rest_endpoints_over_sta.py']}
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_level_containment.py:118: AssertionError: COVERS_TWIN_SCENARIOS names scenarios that do not exist: {'webserver_concurrency': ['tests_hardware/bench/test_end_to_end_timing.py', 'tests_hardware/bench/test_heap_under_connection_ceiling.py', 'tests_hardware/bench/test_memory_stress_bench.py', 'tests_hardware/bench/test_network_resilience.py', 'tests_hardware/bench/test_serving_heap_at_default_gc.py'], 'real_website_integration': ['tests_hardware/bench/test_hotspot_role_reversal.py', 'tests_hardware/bench/test_rest_endpoints_over_sta.py']}
+E   AssertionError: no per-device twin family found - the collapse has stopped seeing them
+    assert {}
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_level_containment.py:132: AssertionError: no per-device twin family found - the collapse has stopped seeing them
+E   AssertionError: assert ['test_digita...trailer', ...] == []
+      
+      Left contains 12 more items, first extra item: 'test_digital_twin_bus_hazard_concurrency.py: does not end with the canonical microtest trailer'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_microtest.py:292: AssertionError: assert ['test_digita...trailer', ...] == []
+E   AssertionError: digital_twin/typecheck.ini's explicit-Any baseline names modules no longer on its search path: ['test_digital_twin_real_website_integration'] - drop them from the list
+    assert not ['test_digital_twin_real_website_integration']
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_mypy_any_baseline.py:60: AssertionError: digital_twin/typecheck.ini's explicit-Any baseline names modules no longer on its search path: ['test_digital_twin_real_website_integration'] - drop them from the list
+E   AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['scripts/run_digital_twin_ci.sh', 'tests/_webserver_concurrency_scenarios.py', 'tests/test_digital_twin_generic_wiring.py', 'tests/test_digital_twin_isl29125_autorange.py', 'tests/test_digital_twin_real_website_integration.py', 'tests/test_digital_twin_sensortask_integration.py', 'tests/test_digital_twin_uart_link.py', 'tests/test_digital_twin_webserver_concurrency_arzi.py', 'tests/test_digital_twin_webserver_concurrency_dev.py', 'tests/test_digital_twin_webserver_concurrency_grkizi.py', 'tests/test_digital_twin_webserver_concurrency_klkizi.py', 'tests/test_digital_twin_webserver_concurrency_schlafzi.py', 'tests/test_digital_twin_webserver_concurrency_wozi.py']
+    assert not ['scripts/run_digital_twin_ci.sh', 'tests/_webserver_concurrency_scenarios.py', 'tests/test_digital_twin_generic_wirin...e.py', 'tests/test_digital_twin_real_website_integration.py', 'tests/test_digital_twin_sensortask_integration.py', ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_no_variant_literals.py:155: AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['scripts/run_digital_twin_ci.sh', 'tests/_webserver_concurrency_scenarios.py', 'tests/test_digital_twin_generic_wiring.py', 'tests/test_digital_twin_isl29125_autorange.py', 'tests/test_digital_twin_real_website_integration.py', 'tests/test_digital_twin_sensortask_integration.py', 'tests/test_digital_twin_uart_link.py', 'tests/test_digital_twin_webserver_concurrency_arzi.py', 'tests/test_digital_twin_webserver_concurrency_dev.py', 'tests/test_digital_twin_webserver_concurrency_grkizi.py', 'tests/test_digital_twin_webserver_concurrency_klkizi.py', 'tests/test_digital_twin_webserver_concurrency_schlafzi.py', 'tests/test_digital_twin_webserver_concurrency_wozi.py']
+E   AssertionError: usage: scripts/run_digital_twin_ci.sh <device> - one of: fixture_device
+      
+    assert (2, ['usage: ...ture_device']) == (1, ['port 53...(CLAUDE.md)'])
+      
+      At index 0 diff: 2 != 1
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_port_lock.py:335: AssertionError: usage: scripts/run_digital_twin_ci.sh <device> - one of: fixture_device
+E   AssertionError: usage: scripts/run_digital_twin_ci.sh <device> - one of: fixture_device
+      
+    assert (2, ['usage: ...ture_device']) == (1, ['port 18...(CLAUDE.md)'])
+      
+      At index 0 diff: 2 != 1
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_port_lock.py:335: AssertionError: usage: scripts/run_digital_twin_ci.sh <device> - one of: fixture_device
+E   AssertionError: usage: scripts/run_digital_twin_ci.sh <device> - one of: fixture_device
+      
+    assert 2 == 1
+     +  where 2 = CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-8725/test_each_runner_holds_its_por1/repo/scripts/run_...n_ci.sh'], returncode=2, stdout='', stderr='usage: scripts/run_digital_twin_ci.sh <device> - one of: fixture_device\n').returncode
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_port_lock.py:345: AssertionError: usage: scripts/run_digital_twin_ci.sh <device> - one of: fixture_device
+E   AssertionError: digital_twin/run_generic_integration.py:181: l2.twin_test_stdin_poll_ms is tagged but has no SPECIFICATION.md Part N row
+      digital_twin/run_generic_integration.py:186: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N row
+      digital_twin/unixport/_ntp_responder.py:23: twin.ntp_responder_poll_ms is tagged but has no SPECIFICATION.md Part N row
+      digital_twin/unixport/_ntp_responder.py:25: twin.ntp_responder_take_rounds is tagged but has no SPECIFICATION.md Part N row
+      tests/_twin_readiness.py:15: l2.twin_readiness_poll_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_bmp3xx.py:15: l2.bmp3xx_probe_hang_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_bus_hazard_concurrency.py:86: l2.bus_hazard_command_wait_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_clock_jump.py:59: l2.clock_jump_wait_timeout_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_fram.py:61: l2.fram_booted_until_yields is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_hot_replug.py:60: l2.hot_replug_wait_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_hot_replug.py:62: l2.hot_replug_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_http_client.py:32: l2.http_client_fetch_timeout_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_http_client.py:34: l2.http_client_silent_server_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_isl29125.py:34: l2.isl29125_probe_hang_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine.py:90: l2.machine_timer_short_period_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine.py:92: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine.py:94: l2.machine_spi_wire_time_us_per_byte is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine_uart.py:31: l2.machine_uart_frame_wire_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine_uart.py:33: l2.machine_uart_frame_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine_uart.py:37: l2.machine_uart_stall_baud is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_machine_uart.py:39: l2.machine_uart_stall_pages is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_ntp.py:61: l2.ntp_reply_wait_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_ntp.py:64: l2.ntp_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_ntp.py:275: l2.ntp_sync_wait_timeout_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_sensortask_integration.py:100: l2.sensortask_integration_idle_window_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_sensortask_integration.py:110: l2.sensortask_integration_heap_floor_reads is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_timer_pool.py:74: l2.timer_pool_wait_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_timer_pool.py:76: l2.timer_pool_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_comm_hazard.py:33: l2.uart_comm_hazard_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_comm_hazard.py:35: l2.uart_comm_hazard_run_limit_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_comm_hazard.py:37: l2.uart_comm_hazard_recovery_attempts is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_field_sweep.py:30: l2.uart_field_sweep_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_field_sweep.py:33: l2.uart_field_sweep_quiet_window_ms is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_field_sweep.py:35: l2.uart_field_sweep_run_limit_s is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_link.py:106: l2.uart_link_leak_warmup_rounds is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_link.py:110: l2.uart_link_leak_rate_bytes_per_transfer is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_uart_link.py:112: l2.uart_link_crc16_rounds is tagged but has no SPECIFICATION.md Part N row
+      tests/test_digital_twin_wifi_modes.py:59: l2.wifi_modes_sleep_scale is tagged but has no SPECIFICATION.md Part N row
+      tests_scripts/test_digital_twin_generated_boot.py:65: l0.generated_boot_link_poll_gap_s is tagged but has no SPECIFICATION.md Part N row
+      tests_scripts/test_digital_twin_generated_boot.py:67: l0.generated_boot_reset_wait_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_ci_suite.py:216: l2.escalation_wait_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_ci_suite.py:218: l2.ntp_first_sync_wait_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_ci_suite.py:220: l2.read_cycle_wait_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_ci_suite.py:228: l2.commanded_reset_margin_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_ci_suite.py:230: l2.verbose_poll_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:72: l2.scenario_request_timeout_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:74: l2.scenario_serving_timeout_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:76: l2.scenario_line_poll_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:78: l2.scenario_conn_status_interval_ms is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:80: l2.scenario_fault_status_interval_ms is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:82: l2.scenario_drain_wait_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:84: l2.scenario_still_serving_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:86: l2.scenario_flaky_hold_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:88: l2.scenario_slow_put_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:90: l2.scenario_stall_ms is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:92: l2.scenario_watchdog_window_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:94: l2.scenario_refusal_feed_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:96: l2.scenario_commanded_reset_margin_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:98: l2.scenario_pause_countdown_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:100: l2.scenario_hotspot_wait_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:102: l2.scenario_uart_load_s is tagged but has no SPECIFICATION.md Part N row
+      scripts/_digital_twin_scenarios.py:104: l2.scenario_uart_load_faults is tagged but has no SPECIFICATION.md Part N row
+      tests_js/live-backend.test.js:10: l0.live_smoke_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+      SPECIFICATION.md:10757: web.connections_per_page_load: Sites list [('scripts/cross_browser_smoke.mjs', '2'), ('tests/_webserver_concurrency_scenarios.py', '2')], the tags say [('scripts/_digital_twin_scenarios.py', '2'), ('scripts/cross_browser_smoke.mjs', '2')]
+      SPECIFICATION.md:10773: l2.mem_paused_wait_s is a tuned row, but no file carries its @tunable tag
+      SPECIFICATION.md:10776: l2.past_exhaustion_wait_s is a tuned row, but no file carries its @tunable tag
+      SPECIFICATION.md:10777: l2.in_flight_settle_s is a tuned row, but no file carries its @tunable tag
+      SPECIFICATION.md:10779: l2.mem_paused_poll_s is a tuned row, but no file carries its @tunable tag
+      SPECIFICATION.md:10780: l2.serving_poll_s: Sites list [('scripts/_digital_twin_ci_suite.py', '0.25')], the tags say [('scripts/_twin_process.py', '0.25')]
+      SPECIFICATION.md:10781: l2.serving_probe_timeout_s: Sites list [('scripts/_digital_twin_ci_suite.py', '1.0')], the tags say [('scripts/_twin_process.py', '1.0')]
+      SPECIFICATION.md:10783: l2.kill_reap_timeout_s: Sites list [('scripts/_digital_twin_ci_suite.py', '5.0')], the tags say [('scripts/_twin_process.py', '5.0')]
+      SPECIFICATION.md:10790: l2.twin_ready_poll_ms: Sites list [('digital_twin/run_generic_integration.py', '20'), ('digital_twin/segfault_stress_repro.py', '20')], the tags say [('digital_twin/run_generic_integration.py', '20')]
+      SPECIFICATION.md:10819: l2.sensortask_integration_hotspot_wait_timeout_s: Sites list [('tests/test_digital_twin_sensortask_integration.py', '25.0')], the tags say [('tests/test_digital_twin_sensortask_integration.py', '40.0')]
+      SPECIFICATION.md:10821: l2.sensortask_integration_hotspot_run_bound_s: Sites list [('tests/test_digital_twin_sensortask_integration.py', '35.0')], the tags say [('tests/test_digital_twin_sensortask_integration.py', '60.0')]
+      SPECIFICATION.md:10823: l2.machine_wdt_short_timeout_ms: Sites list [('tests/test_digital_twin_machine.py', '150')], the tags say [('tests/test_digital_twin_machine.py', '100')]
+      SPECIFICATION.md:10842: l2.real_website_integration_run_bound_s is a tuned row, but no file carries its @tunable tag
+      SPECIFICATION.md:10843: l2.real_website_integration_burst_run_bound_s is a tuned row, but no file carries its @tunable tag
+      SPECIFICATION.md:10859: l2.uart_link_leak_budget_bytes is a tuned row, but no file carries its @tunable tag
+      SPECIFICATION.md:10867: l2.wifi_modes_wait_poll_s: Sites list [('tests/test_digital_twin_wifi_modes.py', '0.25')], the tags say [('tests/test_digital_twin_wifi_modes.py', '0.1')]
+    assert not ['digital_twin/run_generic_integration.py:181: l2.twin_test_stdin_poll_ms is tagged but has no SPECIFICATION.md Part N..., 'tests/test_digital_twin_bmp3xx.py:15: l2.bmp3xx_probe_hang_s is tagged but has no SPECIFICATION.md Part N row', ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_tunables_register.py:253: AssertionError: digital_twin/run_generic_integration.py:181: l2.twin_test_stdin_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E   AssertionError: ["test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, no...start ['require_fresh', 'bytes'] with the shim absent, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']"]
+    assert ["test_digita..._unix_port']"] == []
+      
+      Left contains 2 more items, first extra item: "test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']"
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_scripts/test_twin_entry_point_order.py:112: AssertionError: ["test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, no...start ['require_fresh', 'bytes'] with the shim absent, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']"]
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_hardware/bench/test_bus_concurrency_under_api_load.py:287: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_hardware/bench/test_bus_concurrency_under_api_load.py:457: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25w1/tests_hardware/bench/test_bus_concurrency_under_api_load.py:546: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+FAILED tests_scripts/test_const_mirrors.py::test_every_test_copy_of_a_src_const_is_read_or_pinned
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_device_tomls.py::test_every_device_is_covered_by_the_micropython_tiers_per_device_files
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+FAILED tests_scripts/test_import_placement.py::test_the_named_exceptions_mirror_specification_f1
+FAILED tests_scripts/test_level_containment.py::test_every_twin_scenario_is_covered_or_an_exception_row_with_a_reason
+FAILED tests_scripts/test_level_containment.py::test_every_scenario_named_anywhere_exists
+FAILED tests_scripts/test_level_containment.py::test_every_per_device_family_spans_the_device_set
+FAILED tests_scripts/test_microtest.py::test_every_test_file_ends_with_the_canonical_trailer_and_binds_only_functions
+FAILED tests_scripts/test_mypy_any_baseline.py::test_every_baseline_module_still_exists[digital_twin/typecheck.ini]
+FAILED tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal
+FAILED tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[run_digital_twin_ci.sh-53]
+FAILED tests_scripts/test_port_lock.py::test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything[run_digital_twin_ci.sh-18080]
+FAILED tests_scripts/test_port_lock.py::test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/run_digital_twin_ci.sh]
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_twin_entry_point_order.py::test_every_booting_twin_test_file_prewarms_then_shims_first
+19 failed, 4981 passed, 6 skipped, 3 warnings in 683.78s (0:11:23)

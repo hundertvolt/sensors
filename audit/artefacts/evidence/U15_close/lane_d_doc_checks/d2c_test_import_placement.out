@@ -1,0 +1,21 @@
+.F.....                                                                  [100%]
+=================================== FAILURES ===================================
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests/test_asy_isl29125_driver.py', 'test_a_disagreeing_reading_restarts_the_agreement_run', 'time')
+E           ('tests/test_asy_isl29125_driver.py', 'test_a_published_candidate_stops_being_offered_once_its_hold_expires', 'time')
+E           ('tests/test_asy_isl29125_driver.py', 'test_calibration_is_skipped_during_settle_and_while_auto_range_is_off', 'time')
+E           ('tests/test_asy_isl29125_driver.py', 'test_no_range_decision_is_made_while_auto_is_off_or_a_settle_is_pending', 'time')
+E           ('tests/test_asy_isl29125_driver.py', 'test_switch_down_is_suppressed_inside_the_dwell_window', 'time')
+E           ('tests/test_asy_isl29125_driver.py', 'test_the_run_ends_once_consecutive_readings_agree', 'time')
+E           ('tests/test_asy_isl29125_driver.py', 'test_the_run_gives_up_when_its_window_closes', 'time')
+E       assert not [('tests/test_asy_isl29125_driver.py', 'test_a_disagreeing_reading_restarts_the_agreement_run', 'time'), ('tests/test_...dow', 'time'), ('tests/test_asy_isl29125_driver.py', 'test_the_run_ends_once_consecutive_readings_agree', 'time'), ...]
+
+tests_scripts/test_import_placement.py:283: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+1 failed, 6 passed in 2.96s

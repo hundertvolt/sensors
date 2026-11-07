@@ -1,0 +1,17 @@
+test_digital_twin_isl29125_autorange.-1 rc=0 wall=54.19 mem=0 :: 22/22 passed, 0 failed, 0 skipped
+test_digital_twin_bus_hazard_concurrency.-1 rc=0 wall=153.43 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.klkizi.-1 rc=0 wall=27.30 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.schlafzi.-1 rc=0 wall=27.50 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.wozi.-1 rc=0 wall=35.01 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_isl29125_autorange.32768 rc=0 wall=54.60 mem=0 :: 22/22 passed, 0 failed, 0 skipped
+test_digital_twin_bus_hazard_concurrency.32768 rc=0 wall=158.27 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_generic_wiring.32768 rc=0 wall=0.16 mem=0 :: 15/15 passed, 0 failed, 0 skipped
+test_digital_twin_fram_crash_points.32768 rc=0 wall=75.80 mem=0 :: 3/3 passed, 0 failed, 0 skipped
+test_digital_twin_hot_replug.32768 rc=0 wall=72.60 mem=0 :: 2/2 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.arzi.32768 rc=0 wall=27.97 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.dev.32768 rc=0 wall=44.96 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.grkizi.32768 rc=0 wall=28.22 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.klkizi.32768 rc=0 wall=25.96 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.schlafzi.32768 rc=0 wall=26.04 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_timer_pool.wozi.32768 rc=0 wall=35.92 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+BATCH-DONE

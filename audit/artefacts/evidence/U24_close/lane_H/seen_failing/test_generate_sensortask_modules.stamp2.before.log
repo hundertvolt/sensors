@@ -1,0 +1,48 @@
+.......F                                                                 [100%]
+=================================== FAILURES ===================================
+_ test_both_freshness_stamps_hash_every_input_and_land_after_every_other_output _
+
+generate_sensortask_modules = <module '_generate_sensortask_modules' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/scripts/_generate_sensortask_modules.py'>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8037/test_both_freshness_stamps_has0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f6649fa6150>
+
+    def test_both_freshness_stamps_hash_every_input_and_land_after_every_other_output(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Every file a generation reads, hashed for tests/_generated_tree.py, and each TOML's hash for the JS loader; renamed in last.
+        monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+        out_dir = _one_device_tree(repo_root, tmp_path)
+        for shared in ("buildgen", "toolchain"):
+            (tmp_path / shared).symlink_to(repo_root / shared)
+        (tmp_path / "scripts").mkdir()
+        (tmp_path / "scripts" / "_generate_sensortask_modules.py").write_bytes((repo_root / "scripts" / "_generate_sensortask_modules.py").read_bytes())
+        (tmp_path / "devices" / "zz_test_fixture.toml").write_text("# a concurrent test's fixture, never an input\n")
+        renamed: list[Path] = []
+        real_replace = os.replace
+    
+        def recording_replace(src: "str | Path", dst: "str | Path") -> None:
+            renamed.append(Path(dst))
+            real_replace(src, dst)
+    
+        monkeypatch.setattr(os, "replace", recording_replace)
+        assert generate_sensortask_modules.main() == 0
+    
+        stamps = [out_dir / ".inputs_stamp.json", out_dir / "definitions" / "inputs_stamp.json"]
+        assert sorted(renamed[-2:]) == sorted(stamps), renamed[-4:]
+        tomls = sorted(p for p in (tmp_path / "devices").glob("*.toml") if not p.stem.startswith("zz_test_"))
+        named = ["buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py"]
+        inputs = [*tomls, *(tmp_path / name for name in named)] + [p for pattern in ("buildgen/*.py", "src/*.py", "ext/*.py") for p in tmp_path.glob(pattern)]
+        expected = {str(p.relative_to(tmp_path)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
+        assert "ext/microdot.py" in expected  # the frozen-module closure reads it (buildgen/frozen_modules.py)
+>       assert json.loads(stamps[0].read_text()) == {"inputs": expected}
+E       AssertionError: assert {'inputs': {'...1905449, ...}} == {'inputs': {'...ca7931', ...}}
+E         
+E         Differing items:
+E         {'inputs': {'devices/arzi.toml': 1791905449, 'buildgen/__init__.py': 1791905449, 'buildgen/api_reference.py': 1791905449, 'buildgen/buildspec.py': 1791905449, ...}} != {'inputs': {'devices/arzi.toml': 'd3f74f049d016d8a444a6b7c831b50adc4a6becbe1c73aac70c9a03f54367d79', 'buildgen/error_c...5d7a9', 'toolchain/micropython_overrides.py': '0b0b7e2b552b314c2ba6cb806df9e41691b8f586feb1742490beca7ad8ca7931', ...}}
+E         Use -v to get more diff
+
+tests_scripts/test_generate_sensortask_modules.py:190: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Generated 1 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/pytest-of-root/pytest-8037/test_both_freshness_stamps_has0/build/generated_src
+=========================== short test summary info ============================
+FAILED tests_scripts/test_generate_sensortask_modules.py::test_both_freshness_stamps_hash_every_input_and_land_after_every_other_output
+1 failed, 7 passed in 5.47s

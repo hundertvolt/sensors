@@ -1,0 +1,11 @@
+....................................                                     [100%]
+============================= slowest 8 durations ==============================
+0.41s call     tests_scripts/test_stage_website.py::test_the_real_tree_stages_main_js_import_closure_in_dependency_order
+0.13s call     tests_scripts/test_stage_website.py::test_a_firmware_build_s_date_is_stamped_into_the_page_and_a_plain_build_carries_none
+0.09s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[missing-icon-tag]
+0.09s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[cycle]
+0.09s call     tests_scripts/test_stage_website.py::test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged[2026-10-15]
+0.09s call     tests_scripts/test_stage_website.py::test_a_script_end_tag_in_a_label_is_escaped_and_the_inlined_block_parses_back
+0.08s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[unreferenced-module]
+0.08s call     tests_scripts/test_stage_website.py::test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix[renamed-id]
+36 passed in 3.12s

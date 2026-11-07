@@ -1,0 +1,62 @@
+--- orig/_bus_hazard_catalog.py	2026-10-07 16:11:36.262885985 +0000
++++ fix_catalog/_bus_hazard_catalog.py	2026-10-07 16:46:56.287866254 +0000
+@@ -8,6 +8,7 @@
+ from machine import I2C as FakeI2C
+ from machine import Pin
+ 
++import asy_i2c_driver
+ from asy_bmp3xx_driver import BMP3XX_I2C
+ from asy_i2c_driver import I2C
+ from asy_isl29125_driver import ISL29125_I2C
+@@ -553,6 +554,41 @@
+     Pin.set_external_level(sda_pin, sda_level)
+ 
+ 
++class PollRoundClock:
++    # asy_i2c_driver's SCL-release bound read on a clock only it advances (each sleep, and 1 us per read so a wait
++    # that never yields still expires): the planted slave stretches for a count of reads, so on the wall clock a
++    # host stall alone could expire the bound (the OF-33 class).
++    def __enter__(self) -> "PollRoundClock":
++        real_time, real_asyncio = asy_i2c_driver.time, asy_i2c_driver.asyncio
++        self._saved = (real_time, real_asyncio)
++        now = [0]
++
++        class _Time:
++            ticks_diff = staticmethod(real_time.ticks_diff)
++            sleep_us = staticmethod(real_time.sleep_us)
++
++            @staticmethod
++            def ticks_us() -> int:
++                now[0] += 1
++                return now[0]
++
++        class _Asyncio:
++            Lock = real_asyncio.Lock
++            sleep = staticmethod(real_asyncio.sleep)
++
++            @staticmethod
++            async def sleep_ms(ms: int) -> None:
++                now[0] += ms * 1000
++                await real_asyncio.sleep_ms(ms)
++
++        asy_i2c_driver.time = _Time()  # type: ignore[assignment]
++        asy_i2c_driver.asyncio = _Asyncio()  # type: ignore[assignment]
++        return self
++
++    def __exit__(self, *exc_info: object) -> None:
++        asy_i2c_driver.time, asy_i2c_driver.asyncio = self._saved
++
++
+ async def recover_marking_the_clear(i2c: I2C) -> "tuple[int, int]":
+     # i2c.recover(), returning its status and the bus-log length when its clear began (the bus lock held).
+     mark = []
+@@ -606,7 +642,8 @@
+         assert status == _REC_SDA_LOW | _REC_SDA_STUCK, f"the recovery did not clear the planted held SDA: status {status}"
+         marks.append(mark)
+ 
+-    await asyncio.gather(*(reader_loop(occ) for occ in occupants), recovery())
++    with PollRoundClock():
++        await asyncio.gather(*(reader_loop(occ) for occ in occupants), recovery())
+     assert_no_transfer_inside_the_recovery(fake_bus, marks[0])
+ 
+ 

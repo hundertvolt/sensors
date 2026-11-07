@@ -1,0 +1,246 @@
+=== TRACE step 7 (virtual_ms, real_ms, task, event...) ===
+0 14 main STEP 7
+0 15 RSP LISTEN> UART_B holdoff False
+2 15 INI GET> UART_A holdoff False busy False
+7 17 INI TX A 0102010101 True
+16 21 RSP RD UART_B budget -1 ok vt 16 real_ms 6 0102010101
+22 22 INI RD UART_A budget 30 FAILED vt 15 real_ms 5 -
+22 22 INI GET! UART_A CancelledError
+22 23 RSP TX B 0101000101 True
+25 28 RSP TX B 0104010301 True
+57 52 RSP RD UART_B budget 30 FAILED vt 32 real_ms 23 -
+57 52 RSP ERR UART_B 81 no ACK for frame 1
+57 52 RSP RESYNC> UART_B 
+108 87 RSP RESYNC< UART_B vt 51 holdoff_active True
+108 87 RSP LISTEN< UART_B None 2
+108 87 main CANCELLED-RUN-DONE count 7 finished_first False
+109 87 main RECOVERY 0
+109 87 INI GET> UART_A holdoff False busy False
+109 88 RSP LISTEN> UART_B holdoff True
+116 90 INI TX A 0202010101 True
+117 103 INI RD UART_A budget 30 ok vt 1 real_ms 12 0101000101
+117 103 INI ERR UART_A 81 invalid ACK for frame 1
+117 105 INI RESYNC> UART_A 
+120 106 RSP RD UART_B budget -1 ok vt 11 real_ms 17 0202010101
+129 107 RSP TX B 0201000101 True
+140 112 RSP TX B 0204010301 True
+174 125 RSP RD UART_B budget 30 FAILED vt 34 real_ms 12 -
+174 125 RSP ERR UART_B 81 no ACK for frame 1
+174 125 RSP RESYNC> UART_B 
+197 135 INI RESYNC< UART_A vt 80 holdoff_active True
+197 135 INI GET< UART_A None
+225 161 RSP RESYNC< UART_B vt 51 holdoff_active True
+225 161 RSP LISTEN< UART_B None 2
+225 161 main RECOVERY-RESULT 0 False
+225 161 main RECOVERY 1
+225 162 INI GET> UART_A holdoff True busy False
+242 162 RSP LISTEN> UART_B holdoff True
+262 179 INI TX A 0302010101 True
+273 185 RSP RD UART_B budget -1 ok vt 31 real_ms 23 0302010101
+286 195 RSP TX B 0301000101 True
+289 205 RSP TX B 0304010301 True
+292 208 INI RD UART_A budget 30 ok vt 30 real_ms 29 0301000101
+315 243 INI RD UART_A budget 30 ok vt 23 real_ms 33 0304010301
+322 253 RSP RD UART_B budget 30 FAILED vt 33 real_ms 47 -
+322 254 RSP ERR UART_B 81 no ACK for frame 1
+322 255 RSP RESYNC> UART_B 
+340 276 INI TX A 0301000101 True
+374 301 INI RD UART_A budget 30 FAILED vt 34 real_ms 25 -
+374 301 INI ERR UART_A 22 train stalled at chunk 2
+374 301 INI RESYNC> UART_A 
+397 312 RSP RESYNC< UART_B vt 75 holdoff_active True
+397 312 RSP LISTEN< UART_B None 2
+425 335 INI RESYNC< UART_A vt 51 holdoff_active True
+425 335 INI GET< UART_A None
+425 335 main RECOVERY-RESULT 1 False
+rep 0 FAIL no recovery within two transactions after step 7 1778 ms
+rep 1 PASS 4741 ms
+=== TRACE step 12 (virtual_ms, real_ms, task, event...) ===
+0 16 main STEP 12
+0 16 RSP LISTEN> UART_B holdoff False
+2 16 INI GET> UART_A holdoff False busy False
+9 21 INI TX A 0102010101 True
+16 24 RSP RD UART_B budget -1 ok vt 16 real_ms 8 0102010101
+25 27 RSP TX B 0101000101 True
+28 33 RSP TX B 0104010301 True
+31 34 INI RD UART_A budget 30 ok vt 22 real_ms 12 0101000101
+40 57 INI RD UART_A budget 30 ok vt 9 real_ms 22 0104010301
+47 59 INI TX A 0101000101 True
+51 67 INI RD UART_A budget 30 FAILED vt 4 real_ms 7 -
+51 67 INI GET! UART_A CancelledError
+51 68 RSP RD UART_B budget 30 ok vt 23 real_ms 34 0101000101
+54 70 RSP TX B 0204080302 True
+86 96 RSP RD UART_B budget 30 FAILED vt 32 real_ms 25 -
+86 96 RSP ERR UART_B 81 no ACK for frame 2
+86 96 RSP RESYNC> UART_B 
+137 124 RSP RESYNC< UART_B vt 51 holdoff_active True
+137 124 RSP LISTEN< UART_B None 2
+137 124 main CANCELLED-RUN-DONE count 12 finished_first False
+138 125 main RECOVERY 0
+138 125 INI GET> UART_A holdoff False busy False
+138 125 RSP LISTEN> UART_B holdoff True
+144 126 INI TX A 0202010101 True
+145 135 INI RD UART_A budget 30 ok vt 1 real_ms 8 0204080302
+145 135 INI ERR UART_A 88 a data frame arrived where an ACK was due
+145 135 INI RESYNC> UART_A 
+150 135 RSP RD UART_B budget -1 ok vt 12 real_ms 10 0202010101
+155 141 RSP TX B 0201000101 True
+164 142 RSP TX B 0304010301 True
+198 155 RSP RD UART_B budget 30 FAILED vt 34 real_ms 12 -
+198 155 RSP ERR UART_B 81 no ACK for frame 1
+198 155 RSP RESYNC> UART_B 
+221 161 INI RESYNC< UART_A vt 76 holdoff_active True
+221 161 INI GET< UART_A None
+249 179 RSP RESYNC< UART_B vt 51 holdoff_active True
+249 179 RSP LISTEN< UART_B None 2
+249 179 main RECOVERY-RESULT 0 False
+249 179 main RECOVERY 1
+249 179 INI GET> UART_A holdoff True busy False
+266 179 RSP LISTEN> UART_B holdoff True
+286 198 INI TX A 0302010101 True
+299 204 RSP RD UART_B budget -1 ok vt 33 real_ms 24 0302010101
+310 211 RSP TX B 0301000101 True
+313 223 RSP TX B 0404010301 True
+318 225 INI RD UART_A budget 30 ok vt 32 real_ms 27 0301000101
+341 244 INI RD UART_A budget 30 ok vt 23 real_ms 18 0404010301
+346 251 RSP RD UART_B budget 30 FAILED vt 33 real_ms 27 -
+346 251 RSP ERR UART_B 81 no ACK for frame 1
+346 251 RSP RESYNC> UART_B 
+362 260 INI TX A 0401000101 True
+396 285 INI RD UART_A budget 30 FAILED vt 34 real_ms 24 -
+396 285 INI ERR UART_A 22 train stalled at chunk 2
+396 287 INI RESYNC> UART_A 
+419 298 RSP RESYNC< UART_B vt 73 holdoff_active True
+419 298 RSP LISTEN< UART_B None 2
+447 317 INI RESYNC< UART_A vt 51 holdoff_active True
+447 317 INI GET< UART_A None
+447 317 main RECOVERY-RESULT 1 False
+rep 2 FAIL no recovery within two transactions after step 12 2818 ms
+=== TRACE step 1 (virtual_ms, real_ms, task, event...) ===
+0 13 main STEP 1
+0 13 RSP LISTEN> UART_B holdoff False
+2 13 INI GET> UART_A holdoff False busy False
+6 15 INI GET! UART_A CancelledError
+6 15 ? CLEAR> UART_B
+9 15 RSP RD UART_B budget -1 FAILED vt 9 real_ms 1 -
+9 15 RSP ERR UART_B 22 listen read failed or was cancelled
+9 15 RSP RESYNC> UART_B 
+14 17 ? CLEAR< UART_B
+60 46 RSP RESYNC< UART_B vt 51 holdoff_active True
+60 46 RSP LISTEN< UART_B None None
+60 46 main CANCELLED-RUN-DONE count 1 finished_first False
+61 46 main RECOVERY 0
+61 46 INI GET> UART_A holdoff False busy False
+61 47 RSP LISTEN> UART_B holdoff True
+67 48 INI TX A 0202010101 True
+74 59 RSP RD UART_B budget -1 ok vt 13 real_ms 12 0202010101
+97 72 RSP TX B 0201000101 True
+100 89 RSP TX B 0104010301 True
+105 89 INI RD UART_A budget 30 ok vt 38 real_ms 41 0201000101
+120 97 INI RD UART_A budget 30 ok vt 15 real_ms 7 0104010301
+135 106 INI TX A 0101000101 True
+150 114 RSP RD UART_B budget 30 ok vt 50 real_ms 24 0101000101
+165 122 RSP TX B 0204080302 True
+176 131 INI RD UART_A budget 30 ok vt 41 real_ms 24 0204080302
+187 136 INI TX A 0201000101 True
+208 148 RSP RD UART_B budget 30 ok vt 43 real_ms 25 0201000101
+219 155 INI RD UART_A budget 30 FAILED vt 32 real_ms 18 -
+219 155 INI ERR UART_A 22 train stalled at chunk 3
+219 155 INI RESYNC> UART_A 
+229 158 RSP TX B 0304080303 True
+263 170 RSP RD UART_B budget 30 FAILED vt 34 real_ms 12 -
+263 170 RSP ERR UART_B 81 no ACK for frame 3
+263 170 RSP RESYNC> UART_B 
+286 177 INI RESYNC< UART_A vt 67 holdoff_active True
+286 177 INI GET< UART_A None
+314 197 RSP RESYNC< UART_B vt 51 holdoff_active True
+314 198 RSP LISTEN< UART_B None 2
+314 198 main RECOVERY-RESULT 0 False
+314 198 main RECOVERY 1
+314 198 INI GET> UART_A holdoff True busy False
+331 199 RSP LISTEN> UART_B holdoff True
+351 218 INI TX A 0302010101 True
+360 225 RSP RD UART_B budget -1 ok vt 29 real_ms 26 0302010101
+371 237 RSP TX B 0301000101 True
+374 241 RSP TX B 0404010301 True
+377 242 INI RD UART_A budget 30 ok vt 26 real_ms 23 0301000101
+396 278 INI RD UART_A budget 30 ok vt 19 real_ms 36 0404010301
+409 289 INI TX A 0401000101 True
+428 308 RSP RD UART_B budget 30 ok vt 54 real_ms 66 0401000101
+444 320 INI RD UART_A budget 30 FAILED vt 35 real_ms 31 -
+444 320 INI ERR UART_A 22 train stalled at chunk 2
+444 320 INI RESYNC> UART_A 
+449 322 RSP TX B 0504080302 True
+483 341 RSP RD UART_B budget 30 FAILED vt 34 real_ms 18 -
+483 341 RSP ERR UART_B 81 no ACK for frame 2
+483 341 RSP RESYNC> UART_B 
+506 349 INI RESYNC< UART_A vt 62 holdoff_active True
+506 349 INI GET< UART_A None
+534 369 RSP RESYNC< UART_B vt 51 holdoff_active True
+534 369 RSP LISTEN< UART_B None 2
+534 369 main RECOVERY-RESULT 1 False
+rep 3 FAIL no recovery within two transactions after step 1 517 ms
+=== TRACE step 25 (virtual_ms, real_ms, task, event...) ===
+0 14 main STEP 25
+0 14 RSP LISTEN> UART_B holdoff False
+2 15 INI GET> UART_A holdoff False busy False
+8 19 INI TX A 0102010101 True
+17 25 RSP RD UART_B budget -1 ok vt 17 real_ms 10 0102010101
+26 29 RSP TX B 0101000101 True
+29 36 RSP TX B 0104010301 True
+32 38 INI RD UART_A budget 30 ok vt 24 real_ms 17 0101000101
+47 48 INI RD UART_A budget 30 ok vt 15 real_ms 9 0104010301
+54 50 INI TX A 0101000101 True
+65 65 RSP RD UART_B budget 30 ok vt 36 real_ms 28 0101000101
+78 71 RSP TX B 0204080302 True
+93 79 INI RD UART_A budget 30 ok vt 39 real_ms 28 0204080302
+102 81 INI TX A 0201000101 True
+106 85 INI RD UART_A budget 30 FAILED vt 4 real_ms 3 -
+106 85 INI GET! UART_A CancelledError
+106 89 RSP RD UART_B budget 30 ok vt 28 real_ms 17 0201000101
+109 92 RSP TX B 0304080303 True
+141 113 RSP RD UART_B budget 30 FAILED vt 32 real_ms 20 -
+141 113 RSP ERR UART_B 81 no ACK for frame 3
+141 113 RSP RESYNC> UART_B 
+192 153 RSP RESYNC< UART_B vt 51 holdoff_active True
+192 153 RSP LISTEN< UART_B None 2
+192 153 main CANCELLED-RUN-DONE count 25 finished_first False
+193 153 main RECOVERY 0
+193 153 INI GET> UART_A holdoff False busy False
+193 154 RSP LISTEN> UART_B holdoff True
+200 155 INI TX A 0202010101 True
+201 166 INI RD UART_A budget 30 ok vt 1 real_ms 10 0304080303
+201 167 INI ERR UART_A 88 a data frame arrived where an ACK was due
+201 167 INI RESYNC> UART_A 
+206 167 RSP RD UART_B budget -1 ok vt 13 real_ms 13 0202010101
+217 172 RSP TX B 0201000101 True
+226 177 RSP TX B 0404010301 True
+260 191 RSP RD UART_B budget 30 FAILED vt 34 real_ms 13 -
+260 191 RSP ERR UART_B 81 no ACK for frame 1
+260 191 RSP RESYNC> UART_B 
+283 197 INI RESYNC< UART_A vt 82 holdoff_active True
+283 197 INI GET< UART_A None
+311 216 RSP RESYNC< UART_B vt 51 holdoff_active True
+311 216 RSP LISTEN< UART_B None 2
+311 216 main RECOVERY-RESULT 0 False
+311 217 main RECOVERY 1
+311 217 INI GET> UART_A holdoff True busy False
+328 217 RSP LISTEN> UART_B holdoff True
+350 245 INI TX A 0302010101 True
+375 272 RSP RD UART_B budget -1 ok vt 47 real_ms 53 0302010101
+382 278 INI RD UART_A budget 30 FAILED vt 32 real_ms 32 -
+382 278 INI ERR UART_A 81 no ACK for frame 1
+382 279 INI RESYNC> UART_A 
+398 288 RSP TX B 0301000101 True
+409 295 RSP TX B 0504010301 True
+443 306 RSP RD UART_B budget 30 FAILED vt 34 real_ms 11 -
+443 306 RSP ERR UART_B 81 no ACK for frame 1
+443 306 RSP RESYNC> UART_B 
+466 313 INI RESYNC< UART_A vt 84 holdoff_active True
+466 313 INI GET< UART_A None
+494 332 RSP RESYNC< UART_B vt 51 holdoff_active True
+494 332 RSP LISTEN< UART_B None 2
+494 332 main RECOVERY-RESULT 1 False
+rep 4 FAIL no recovery within two transactions after step 25 6140 ms
+rep 5 PASS 5814 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 2 / 6 passed

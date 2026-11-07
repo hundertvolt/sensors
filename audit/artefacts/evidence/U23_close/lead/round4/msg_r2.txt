@@ -1,0 +1,10 @@
+U23 lead: the mock's ResetErrors header says it answers as a running device (comment only)
+
+Comment only, no code change. The header said the mock answers {"ResetErrors": true} "as _put_status()
+answers it", but the device now also answers "Failed": from the acceptance of a reboot, bootloader, resetconfig
+or erasefram command on (clearing nothing, so the logs survive into the reset), and during mempause. The
+mock keeps no command state and models neither window, so the header now says it answers as a running
+device outside them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

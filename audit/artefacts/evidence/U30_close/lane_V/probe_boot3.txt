@@ -1,0 +1,15 @@
+digital_twin/run_generic_integration.py starting - device='sensortask_arzi' module='sensortask_arzi' host='127.0.0.1' port=19090 state=StatePaths(fram=None, scd30=None, mem_backup=None) config_dir='tests/_tmp/rgi/1_boot/' online_ntp=False debug_level=1 injections=Injections(seed=None, faults=[('scd30', 'writeto', 1, None, 'oserror')], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=None, gc_threshold=32768, mem_sample_interval_ms=None, stop_file=None)
+Serving forever at http://127.0.0.1:19090/ - Ctrl+C to stop
+152 CFGMGR_WIFI tests/_tmp/rgi/1_boot/config_WIFI.cfg exists but is not a file, cannot write!
+mem: total=4858016, current=1488867, peak=1489149
+stack: 4992 out of 80000
+GC: total: 16582784, used: 734496, free: 15848288
+ No. of 1-blocks: 6134, 2-blocks: 1357, max blk sz: 885, max free sz: 472229
+digital_twin/run_generic_integration.py [sensortask_arzi] shutdown: would_have_triggered_count=0 feed_count=3 largest_feed_gap_ms=38 wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 gc_block_bytes=32
+BOOT_MS 166
+FAIL test_main_boots_logs_the_armed_fault_at_error_level_writes_the_responder_ntp_config_and_shuts_down_cleanly:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "tests/_tmp/probe_rgi_boot.py", line 747, in test_main_boots_logs_the_armed_fault_at_error_level_writes_the_responder_ntp_config_and_shuts_down_cleanly
+AssertionError: the injected SGP40 failure printed nothing at error level
+0/1 passed, 1 failed, 0 skipped

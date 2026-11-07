@@ -1,0 +1,16 @@
+tests/test_asy_webserver_service.py -1 - rc=0 t=5.45 mem=0 | 218/218 passed, 0 failed, 0 skipped
+tests/test_asy_system_service.py -1 - rc=0 t=27.80 mem=0 | 173/173 passed, 0 failed, 0 skipped
+tests/test_sensortask.py -1 arzi rc=0 t=30.14 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py -1 dev rc=0 t=47.14 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py -1 grkizi rc=0 t=29.64 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py -1 klkizi rc=0 t=29.24 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py -1 schlafzi rc=0 t=28.74 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py -1 wozi rc=0 t=32.89 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_asy_webserver_service.py 32768 - rc=0 t=7.27 mem=0 | 218/218 passed, 0 failed, 0 skipped
+tests/test_asy_system_service.py 32768 - rc=0 t=24.86 mem=0 | 173/173 passed, 0 failed, 0 skipped
+tests/test_sensortask.py 32768 arzi rc=0 t=31.96 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py 32768 dev rc=0 t=53.68 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py 32768 grkizi rc=0 t=32.05 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py 32768 klkizi rc=0 t=31.76 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py 32768 schlafzi rc=0 t=31.30 mem=0 | 91/91 passed, 0 failed, 0 skipped
+tests/test_sensortask.py 32768 wozi rc=0 t=36.04 mem=0 | 91/91 passed, 0 failed, 0 skipped

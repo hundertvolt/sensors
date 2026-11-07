@@ -1,0 +1,69 @@
+--- orig/test_digital_twin_uart_link.py	2026-10-07 16:11:36.262947777 +0000
++++ fix_uart/test_digital_twin_uart_link.py	2026-10-07 16:46:41.911802411 +0000
+@@ -21,6 +21,8 @@
+ # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto().
+ patch_asy_udp_socket_for_unix_port()
+ 
++import asy_uart_comm  # noqa: E402
++import asy_uart_driver  # noqa: E402
+ import rp2  # noqa: E402
+ import sensortask_dev  # noqa: E402
+ from _tmp_scratch import TmpScratch  # noqa: E402
+@@ -89,6 +91,46 @@
+     return asyncio.run(asyncio.wait_for(coro, limit))
+ 
+ 
++class _PollRoundClock:
++    # The UART modules' deadlines read on a clock only they advance - by each sleep, and 1 ms per read so a wait
++    # that never yields still expires. Both ends share this interpreter: on the wall clock a host stall or a slow
++    # twin step would spend the peer's reply budget (OF-33).
++    def __enter__(self) -> "_PollRoundClock":
++        modules = (asy_uart_driver, asy_uart_comm)
++        self._saved = [(m, m.time, m.asyncio) for m in modules]
++        real_time, real_asyncio = time, asyncio
++        now = [time.ticks_ms()]  # starts at the real value: deadlines stored before entry stay comparable
++
++        class _Time:
++            ticks_add = staticmethod(real_time.ticks_add)
++            ticks_diff = staticmethod(real_time.ticks_diff)
++
++            @staticmethod
++            def ticks_ms() -> int:
++                now[0] = real_time.ticks_add(now[0], 1)
++                return now[0]
++
++        class _Asyncio:
++            Lock = real_asyncio.Lock
++            get_event_loop = staticmethod(real_asyncio.get_event_loop)
++
++            def __init__(self, inner: "ModuleType") -> None:
++                self._inner = inner  # the module's own asyncio, which really sleeps
++
++            async def sleep_ms(self, ms: int) -> None:
++                now[0] = real_time.ticks_add(now[0], ms)
++                await self._inner.sleep_ms(ms)
++
++        for m in modules:
++            m.asyncio = _Asyncio(m.asyncio)  # type: ignore[assignment]
++            m.time = _Time()  # type: ignore[assignment]
++        return self
++
++    def __exit__(self, *exc_info: object) -> None:
++        for m, t, a in self._saved:
++            m.time, m.asyncio = t, a
++
++
+ def _tmp_cfg_dir() -> str:
+     return _scratch.dir()
+ 
+@@ -389,7 +431,9 @@
+         finally:
+             background.cancel()
+ 
+-    assert run(scenario(), limit=_MAX_TRAIN_LIMIT_S) is True, "the maximum-length train did not complete"
++    with _PollRoundClock():
++        completed = run(scenario(), limit=_MAX_TRAIN_LIMIT_S)
++    assert completed is True, "the maximum-length train did not complete"
+     # Progress, not a rate: the ticker must have been scheduled throughout, which it cannot be if
+     # any step held the loop for the whole transfer.
+     assert len(ticks) > 50, f"other tasks ran only {len(ticks)} times across a 254-chunk transfer"

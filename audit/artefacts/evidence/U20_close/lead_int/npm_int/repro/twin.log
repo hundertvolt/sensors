@@ -1,0 +1,4 @@
+digital_twin/run_generic_integration.py starting - device='arzi' module='sensortask_arzi' host='127.0.0.1' port=8099 fram_state_path=None scd30_state_path=None seed=None duration=None faults=[] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:8099/ - Ctrl+C to stop
+digital_twin/run_generic_integration.py [arzi] shutdown: would_have_triggered_count=0
+digital_twin/run_generic_integration.py: interrupted

@@ -1,0 +1,27 @@
+leak=0 X01W crc -1 300 [0, 0, 0]
+leak=0 X01W nocrc -1 300 [0, 0, 0]
+leak=0 X01W crc -1 0 [0, 0, 0]
+leak=0 X01W crc 32768 0 [0, 0, 0]
+leak=0 X01W nocrc -1 0 [0, 0, 0]
+leak=0 X01W nocrc 32768 0 [0, 0, 0]
+leak=0 4/4 passed, 0 failed, 0 skipped
+leak=0 X01W crc -1 300 [0, 0, 0]
+leak=0 X01W nocrc -1 300 [0, 0, 0]
+leak=0 X01W crc -1 0 [0, 0, 0]
+leak=0 X01W crc 32768 0 [0, 0, 0]
+leak=0 X01W nocrc -1 0 [0, 0, 0]
+leak=0 X01W nocrc 32768 0 [0, 0, 0]
+leak=0 4/4 passed, 0 failed, 0 skipped
+leak=16 X01W crc -1 300 [2176, 2464, 1920]
+leak=16 FAIL test_a_host_stall_cannot_fail_the_faulted_hammer_crc16:
+leak=16 AssertionError: 1920 bytes over 30 failures = 64.0 B/failure
+leak=16 X01W nocrc -1 300 [1920, 1920, 1920]
+leak=16 FAIL test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc:
+leak=16 AssertionError: 1920 bytes over 30 failures = 64.0 B/failure
+leak=16 X01W crc -1 0 [1920, 1920, 1920]
+leak=16 FAIL test_hammering_a_faulted_link_never_raises_and_still_recovers_crc16:
+leak=16 AssertionError: 1920 bytes over 30 failures = 64.0 B/failure
+leak=16 X01W nocrc -1 0 [1920, 1920, 1920]
+leak=16 FAIL test_hammering_a_faulted_link_never_raises_and_still_recovers_nocrc:
+leak=16 AssertionError: 1920 bytes over 30 failures = 64.0 B/failure
+leak=16 0/4 passed, 4 failed, 0 skipped

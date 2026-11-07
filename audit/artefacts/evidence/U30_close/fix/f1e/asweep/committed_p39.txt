@@ -1,0 +1,2 @@
+parse_tree.root 7ffff6ca90e0 at 7fffffffc5b8, block aligned: True
+kinds at each gc.collect() entry (f free, h head, t tail): t |SAMPLE| h@ce8f0 |SAMPLE| h@ce8f0 |SAMPLE| h@ce8f0 h@ce8f0

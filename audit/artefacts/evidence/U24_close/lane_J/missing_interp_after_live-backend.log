@@ -1,0 +1,173 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/live-backend.test.js (18 tests | 18 failed) 1842ms
+   ❯ live digital-twin backend: arzi (1)
+     × the real website, driven by a real browser, round-trips a real PUT against a live twin 281ms
+   ❯ live digital-twin backend: dev (1)
+     × the real website, driven by a real browser, round-trips a real PUT against a live twin 114ms
+   ❯ live digital-twin backend: grkizi (1)
+     × the real website, driven by a real browser, round-trips a real PUT against a live twin 94ms
+   ❯ live digital-twin backend: klkizi (1)
+     × the real website, driven by a real browser, round-trips a real PUT against a live twin 86ms
+   ❯ live digital-twin backend: schlafzi (1)
+     × the real website, driven by a real browser, round-trips a real PUT against a live twin 100ms
+   ❯ live digital-twin backend: wozi (1)
+     × the real website, driven by a real browser, round-trips a real PUT against a live twin 115ms
+   ❯ live digital-twin backend, concurrent browser sessions: arzi (1)
+     × a full ceiling of browser tabs against one live twin all load, directly or on one reload 101ms
+   ❯ live digital-twin backend, concurrent browser sessions: dev (1)
+     × a full ceiling of browser tabs against one live twin all load, directly or on one reload 117ms
+   ❯ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     × a full ceiling of browser tabs against one live twin all load, directly or on one reload 78ms
+   ❯ live digital-twin backend, concurrent browser sessions: klkizi (1)
+     × a full ceiling of browser tabs against one live twin all load, directly or on one reload 84ms
+   ❯ live digital-twin backend, concurrent browser sessions: schlafzi (1)
+     × a full ceiling of browser tabs against one live twin all load, directly or on one reload 84ms
+   ❯ live digital-twin backend, concurrent browser sessions: wozi (1)
+     × a full ceiling of browser tabs against one live twin all load, directly or on one reload 88ms
+   ❯ live digital-twin backend, device restart: arzi (1)
+     × the page recovers from a device restart without reloading 72ms
+   ❯ live digital-twin backend, device restart: dev (1)
+     × the page recovers from a device restart without reloading 95ms
+   ❯ live digital-twin backend, device restart: grkizi (1)
+     × the page recovers from a device restart without reloading 72ms
+   ❯ live digital-twin backend, device restart: klkizi (1)
+     × the page recovers from a device restart without reloading 81ms
+   ❯ live digital-twin backend, device restart: schlafzi (1)
+     × the page recovers from a device restart without reloading 92ms
+   ❯ live digital-twin backend, device restart: wozi (1)
+     × the page recovers from a device restart without reloading 84ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 18 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend: arzi > the real website, driven by a real browser, round-trips a real PUT against a live twin
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend: dev > the real website, driven by a real browser, round-trips a real PUT against a live twin
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend: grkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend: klkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend: schlafzi > the real website, driven by a real browser, round-trips a real PUT against a live twin
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend: wozi > the real website, driven by a real browser, round-trips a real PUT against a live twin
+Error: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--arzi---the-real-website--driven-by-a-real-browser--round-trips-a-real-PUT-against-a-live-twin.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--dev---the-real-website--driven-by-a-real-browser--round-trips-a-real-PUT-against-a-live-twin.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--grkizi---the-real-website--driven-by-a-real-browser--round-trips-a-real-PUT-against-a-live-twin.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--klkizi---the-real-website--driven-by-a-real-browser--round-trips-a-real-PUT-against-a-live-twin.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--schlafzi---the-real-website--driven-by-a-real-browser--round-trips-a-real-PUT-against-a-live-twin.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--wozi---the-real-website--driven-by-a-real-browser--round-trips-a-real-PUT-against-a-live-twin.png
+
+ ❯ tests_js/live-backend.test.js:30:43
+     28|         "the real website, driven by a real browser, round-trips a rea…
+     29|         async () => {
+     30|             const result = await commands.runLiveBackendSmoke(device, …
+       |                                           ^
+     31|
+     32|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5684:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/18]⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+Error: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--concurrent-browser-sessions--arzi---a-full-ceiling-of-browser-tabs-against-one-live-twin-all-load--directly-or-on-one-reload.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--concurrent-browser-sessions--dev---a-full-ceiling-of-browser-tabs-against-one-live-twin-all-load--directly-or-on-one-reload.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--concurrent-browser-sessions--grkizi---a-full-ceiling-of-browser-tabs-against-one-live-twin-all-load--directly-or-on-one-reload.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--concurrent-browser-sessions--klkizi---a-full-ceiling-of-browser-tabs-against-one-live-twin-all-load--directly-or-on-one-reload.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--concurrent-browser-sessions--schlafzi---a-full-ceiling-of-browser-tabs-against-one-live-twin-all-load--directly-or-on-one-reload.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--concurrent-browser-sessions--wozi---a-full-ceiling-of-browser-tabs-against-one-live-twin-all-load--directly-or-on-one-reload.png
+
+ ❯ tests_js/live-backend.test.js:49:43
+     47|         "a full ceiling of browser tabs against one live twin all load…
+     48|         async () => {
+     49|             const result = await commands.runLiveBackendConcurrentTabs…
+       |                                           ^
+     50|
+     51|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5684:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/18]⎯
+
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: arzi > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: dev > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: grkizi > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: klkizi > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: schlafzi > the page recovers from a device restart without reloading
+ FAIL  |chromium| tests_js/live-backend.test.js > live digital-twin backend, device restart: wozi > the page recovers from a device restart without reloading
+Error: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--arzi---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--dev---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--grkizi---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--klkizi---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--schlafzi---the-page-recovers-from-a-device-restart-without-reloading.png
+  - .vitest/attachments/failure-screenshots/live-backend.test.js/live-digital-twin-backend--device-restart--wozi---the-page-recovers-from-a-device-restart-without-reloading.png
+
+ ❯ tests_js/live-backend.test.js:66:43
+     64|         "the page recovers from a device restart without reloading",
+     65|         async () => {
+     66|             const result = await commands.runLiveBackendRestartRecover…
+       |                                           ^
+     67|
+     68|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5684:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/18]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  18 failed (18)
+   Start at  17:14:12
+   Duration  4.62s (tests 79%, worker 14%, import 7%, setup 1%)
+
+== Summary: npm test ==
+Commit: 032eb4c (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 18 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/live-backend.test.js > live digital-twin backend: arzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend: dev > the real website, driven by a real browser, round-trips a real PUT against a live twin: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend: grkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend: klkizi > the real website, driven by a real browser, round-trips a real PUT against a live twin: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend: schlafzi > the real website, driven by a real browser, round-trips a real PUT against a live twin: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend: wozi > the real website, driven by a real browser, round-trips a real PUT against a live twin: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: arzi > the page recovers from a device restart without reloading: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: dev > the page recovers from a device restart without reloading: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: grkizi > the page recovers from a device restart without reloading: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: klkizi > the page recovers from a device restart without reloading: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: schlafzi > the page recovers from a device restart without reloading: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+  - tests_js/live-backend.test.js > live digital-twin backend, device restart: wozi > the page recovers from a device restart without reloading: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

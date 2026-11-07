@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13fix/run_one.py", line 8, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u15plant/tree/tests/test_digital_twin_bus_hazard_concurrency.py", line 867, in test_two_failing_readers_on_one_bus_run_each_bus_rung_once
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u15plant/tree/tests/test_digital_twin_bus_hazard_concurrency.py", line 70, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 

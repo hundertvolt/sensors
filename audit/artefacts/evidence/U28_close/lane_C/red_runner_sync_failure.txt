@@ -1,0 +1,14 @@
+>       assert result.returncode == 1, "a failed sync is a failed run (1), never uv's own 2, which reads as a usage error"
+E       AssertionError: a failed sync is a failed run (1), never uv's own 2, which reads as a usage error
+E       assert 2 == 1
+E        +  where 2 = CompletedProcess(args=['/bin/bash', '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/..., stdout='', stderr='uv sync failed on attempt 1/3; retrying in 10s\nuv sync failed on attempt 2/3; retrying in 20s\n').returncode
+FAILED tests_scripts/test_mpremote_connect_sh.py::test_a_sync_failing_every_attempt_exits_1_before_any_board_call
+1 failed, 5 deselected in 2.27s
+E       AssertionError: uv sync failed on attempt 1/3; retrying in 10s
+E         uv sync failed on attempt 2/3; retrying in 20s
+E       assert 2 == 1
+E        +  where 2 = CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-10687/test_a_sync_failing_every_atte0/repo/scripts/run..., stdout='', stderr='uv sync failed on attempt 1/3; retrying in 10s\nuv sync failed on attempt 2/3; retrying in 20s\n').returncode
+E       AssertionError: uv sync failed on attempt 1/3; retrying in 10s
+E         uv sync failed on attempt 2/3; retrying in 20s
+E       assert 2 == 1
+E        +  where 2 = CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-10687/test_a_sync_failing_every_atte1/repo/scripts/run..., stdout='', stderr='uv sync failed on attempt 1/3; retrying in 10s\nuv sync failed on attempt 2/3; retrying in 20s\n').returncode

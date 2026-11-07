@@ -1,0 +1,56 @@
+Plugin "vitest:mocks:interceptor" defines Vite-specific hooks (configureServer) in a plugin returned from applyToEnvironment. These hooks will be ignored.
+
+ RUN  v5.0.0 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19j
+      API started at http://localhost:63315/
+
+ ✓ |chromium| tests_js/render.test.js (35 tests) 9957ms
+   ✓ renderSection (35)
+     ✓ colors each individual field's own box by its own result, not just the card's worst status 455ms
+     ✓ sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field 484ms
+     ✓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change) 550ms
+     ✓ submits a numeric-valued enum field as a number, not a stringified one (regression) 558ms
+     ✓ shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result 470ms
+     ✓ a toggle field with no real GET readback but a schema-declared defaultValue (3)
+       ✓ submits it once deliberately flipped away from the defaultValue 380ms
+     ✓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 412ms
+     ✓ reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression) 626ms
+     ✓ reports Invalid for a composite field submitted with only some subfields filled 693ms
+     ✓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification) 658ms
+     ✓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank 584ms
+ ✓ |chromium| tests_js/mock-server.test.js (84 tests) 18567ms
+   ✓ installMockFetch (84)
+     ✓ resets error counters and refills history with no-error placeholders (real reset() never shrinks it) 326ms
+     ✓ leaves error counters untouched when ResetErrors is absent 328ms
+     ✓ validates PUT /networking against the networking group's own field defs 371ms
+     ✓ accepts a string field's schema special before its length bounds, as the server does 342ms
+     ✓ answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included 441ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 502ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 1226ms
+     ✓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 1718ms
+     ✓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 473ms
+     ✓ dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied 469ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 740ms
+     ✓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all 588ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 597ms
+     ✓ masks PW (and HotspotPW) on every GET /networking, whatever was applied 420ms
+     ✓ omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC 331ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 456ms
+
+ Test Files  2 passed (2)
+      Tests  119 passed (119)
+   Start at  06:56:27
+   Duration  21.22s (tests 96%, worker 3%, import 1%)
+
+== Summary: npm test ==
+Commit: 5f3787a (uncommitted changes)
+Levels: L0
+Counts (tests): passed 119 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

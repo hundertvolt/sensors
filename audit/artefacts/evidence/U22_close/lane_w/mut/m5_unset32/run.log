@@ -1,0 +1,16 @@
+FAIL test_get_hotspot_stations_reads_the_unfilled_answer_as_a_failed_check
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2773, in test_get_hotspot_stations_reads_the_unfilled_answer_as_a_failed_check
+AssertionError: 
+FAIL test_an_unconfirmed_stations_check_counts_as_no_client
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2844, in test_an_unconfirmed_stations_check_counts_as_no_client
+AssertionError: [(True, True), (False, False), (False, False), (True, True), (True, True)]
+FAIL test_get_hotspot_stations_answers_none_for_a_failed_query_and_an_empty_list_for_no_client
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2756, in test_get_hotspot_stations_answers_none_for_a_failed_query_and_an_empty_list_for_no_client
+AssertionError: 
+selected: 3 failed: 3

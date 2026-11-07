@@ -1,0 +1,37 @@
+PASS test_a_bytearray_body_is_checked_like_bytes
+PASS test_a_duplicate_key_is_refused_however_it_is_spelled
+FAIL test_an_offset_counts_characters_however_many_bytes_precede_it:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/test_strict_json.py", line 94, in test_an_offset_counts_characters_however_many_bytes_precede_it
+AssertionError: ('["ä€", 1,]', 'not strict JSON at offset 2 (unescaped control character): \'["ä€", 1,]\'')
+PASS test_every_malformed_document_is_rejected_with_its_offset
+FAIL test_every_valid_document_passes_and_one_extra_comma_fails:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/test_strict_json.py", line 54, in test_every_valid_document_passes_and_one_extra_comma_fails
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 168, in check_strict_json
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 38, in _check
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 147, in _value
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 108, in _object
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 71, in _members
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 100, in member
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 119, in _string
+ValueError: not strict JSON at offset 4 (unescaped control character): '{"grüße": "café € 😀", "ä'
+PASS test_nested_objects_keep_their_own_keys
+PASS test_strict_loads_returns_the_decoded_value_of_a_strict_body_only
+PASS test_the_interpreters_own_dumps_emits_text_no_json_parser_accepts
+FAIL test_the_scan_indexes_bytes_never_a_str:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/test_strict_json.py", line 109, in test_the_scan_indexes_bytes_never_a_str
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 168, in check_strict_json
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 38, in _check
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 147, in _value
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 108, in _object
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 71, in _members
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 100, in member
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneM/bite_B/_strict_json.py", line 119, in _string
+ValueError: not strict JSON at offset 2 (unescaped control character): '{"ä": [1, "x"]}'
+PASS test_the_separator_slips_json_loads_accepts_are_rejected
+7/10 passed, 3 failed, 0 skipped

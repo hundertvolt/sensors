@@ -1,0 +1,93 @@
+=================================== FAILURES ===================================
+________ test_suppressing_the_emitted_collects_breaks_both_bounds[wozi] ________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7ffaa01a2020>
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", _CONTROL_DEVICES)
+    def test_suppressing_the_emitted_collects_breaks_both_bounds(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The control arm, and the reason the bounds above mean anything: a bound the broken
+        # configuration also satisfies is not a guard. The arm keeps only the seam's own anchor collect
+        # (both arms need it to be comparable) and drops the per-module ones, so this UNDERSTATES.
+        maps = boot_probe(device, _ARM_SUPPRESSED).maps
+        seam, after = maps["batch_00"], maps["after_starter_loop_end"]
+        batch_depth = -_median(seam, maps["after_batch"])
+        boot_reach, boot_high = _reach(seam, after), _blocks_above(seam, after, _HIGH_BAND)
+        assert batch_depth < _BATCH_MEDIAN_DEPTH_MIN, f"{device}: with every emitted collect suppressed the batch's median still sat {batch_depth} B below the seam, past the {_BATCH_MEDIAN_DEPTH_MIN} B bound - the bound no longer detects the defect it exists for"
+        assert boot_reach > _BOOT_REACH_MAX, f"{device}: with every collect suppressed the whole boot sequence still stayed inside the {_BOOT_REACH_MAX} B bound (reach {boot_reach} B)"
+>       assert boot_high > _HIGH_BAND_BLOCKS_MAX, f"{device}: with every collect suppressed only {boot_high} new blocks sat more than {_HIGH_BAND} B above the seam, still inside the {_HIGH_BAND_BLOCKS_MAX} allowed"
+E       AssertionError: wozi: with every collect suppressed only 10 new blocks sat more than 131072 B above the seam, still inside the 32 allowed
+E       assert 10 > 32
+
+tests_scripts/test_digital_twin_boot_contiguity.py:212: AssertionError
+_ test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml] __
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6')
+micropython_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-standard/micropython')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/ext')
+fixtures_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/tests_scripts/buildgen_fixtures')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-419/test_synthetic_fixture_boots_a0')
+device_toml_name = 'multi_instance.toml'
+
+    @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)
+    def test_synthetic_fixture_boots_and_serves_over_real_http(
+        repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
+    ) -> None:
+        # The two mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
+        # the generic wiring mechanism handles a hardware combination none of the 6 real devices use,
+        # not just wozi/dev's own two already-hand-verified layouts.
+        device_toml = fixtures_dir / device_toml_name
+        port = _free_port()
+        failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
+>       assert failures == []
+E       assert ["Status page..._RestoreTS']"] == []
+E         
+E         Left contains one more item: "Status page fields GET /status does not publish (each renders blank): ['sensors.SGP40_BackupTS', 'sensors.SGP40_RestoreTS']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_generated_boot.py:245: AssertionError
+_______ test_no_function_level_or_dynamic_import_outside_the_named_lists _______
+
+    def test_no_function_level_or_dynamic_import_outside_the_named_lists() -> None:
+        unexpected = collect_sites() - Counter(_PENDING)
+        new = sorted(site for site in unexpected.elements() if site not in _NAMED_EXCEPTIONS)
+>       assert not new, "imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:\n" + "\n".join(f"  {s}" for s in new)
+E       AssertionError: imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:
+E           ('tests_scripts/test_buildgen_definitions.py', 'test_cli_output_equals_the_graph_ordered_build', 'buildgen.definitions')
+E       assert not [('tests_scripts/test_buildgen_definitions.py', 'test_cli_output_equals_the_graph_ordered_build', 'buildgen.definitions')]
+
+tests_scripts/test_import_placement.py:313: AssertionError
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests_scripts/test_buildgen_definitions.py', 'test_cli_writes_definitions_json_to_out', 'buildgen.definitions')
+E       assert not [('tests_scripts/test_buildgen_definitions.py', 'test_cli_writes_definitions_json_to_out', 'buildgen.definitions')]
+
+tests_scripts/test_import_placement.py:318: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/tests_hardware/bench/test_bus_concurrency_under_api_load.py:229: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/tests_hardware/bench/test_bus_concurrency_under_api_load.py:398: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/tests_hardware/bench/test_bus_concurrency_under_api_load.py:488: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_suppressing_the_emitted_collects_breaks_both_bounds[wozi]
+FAILED tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml]
+FAILED tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+4 failed, 2472 passed, 7 skipped, 3 warnings in 490.51s (0:08:10)
+
+== Test summary ==

@@ -1,0 +1,48 @@
+........................................................................ [  8%]
+........................................................................ [ 17%]
+...................................................................F.... [ 25%]
+........................................................................ [ 34%]
+........................................................................ [ 43%]
+........................................................................ [ 51%]
+........................................................................ [ 60%]
+........................................................................ [ 69%]
+........................................................................ [ 77%]
+........................................................................ [ 86%]
+........................................................................ [ 95%]
+.........................................                                [100%]
+=================================== FAILURES ===================================
+____ test_the_smoke_boots_in_its_own_config_directory_with_in_memory_state _____
+
+    def test_the_smoke_boots_in_its_own_config_directory_with_in_memory_state() -> None:
+        text = (_REPO_ROOT / _SMOKE).read_text(encoding="utf-8")
+        problems = _config_dir_problems(_SMOKE, text)
+        problems += [f'{_SMOKE}: its twin launch does not pass `{flag} ""`' for flag in _IN_MEMORY_STATE if not re.search(rf'"{flag}",\s*"",', text)]
+        if not re.search(r'"--config-dir",\s*configDir,', text):
+            problems.append(f"{_SMOKE}: its twin launch does not pass `--config-dir configDir`")
+>       assert not problems, "\n".join(problems)
+E       AssertionError: scripts/cross_browser_smoke.mjs: its twin launch does not pass `--fram-state-path ""`
+E         scripts/cross_browser_smoke.mjs: its twin launch does not pass `--scd30-state-path ""`
+E         scripts/cross_browser_smoke.mjs: its twin launch does not pass `--mem-backup-state-path ""`
+E         scripts/cross_browser_smoke.mjs: its twin launch does not pass `--config-dir configDir`
+E       assert not ['scripts/cross_browser_smoke.mjs: its twin launch does not pass `--fram-state-path ""`', 'scripts/cross_browser_smoke...-mem-backup-state-path ""`', 'scripts/cross_browser_smoke.mjs: its twin launch does not pass `--config-dir configDir`']
+
+tests_scripts/test_live_command_device_args.py:115: AssertionError
+============================= slowest 15 durations =============================
+4.88s call     tests_scripts/test_import_graph.py::test_outside_the_images_only_the_named_files_load_dynamically
+4.86s call     tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal
+4.80s call     tests_scripts/test_lint_ceilings.py::test_every_function_above_max_args_is_exactly_the_exempt_set
+4.61s call     tests_scripts/test_lint_ceilings.py::test_the_ast_count_agrees_with_ruff_on_every_file_without_an_exemption
+4.55s call     tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists
+4.47s call     tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+4.38s call     tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+4.02s call     tests_scripts/test_js_coverage_report_dir.py::test_the_report_directory_is_not_a_name_this_repo_imports
+3.20s call     tests_scripts/test_import_graph.py::test_a_planted_import_in_a_frozen_module_fails_naming_every_device_and_the_site
+2.64s setup    tests_scripts/test_import_graph.py::test_the_runtime_import_graph_is_acyclic_and_imports_only_defined_names
+2.61s call     tests_scripts/test_port_bands.py::test_every_test_file_that_binds_a_port_draws_it_from_its_band
+2.21s call     tests_scripts/test_port_lock.py::test_a_lock_left_without_a_pid_is_taken_over_after_the_bounded_wait
+2.12s call     tests_scripts/test_microtest.py::test_every_test_file_ends_with_the_canonical_trailer_and_binds_only_functions
+2.02s call     tests_scripts/test_port_lock.py::test_a_lock_left_without_a_pid_is_taken_over_by_the_cpython_reader
+1.92s call     tests_scripts/test_memory_error_gate_agreement.py::test_the_suites_own_injections_never_spell_the_interpreters_wording
+=========================== short test summary info ============================
+FAILED tests_scripts/test_live_command_device_args.py::test_the_smoke_boots_in_its_own_config_directory_with_in_memory_state
+1 failed, 832 passed in 105.43s (0:01:45)

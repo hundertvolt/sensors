@@ -1,0 +1,1 @@
+FAIL test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared expected one bus clear, no controller rebuild and one W15; got 1 rung(s), 0 clear(s), 1 rebuild(s), 1 W15 slot(s)

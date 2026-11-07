@@ -1,0 +1,26 @@
+ok   test_a_fram_log_config_lands_entries_in_the_managers_chunk 0/1 sleeps=1 clean=0ms
+ok   test_a_persisted_fault_during_a_transfer_does_not_stall_other_tasks 0/79 sleeps=237 clean=269ms
+FLIP test_banner_get_across_a_real_responder_via_get_callback 21/52 k=[17, 18, 19, 20, 23, 24, 25, 27, 28, 29, 31, 32, 33, 34, 36, 40, 41, 43, 44, 45, 46] first=AssertionError:  @ File "tests/test_asy_uart_link_driver.py", line 212, in go
+     kind: AssertionError:  @ File "tests/test_asy_uart_link_driver.py", line 212, in go  k=[17, 18, 19, 20, 23, 24, 25, 27, 28, 29, 31, 32, 33, 34, 36, 40, 41, 43, 44, 45, 46]
+FLIP test_echo_round_trip_across_a_real_responder_via_set_and_get_callbacks 22/53 k=[17, 18, 19, 20, 22, 23, 24, 25, 26, 27, 28, 34, 35, 38, 39, 40, 41, 42, 43, 44, 45, 46] first=AssertionError:  @ File "tests/test_asy_uart_link_driver.py", line 231, in go
+     kind: AssertionError:  @ File "tests/test_asy_uart_link_driver.py", line 231, in go  k=[17, 18, 19, 20, 22, 23, 24, 25, 26, 27, 28]
+     kind: AssertionError:  @ File "tests/test_asy_uart_link_driver.py", line 233, in go  k=[34, 35, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+ok   test_exercise_loop_counts_a_failure_when_nothing_answers 0/76 sleeps=228 clean=273ms
+FLIP test_exercise_loop_counts_a_transfer_for_a_correct_banner_answer 21/50 k=[17, 18, 19, 23, 24, 26, 27, 29, 30, 31, 32, 33, 34, 36, 37, 40, 41, 43, 44, 45, 46] first=AssertionError:  @ File "tests/test_asy_uart_link_driver.py", line 188, in go
+     kind: AssertionError:  @ File "tests/test_asy_uart_link_driver.py", line 188, in go  k=[17, 18, 19, 23, 24, 26, 27, 29, 30, 31, 32, 33, 34, 36, 37, 40, 41, 43, 44, 45, 46]
+ok   test_exercise_loop_counts_a_wrong_payload_as_a_failure_not_a_transfer 0/44 sleeps=44 clean=26ms
+ok   test_fram_allocation_failure_degrades_to_ram_only_not_a_crash 0/0 sleeps=0 clean=0ms
+ok   test_fram_backed_error_history_survives_a_simulated_reboot 0/2 sleeps=2 clean=0ms
+ok   test_get_error_counter_delegates_to_the_inner_comms_own_log 0/12 sleeps=12 clean=17ms
+ok   test_get_error_sources_and_loggers_delegate_to_inner_comm 0/0 sleeps=0 clean=0ms
+ok   test_get_link_status_starts_at_zero 0/0 sleeps=0 clean=0ms
+ok   test_initiator_task_starters_include_exercise_loop 0/0 sleeps=0 clean=0ms
+ok   test_logger_kwarg_reaches_through_to_an_already_built_sibling_logger 0/0 sleeps=0 clean=1ms
+ok   test_name_resolution_matches_instance_name_convention 0/0 sleeps=0 clean=0ms
+ok   test_reset_error_counter_also_resets_link_counters 0/0 sleeps=0 clean=0ms
+ok   test_reset_error_counter_answers_the_comms_own_result 0/0 sleeps=0 clean=0ms
+ok   test_responder_task_starters_are_the_listen_loop_only 0/0 sleeps=0 clean=0ms
+ok   test_the_default_log_stays_ram_only 0/0 sleeps=0 clean=0ms
+ok   test_the_readiness_flag_follows_the_inner_setup 0/6 sleeps=6 clean=8ms
+ok   test_timer_starters_are_always_empty 0/0 sleeps=0 clean=0ms
+ok   test_unanswerable_command_id_is_rejected_not_crashed 0/63 sleeps=313 clean=271ms

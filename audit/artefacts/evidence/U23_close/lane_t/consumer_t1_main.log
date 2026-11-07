@@ -1,0 +1,69 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23t
+
+ ❯ |chromium| tests_js/main.test.js (7 tests | 1 failed) 220ms
+   ❯ startApp (production entry) (7)
+     ✓ loads definitions.json (no device segment, no mock install) and renders the landing section 20ms
+     ✓ marks the landing section current in the nav drawer 3ms
+     ✓ shows the error banner (and does not throw) when definitions.json fails to load 1ms
+     ✓ shows a clear error banner (not a crash) when definitions.json is torn/truncated JSON 1ms
+     × uses an inlined definitions element instead of fetching, when a real device build provides one 185ms
+     ✓ shows a clear error banner (not a crash) when the inlined definitions element holds corrupted JSON 3ms
+     ✓ falls back to fetching definitions.json when no inlined element is present (dev/preview mode) 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/main.test.js > startApp (production entry) > uses an inlined definitions element instead of fetching, when a real device build provides one
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times[90m
+
+Received:
+
+[1m  1st vi.fn() call:
+
+[22m    Array [
+      "/measurements",
+      Object {
+        "signal": AbortSignal {},
+      },
+    ]
+[39m[90m
+
+Number of calls: [1m1[22m
+[39m
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/main.test.js/startApp--production-entry----uses-an-inlined-definitions-element-instead-of-fetching--when-a-real-device-build-provides-one.png
+
+ ❯ Proxy.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=defba69f:3673:51
+ ❯ Proxy.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=defba69f:3409:14
+ ❯ tests_js/main.test.js:137:31
+    135|         await startApp({ ...elements, inlinedDefinitionsEl: inlinedEl …
+    136|
+    137|         expect(fetchStub).not.toHaveBeenCalled();
+       |                               ^
+    138|         expect(elements.deviceNameEl.textContent).toBe("Fixture Device…
+    139|         expect(elements.errorBannerEl.classList.contains("hidden")).to…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  09:10:35
+   Duration  1.54s (worker 47%, tests 43%, import 10%)
+
+== Summary: npm test ==
+Commit: d90bd96 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 6 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/main.test.js > startApp (production entry) > uses an inlined definitions element instead of fetching, when a real device build provides one: expected "vi.fn()" to not be called at all, but actually been called 1 times[90m
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

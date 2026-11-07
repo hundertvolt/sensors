@@ -1,0 +1,16 @@
+test_tunables_register rc=1 1 failed, 14 passed in 3.40s
+test_comment_block_cap rc=1 1 failed, 483 passed in 3.46s
+test_legacy_paths rc=0 3 passed in 1.40s
+test_decision_vocabulary rc=1 1 failed, 5 passed in 7.53s
+test_citations rc=0 15 passed in 8.61s
+test_code_conventions rc=0 25 passed in 3.26s
+test_import_placement rc=0 7 passed in 6.50s
+test_mypy_any_baseline rc=0 7 passed in 0.06s
+test_host_annotations rc=0 12 passed in 1.91s
+test_memory_error_gate_agreement rc=0 13 passed in 3.22s
+test_lint_ceilings rc=0 19 passed in 8.88s
+test_no_variant_literals rc=0 19 passed in 8.33s
+test_const_mirrors rc=1 1 failed, 6 passed in 1.84s
+test_ntp_generated_wiring rc=0 9 passed in 1.13s
+test_microtest rc=0 24 passed in 5.36s
+test_error_catalog rc=0 40 passed in 16.89s

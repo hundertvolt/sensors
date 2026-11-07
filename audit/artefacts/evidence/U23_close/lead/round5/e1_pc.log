@@ -1,0 +1,26 @@
+........................................................................ [ 14%]
+........................................................................ [ 28%]
+........................................................................ [ 42%]
+........................................................................ [ 57%]
+........................................................................ [ 71%]
+........................................................................ [ 85%]
+..........................................F............................. [ 99%]
+.                                                                        [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod
+E           SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a
+E           SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen
+E       assert not [('BACKLOG.md', 'Low priority: the two entry points are deliberately separate (prototype vs. prod'), ('SPECIFICATION.m...`data-*` a'), ('SPECIFICATION.md', '| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen')]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+1 failed, 504 passed in 26.53s

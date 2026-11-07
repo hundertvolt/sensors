@@ -1,0 +1,9 @@
+U32 lane C: the feed-site plant follows the shutdown sequence's indentation
+
+The shutdown sequence's body moved one level in, under its new top, so the while-loop plant in
+tests_scripts/test_watchdog_feed_sites.py anchored on the old indentation and left a copy that no
+longer parsed. The anchor and the planted loop now sit at the body's level, and the plant again
+yields its one finding. No meaning change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

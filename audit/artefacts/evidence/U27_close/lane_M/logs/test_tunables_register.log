@@ -1,0 +1,23 @@
+.F.............                                                          [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27m')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: tests_scripts/test_run_digital_twin_ci_sh.py:18: l0.run_digital_twin_ci_sh_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/manual/manual_bus_electrical.py:27: l4.manual_bus_electrical_fram_detect_watch_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_ci_suite.py:132: l2.ntp_unreachable_failures is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_digital_twin_ci_suite.py:202: l2.soak_plateau_cycles is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_twin_process.py:39: l2.feed_gap_share_max is tagged but has no SPECIFICATION.md Part N row
+E         scripts/test.sh:411: runner.scenarios_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['tests_scripts/test_run_digital_twin_ci_sh.py:18: l0.run_digital_twin_ci_sh_timeout_s is tagged but has no SPECIFICAT...ION.md Part N row', 'scripts/test.sh:411: runner.scenarios_timeout_s is tagged but has no SPECIFICATION.md Part N row']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+1 failed, 14 passed in 4.18s

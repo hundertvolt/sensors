@@ -1,0 +1,23 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L
+
+ ✓ |chromium| tests_js/mock-data-compose.test.js (28 tests) 14ms
+
+ Test Files  1 passed (1)
+      Tests  28 passed (28)
+   Start at  10:25:42
+   Duration  1.51s (worker 57%, import 40%, tests 4%)
+
+== Summary: npm test ==
+Commit: a7db4cd (uncommitted changes)
+Levels: L0
+Counts (tests): passed 28 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

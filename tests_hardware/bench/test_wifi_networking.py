@@ -2,44 +2,52 @@
 over genuine lwIP/UDP (real captive-DNS/bind(53) lives in test_hotspot_role_reversal.py instead).
 Uses passive observation (Board.tail_log()), not exec()/run_isolated() - see run_isolated()."""
 
-from __future__ import annotations
-
+import time
 from typing import TYPE_CHECKING
 
-import http_client
-from error_log_helpers import assert_module_error_log_contains, assert_no_task_ended, reset_all_error_logs
-from harness import Board, wait_until
+import _load
+import pytest
+from error_log_helpers import assert_module_logged_one_code, assert_no_task_ended, code, reset_all_error_logs
+from harness import Board, boot_lines, crash_lines, kick_then_reset, recover_by_reset, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
+    from http_client import JSONObject
+
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("network_neopixel", "ci_suite._run_9_ntp_unreachable")
 
 # ---------------------------------------------------------------------------
-# Item 7 - real STA connect/disconnect against a genuine AP: real SEEKING->ESTABLISHED
+# Real STA connect/disconnect against a genuine AP: real SEEKING->ESTABLISHED
 # timing/RSSI, replacing the twin's instant/no-delay WLAN.connect().
 # ---------------------------------------------------------------------------
 
 
-def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # dut_ip (session-scoped) already proves a real STA connection was reached once this session -
-    # this test's own value is confirming it happens again, cleanly, from a cold boot.
-    #
-    # kick_all_stations() first: a stale AP-side station-table entry for the DUT's MAC is the
-    # dominant cause of a hard_reset()-triggered reconnect failing here - see kick_client()'s own
-    # docstring. This is the primary regression coverage for that exact scenario.
-    #
-    # One real association can fail for reasons outside the DUT (measured 2026-09-19: 1 miss in 3
-    # full suite runs, 12/12 clean in isolation, CYW43 reporting status -1 after the firmware's own
-    # two retries). A second cold boot separates that from a break, which fails both - queue F13.
+_BOOT_TAIL_S = 45.0
+_SYNC_TAIL_S = 60.0
+_ROGUE_TAIL_S = 90.0
+_RECONNECT_TIMEOUT_S = 60.0
+_ASSOCIATION_ATTEMPTS = 2
+_PROBE_TIMEOUT_S = 10.0
+_NTP_RESYNC_MARGIN_S = 10.0
+_RTC_SET_LINE = "RTC set to:"  # src/asy_ntp_client.py, the line a completed sync prints
+_NTP_WAIT_S = _load.src_number("asy_system_service.py", "_NTP_WAIT_TIME")  # the boot signature's random fallback
+_SIGNATURE_MARGIN_S = 30.0  # the boot before the uptime clock starts, then the status pass that sets the signature
+_BLOCKED_BOOTS = 2  # two fallback signatures that differ show its entropy (agent, 2026-11-06)
+
+
+def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
+    # A real STA connection again from a cold boot. One association can fail outside the DUT (measured 2026-09-19: 1 miss
+    # in 3 full suite runs, 12/12 clean in isolation, CYW43 reporting status -1 after its own two retries); a second cold
+    # boot separates that from a break.
     attempts = []
-    for attempt in range(2):
-        bench.kick_all_stations()
-        board.hard_reset()
-        joined = "\n".join(board.tail_log(duration_s=45.0))
+    for attempt in range(_ASSOCIATION_ATTEMPTS):
+        kick_then_reset(board, bench)  # the kick a stale AP-side station entry needs, then the cold boot
+        joined = "\n".join(board.tail_log(duration_s=_BOOT_TAIL_S))
         established = "WLAN connection established" in joined and "Permanently no WLAN connection" not in joined
         attempts.append(joined)
         if established:
             if attempt:
-                print("RESULT NOTE: STA connect needed a second cold boot - one association was missed")
+                result_note("STA connect needed a second cold boot; skipped: the first association", recovery=True)
             break
     assert "Permanently no WLAN connection" not in attempts[-1], f"DUT fell back to hotspot mode instead of establishing a real STA connection, on {len(attempts)} consecutive cold boots:\n{attempts[-1]}"
     assert "WLAN connection established" in attempts[-1], f"no 'WLAN connection established' log line observed after {len(attempts)} cold boots:\n{attempts[-1]}"
@@ -51,12 +59,22 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
 # ---------------------------------------------------------------------------
 
 
-def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board) -> None:
-    lines = board.tail_log(duration_s=60.0)
-    joined = "\n".join(lines)
+def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
+    # A sync proven by state: an RTC set inside the window, or the client synced with its last sync no older than the
+    # window plus the read itself. The window opens on a reset, so the boot's sync falls in it (a synced client waits
+    # NTPInterval hours); the failure-word scan comes second.
+    _networking(dut_ip)  # the board answers before the reset
+    kick_then_reset(board, bench)
+    started = time.monotonic()
+    lines = board.tail_log(duration_s=_SYNC_TAIL_S)
+    read_started = time.monotonic()
+    networking = _networking(dut_ip)
+    read_s = time.monotonic() - read_started
+    age = networking.get("NTPLastSyncAge")
+    synced = networking.get("NTPSynced") is True and isinstance(age, int) and age <= _SYNC_TAIL_S + read_s + 1
+    assert any(_RTC_SET_LINE in line for line in lines) or synced, f"no NTP sync within the {time.monotonic() - started:.0f}s window: no '{_RTC_SET_LINE}' line, NTPSynced {networking.get('NTPSynced')!r}, NTPLastSyncAge {age!r}"
     failure_markers = [ln for ln in lines if "NTP" in ln and ("fail" in ln.lower() or "error" in ln.lower() or "timeout" in ln.lower())]
     assert not failure_markers, "observed NTP failure/error/timeout log lines during a window with no fault injected:\n" + "\n".join(failure_markers)
-    assert "NTP" in joined, f"no NTP-related log line observed at all within the window:\n{joined}"
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +83,7 @@ def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board) -> None:
 
 
 def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
-    lines = board.tail_log(duration_s=60.0)
+    lines = board.tail_log(duration_s=_SYNC_TAIL_S)
     failure_markers = [ln for ln in lines if "DNS" in ln and ("fail" in ln.lower() or "error" in ln.lower())]
     assert not failure_markers, "observed DNS failure/error log lines during a window with no fault injected:\n" + "\n".join(failure_markers)
 
@@ -76,45 +94,57 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # This tier's real-hardware proof for BACKLOG open question 6: only UDP 123 is blocked, not
-    # the AP, so the STA link stays up - "isconnected()==True but one downstream operation is
-    # unreachable", which tests/test_ntp_wifi_dns_integration.py proves at the mock level.
-    reset_all_error_logs(dut_ip)
+@pytest.mark.provokes_log("the blocked NTP port's attempts, which the test asserts as NTP_NO_REPLY", ("NTP", "E", "NTP_NO_REPLY"))
+def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # Only UDP 123 is blocked, not the AP, so the STA link stays up: "isconnected()==True but one downstream operation
+    # is unreachable" (SPECIFICATION.md F.2), which tests/test_ntp_wifi_dns_integration.py proves at the mock level.
+    reset_all_error_logs(dut_ip, request.node.name)
     bench.block_udp_ports([123])
+    lines: list[str] = []
+    signatures: list[object] = []
     try:
-        bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
-        board.hard_reset()  # forces a fresh NTP sync attempt against the now-unreachable server
-        lines = board.tail_log(duration_s=90.0)  # generous relative to asy_ntp_client.py's own retry/backoff budget
+        for _boot in range(_BLOCKED_BOOTS):
+            kick_then_reset(board, bench)  # forces a fresh NTP sync attempt against the now-unreachable server
+            lines += board.tail_log(duration_s=_ROGUE_TAIL_S)  # generous relative to asy_ntp_client.py's own retry/backoff budget
+            # Held past _NTP_WAIT_TIME: unsynced, the boot then sets its signature from get_rand_32() (asy_system_service.py).
+            wait_until(lambda: _status(dut_ip)[0].get("BootSignature") is not None, timeout_s=_NTP_WAIT_S + _SIGNATURE_MARGIN_S, description="the NTP-blocked boot's fallback boot signature")
+            system, networking = _status(dut_ip)
+            assert networking.get("NTPSynced") is False and int(str(system.get("SysUptime"))) >= _NTP_WAIT_S, f"the signature is not the fallback's: NTPSynced {networking.get('NTPSynced')!r}, SysUptime {system.get('SysUptime')!r}"
+            signatures.append(system.get("BootSignature"))
     finally:
         bench.unblock_udp_ports([123])
+    result_note(f"fallback boot signatures of {_BLOCKED_BOOTS} NTP-blocked boots: {signatures}")
+    assert len(set(signatures)) == _BLOCKED_BOOTS, f"NTP-blocked boots repeated a fallback boot signature: {signatures}"
 
-    joined = "\n".join(lines)
-    crash_markers = [ln for ln in lines if "Traceback" in ln]
-    assert not crash_markers, "a blocked NTP server crashed the system instead of degrading cleanly:\n" + "\n".join(crash_markers)
-    # The system must still finish booting (webserver etc.) even with NTP unreachable - a real
-    # observable equivalent of "NTP sync failure doesn't block the rest of build_system()".
-    assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with NTP blocked:\n{joined}"
-
-    # Bounded recovery retry, same rationale as conftest.py's dut_ip fixture: a hard_reset()
-    # occasionally lands on a real, disclosed CYW43-firmware/AP-state characteristic rather than
-    # this test's own scenario - one more retry cycle before treating it as a real failure.
-    try:
-        wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
-    except TimeoutError:
-        bench.kick_all_stations()
-        board.hard_reset()
-        wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry - see this test's own comment)")
-    # A blocked port is routine for NTP (SPECIFICATION.md Part C.7.2): errno 21 (no reply) is logged
-    # and the task backs off in place - it must never end and cost the supervisor's reboot budget.
-    assert_module_error_log_contains(dut_ip, "NTP", 21, "E")
+    assert not crash_lines(lines), "a blocked NTP server crashed the system instead of degrading cleanly:\n" + "\n".join(crash_lines(lines))
+    # NTP sync failure must not block the rest of build_system(): the boot still completes.
+    assert boot_lines(lines), f"system did not finish booting with NTP blocked: {lines[-20:]}"
+    recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_RECONNECT_TIMEOUT_S, retry_wait_s=_RECONNECT_TIMEOUT_S, skipped="the passive reconnect after the forced resync", note=result_note, description="the reconnect after the NTP-blocked boot")
+    # A request sent in the block's last fetch timeout logs its NO_REPLY after the unblock; attempts are serial, so none
+    # is in flight once the client's own backoff has resynced.
+    started = time.monotonic()
+    wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_resync_after_block_s() + _NTP_RESYNC_MARGIN_S, description="NTP resynced by its own backoff after the block")
+    result_note(f"NTP resynced {time.monotonic() - started:.1f}s after the block lifted")
+    # A blocked port is handled in place by NTP (SPECIFICATION.md Part C.7.2): NTP_NO_REPLY is logged
+    # and the task backs off; an ended task would cost the supervisor's reboot budget.
+    assert_module_logged_one_code(dut_ip, "NTP", "E", code("E", "NTP_NO_REPLY"), events=None)  # the attempts the block met
     restarts = [ln for ln in lines if "Task ended - attempting restart" in ln]
     assert not restarts, "a blocked NTP server made a task end and be restarted:\n" + "\n".join(restarts)
     assert_no_task_ended(dut_ip, "a blocked NTP server")  # the persisted record, beyond the tail window
+    reset_all_error_logs(dut_ip, request.node.name)  # after the provoked NTP_NO_REPLY was read exactly
 
 
-def _http_ok(dut_ip: str) -> bool:
-    try:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200
-    except OSError:
-        return False
+def _networking(dut_ip: str) -> "JSONObject":
+    return _status(dut_ip)[1]
+
+
+def _status(dut_ip: str) -> "tuple[JSONObject, JSONObject]":
+    # GET /status's system and networking blocks, from one read.
+    status = _load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S)
+    return _load.as_object(status.get("system"), "GET /status system"), _load.as_object(status.get("networking"), "GET /status networking")
+
+
+def _resync_after_block_s() -> float:
+    # The unsynced client's longest wait once the block lifts: one retry wait after the last failed attempt inside it
+    # (src/asy_ntp_client.py _sync_loop()), the attempt that then syncs on top.
+    return _load.ntp_retry_period_s() + _load.ntp_attempt_s()

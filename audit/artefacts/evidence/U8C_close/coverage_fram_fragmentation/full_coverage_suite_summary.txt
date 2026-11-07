@@ -1,0 +1,17 @@
+== Summary: scripts/test.sh ==
+Commit: unknown
+Levels: L0 FAIL · L1 PASS · L2 PASS (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+GC stage: coverage run (settrace)
+Counts (files): passed 88 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 2766 · failed 11 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 3872 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_scripts/ (pytest): pytest exited nonzero or timed out; 11 failed (listed above)
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

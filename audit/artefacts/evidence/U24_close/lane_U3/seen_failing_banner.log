@@ -1,0 +1,6 @@
+FAIL test_the_banner_names_its_mechanism_and_no_device:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "tests/test_asy_uart_link_driver.py", line 258, in test_the_banner_names_its_mechanism_and_no_device
+AssertionError: b'dev-uart-crossover'
+0/1 passed, 1 failed, 0 skipped

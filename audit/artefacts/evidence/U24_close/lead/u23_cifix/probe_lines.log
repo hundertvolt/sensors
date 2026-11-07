@@ -1,0 +1,36 @@
+2026-10-13T18:00:54.2463195Z HEAD is now at 3d31acc Merge 37a259a45378d8018a1794b5b24170a00c55cd58 into 798e5a723428d5cac2da0adcff145d95984e1ba8
+2026-10-13T18:02:13.2445780Z concurrent tabs on arzi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+2026-10-13T18:02:22.8149742Z concurrent tabs on dev: 6 tabs, 5 loaded on the first pass, 0 on their reload, 1 not at all
+2026-10-13T18:02:30.9365177Z concurrent tabs on grkizi: 6 tabs, 5 loaded on the first pass, 0 on their reload, 1 not at all
+2026-10-13T18:02:39.0391656Z concurrent tabs on klkizi: 6 tabs, 5 loaded on the first pass, 0 on their reload, 1 not at all
+2026-10-13T18:02:47.1043799Z concurrent tabs on schlafzi: 6 tabs, 5 loaded on the first pass, 0 on their reload, 1 not at all
+2026-10-13T18:02:55.3779979Z concurrent tabs on wozi: 6 tabs, 5 loaded on the first pass, 0 on their reload, 1 not at all
+2026-10-13T18:03:31.2807303Z  ❯  chromium  tests_js/live-backend.test.js (18 tests | 5 failed) 122111ms
+2026-10-13T18:03:31.2822088Z      ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 22500ms
+2026-10-13T18:03:31.2824004Z      × a full ceiling of browser tabs against one live twin all load, directly or on one reload 9640ms
+2026-10-13T18:03:31.2825856Z      × a full ceiling of browser tabs against one live twin all load, directly or on one reload 8100ms
+2026-10-13T18:03:31.2828664Z      × a full ceiling of browser tabs against one live twin all load, directly or on one reload 8115ms
+2026-10-13T18:03:31.2830869Z      × a full ceiling of browser tabs against one live twin all load, directly or on one reload 8050ms
+2026-10-13T18:03:31.2832847Z      × a full ceiling of browser tabs against one live twin all load, directly or on one reload 8282ms
+2026-10-13T18:03:31.2864067Z AssertionError: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.2865790Z tab 6 on its reload: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ [reset probe: the reload began 5525ms after its first-pass failure and failed after 339ms; the other tabs' requests in flight then: tab 1 GET /status (994ms), tab 2 GET /status (846ms), tab 3 GET /status (683ms), tab 4 GET /status (510ms), tab 5 GET /status (361ms)]
+2026-10-13T18:03:31.2867528Z [reset probe: the twin's HTTPDropped after the check: 2]: expected 5 to be 6 // Object.is equality
+2026-10-13T18:03:31.2887566Z AssertionError: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.2889205Z tab 6 on its reload: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ [reset probe: the reload began 4765ms after its first-pass failure and failed after 274ms; the other tabs' requests in flight then: tab 1 GET /status (890ms), tab 2 GET /status (730ms), tab 3 GET /status (584ms), tab 4 GET /status (445ms), tab 5 GET /status (305ms)]
+2026-10-13T18:03:31.2890671Z [reset probe: the twin's HTTPDropped after the check: 2]: expected 5 to be 6 // Object.is equality
+2026-10-13T18:03:31.2899349Z AssertionError: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.2901002Z tab 6 on its reload: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ [reset probe: the reload began 4767ms after its first-pass failure and failed after 276ms; the other tabs' requests in flight then: tab 1 GET /status (885ms), tab 2 GET /status (724ms), tab 3 GET /status (578ms), tab 4 GET /status (433ms), tab 5 GET /status (301ms)]
+2026-10-13T18:03:31.2902463Z [reset probe: the twin's HTTPDropped after the check: 2]: expected 5 to be 6 // Object.is equality
+2026-10-13T18:03:31.2911204Z AssertionError: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.2912838Z tab 6 on its reload: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ [reset probe: the reload began 4757ms after its first-pass failure and failed after 276ms; the other tabs' requests in flight then: tab 1 GET /status (878ms), tab 2 GET /status (716ms), tab 3 GET /status (571ms), tab 4 GET /status (432ms), tab 5 GET /status (301ms)]
+2026-10-13T18:03:31.2914372Z [reset probe: the twin's HTTPDropped after the check: 2]: expected 5 to be 6 // Object.is equality
+2026-10-13T18:03:31.2922855Z AssertionError: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.2924456Z tab 6 on its reload: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/ [reset probe: the reload began 4896ms after its first-pass failure and failed after 280ms; the other tabs' requests in flight then: tab 1 GET /status (875ms), tab 2 GET /status (729ms), tab 3 GET /status (590ms), tab 4 GET /status (452ms), tab 5 GET /status (304ms)]
+2026-10-13T18:03:31.2938810Z [reset probe: the twin's HTTPDropped after the check: 2]: expected 5 to be 6 // Object.is equality
+2026-10-13T18:03:31.2945880Z       Tests  5 failed | 1264 passed (1269)
+2026-10-13T18:03:31.2946894Z    Duration  126.06s (tests 68%, worker 32%, import 1%)
+2026-10-13T18:03:31.4901769Z   - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.4902848Z   - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.4903805Z   - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.4904792Z   - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/
+2026-10-13T18:03:31.4905762Z   - tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload: tab 6: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/

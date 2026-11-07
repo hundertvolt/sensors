@@ -1,38 +1,35 @@
+# Restores (or builds) the cached MicroPython Unix-port toolchain after the retried uv sync - used by nine CI jobs (SPECIFICATION.md B.10).
 name: Setup MicroPython toolchain
 description: >
-  Installs uv and restores (or lets the caller build) the cached MicroPython Unix-port toolchain
-  build under ~/pico-toolchain. Shared by every job that needs to run the Unix-port interpreter
-  (web-unit-tests, web-coverage, web-cross-browser-smoke, unit-tests, digital-twin-e2e,
-  firmware-build-verify) - factored out here so all six stay on the exact same cache key/path
-  instead of six hand-kept copies of the same two steps. Each job still runs its own actual
-  toolchain build (or skip, on a cache hit) afterward - this action only restores the cache, it
-  never runs setup_toolchain.py itself, since a couple of callers need extra logic around that step
-  (e.g. web jobs also stage the real website; firmware-build-verify additionally needs the ARM
-  cross-compiler apt packages).
+  Runs the retried uv sync, restores the Unix-port toolchain cache under ~/pico-toolchain and, with `build-unix-port: 'true'`,
+  builds it when missing. Used by web-unit-tests, web-put-matrix, web-coverage, web-cross-browser-smoke, unit-tests,
+  unit-tests-gc-threshold, unit-tests-coverage, digital-twin-e2e and firmware-build-verify.
+
+inputs:
+  build-unix-port:
+    required: false
+    default: 'false'
+    description: Build the Unix-port toolchain when the restored cache lacks build-standard
 
 runs:
   using: composite
   steps:
-    - name: Install uv
+    - uses: ./.github/actions/uv-sync
+    - name: Runner and compiler identity for the cache key
+      id: ident
       shell: bash
-      run: pip install uv
-    # Retried here for every job that reaches uv through this action: `uv run` builds the whole dev
-    # group, and actionlint-py fetches its binary at build time, so one bad response fails a healthy
-    # lane (SPECIFICATION.md B.10).
-    - name: Sync dev dependencies (retried - third-party build downloads are not always up)
-      shell: bash
-      run: |
-        for attempt in 1 2 3; do
-            uv sync && exit 0
-            echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
-            sleep $((attempt * 10))
-        done
-        uv sync
+      run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
     - name: Cache MicroPython Unix port build
       uses: actions/cache@v6
       with:
         path: ~/pico-toolchain
-        # Hashes setup_toolchain.py too, not just versions.toml: the Unix port's build flags live
-        # there, and a versions.toml-only key once kept a stale binary alive (B.10). Shared by every
-        # caller: first job builds, later ones hit.
-        key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+        # Every input compiled into the cached binaries: pin, build flags, build overrides, runner image, host
+        # compiler and C library (SPECIFICATION.md B.10).
+        key: unix-port-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py', 'toolchain/micropython_overrides.py') }}
+    - name: Build the Unix-port toolchain if the cache lacks it
+      if: inputs.build-unix-port == 'true'
+      shell: bash
+      run: |
+        scripts/_unix_port.sh ensure standard
+        # Every twin boot binds the local NTP responder's port 123; a restored cache carries no file capabilities.
+        sudo setcap 'cap_net_bind_service=+ep' "$(scripts/_unix_port.sh unix_port_bin standard)"

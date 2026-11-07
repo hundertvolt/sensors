@@ -1,0 +1,20 @@
+U30 fix F3a: a recursive await fails the budget, and a chain cut by a cycle is never reused elsewhere
+
+- tests_scripts/test_await_depth.py: a chain holding a "(cycle)" level fails the budget check,
+  since a recursion re-enters without bound.
+- tests_scripts/_await_depth.py: a chain is memoised together with the stack's members on its
+  own cycle (Tarjan's strongly connected components of the await graph), so a chain computed
+  while a cycle was cut is reused only where the same cuts happen: exactly what a walk with no
+  memo gives (pinned against a whole-stack memo), in 0.16 s where the memo-free walk had not
+  finished after 2 min on the tree's one 22-key cycle (agent, 2026-10-20).
+
+Expected red, held for the lead: with the order-dependent undercount gone, the budget check
+fails on the six boot entries' chains at 30 levels (the pin is 28). Each passes the FRAM
+module's own logger into a FRAM-backed PrintLogHistoryStore, which the code rules out
+(src/asy_fram_manager.py:628 builds it RAM-only and :636 hands it to FRAM_SPI; :84 shares it
+with the chunks) but the model admits: a construction is any constructed subclass
+(_await_depth.py, _ev_call) and a parameter's annotation joins its argument flow
+(_run_function).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

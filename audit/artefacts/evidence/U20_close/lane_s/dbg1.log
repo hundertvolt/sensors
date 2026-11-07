@@ -1,0 +1,6 @@
+reached; armed False calls 4
+answer True
+0 parked False sup False seq False ev ['A.close sup=running', 'B.close sup=running'] units 0
+parked True sup done True seq done True
+armed True events ['B.flush record=0 paused=None', 'pause=True', 'wait_idle', 'wait_idle', 'A.flush record=8 paused=None', 'B.flush record=8 paused=None'] tasks [None] chunks 2
+record 8 reset_bits 0

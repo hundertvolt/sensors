@@ -1,0 +1,11 @@
+PASS test_reads_pump_the_wire_without_settle
+PASS test_a_second_instance_on_one_bus_id_supersedes_the_first
+PASS test_twin_link_satisfies_the_shared_contract
+PASS test_delivery_takes_real_wire_time
+PASS test_a_new_wiring_frees_every_dma_channel
+PASS test_faster_baud_delivers_faster
+PASS test_a_poller_asks_only_for_its_mask
+PASS test_twin_poller_is_not_a_real_select_poll
+PASS test_twin_poller_requeries_ioctl
+PASS test_the_finaliser_aborts_the_channel
+10/10 passed, 0 failed, 0 skipped

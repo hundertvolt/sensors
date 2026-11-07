@@ -1,0 +1,424 @@
+{
+ "conventions": "Read at 651d3e79 against v1.29.0 (agent, 2026-10-27). Not repeated per row: RuntimeError from a C-stack overflow (MP_STACK_CHECK) is I.4(d.1)'s design defect, recorded by report_if_fatal() in the handler that catches it, never a per-site raise. A call never raises for its frame (py/objfun.c:268-287 falls back to the C stack); `super().m()` compiles to LOAD_SUPER_METHOD (py/emitbc.c:536) with the super object on the C stack (py/objtype.c:1425-1426), so no super() call or allocation is left of it; an exception object falls back to the emergency object and an empty or emergency tuple (py/objexcept.c:209-240), so constructing one never raises. Small fixed allocations: an async def call's generator (py/objgenerator.c:53-66), a *args call's tuple, asyncio's Task and Lock/Event generators; F.2 sends these to I.4(a): a function doomed without memory does not catch. On a run-time path the calling task ends and _log_dead_task()'s except Exception (asy_system_service.py:326) persists it, after which the supervisor restarts the task (I.4(c)); at construction (FRAMManager and FRAM_SPI are built inside build_system()) and in FRAMManager.setup() (run_setups() catches nothing, asy_system_service.py:738-744) the raise ends asyncio.run(main()), where the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) records the loop end and leaves the armed watchdog to reset. asyncio.CancelledError is a BaseException (extmod/asyncio/core.py:18): no `except Exception` here swallows a cancel, and every await may deliver one, which propagates to the canceller by design. Calls into asy_base_classes, asy_print_log and math_helpers that the walk marks transitive take those modules' own rows and are not repeated here. Byte-level chain (every _send_*() helper): SPIDevice.session_begin()'s two RuntimeErrors (asy_spi_driver.py:175, configure() :56) cannot occur - SPIDevice.setup() runs before any transfer (FRAM_SPI.setup() :453, every transfer path behind `initialized` or after that line) and nothing clears SPIDevice.initialized, and every transfer runs with the bus lock held (__aenter__ :159, the async with at :380, :459, :501); configure()'s machine.SPI.init() gets SPIDevice's defaults (1 MHz, mode 0, 8 bits, MSB first; its one refusal is LSB, ports/rp2/machine_spi.c:203); write_sync() cannot raise on rp2 (a write-only transfer never sets the overrun flag, SPECIFICATION.md F.5.2); readinto_sync() raises OSError(EIO) only for a transfer of 32 bytes or more (dma_min_size_threshold, ports/rp2/machine_spi.c:267-270, 308, 341), so the 1-, 2- and 4-byte reads (status, status pair, RDID) cannot; session_end()'s Pin.value() and time.sleep_us() have no raise site (ports/rp2/machine_pin.c:363).",
+ "raises": {
+  "FRAM_SPI.__aenter__": {
+   "verdict": "handled",
+   "proof": "re-raises only what interrupted the bus-lock wait at :159: Lock.acquire() raises nothing but CancelledError (extmod/asyncio/lock.py acquire, its own except re-hands a lock passed to a cancelled waiter), plus its generator's small fixed allocation; the session lock is released first (:161), so a cancel reaches its canceller with nothing held, as it must (conventions)"
+  },
+  "FRAM_SPI._check_device_id": {
+   "verdict": "handled",
+   "proof": "a max_size with no product ID: in setup() (:462) it reaches FRAMManager.setup()'s except Exception (asy_fram_manager.py:829), which logs FRAM_INIT and leaves the chip uninitialised; the run-time callers (_check_write_anomaly() :223 via set_values_sync() :372 and set_write_protected() :381, verify_present() :502) all pass an `initialized` guard first, and only a setup() whose call here returned sets it (:479), with _max_size assigned once (:135); buildgen's @limits keeps max_size in the table (asy_fram_manager.py:65)"
+  },
+  "FRAM_SPI.setup": {
+   "verdict": "handled",
+   "proof": "both OSErrors (no bus :455, no identification :469) are one-time setup errors; the only caller is FRAMManager.setup() (asy_fram_manager.py:828, at boot and from the chip watch :677), whose except Exception (:829) logs FRAM_INIT and returns False"
+  }
+ },
+ "calls": {
+  "<module>::const": {
+   "can_raise": "nothing at run time: the parser folds `_X = const(v)` (py/parse.c:832-866); a non-constant value is a SyntaxError at compile time (:842)",
+   "verdict": "unreachable",
+   "proof": "no call is left at run time: each const() is replaced by its value while parsing (py/parse.c:864, MICROPY_COMP_CONST) and the underscore names are dropped from the module (:855-858); the frozen build parses them in mpy-cross, so a bad value fails the build, never a boot"
+  },
+  "FRAM_SPI.__init__::super": {
+   "can_raise": "MemoryError from Lockable.__init__()'s asyncio.Lock() (asy_base_classes.py:115)",
+   "verdict": "handled",
+   "proof": "construction only: FRAM_SPI is built by FRAMManager.__init__ (asy_fram_manager.py:668) inside build_system(), so the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds it; a small fixed allocation (conventions)"
+  },
+  "FRAM_SPI.__init__::SPIDevice": {
+   "can_raise": "ValueError('invalid pin') for a CS pin no GPIO has (SPIDevice.__init__'s Pin(), asy_spi_driver.py:125; ports/rp2/machine_pin.c:191); MemoryError for the Pin object",
+   "verdict": "handled",
+   "proof": "construction only (FRAMManager.__init__, asy_fram_manager.py:668, inside build_system()): the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867); the CS pin is the device TOML's own"
+  },
+  "FRAM_SPI.__init__::Pin": {
+   "can_raise": "ValueError('invalid pin') (ports/rp2/machine_pin.c:191); MemoryError for the Pin object",
+   "verdict": "handled",
+   "proof": "reached only with a wp_pin, which no generated code passes (:137); construction only, so the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867) holds it"
+  },
+  "FRAM_SPI.__init__::bytearray": {
+   "can_raise": "MemoryError (py/gc.c via m_malloc_fail)",
+   "verdict": "handled",
+   "proof": "four buffers of 1-4 bytes, fixed sizes, at construction only (asy_fram_manager.py:668 inside build_system()): the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867)"
+  },
+  "FRAM_SPI.__init__::asyncio.Event": {
+   "can_raise": "MemoryError for the Event and its TaskQueue (extmod/asyncio/event.py:9-11)",
+   "verdict": "handled",
+   "proof": "construction only: the generated boot entry's except BaseException (build/generated_src/sensortask_<device>_main.py:38, buildgen/codegen.py:867); a small fixed allocation"
+  },
+  "FRAM_SPI.__aenter__::super": {
+   "can_raise": "what Lockable.__aenter__() raises: CancelledError from session_lock.acquire() while it waits (asy_base_classes.py:117-118, extmod/asyncio/lock.py acquire), and its generator's MemoryError",
+   "verdict": "handled",
+   "proof": "a cancel propagates to the canceller by design with nothing acquired (acquire re-hands a lock passed to a cancelled waiter); the generator is a small fixed allocation, I.4(a); the callers' `async with self.fram` (asy_fram_manager.py:157, :280, :409, :468, :800) sit outside their functions' try, so a raise ends the calling task (conventions)"
+  },
+  "FRAM_SPI.__aenter__::self.session_lock.release": {
+   "can_raise": "RuntimeError('Lock not acquired') when the lock's state is not 1 (extmod/asyncio/lock.py release)",
+   "verdict": "unreachable",
+   "proof": "super().__aenter__() at :157 acquired the session lock in this task just before, and only its holder ever releases it (Lockable.__aexit__, verify_present()'s finally :507, the async with at :380 and :459), so its state is 1 here"
+  },
+  "FRAM_SPI.__aexit__::self._bus_lock.release": {
+   "can_raise": "RuntimeError('Lock not acquired') (extmod/asyncio/lock.py release)",
+   "verdict": "handled",
+   "proof": "the narrow except RuntimeError at :173 records a C-stack error (report_if_fatal) and goes on to the session lock's release"
+  },
+  "FRAM_SPI.__aexit__::super": {
+   "can_raise": "what Lockable.__aexit__() raises: its release's RuntimeError, caught there (asy_base_classes.py:129-132), and its generator's MemoryError",
+   "verdict": "handled",
+   "proof": "the RuntimeError by Lockable's own except (asy_base_classes.py:131); the generator is small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAM_SPI._is_write_protected::bool": {
+   "can_raise": "nothing for an int: bool() calls mp_obj_is_true (py/objbool.c)",
+   "verdict": "unreachable",
+   "proof": "the argument is Pin.value()'s small int; no allocation"
+  },
+  "FRAM_SPI._is_write_protected::self._wp_pin.value": {
+   "can_raise": "nothing: Pin.value() with no argument returns the GPIO level (ports/rp2/machine_pin.c:363)",
+   "verdict": "unreachable",
+   "proof": "no raise site in machine_pin_value; reached only with a wp_pin"
+  },
+  "FRAM_SPI._set_write_protected::self._enable_write": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "_enable_write()'s rows: two WREN commands and 1-byte status reads, all synchronous under the caller's bus lock"
+  },
+  "FRAM_SPI._set_write_protected::self._wp_pin.value": {
+   "can_raise": "nothing: Pin.value(x) takes mp_obj_is_true(x) (ports/rp2/machine_pin.c:363)",
+   "verdict": "unreachable",
+   "proof": "x is a bool; reached only with a wp_pin"
+  },
+  "FRAM_SPI._set_write_protected::self._send_command": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "a write-only WRSR under the bus lock set_write_protected() holds (:380)"
+  },
+  "FRAM_SPI._set_write_protected::self._read_status": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "a 1-byte RDSR read, below the 32-byte EIO threshold"
+  },
+  "FRAM_SPI._set_write_protected::self._disable_write": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "_disable_write()'s rows: WRDI commands and 1-byte status reads"
+  },
+  "FRAM_SPI._check_device_id::_KNOWN_PRODUCT_IDS.get": {
+   "can_raise": "nothing for a hashable key: dict.get() looks up without raising (py/objdict.c:309-341)",
+   "verdict": "unreachable",
+   "proof": "the key is the int _max_size; an int hashes without allocating, and get() returns None for a missing key"
+  },
+  "FRAM_SPI._check_device_id::ValueError": {
+   "can_raise": "MemoryError from the f-string message's allocation; the exception object itself cannot fail (conventions)",
+   "verdict": "handled",
+   "proof": "built only on the setup path (see this function's raise row): FRAMManager.setup()'s except Exception (asy_fram_manager.py:829)"
+  },
+  "FRAM_SPI._check_device_id::self._send_and_read": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "a 4-byte RDID read into _id_buf"
+  },
+  "FRAM_SPI._check_write_anomaly::self._check_device_id": {
+   "can_raise": "what _check_device_id() raises: its ValueError (its raise row)",
+   "verdict": "unreachable",
+   "proof": "reached only from set_values_sync() :372 and set_write_protected() :381 after their `initialized` guard, which only a setup() whose own _check_device_id() returned sets (:479); the RDID is a 4-byte read (conventions)"
+  },
+  "FRAM_SPI._disable_write::self._send_command": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "write-only WRDI commands"
+  },
+  "FRAM_SPI._disable_write::self._wel_is_set": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "1-byte status reads"
+  },
+  "FRAM_SPI._enable_write::self._send_command": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "write-only WREN commands"
+  },
+  "FRAM_SPI._enable_write::self._wel_is_set": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "1-byte status reads"
+  },
+  "FRAM_SPI._read_address::self._send_and_read": {
+   "can_raise": "OSError(EIO) for a read of 32 bytes or more (ports/rp2/machine_spi.c:267-270, 341)",
+   "verdict": "handled",
+   "proof": "the one firmware read that long is the chunk layer's payload read (asy_fram_manager.py:308), inside _read_chunk()'s try whose except Exception (:338) logs FRAM_UNEXPECTED and fails the block; the status reads (asy_fram_manager.py:128, :413) are 1 and 2 bytes; SPECIFICATION.md C.3.1 puts get_values()'s raise on its caller"
+  },
+  "FRAM_SPI._read_address::self._setup_addr_buffer": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "fills the fixed address buffer with masked ints; len() of a bytearray"
+  },
+  "FRAM_SPI._read_status::self._send_and_read": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "a 1-byte RDSR read"
+  },
+  "FRAM_SPI._report_chip_lost::self.lost.set": {
+   "can_raise": "nothing: Event.set() moves waiters to the run queue and sets its state (extmod/asyncio/event.py:16-22)",
+   "verdict": "unreachable",
+   "proof": "the TaskQueue push and pop link existing tasks and allocate nothing"
+  },
+  "FRAM_SPI._send_and_read::spidev.session_begin": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "session_begin()'s RuntimeErrors need an un-set-up SPIDevice or a free bus lock"
+  },
+  "FRAM_SPI._send_and_read::spidev.write_sync": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "a write-only command transfer"
+  },
+  "FRAM_SPI._send_and_read::spidev.readinto_sync": {
+   "can_raise": "OSError(EIO) for a read of 32 bytes or more (ports/rp2/machine_spi.c:267-270, 341)",
+   "verdict": "handled",
+   "proof": "as _read_address() at :249: only the chunk layer's payload read is that long, and it sits in _read_chunk()'s try (asy_fram_manager.py:338); the other reads are 1, 2 and 4 bytes"
+  },
+  "FRAM_SPI._send_and_read::spidev.session_end": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "Pin.value() and time.sleep_us() only"
+  },
+  "FRAM_SPI._send_and_write::spidev.session_begin": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "as _send_and_read() at :263"
+  },
+  "FRAM_SPI._send_and_write::spidev.write_sync": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "two write-only transfers"
+  },
+  "FRAM_SPI._send_and_write::spidev.session_end": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "as _send_and_read() at :268"
+  },
+  "FRAM_SPI._send_command::spidev.session_begin": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "as _send_and_read() at :263"
+  },
+  "FRAM_SPI._send_command::spidev.write_sync": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "a write-only command"
+  },
+  "FRAM_SPI._send_command::spidev.session_end": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "as _send_and_read() at :268"
+  },
+  "FRAM_SPI._setup_addr_buffer::len": {
+   "can_raise": "TypeError for an object without a length (py/modbuiltins.c mp_builtin_len)",
+   "verdict": "unreachable",
+   "proof": "every argument is a bytearray, bytes or memoryview by its signature's type (mypy-checked); len() of a buffer is a small int and allocates nothing"
+  },
+  "FRAM_SPI._wel_is_set::bool": {
+   "can_raise": "nothing for an int (py/objbool.c)",
+   "verdict": "unreachable",
+   "proof": "the argument is an int masked by _SR_WEL"
+  },
+  "FRAM_SPI._wel_is_set::self._read_status": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "a 1-byte RDSR read"
+  },
+  "FRAM_SPI._write::self._is_write_protected": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "an attribute, or Pin.value() and bool() (its rows)"
+  },
+  "FRAM_SPI._write::self._enable_write": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "WREN commands and 1-byte status reads"
+  },
+  "FRAM_SPI._write::self._send_and_write": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "the address and payload, both write-only"
+  },
+  "FRAM_SPI._write::self._setup_addr_buffer": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "as _read_address() at :249"
+  },
+  "FRAM_SPI._write::self._disable_write": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "WRDI commands and 1-byte status reads"
+  },
+  "FRAM_SPI.get_values::self.get_values_sync": {
+   "can_raise": "OSError(EIO) for a buffer of 32 bytes or more (its _read_address() row)",
+   "verdict": "handled",
+   "proof": "no firmware code calls get_values(): the chunk layer reads through get_values_sync() inside _read_chunk()'s except Exception (asy_fram_manager.py:338); SPECIFICATION.md C.3.1 (:3100-3101) leaves this one raise to get_values()'s caller, so this module's never-raise comment (:12-14) needs that exception named (an owner question)"
+  },
+  "FRAM_SPI.get_values::asyncio.sleep": {
+   "can_raise": "nothing: sleep(0) is sleep_ms(0), which re-arms and returns the module's one SingletonGenerator (extmod/asyncio/core.py:55-63) with small-int arithmetic, so it allocates nothing; its assert holds because every sleep here is awaited at once",
+   "verdict": "unreachable",
+   "proof": "the call raises nothing; the await is a scheduling point where a cancelled task receives CancelledError, a BaseException (core.py:18) that propagates to the canceller by design (conventions)"
+  },
+  "FRAM_SPI.get_values::self.report_get_values": {
+   "can_raise": "its err_s calls' small fixed allocations (asy_print_log.py's rows) and its coroutine",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a); report_get_values() makes no other call"
+  },
+  "FRAM_SPI.get_values_sync::self.session_lock.locked": {
+   "can_raise": "nothing: Lock.locked() compares its state (extmod/asyncio/lock.py locked)",
+   "verdict": "unreachable",
+   "proof": "no allocation"
+  },
+  "FRAM_SPI.get_values_sync::len": {
+   "can_raise": "TypeError for an object without a length (py/modbuiltins.c mp_builtin_len)",
+   "verdict": "unreachable",
+   "proof": "every argument is a bytearray, bytes or memoryview by its signature's type (mypy-checked); len() of a buffer is a small int and allocates nothing"
+  },
+  "FRAM_SPI.get_values_sync::self._read_address": {
+   "can_raise": "OSError(EIO) for a buffer of 32 bytes or more",
+   "verdict": "handled",
+   "proof": "as _read_address() at :249: the 32-byte-plus reads come only from _read_chunk() (asy_fram_manager.py:308), inside its except Exception (:338)"
+  },
+  "FRAM_SPI.get_write_protected::self._is_write_protected": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "an attribute, or Pin.value() and bool()"
+  },
+  "FRAM_SPI.set_values::self.set_values_sync": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "its guards return statuses; _write() is write-only transfers and 1-byte reads, and _check_write_anomaly()'s RDID is 4 bytes behind the `initialized` guard (conventions)"
+  },
+  "FRAM_SPI.set_values::asyncio.sleep": {
+   "can_raise": "nothing: sleep(0) is sleep_ms(0), which re-arms and returns the module's one SingletonGenerator (extmod/asyncio/core.py:55-63) with small-int arithmetic, so it allocates nothing; its assert holds because every sleep here is awaited at once",
+   "verdict": "unreachable",
+   "proof": "the call raises nothing; the await is a scheduling point where a cancelled task receives CancelledError, a BaseException (core.py:18) that propagates to the canceller by design (conventions)"
+  },
+  "FRAM_SPI.set_values::self.report_set_values": {
+   "can_raise": "its err_s/wrn_s calls (asy_print_log.py's rows), _report_chip_lost() and its coroutine",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a); _report_chip_lost()'s Event.set() cannot raise"
+  },
+  "FRAM_SPI.set_values_sync::self.session_lock.locked": {
+   "can_raise": "nothing (extmod/asyncio/lock.py locked)",
+   "verdict": "unreachable",
+   "proof": "no allocation"
+  },
+  "FRAM_SPI.set_values_sync::len": {
+   "can_raise": "TypeError for an object without a length (py/modbuiltins.c mp_builtin_len)",
+   "verdict": "unreachable",
+   "proof": "every argument is a bytearray, bytes or memoryview by its signature's type (mypy-checked); len() of a buffer is a small int and allocates nothing"
+  },
+  "FRAM_SPI.set_values_sync::self._check_write_anomaly": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "behind this function's `initialized` guard (:363), so its RDID can reach no ValueError; a 4-byte read"
+  },
+  "FRAM_SPI.set_values_sync::self._write": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "write-only transfers and 1-byte status reads (conventions)"
+  },
+  "FRAM_SPI.set_write_protected::self._check_write_anomaly": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "behind the `initialized` guard at :377"
+  },
+  "FRAM_SPI.set_write_protected::self._set_write_protected": {
+   "can_raise": "nothing (its rows)",
+   "verdict": "unreachable",
+   "proof": "a WRSR write, WREN/WRDI commands, 1-byte reads and Pin.value(), under both locks taken at :380"
+  },
+  "FRAM_SPI.set_write_protected::asyncio.sleep": {
+   "can_raise": "nothing: sleep(0) is sleep_ms(0), which re-arms and returns the module's one SingletonGenerator (extmod/asyncio/core.py:55-63) with small-int arithmetic, so it allocates nothing; its assert holds because every sleep here is awaited at once",
+   "verdict": "unreachable",
+   "proof": "the call raises nothing; the await is a scheduling point where a cancelled task receives CancelledError, a BaseException (core.py:18) that propagates to the canceller by design (conventions)"
+  },
+  "FRAM_SPI.set_write_protected::self._report_chip_lost": {
+   "can_raise": "its err_s call (asy_print_log.py's rows) and its coroutine; Event.set() cannot raise",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAM_SPI.report_set_values::self._report_chip_lost": {
+   "can_raise": "its err_s call and its coroutine",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAM_SPI.setup::self._spidev.setup": {
+   "can_raise": "nothing beyond its coroutine: SPIDevice.setup() (asy_spi_driver.py:198-201) calls Pin.init(OUT, value=), which refuses only pulls or alternate functions on external pins (ports/rp2/machine_pin.c:257, :261)",
+   "verdict": "handled",
+   "proof": "the walk's transitive is a name match with this module's own setup(); the coroutine's small fixed allocation reaches FRAMManager.setup()'s except Exception (asy_fram_manager.py:829)"
+  },
+  "FRAM_SPI.setup::OSError": {
+   "can_raise": "nothing: the exception object falls back to the emergency object (py/objexcept.c:209-212) and its constant message needs no allocation",
+   "verdict": "unreachable",
+   "proof": "constructing it cannot fail (conventions); its raise is this function's raise row"
+  },
+  "FRAM_SPI.setup::self._check_device_id": {
+   "can_raise": "its ValueError for a max_size with no product ID (its raise row)",
+   "verdict": "handled",
+   "proof": "FRAMManager.setup()'s except Exception (asy_fram_manager.py:829) logs FRAM_INIT; the RDID is a 4-byte read"
+  },
+  "FRAM_SPI.setup::self._read_status": {
+   "can_raise": "nothing (the byte-level chain, conventions)",
+   "verdict": "unreachable",
+   "proof": "a 1-byte RDSR read under both locks (:459)"
+  },
+  "FRAM_SPI.setup::bool": {
+   "can_raise": "nothing for an int (py/objbool.c)",
+   "verdict": "unreachable",
+   "proof": "an int masked by _SR_BP_MASK"
+  },
+  "FRAM_SPI.setup::asyncio.sleep": {
+   "can_raise": "nothing: sleep(0) is sleep_ms(0), which re-arms and returns the module's one SingletonGenerator (extmod/asyncio/core.py:55-63) with small-int arithmetic, so it allocates nothing; its assert holds because every sleep here is awaited at once",
+   "verdict": "unreachable",
+   "proof": "the call raises nothing; the await is a scheduling point where a cancelled task receives CancelledError, a BaseException (core.py:18) that propagates to the canceller by design (conventions)"
+  },
+  "FRAM_SPI.setup::hex": {
+   "can_raise": "MemoryError for its string (py/modbuiltins.c:204)",
+   "verdict": "handled",
+   "proof": "a short fixed-size string, only on the partly-protected path of a one-time setup: FRAMManager.setup()'s except Exception (asy_fram_manager.py:829)"
+  },
+  "FRAM_SPI.setup::self._wp_pin.init": {
+   "can_raise": "nothing for a GPIO pin set to OUT with value= (ports/rp2/machine_pin.c:250-261 refuse only pulls and alternate functions on external pins)",
+   "verdict": "unreachable",
+   "proof": "reached only with a wp_pin, which no generated code passes (:137)"
+  },
+  "FRAM_SPI.setup::self.lost.clear": {
+   "can_raise": "nothing: Event.clear() sets its state (extmod/asyncio/event.py:24-25)",
+   "verdict": "unreachable",
+   "proof": "the walk's transitive is a name match with the chunk layer's clear(); the callee is asyncio's Event"
+  },
+  "FRAM_SPI.verify_present::asyncio.wait_for_ms": {
+   "can_raise": "TimeoutError when the lock stays busy; CancelledError on an external cancel; what the awaited acquire raises; MemoryError for its runner Task (extmod/asyncio/funcs.py:24-55)",
+   "verdict": "handled",
+   "proof": "TimeoutError by the narrow except at :494, which logs LOCK_TIMEOUT and returns False; acquire raises only the CancelledError wait_for's own timeout path causes (lock.py acquire), an external cancel propagates by design, and the runner Task is small fixed allocations only (conventions): I.4(a)"
+  },
+  "FRAM_SPI.verify_present::self.session_lock.acquire": {
+   "can_raise": "MemoryError for its generator only; it raises at the await, through wait_for_ms (row above)",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a); inside the try at :492"
+  },
+  "FRAM_SPI.verify_present::self._check_device_id": {
+   "can_raise": "what _check_device_id() raises: its ValueError (its raise row)",
+   "verdict": "unreachable",
+   "proof": "behind the `initialized` guard at :489, which only a setup() whose own _check_device_id() returned sets (:479); a 4-byte read under the bus lock (:501)"
+  },
+  "FRAM_SPI.verify_present::asyncio.sleep": {
+   "can_raise": "nothing: sleep(0) is sleep_ms(0), which re-arms and returns the module's one SingletonGenerator (extmod/asyncio/core.py:55-63) with small-int arithmetic, so it allocates nothing; its assert holds because every sleep here is awaited at once",
+   "verdict": "unreachable",
+   "proof": "the call raises nothing; the await is a scheduling point where a cancelled task receives CancelledError, a BaseException (core.py:18) that propagates to the canceller by design (conventions)"
+  },
+  "FRAM_SPI.verify_present::self.session_lock.release": {
+   "can_raise": "RuntimeError('Lock not acquired') (extmod/asyncio/lock.py release)",
+   "verdict": "unreachable",
+   "proof": "reached only after wait_for_ms() returned, so acquire() completed and set the state to 1 (lock.py acquire); the finally runs in the one holder"
+  },
+  "FRAM_SPI.verify_present::self._report_chip_lost": {
+   "can_raise": "its err_s call and its coroutine",
+   "verdict": "handled",
+   "proof": "small fixed allocations only (conventions): I.4(a)"
+  }
+ }
+}

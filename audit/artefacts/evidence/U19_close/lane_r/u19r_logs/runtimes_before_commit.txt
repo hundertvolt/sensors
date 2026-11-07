@@ -1,0 +1,8 @@
+46 passed in 7.97s
+test_api_reference wall 10.609805677 s
+4 passed in 6.69s
+test_generate_sensortask_modules wall 9.621490978 s
+7 passed in 0.08s
+test_vendored_microdot wall .614892578 s
+1 failed, 5 passed in 4.57s
+test_result_words wall 5.694645537 s

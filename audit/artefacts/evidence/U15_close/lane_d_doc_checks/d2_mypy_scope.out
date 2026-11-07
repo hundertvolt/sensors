@@ -1,0 +1,112 @@
+tests/test_ntp_fram_system_integration.py: note: In function "test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up":
+tests/test_ntp_fram_system_integration.py:696:23: error: Argument 1 to "append"
+of "list" has incompatible type "Task[None]"; expected "Task[bool]"  [arg-type]
+            starts.append(t)
+                          ^
+tests/test_ntp_fram_system_integration.py:697:16: error: Incompatible return
+value type (got "Task[None]", expected "Task[bool]")  [return-value]
+            return t
+                   ^
+tests/_bus_hazard_catalog.py: note: In function "_construct_scd30":
+tests/_bus_hazard_catalog.py:330:12: error: Unexpected keyword argument
+"address" for "SCD30_I2C"  [call-arg]
+        return SCD30_I2C(i2c, address=address)
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_bus_hazard_catalog.py:330:12: note: "SCD30_I2C" defined in "asy_scd30_driver"
+tests/_bus_hazard_catalog.py: note: In function "_construct_sgp40":
+tests/_bus_hazard_catalog.py:334:12: error: Unexpected keyword argument
+"address" for "SGP40_I2C"  [call-arg]
+        return SGP40_I2C(i2c, address=address)
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_bus_hazard_catalog.py:334:12: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/_bus_hazard_catalog.py: note: In function "_construct_isl29125":
+tests/_bus_hazard_catalog.py:338:11: error: Unexpected keyword argument
+"address" for "ISL29125_I2C"  [call-arg]
+        isl = ISL29125_I2C(i2c, address=address)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_bus_hazard_catalog.py:338:11: note: "ISL29125_I2C" defined in "asy_isl29125_driver"
+tests_hardware/device_scripts/sgp40_sample_cadence.py: note: In function "_main":
+tests_hardware/device_scripts/sgp40_sample_cadence.py:42:13: error: No overload
+variant of "__setitem__" of "array" matches argument types "int", "_TicksMs" 
+[call-overload]
+                ticks[count[0]] = time.ticks_ms()
+                ^~~~~~~~~~~~~~~
+tests_hardware/device_scripts/sgp40_sample_cadence.py:42:13: note: Possible overload variants:
+tests_hardware/device_scripts/sgp40_sample_cadence.py:42:13: note:     def __setitem__(self, SupportsIndex, int, /) -> None
+tests_hardware/device_scripts/sgp40_sample_cadence.py:42:13: note:     def __setitem__(self, slice[Any, Any, Any], array[int], /) -> None
+tests_hardware/device_scripts/sgp40_sample_cadence.py:42:13: note:     def __setitem__(self, int, int, /) -> None
+tests/test_bus_hazard_multi_device.py: note: In function "test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct":
+tests/test_bus_hazard_multi_device.py:132:15: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+            sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:132:15: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/test_bus_hazard_multi_device.py: note: In function "test_cross_device_isl29125_and_sgp40_interleave_and_both_stay_correct":
+tests/test_bus_hazard_multi_device.py:182:11: error: Unexpected keyword
+argument "address" for "ISL29125_I2C"  [call-arg]
+        isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:182:11: note: "ISL29125_I2C" defined in "asy_isl29125_driver"
+tests/test_bus_hazard_multi_device.py:183:11: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+        sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:183:11: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/test_bus_hazard_multi_device.py: note: In function "test_sgp40_general_call_reset_does_not_disturb_a_concurrent_bmp3xx_read":
+tests/test_bus_hazard_multi_device.py:226:11: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+        sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:226:11: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/test_bus_hazard_multi_device.py: note: In function "test_sgp40_general_call_reset_does_not_disturb_a_concurrent_isl29125_read":
+tests/test_bus_hazard_multi_device.py:265:11: error: Unexpected keyword
+argument "address" for "ISL29125_I2C"  [call-arg]
+        isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:265:11: note: "ISL29125_I2C" defined in "asy_isl29125_driver"
+tests/test_bus_hazard_multi_device.py:266:11: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+        sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:266:11: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/test_bus_hazard_multi_device.py: note: In function "test_sgp40_bus_fault_does_not_corrupt_or_stall_a_concurrent_isl29125_read":
+tests/test_bus_hazard_multi_device.py:332:11: error: Unexpected keyword
+argument "address" for "ISL29125_I2C"  [call-arg]
+        isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:332:11: note: "ISL29125_I2C" defined in "asy_isl29125_driver"
+tests/test_bus_hazard_multi_device.py:333:11: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+        sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:333:11: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/test_bus_hazard_multi_device.py: note: In function "test_a_register_read_is_two_transfers_with_no_sibling_transfer_between_them":
+tests/test_bus_hazard_multi_device.py:381:11: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+        sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:381:11: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/test_bus_hazard_multi_device.py: note: In function "test_a_short_ack_on_one_device_fails_only_that_device_and_leaves_sibling_reads_valid":
+tests/test_bus_hazard_multi_device.py:406:11: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+        sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:406:11: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/test_bus_hazard_multi_device.py: note: In function "test_a_recovery_during_a_held_bus_clear_lets_no_sibling_transfer_in":
+tests/test_bus_hazard_multi_device.py:506:11: error: Unexpected keyword
+argument "address" for "ISL29125_I2C"  [call-arg]
+        isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:506:11: note: "ISL29125_I2C" defined in "asy_isl29125_driver"
+tests/test_bus_hazard_multi_device.py:507:11: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+        sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:507:11: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+tests/test_bus_hazard_multi_device.py: note: In function "test_three_concurrent_sessions_on_the_same_sgp40_instance_never_scramble_each_others_reads":
+tests/test_bus_hazard_multi_device.py:558:11: error: Unexpected keyword
+argument "address" for "SGP40_I2C"  [call-arg]
+        sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_bus_hazard_multi_device.py:558:11: note: "SGP40_I2C" defined in "asy_sgp40_driver"
+Found 19 errors in 4 files (checked 165 source files)

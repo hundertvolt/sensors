@@ -1,0 +1,121 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23t
+
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows an em dash for undefined/null 3ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > masks a masked field regardless of the underlying value 1ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > resolves an enum value to its label 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > formats a gmtimestruct field from its real structured shape, not a pre-formatted string 1ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > reads a time struct missing one of its members as an invalid time value, never 'undefined' 1ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows a timestamp 0 s before the device's clock as 0 s ago 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows a timestamp 119 s before the device's clock as 119 s ago 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows a timestamp 120 s before the device's clock as 2 min ago 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows a timestamp 7199 s before the device's clock as 119 min ago 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows a timestamp 7200 s before the device's clock as 2 h ago 1ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows a timestamp 172799 s before the device's clock as 47 h ago 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows a timestamp 172800 s before the device's clock as 2 d ago 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > says the age is unknown while the device's clock is not known 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > reads a timestamp more than 5 s ahead of the device's clock as a clock mismatch, and up to 5 s as now 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > shows a timestamp's special values as their text, never as a date or an age 1ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > leaves a timestamp without specials at the em dash when it is null 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > honours a decimals hint on a number 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > pads to the declared precision rather than only truncating 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > leaves a null at the em dash even with a decimals hint 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > passes a non-number through untouched, never into toFixed() 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > leaves a field with no decimals hint and no site default exactly as it was 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > rounds a fractional value with no decimals hint to the site default, an integer unchanged, a field's own decimals winning 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > joins a list's items, and names an empty list as none 0ms
+ ✓ |chromium| tests_js/templates.test.js > formatFieldValue > lets an enum label win over a decimals hint 0ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders a non-editable field as a plain value span, never an input 4ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders a nested readonly field's own value, not [object Object] 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > shows a min/max range hint for an editable number field 4ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > shows a length hint for an editable string field 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > adds the UTF-8 byte bound to the length hint of a byte-bounded string 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > names a host label's character set in its hint 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > adds neither cue to a string with no byte bound and no shape 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > states a number field's resolution with its unit in the hint, and none without one 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > lists a string field's special values in its hint, the value quoted 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > names the form a host name or an IPv4 list takes, from the server's own shape rules 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > adds no form hint to a country code, whose description states its form 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > shows each special value's meaning in the description 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > includes field.description in the hint text, alongside a range hint 2ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders an editable toggle that flips its own On/Off state with no network call 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders an always-executed toggle with no reported state as unset, then cycles On, Off, On 3ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders a dispatch toggle with no reported state as Off, not unset 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders an editable enum as a select with the current value pre-selected 2ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders an editable enum with no matching current value as unselected, not silently defaulting to the first option (regression) 2ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders an editable composite field with one input per sub-field 2ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders an editable composite field with no subFields as an empty, non-crashing grid 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > renders an editable number field pre-filled via a current-value caption, not the input's value 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > gives a masked input type=password and autocomplete=new-password, starting empty 4ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > tags the field's own wrapper with a distinct data-field-wrapper-key, separate from the control's data-field-key 1ms
+ ✓ |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > tags a composite field's own wrapper with data-field-wrapper-key too, distinct from the grid's data-field-key 1ms
+ ✓ |chromium| tests_js/templates.test.js > field ids and labels > ids each control by its group and field index, never by its key, and binds its label to that id 2ms
+ ✓ |chromium| tests_js/templates.test.js > field ids and labels > names a readonly value and a composite grid through a span label, with no label pointing at nothing 3ms
+ ✓ |chromium| tests_js/templates.test.js > field ids and labels > keeps the unit inside the label 2ms
+ ✓ |chromium| tests_js/templates.test.js > clear button and warning > puts a Clear button after a clearable string input, pointing at the input's id 1ms
+ ✓ |chromium| tests_js/templates.test.js > clear button and warning > gives no Clear button to a string that is not clearable, nor to a clearable one shown read-only 1ms
+ ✓ |chromium| tests_js/templates.test.js > clear button and warning > builds a hidden warning naming the sibling's label after the caption of a field ignored while that sibling is set 1ms
+ ✓ |chromium| tests_js/templates.test.js > arzi's generated code fields > render each code with its catalog text: a button with the description on click, or the toned text 2ms
+ ✓ |chromium| tests_js/templates.test.js > dev's generated code fields > render each code with its catalog text: a button with the description on click, or the toned text 2ms
+ ✓ |chromium| tests_js/templates.test.js > grkizi's generated code fields > render each code with its catalog text: a button with the description on click, or the toned text 3ms
+ ✓ |chromium| tests_js/templates.test.js > klkizi's generated code fields > render each code with its catalog text: a button with the description on click, or the toned text 1ms
+ ✓ |chromium| tests_js/templates.test.js > schlafzi's generated code fields > render each code with its catalog text: a button with the description on click, or the toned text 1ms
+ ✓ |chromium| tests_js/templates.test.js > wozi's generated code fields > render each code with its catalog text: a button with the description on click, or the toned text 1ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > shows a code as a button with its number, whose click shows and hides its description after it 1ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > says a code with no catalog entry has no description 1ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > names a code button by its label and its number together 1ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > opens a code's description from the keyboard 24ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > shows a toned code as its text and muted number, coloured by its tone 1ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > shows an unknown toned code as its number alone, with no tone 1ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > titles an epoch value with its UTC instant and shows its age against the device clock 1ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > gives a special timestamp no instant, and a timestamp no date can hold no title 1ms
+ ✓ |chromium| tests_js/templates.test.js > codes and timestamps on read-only values > rounds a fractional value with no decimals hint to the definitions' default 1ms
+ ✓ |chromium| tests_js/templates.test.js > a group whose source is unavailable > says unavailable in every number/string caption and placeholder, keeping the toggle and select 3ms
+ ✓ |chromium| tests_js/templates.test.js > a group whose source is unavailable > says unavailable on a read-only value 1ms
+ ✓ |chromium| tests_js/templates.test.js > a group whose source is unavailable > turns an available card's captions to unavailable in place when its source becomes the marker, and back 2ms
+ ✓ |chromium| tests_js/templates.test.js > a group whose source is unavailable > reads a source carrying the marker beside field values as available 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildFieldGroupCard > adds an inert Apply button/result paragraph for a submit group - clicking it does nothing on its own 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildFieldGroupCard > omits the Apply button entirely for a read-only group 0ms
+ ✓ |chromium| tests_js/templates.test.js > updateFieldGroupValues > rewrites a read-only value in the same node, keeping its element 1ms
+ ✓ |chromium| tests_js/templates.test.js > updateFieldGroupValues > keeps an open code description open and current when the code changes 1ms
+ ✓ |chromium| tests_js/templates.test.js > updateFieldGroupValues > leaves a toggle and a select the user set alone 2ms
+ ✓ |chromium| tests_js/templates.test.js > resetControl > clears a typed input and every composite sub-input 2ms
+ ✓ |chromium| tests_js/templates.test.js > resetControl > returns a command dropdown to its placeholder, and selects a reported option 2ms
+ ✓ |chromium| tests_js/templates.test.js > resetControl > gives a select with no matching option its placeholder 2ms
+ ✓ |chromium| tests_js/templates.test.js > resetControl > sets a toggle with its label and aria-pressed, and an always-executed toggle back to unset 5ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > wraps the rollup and module list in a card with the group's heading, like every other field group 6ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > tags the card with data-group-key itself, like buildFieldGroupCard() (SPECIFICATION.md Part H.3: js/templates.js owns the hook) 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > starts fully collapsed to just the rollup - no module rows visible 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > rolls up how many modules have errors vs. warnings, by each module's worst history entry 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > colours a counted module with only warnings in its history as a warning, on the row's one severity 2ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > "Show flagged" reveals only modules whose worst entry is an error or warning 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > "Show all" reveals every module regardless of worst status 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > shows a module's own counter and its full history immediately once revealed - no separate expand click 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > renders an absent module as no data, never a zero 0ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > renders every row as no data, counted in the rollup, when the body carried no errcount 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > renders an unavailable module as unavailable, revealed by Show flagged 0ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > reads a counter at the firmware's cap as saturated, and one below it as exact 0ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > shows a placeholder message for a module with no history 0ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > renders each entry's raw errno, colored by type via data-err-type only - never the type itself as text 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > makes an error or warning number a button, leaving a no-error entry a plain span 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > shows a history code's catalog text below the row's history on click, hides it on a second click, and moves it on another pill 2ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > opens a history code's description from the keyboard 25ms
+ ✓ |chromium| tests_js/templates.test.js > buildErrcountGroup > says a history code with no catalog entry has no description 2ms
+ ✓ |chromium| tests_js/templates.test.js > updateErrcountGroup > keeps the filter buttons, and the focus on them, while it updates the counts 2ms
+ ✓ |chromium| tests_js/templates.test.js > updateErrcountGroup > re-applies the chosen filter, so a module that turns flagged shows at once 2ms
+ ✓ |chromium| tests_js/templates.test.js > updateErrcountGroup > keeps a row's history nodes and open description while the history is unchanged, and rebuilds and closes them when it changes 1ms
+ ✓ |chromium| tests_js/templates.test.js > updateErrcountGroup > drops the saturation mark when a capped counter falls after a reset 1ms
+ ✓ |chromium| tests_js/templates.test.js > updateErrcountGroup > turns every row to no data when a later body carries no errcount, and back 1ms
+ ✓ |chromium| tests_js/templates.test.js > buildSectionShell > builds the heading/description and returns an empty grid plus a hidden error banner, clearing prior content 2ms
+ ✓ |chromium| tests_js/templates.test.js > buildNavDrawer > builds one inert data-section-key link per section plus a device-name heading 1ms
+ ✓ |chromium| tests_js/templates.test.js > XSS safety (standing guideline: textContent only, never innerHTML) > renders a hostile field label/value as literal text, never as parsed markup 1ms
+ ✓ |chromium| tests_js/templates.test.js > XSS safety (standing guideline: textContent only, never innerHTML) > renders a hostile field-group label as literal text 1ms
+ ✓ |chromium| tests_js/templates.test.js > XSS safety (standing guideline: textContent only, never innerHTML) > renders a hostile errcount module label as literal text 1ms
+ ✓ |chromium| tests_js/templates.test.js > XSS safety (standing guideline: textContent only, never innerHTML) > renders a hostile code description as literal text, on a value and on a history entry 1ms
+ ✓ |chromium| tests_js/templates.test.js > XSS safety (standing guideline: textContent only, never innerHTML) > renders a hostile device/section name in the nav drawer as literal text 1ms
+
+ Test Files  1 passed (1)
+      Tests  112 passed (112)
+   Start at  09:39:47
+   Duration  2.04s (worker 42%, tests 30%, import 28%)
+

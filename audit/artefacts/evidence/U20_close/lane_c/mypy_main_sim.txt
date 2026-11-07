@@ -1,0 +1,12 @@
+src/asy_system_service.py:498:5: error: Missing return statement  [return]
+src/asy_system_service.py:501:5: error: Missing return statement  [return]
+tests_hardware/device_scripts/serving_at_default_gc.py:121:54: error: Missing
+tests_hardware/device_scripts/heap_under_connection_ceiling.py:69:54: error:
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:162:15: error:
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:172:9: error:
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:111:15: error:
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:30:15: error:
+tests_hardware/device_scripts/allocation_need_per_source.py:50:8: error: Module
+tests_hardware/device_scripts/allocation_need_per_source.py:51:9: error: Module
+tests_hardware/device_scripts/allocation_need_per_source.py:127:11: error:
+Found 11 errors in 7 files (checked 184 source files)

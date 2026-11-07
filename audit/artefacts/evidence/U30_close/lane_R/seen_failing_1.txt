@@ -1,0 +1,50 @@
+
+tests_scripts/test_micropython_overrides.py:272: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_micropython_overrides.py::test_build_unix_port_applies_the_override_the_constructed_make_command_carries_variant_and_variant_dir
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_rig_variant_header_sets_the_mark_stack_once_after_the_real_header
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_rig_mark_stack_is_larger_than_the_pinned_default
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_host_variant_relays_the_standard_variant_and_swaps_in_the_patched_copy
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_host_parametrization_covers_every_anchor_the_code_checks
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_preprocesses_with_the_builds_own_variables_and_removes_the_pp
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_names_its_own_preprocessing_failures
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_names_each_miss[# 1 "unix_mphal.c"\n#define MICROPY_ALLOC_GC_STACK_SIZE (64)\nvoid mp_hal_set_interrupt_char(char c) {\n}\n-^unix_gc_stack: unix_mphal\\.pp has no mp_state_mem_t: the pinned source changed
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_names_each_miss[# 1 "unix_mphal.c"\n#define MICROPY_ALLOC_GC_STACK_SIZE (64)\ntypedef struct _mp_state_mem_t {\n\n    size_t total_bytes_allocated;\n\n    mp_state_mem_area_t area;\n\n    int gc_stack_overflow;\n\n    uint16_t gc_auto_collect_enabled;\n} mp_state_mem_t;\nvoid mp_hal_set_interrupt_char(char c) {\n}\n-is \\[\\] entries, not the rig's .* MICROPY_ALLOC_GC_STACK_SIZE]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_names_each_miss[# 1 "unix_mphal.c"\n#define MICROPY_ALLOC_GC_STACK_SIZE (64)\ntypedef struct _mp_state_mem_t {\n\n    size_t total_bytes_allocated;\n\n    mp_state_mem_area_t area;\n\n    int gc_stack_overflow;\n    size_t gc_block_stack[(64)];\n\n    uint16_t gc_auto_collect_enabled;\n} mp_state_mem_t;\nvoid mp_hal_set_interrupt_char(char c) {\n}\n-^unix_gc_stack: the GC mark stack this build compiled is \\['\\(64\\)'\\] entries, not the rig's]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_names_each_miss[# 1 "unix_mphal.c"\n#define MICROPY_ALLOC_GC_STACK_SIZE (1023)\ntypedef struct _mp_state_mem_t {\n\n    size_t total_bytes_allocated;\n\n    mp_state_mem_area_t area;\n\n    int gc_stack_overflow;\n    size_t gc_block_stack[(1023)];\n\n    uint16_t gc_auto_collect_enabled;\n} mp_state_mem_t;\nvoid mp_hal_set_interrupt_char(char c) {\n}\n-is \\['\\(1023\\)'\\] entries, not the rig's]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_fails_a_stock_build_by_name_and_removes_the_pp
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_readback_accepts_the_rigs_stack
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_parametrization_covers_every_anchor_the_code_checks
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_the_gc_stack_anchors_hold_in_the_real_pinned_source
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_no_make_command_carries_the_mbedtls_flag_globally
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_host_anchor_is_load_bearing[static void gc_deal_with_stack_overflow(void) {\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_host_anchor_is_load_bearing[#ifndef MICROPY_ALLOC_GC_STACK_SIZE\n#define MICROPY_ALLOC_GC_STACK_SIZE (64)\n#endif\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_host_anchor_is_load_bearing[    MICROPY_GC_STACK_ENTRY_TYPE gc_block_stack[MICROPY_ALLOC_GC_STACK_SIZE];\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_host_anchor_is_load_bearing[            if (sp < MICROPY_ALLOC_GC_STACK_SIZE) {\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_host_anchor_is_load_bearing[            for (size_t block = 0; block < area->gc_alloc_table_byte_len * BLOCKS_PER_ATB; block++) {\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_host_anchor_is_load_bearing[                MP_STATE_MEM(gc_stack_overflow) = 1;\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_gc_stack_anchor_is_load_bearing[static void gc_deal_with_stack_overflow(void) {\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_gc_stack_anchor_is_load_bearing[#ifndef MICROPY_ALLOC_GC_STACK_SIZE\n#define MICROPY_ALLOC_GC_STACK_SIZE (64)\n#endif\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_gc_stack_anchor_is_load_bearing[    MICROPY_GC_STACK_ENTRY_TYPE gc_block_stack[MICROPY_ALLOC_GC_STACK_SIZE];\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_gc_stack_anchor_is_load_bearing[            if (sp < MICROPY_ALLOC_GC_STACK_SIZE) {\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_gc_stack_anchor_is_load_bearing[            for (size_t block = 0; block < area->gc_alloc_table_byte_len * BLOCKS_PER_ATB; block++) {\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_every_gc_stack_anchor_is_load_bearing[                MP_STATE_MEM(gc_stack_overflow) = 1;\n]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_unix_port_proves_the_mark_stack_in_each_flavours_own_build[True]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_unix_port_proves_the_mark_stack_in_each_flavours_own_build[False]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_unix_port_applies_the_override_the_test_rig_variant_is_built_without_the_settrace_flag
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_unix_port_applies_the_override_the_coverage_variant_gets_the_flag_and_its_own_build_dir
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_unix_port_applies_the_override_the_constructed_make_command_carries_variant_and_variant_dir
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_unix_lwip_port_builds_the_host_flavour_and_proves_it
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_firmware_applies_the_tick_override_only_for_the_test_image_and_proves_every_build[test]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_firmware_applies_the_tick_override_only_for_the_test_image_and_proves_every_build[release]
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_firmware_applies_the_lwip_override_without_an_explicit_table_the_build_applies_versions_tomls_own
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_firmware_applies_the_lwip_override_make_gets_the_redirect_and_the_build_is_verified_against_the_table
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_firmware_applies_the_lwip_override_an_anchorless_tree_raises_before_make_ever_runs
+      1 FAILED tests_scripts/test_micropython_overrides.py::test_build_firmware_applies_and_proves_both_rp2_overrides
+      1 39 failed, 250 passed in 4.25s
+      1         # The path every real `setup` run takes: no table passed, so the pinned one must be what
+
+real	0m5.024s
+user	0m3.726s
+sys	0m0.603s

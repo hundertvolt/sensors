@@ -1,0 +1,152 @@
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py: note: In function "_install":
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py:100:11: error:
+"SystemService" has no attribute "start_tasks"; maybe "_start_task"? 
+[attr-defined]
+        await svc.start_tasks([_parked_starter])
+              ^~~~~~~~~~~~~~~
+tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py: note: In function "_main":
+tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py:37:11: error:
+"SystemService" has no attribute "start_tasks"; maybe "_start_task"? 
+[attr-defined]
+        await sysfunct.start_tasks([_dying_starter])
+              ^~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py:38:38: error:
+"SystemService" has no attribute "supervise_tasks"; maybe "_supervisor_task"? 
+[attr-defined]
+        supervisor = asyncio.create_task(sysfunct.supervise_tasks())
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/serving_at_default_gc.py: note: In function "_run":
+tests_hardware/device_scripts/serving_at_default_gc.py:124:54: error:
+Unexpected keyword argument "watchdog" for "main"  [call-arg]
+    ...main_task = asyncio.get_event_loop().create_task(sensortask_dev.main(w...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/serving_at_default_gc.py:124:54: note: "main" defined in "sensortask_dev"
+tests_hardware/device_scripts/heap_under_connection_ceiling.py: note: In function "_run":
+tests_hardware/device_scripts/heap_under_connection_ceiling.py:72:54: error:
+Unexpected keyword argument "watchdog" for "main"  [call-arg]
+    ...main_task = asyncio.get_event_loop().create_task(sensortask_dev.main(w...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/heap_under_connection_ceiling.py:72:54: note: "main" defined in "sensortask_dev"
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: note: In function "_main":
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:150:15: error:
+Unexpected keyword argument "watchdog" for "build_system"  [call-arg]
+            await sensortask_dev.build_system(watchdog=wdt, cfg_path="", w...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:150:15: note: "build_system" defined in "sensortask_dev"
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:152:15: error:
+Item "SystemService" of "SystemService | None" has no attribute "run_setups" 
+[union-attr]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:152:15: error:
+Item "None" of "SystemService | None" has no attribute "run_setups" 
+[union-attr]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:152:50: error:
+Module has no attribute "_collect_setups"  [attr-defined]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                                                     ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:173:32: error:
+Item "SystemService" of "SystemService | None" has no attribute "start_tasks" 
+[union-attr]
+            await asyncio.wait_for(sysfunct.start_tasks(task_starters), _S...
+                                   ^~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:173:32: error:
+Item "None" of "SystemService | None" has no attribute "start_tasks" 
+[union-attr]
+            await asyncio.wait_for(sysfunct.start_tasks(task_starters), _S...
+                                   ^~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:187:32: error:
+Item "None" of "SystemService | None" has no attribute "start_timers" 
+[union-attr]
+            await asyncio.wait_for(sysfunct.start_timers(trigger_starters,...
+                                   ^~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py: note: In function "_main":
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:114:15: error:
+Unexpected keyword argument "watchdog" for "build_system"  [call-arg]
+            await sensortask_dev.build_system(watchdog=wdt, cfg_path="", w...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:114:15: note: "build_system" defined in "sensortask_dev"
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:116:15: error:
+Item "SystemService" of "SystemService | None" has no attribute "run_setups" 
+[union-attr]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:116:15: error:
+Item "None" of "SystemService | None" has no attribute "run_setups" 
+[union-attr]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:116:50: error:
+Module has no attribute "_collect_setups"  [attr-defined]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                                                     ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py: note: In function "_main":
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:33:15: error:
+Unexpected keyword argument "watchdog" for "build_system"  [call-arg]
+            await sensortask_dev.build_system(watchdog=wdt, cfg_path="", w...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:33:15: note: "build_system" defined in "sensortask_dev"
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:35:15: error:
+Item "SystemService" of "SystemService | None" has no attribute "run_setups" 
+[union-attr]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:35:15: error:
+Item "None" of "SystemService | None" has no attribute "run_setups" 
+[union-attr]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:35:50: error:
+Module has no attribute "_collect_setups"  [attr-defined]
+            await sensortask_dev.sysfunct.run_setups(sensortask_dev._colle...
+                                                     ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/allocation_need_per_source.py: note: In function "_run":
+tests_hardware/device_scripts/allocation_need_per_source.py:129:11: error:
+Unexpected keyword argument "watchdog" for "build_system"  [call-arg]
+        await sensortask_dev.build_system(watchdog=_wdt, web_host="127.0.0...
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/allocation_need_per_source.py:129:11: note: "build_system" defined in "sensortask_dev"
+tests_hardware/device_scripts/allocation_need_per_source.py:130:11: error: Item
+"SystemService" of "SystemService | None" has no attribute "run_setups" 
+[union-attr]
+        await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_s...
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/allocation_need_per_source.py:130:11: error: Item
+"None" of "SystemService | None" has no attribute "run_setups"  [union-attr]
+        await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_s...
+              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/allocation_need_per_source.py:130:46: error:
+Module has no attribute "_collect_setups"  [attr-defined]
+        await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_s...
+                                                 ^~~~~~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/sgp40_sample_cadence.py: note: In function "_main":
+tests_hardware/device_scripts/sgp40_sample_cadence.py:32:15: error: Unexpected
+keyword argument "watchdog" for "build_system"  [call-arg]
+            await device.build_system(watchdog=wdt, cfg_path="", web_host=...
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/sgp40_sample_cadence.py:32:15: note: "build_system" defined in "_bench_device"
+tests_hardware/device_scripts/sgp40_sample_cadence.py:42:15: error:
+"SystemService" has no attribute "run_setups"  [attr-defined]
+            await sysfunct.run_setups(device._collect_setups())  # main()'...
+                  ^~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/sgp40_sample_cadence.py:42:35: error: Module has
+no attribute "_collect_setups"  [attr-defined]
+            await sysfunct.run_setups(device._collect_setups())  # main()'...
+                                      ^~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/sgp40_sample_cadence.py:61:11: error:
+"SystemService" has no attribute "start_tasks"; maybe "_start_task"? 
+[attr-defined]
+        await sysfunct.start_tasks(device._collect_task_starters())
+              ^~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/sgp40_sample_cadence.py:62:38: error:
+"SystemService" has no attribute "supervise_tasks"; maybe "_supervisor_task"? 
+[attr-defined]
+        supervisor = asyncio.create_task(sysfunct.supervise_tasks())  # fe...
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~
+Found 29 errors in 9 files (checked 184 source files)
+
+real	0m13.374s
+user	0m9.836s
+sys	0m0.370s

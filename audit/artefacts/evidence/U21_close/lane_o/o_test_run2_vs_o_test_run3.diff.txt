@@ -1,0 +1,150 @@
+# diff u21/o_test_run3.log u21/o_test_run2.log (paths relative to the scratchpad; normal diff format).
+# The full o_test_run3.log is beside this file (gzipped); `patch -o o_test_run2.log o_test_run3.log <this file>` rebuilds o_test_run2.log.
+1c1
+< pid=12238 start=17:42:42 head=9314738
+---
+> pid=30921 start=17:12:23 head=5654ea1
+14c14
+< $ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/mpy-cross/build/mpy-cross /tmp/tmpca569yf5/frozen_module/frozen_verify_test.py
+---
+> $ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/mpy-cross/build/mpy-cross /tmp/tmpri8tqnxo/frozen_module/frozen_verify_test.py
+18c18
+< $ make -j2 VARIANT=standard VARIANT_DIR=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/build_overrides/unix_kbd_intr_variant FROZEN_MANIFEST=/tmp/tmpca569yf5/manifest_unix.py   (cwd=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/ports/unix)
+---
+> $ make -j2 VARIANT=standard VARIANT_DIR=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/build_overrides/unix_kbd_intr_variant FROZEN_MANIFEST=/tmp/tmpri8tqnxo/manifest_unix.py   (cwd=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/ports/unix)
+44d43
+< Module registrations updated
+45a45
+> Module registrations updated
+48d47
+< Compressed data updated
+49a49
+> Compressed data updated
+54a55
+> CC ../../py/nlrx86.c
+62d62
+< CC ../../py/nlrx86.c
+246d245
+< CC ../../extmod/network_usbd_ncm.c
+247a247
+> CC ../../extmod/network_usbd_ncm.c
+391c391
+< $ make -j2 BOARD=RPI_PICO_W BOARD_DIR=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/build_overrides/lwip_connection_counts_board USER_C_MODULES=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/build_overrides/modlwip_eagain FROZEN_MANIFEST=/tmp/tmpca569yf5/manifest_rp2.py   (cwd=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/ports/rp2)
+---
+> $ make -j2 BOARD=RPI_PICO_W BOARD_DIR=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/build_overrides/lwip_connection_counts_board USER_C_MODULES=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/build_overrides/modlwip_eagain FROZEN_MANIFEST=/tmp/tmpri8tqnxo/manifest_rp2.py   (cwd=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/ports/rp2)
+427c427
+< -- Configuring done (1.1s)
+---
+> -- Configuring done (1.2s)
+435d434
+< make[3]: Leaving directory '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/ports/rp2/build-RPI_PICO_W'
+436a436
+> make[3]: Leaving directory '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/ports/rp2/build-RPI_PICO_W'
+441d440
+< [  1%] No patch step for 'pioasmBuild'
+446c445
+< [  1%] Performing configure step for 'pioasmBuild'
+---
+> [  1%] No patch step for 'pioasmBuild'
+448a448,449
+> [  1%] Building ASM object pico-sdk/src/rp2040/boot_stage2/CMakeFiles/bs2_default.dir/compile_time_choice.S.o
+> [  1%] Performing configure step for 'pioasmBuild'
+451d451
+< [  1%] Building ASM object pico-sdk/src/rp2040/boot_stage2/CMakeFiles/bs2_default.dir/compile_time_choice.S.o
+456d455
+< -- The CXX compiler identification is GNU 13.3.0
+458a458
+> -- The CXX compiler identification is GNU 13.3.0
+550d549
+< [  3%] Generating genhdr/compressed.split
+552c551
+< [  3%] Generating genhdr/moduledefs.collected
+---
+> [  3%] Generating genhdr/compressed.split
+553a553
+> [  3%] Generating genhdr/moduledefs.collected
+669d668
+< [ 21%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/py/parse.c.o
+670a670
+> [ 21%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/py/parse.c.o
+736d735
+< [ 32%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/extmod/network_lwip.c.o
+737a737
+> [ 32%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/extmod/network_lwip.c.o
+868d867
+< [ 54%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/lwip/src/netif/ppp/pppapi.c.o
+869a869
+> [ 54%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/lwip/src/netif/ppp/pppapi.c.o
+875d874
+< [ 55%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/lwip/src/netif/ppp/vj.c.o
+876a876
+> [ 55%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/lwip/src/netif/ppp/vj.c.o
+970a971
+> [ 70%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/mbedtls/library/mps_trace.c.o
+972,973d972
+< [ 71%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/mbedtls/library/mps_trace.c.o
+< [ 71%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/mbedtls/library/ctr_drbg.c.o
+975c974
+< [ 71%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/mbedtls/library/dhm.c.o
+---
+> [ 71%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/mbedtls/library/ctr_drbg.c.o
+976a976
+> [ 71%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/mbedtls/library/dhm.c.o
+1000a1001
+> [ 75%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/mbedtls/library/rsa.c.o
+1002d1002
+< [ 76%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/mbedtls/library/rsa.c.o
+1048d1047
+< [ 83%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/pico-sdk/src/rp2_common/pico_runtime_init/runtime_init.c.o
+1049a1049
+> [ 83%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/pico-sdk/src/rp2_common/pico_runtime_init/runtime_init.c.o
+1084d1083
+< [ 89%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/libm/wf_tgamma.c.o
+1085a1085
+> [ 89%] Building C object CMakeFiles/firmware.dir/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-o/micropython/lib/libm/wf_tgamma.c.o
+1181a1182
+> CC ../../py/nlrx64.c
+1195d1195
+< CC ../../py/nlrx64.c
+1537d1536
+< GEN build-settrace/genhdr/moduledefs.split
+1538a1538
+> GEN build-settrace/genhdr/moduledefs.split
+1689d1688
+< CC ../../extmod/machine_i2c.c
+1702a1702
+> CC ../../extmod/machine_i2c.c
+1926,1927d1925
+< QSTR updated
+< GEN build-lwip/genhdr/root_pointers.collected
+1929c1927,1928
+< Root pointer registrations updated
+---
+> GEN build-lwip/genhdr/root_pointers.collected
+> QSTR updated
+1930a1930
+> Root pointer registrations updated
+1938a1939
+> CC ../../py/nlrx64.c
+1952d1952
+< CC ../../py/nlrx64.c
+1987d1986
+< CC ../../py/emitnxtensa.c
+1988a1988
+> CC ../../py/emitnxtensa.c
+2053d2052
+< CC ../../py/opmethods.c
+2054a2054
+> CC ../../py/opmethods.c
+2088d2087
+< CC ../../extmod/machine_i2s.c
+2089a2089
+> CC ../../extmod/machine_i2s.c
+2336c2336
+<  898894	  72124	  41968	1012986	  f74fa	build-lwip/micropython
+---
+>  897902	  72124	  41744	1011770	  f703a	build-lwip/micropython
+2364c2364
+< rc=0 elapsed=548s end=17:51:50
+---
+> rc=0 elapsed=162s end=17:15:05

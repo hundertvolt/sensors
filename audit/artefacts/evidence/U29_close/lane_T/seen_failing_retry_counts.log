@@ -1,0 +1,30 @@
+.FF..                                                                    [100%]
+=================================== FAILURES ===================================
+_________________ test_every_classified_count_is_still_tagged __________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u29t')
+
+    def test_every_classified_count_is_still_tagged(repo_root: Path) -> None:
+        gone = sorted(set(_TABLE) - {t.id for t in retry_tags(repo_root)})
+>       assert not gone, f"classified but tagged nowhere in the testing scopes: {gone} - remove them from _TABLE"
+E       AssertionError: classified but tagged nowhere in the testing scopes: ['l0.vitest_timeout_retries'] - remove them from _TABLE
+E       assert not ['l0.vitest_timeout_retries']
+
+tests_scripts/test_retry_counts.py:101: AssertionError
+_______________ test_both_tiers_retry_through_their_tagged_count _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u29t')
+
+    def test_both_tiers_retry_through_their_tagged_count(repo_root: Path) -> None:
+        found = tier_findings((repo_root / "scripts" / "test.sh").read_text(encoding="utf-8"), (repo_root / "vitest.config.js").read_text(encoding="utf-8"))
+>       assert not found, "\n".join(found)
+E       AssertionError: scripts/test.sh: the tests_scripts/ tier is not launched in 'for ((attempt = 1; attempt <= max_attempts; attempt++)); do'
+E         scripts/test.sh: runner.per_file_attempts is not set before the tests_scripts/ tier is launched
+E         vitest.config.js: no retry object whose count carries l0.vitest_timeout_retries
+E       assert not ["scripts/test.sh: the tests_scripts/ tier is not launched in 'for ((attempt = 1; attempt <= max_attempts; attempt++))...he tests_scripts/ tier is launched', 'vitest.config.js: no retry object whose count carries l0.vitest_timeout_retries']
+
+tests_scripts/test_retry_counts.py:106: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_retry_counts.py::test_every_classified_count_is_still_tagged
+FAILED tests_scripts/test_retry_counts.py::test_both_tiers_retry_through_their_tagged_count
+2 failed, 3 passed in 0.33s

@@ -1,0 +1,16 @@
+FAIL test_no_scd30_write_reaches_the_chip_while_a_system_command_runs:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "_only.py", line 992, in test_no_scd30_write_reaches_the_chip_while_a_system_command_runs
+  File "tests/_async_harness.py", line 254, in run_timed
+  File "tests/_async_harness.py", line 97, in _drive
+  File "tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "_only.py", line 984, in one
+AssertionError: arzi: reboot: a setter answered {'FRCWindow': 'Failed', 'SelfCal': 'Valid', 'TempOffset': 'Valid', 'ForceCalRef': 'Valid', 'MeasInterval': 'Valid', 'Altitude': 'Valid', 'FRCNoise': 'Failed', 'AmbPres': 'Valid', 'FRCRate': 'Failed'} during the sequence
+0/1 passed, 1 failed, 0 skipped

@@ -1,0 +1,66 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+NOTE (scd30_measuring): already measuring (no write)
+..........F.F..F..FF                                                     [100%]
+=================================== FAILURES ===================================
+___________ test_isl29125_real_irq_edge_beats_the_periodic_fallback ____________
+tests_hardware/flash/test_bus_concurrency.py:199: in test_isl29125_real_irq_edge_beats_the_periodic_fallback
+    assert isinstance(fast, int), f"no reading within {facts['deadline_ms']} ms (periodic fallback {facts['trigger_s']} s) - the INT line does not reach its pin"
+E   AssertionError: no reading within 6000 ms (periodic fallback 30 s) - the INT line does not reach its pin
+E   assert False
+E    +  where False = isinstance(None, int)
+___________ test_a_held_sda_line_is_cleared_and_every_device_answers ___________
+tests_hardware/flash/test_bus_concurrency.py:229: in test_a_held_sda_line_is_cleared_and_every_device_answers
+    assert runtime["held"] is True, f"the bit-banged read left SDA high - no held line was made: {runtime}"
+E   AssertionError: the bit-banged read left SDA high - no held line was made: {'held': False, 'answered': {'bmp3xx': None}, 'status': 0, 'stuck_errno': None, 'clear_ms': 0}
+E   assert False is True
+_____________ test_fram_cs_pin_hijack_fault_injection_and_recovery _____________
+tests_hardware/flash/test_bus_concurrency.py:270: in test_fram_cs_pin_hijack_fault_injection_and_recovery
+    assert write["readback_ok"] is True, f"the hijacked write reached the chip although CS was deasserted first: {write}"
+E   AssertionError: the hijacked write reached the chip although CS was deasserted first: {'raised': None, 'readback_ok': False, 'recovered': True, 'seeded': True, 'injected': True}
+E   assert False is True
+__________ test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk ___________
+tests_hardware/flash/test_bus_concurrency.py:314: in test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk
+    out = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_fram_erase.py", timeout_s=_LONG_SCRIPT_TIMEOUT_S, STATE="logger_writes")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/twin_board.py:101: in run_isolated_expect_reset
+    output = self._run(harness.render_device_script(Path(script_path), **extras), timeout_s, expect_reset=True)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/harness.py:620: in render_device_script
+    text = path.read_text(encoding="utf-8")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/pathlib.py:1044: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2/tests_hardware/device_scripts/system_command_fram_erase.py'
+__________________ test_reboot_command_shuts_down_then_resets __________________
+tests_hardware/flash/test_bus_concurrency.py:326: in test_reboot_command_shuts_down_then_resets
+    out = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "system_command_reboot.py", timeout_s=_LONG_SCRIPT_TIMEOUT_S, COMMAND="reboot")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/twin_board.py:101: in run_isolated_expect_reset
+    output = self._run(harness.render_device_script(Path(script_path), **extras), timeout_s, expect_reset=True)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_hardware/harness.py:620: in render_device_script
+    text = path.read_text(encoding="utf-8")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/pathlib.py:1044: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d2/tests_hardware/device_scripts/system_command_reboot.py'
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_bus_concurrency.py::test_isl29125_real_irq_edge_beats_the_periodic_fallback
+FAILED tests_hardware/flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers
+FAILED tests_hardware/flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery
+FAILED tests_hardware/flash/test_bus_concurrency.py::test_fram_erase_racing_a_chunk_write_leaves_no_torn_chunk
+FAILED tests_hardware/flash/test_bus_concurrency.py::test_reboot_command_shuts_down_then_resets
+5 failed, 15 passed in 151.41s (0:02:31)
+
+real	2m32.107s
+user	0m5.121s
+sys	0m1.058s
+rc=1

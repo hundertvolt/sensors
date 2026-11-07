@@ -1,0 +1,4 @@
+group 00 rc=1 121s 2 failed, 3581 passed, 6 skipped in 118.87s (0:01:58)
+group 01 rc=1 131s 1 failed, 795 passed in 129.63s (0:02:09)
+group 02 rc=1 109s 1 failed, 832 passed in 105.43s (0:01:45)
+group 03 rc=1 171s 1 failed, 1023 passed in 169.95s (0:02:49)

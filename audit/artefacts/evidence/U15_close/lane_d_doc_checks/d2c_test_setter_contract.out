@@ -1,0 +1,55 @@
+..F.....F                                                                [100%]
+=================================== FAILURES ===================================
+__________________ test_a_push_registered_outside_init_fails ___________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5581/test_a_push_registered_outside0/src')
+
+    def test_a_push_registered_outside_init_fails(src_copy: Path) -> None:
+        _edit(src_copy, "asy_sgp40_driver.py", "        self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc\n", "")
+>       _edit(src_copy, "asy_sgp40_driver.py", "    async def _read_loop(self) -> bool:\n", "    async def _read_loop(self) -> bool:\n        self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc\n")
+
+tests_scripts/test_setter_contract.py:210: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/pytest-of-root/pytest-5581/test_a_push_registered_outside0/src')
+name = 'asy_sgp40_driver.py', old = '    async def _read_loop(self) -> bool:\n'
+new = '    async def _read_loop(self) -> bool:\n        self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc\n'
+
+    def _edit(src: Path, name: str, old: str, new: str) -> None:
+        path = src / name
+        text = path.read_text(encoding="utf-8")
+>       assert text.count(old) == 1, f"{name}: the anchor is not unique: {old!r}"
+E       AssertionError: asy_sgp40_driver.py: the anchor is not unique: '    async def _read_loop(self) -> bool:\n'
+E       assert 0 == 1
+E        +  where 0 = <built-in method count of str object at 0x3fb11140>('    async def _read_loop(self) -> bool:\n')
+E        +    where <built-in method count of str object at 0x3fb11140> = '# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries\n# SPDX-License-Identifier: MIT\n#...cio.sleep_ms(_HEATER_OFF_MAX_MS + 1)  # one tick more than the datasheet bound: sleep_ms() may wake up to 1 ms early\n'.count
+
+tests_scripts/test_setter_contract.py:193: AssertionError
+_________________ test_a_push_table_mutated_outside_init_fails _________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5581/test_a_push_table_mutated_outs0/src')
+
+    def test_a_push_table_mutated_outside_init_fails(src_copy: Path) -> None:
+>       _edit(src_copy, "asy_sgp40_driver.py", "    async def _read_loop(self) -> bool:\n", "    async def _read_loop(self) -> bool:\n        self._push_callbacks.pop('ResetVOC')\n")
+
+tests_scripts/test_setter_contract.py:265: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/pytest-of-root/pytest-5581/test_a_push_table_mutated_outs0/src')
+name = 'asy_sgp40_driver.py', old = '    async def _read_loop(self) -> bool:\n'
+new = "    async def _read_loop(self) -> bool:\n        self._push_callbacks.pop('ResetVOC')\n"
+
+    def _edit(src: Path, name: str, old: str, new: str) -> None:
+        path = src / name
+        text = path.read_text(encoding="utf-8")
+>       assert text.count(old) == 1, f"{name}: the anchor is not unique: {old!r}"
+E       AssertionError: asy_sgp40_driver.py: the anchor is not unique: '    async def _read_loop(self) -> bool:\n'
+E       assert 0 == 1
+E        +  where 0 = <built-in method count of str object at 0x3fb11140>('    async def _read_loop(self) -> bool:\n')
+E        +    where <built-in method count of str object at 0x3fb11140> = '# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries\n# SPDX-License-Identifier: MIT\n#...cio.sleep_ms(_HEATER_OFF_MAX_MS + 1)  # one tick more than the datasheet bound: sleep_ms() may wake up to 1 ms early\n'.count
+
+tests_scripts/test_setter_contract.py:193: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_setter_contract.py::test_a_push_registered_outside_init_fails
+FAILED tests_scripts/test_setter_contract.py::test_a_push_table_mutated_outside_init_fails
+2 failed, 7 passed in 3.46s

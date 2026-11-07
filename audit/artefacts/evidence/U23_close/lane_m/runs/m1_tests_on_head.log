@@ -1,0 +1,1033 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23m
+
+ ❯ |chromium| tests_js/mock-server.test.js (121 tests | 30 failed) 25683ms
+   ❯ installMockFetch (121)
+     ✓ runs on fixture definitions the site's own validator accepts 5ms
+     ✓ answers GET /sensors from the fixture 83ms
+     ✓ passes non-REST paths through to the real fetch 9ms
+     ✓ validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged 300ms
+     × marks an in-range changed value as Valid and persists it for the next GET 339ms
+     × answers Invalid for a readonly key and stores nothing, as for any key no writable field lists 166ms
+     × resets error counters and refills history with no-error placeholders (real reset() never shrinks it) 223ms
+     × leaves error counters untouched when ResetErrors is absent 229ms
+     × answers ResetErrors: false with Invalid and resets nothing, as _put_status() does 191ms
+     × answers ResetErrors: 1 with Invalid and resets nothing, as _put_status() does 265ms
+     × answers ResetErrors: "true" with Invalid and resets nothing, as _put_status() does 272ms
+     × answers ResetErrors: null with Invalid and resets nothing, as _put_status() does 171ms
+     ✓ validates PUT /networking against the networking group's own field defs 472ms
+     ✓ finds a fixture field for every shape the shared corpus names 1ms
+     ✓ answers a hostLabel field (Hostname) PUT of "SensorNode" with Valid, as the server's shape check does 110ms
+     ✓ answers a hostLabel field (Hostname) PUT of "SensorStation7" with Valid, as the server's shape check does 168ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a" with Valid, as the server's shape check does 191ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a-b" with Valid, as the server's shape check does 153ms
+     ✓ answers a hostLabel field (Hostname) PUT of "A1-b2" with Valid, as the server's shape check does 153ms
+     ✓ answers a hostLabel field (Hostname) PUT of "" with Invalid, as the server's shape check does 82ms
+     ✓ answers a hostLabel field (Hostname) PUT of "-a" with Invalid, as the server's shape check does 199ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a-" with Invalid, as the server's shape check does 94ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a b" with Invalid, as the server's shape check does 168ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a.b" with Invalid, as the server's shape check does 89ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a_b" with Invalid, as the server's shape check does 191ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a\u0000b" with Invalid, as the server's shape check does 123ms
+     ✓ answers a hostLabel field (Hostname) PUT of "ä" with Invalid, as the server's shape check does 148ms
+     ✓ answers a countryCode field (Country) PUT of "DE" with Valid, as the server's shape check does 86ms
+     ✓ answers a countryCode field (Country) PUT of "XX" with Valid, as the server's shape check does 122ms
+     ✓ answers a countryCode field (Country) PUT of "de" with Invalid, as the server's shape check does 98ms
+     ✓ answers a countryCode field (Country) PUT of "D1" with Invalid, as the server's shape check does 99ms
+     ✓ answers a countryCode field (Country) PUT of "ZZZ" with Invalid, as the server's shape check does 149ms
+     ✓ answers a countryCode field (Country) PUT of "Z" with Invalid, as the server's shape check does 142ms
+     ✓ answers a countryCode field (Country) PUT of "D\u0000" with Invalid, as the server's shape check does 201ms
+     ✓ answers a countryCode field (Country) PUT of "DÉ" with Invalid, as the server's shape check does 180ms
+     ✓ answers a hostName field (NTPHost) PUT of "pool.ntp.org" with Valid, as the server's shape check does 139ms
+     ✓ answers a hostName field (NTPHost) PUT of "192.168.1.1" with Valid, as the server's shape check does 174ms
+     ✓ answers a hostName field (NTPHost) PUT of "-a.b" with Invalid, as the server's shape check does 81ms
+     ✓ answers a hostName field (NTPHost) PUT of "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" with Invalid, as the server's shape check does 82ms
+     ✓ answers a hostName field (NTPHost) PUT of "a..b" with Invalid, as the server's shape check does 181ms
+     ✓ answers a hostName field (NTPHost) PUT of "a b" with Invalid, as the server's shape check does 149ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "" with Valid, as the server's shape check does 164ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8" with Valid, as the server's shape check does 133ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8,1.1.1.1" with Valid, as the server's shape check does 93ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "1.1.1.1,8.8.4.4,9.9.9.9" with Valid, as the server's shape check does 157ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8," with Invalid, as the server's shape check does 178ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "a.b.c.d" with Invalid, as the server's shape check does 134ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1" with Invalid, as the server's shape check does 167ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8 ,1.1.1.1" with Invalid, as the server's shape check does 181ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "256.1.1.1" with Invalid, as the server's shape check does 141ms
+     ✓ accepts a string field's schema special before its length bounds, as the server does 218ms
+     ✓ bounds a byte-bounded string in UTF-8 bytes, not characters 303ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "reboot" answers Valid 376ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "bootloader" answers Valid 275ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "mempause" answers Valid 284ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "resetconfig" answers Valid 294ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "erasefram" answers Valid 275ms
+     ✓ answers Valid for every SystemCmd option device arzi's generated definitions offer 194ms
+     ✓ answers Valid for every SystemCmd option device dev's generated definitions offer 190ms
+     ✓ answers Valid for every SystemCmd option device grkizi's generated definitions offer 189ms
+     ✓ answers Valid for every SystemCmd option device klkizi's generated definitions offer 187ms
+     ✓ answers Valid for every SystemCmd option device schlafzi's generated definitions offer 164ms
+     ✓ answers Valid for every SystemCmd option device wozi's generated definitions offer 188ms
+     ✓ answers the SystemCmd near miss "Reboot" with Invalid: only the whole word runs a command 123ms
+     ✓ answers the SystemCmd near miss "reboot " with Invalid: only the whole word runs a command 192ms
+     ✓ answers the SystemCmd near miss " reboot" with Invalid: only the whole word runs a command 121ms
+     ✓ answers the SystemCmd near miss "reb" with Invalid: only the whole word runs a command 85ms
+     ✓ answers the SystemCmd near miss "rebootx" with Invalid: only the whole word runs a command 190ms
+     ✓ answers the SystemCmd near miss "ResetConfig" with Invalid: only the whole word runs a command 155ms
+     ✓ answers the SystemCmd near miss "reset_config" with Invalid: only the whole word runs a command 200ms
+     ✓ answers the SystemCmd near miss "resetconfig " with Invalid: only the whole word runs a command 140ms
+     ✓ answers the SystemCmd near miss "EraseFRAM" with Invalid: only the whole word runs a command 193ms
+     ✓ answers the SystemCmd near miss "erase_fram" with Invalid: only the whole word runs a command 131ms
+     ✓ answers the SystemCmd near miss " erasefram" with Invalid: only the whole word runs a command 200ms
+     ✓ answers the SystemCmd near miss 1 with Invalid: only the whole word runs a command 155ms
+     ✓ answers the SystemCmd near miss null with Invalid: only the whole word runs a command 179ms
+     ✓ answers the SystemCmd near miss ["reboot"] with Invalid: only the whole word runs a command 106ms
+     ✓ answers the SystemCmd near miss {} with Invalid: only the whole word runs a command 136ms
+     ✓ answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included 324ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 376ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 1160ms
+     ✓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 1942ms
+     ✓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 608ms
+     × dispatches PUT /sensors' ForceCalRef: range-validated, never Unchanged, and GET reads back the last reference applied (400 on a fresh mock) 594ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 652ms
+     ✓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all 592ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 495ms
+     ✓ masks PW (and HotspotPW) on every GET /networking, whatever was applied 400ms
+     × masks every field the definitions mark mask: true, not a fixed list 185ms
+     × sets each measurement TS to the clock, jitters a plain number, and leaves a time key and a non-number leaf untouched 197ms
+     × answers GET /status' UnixTime and WifiTS from the clock 182ms
+     × steps SysUptime and WifiUptime by one per GET /status and saturates both at COUNTER_CAP 380ms
+     × serves every other /status value as stored: LocalTime is the same over ten GETs 273ms
+     × answers at once with no timer when controls.delayMs is unset 92ms
+     × delays every answer by controls.delayMs, a fixed time 88ms
+     × jitters a nested measurement sub-object's leaves too, not just the top level 265ms
+     ✓ never jitters a non-negative measurement leaf into a negative one 82ms
+     ✓ omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC 334ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 313ms
+     ✓ answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally 117ms
+     ✓ answers a PUT /sensors entry 5 that is not an object with Invalid in place of its field map 136ms
+     ✓ answers a PUT /sensors entry null that is not an object with Invalid in place of its field map 120ms
+     ✓ answers a PUT /sensors entry [1] that is not an object with Invalid in place of its field map 162ms
+     ✓ answers a PUT /sensors entry "x" that is not an object with Invalid in place of its field map 154ms
+     × rejects DELETE /sensors, a method its route does not take, with make_response(405) and HTTP 405 253ms
+     × rejects POST /status, a method its route does not take, with make_response(405) and HTTP 405 192ms
+     × rejects PUT /measurements, a method its route does not take, with make_response(405) and HTTP 405 175ms
+     × intercepts only the routes the definitions declare, passing every other path through 194ms
+     ✓ injects exactly one network failure via controls.nextFailure, then serves normally again 108ms
+     × injects exactly one HTTP error status via controls.nextFailure, then serves normally again 58ms
+     × answers an injected status the catalog does not list with make_response()'s Unknown error 82ms
+     ✓ injects a malformed-body failure: HTTP 200 with res:ERR/code:1, matching the real backend's own make_response(1) exactly 1ms
+     ✓ injects a torn-json failure: HTTP 200 with an unparseable body, simulating a corrupted transmission 1ms
+     ✓ injects an empty-body failure: HTTP 200 with a zero-length body 0ms
+     × answers PUT /sensors with the body nope by make_response(1), HTTP 200 161ms
+     × answers PUT /sensors with the body [1,2] by make_response(1), HTTP 200 152ms
+     × answers PUT /networking with the body "text" by make_response(1), HTTP 200 186ms
+     × answers PUT /system with the body null by make_response(1), HTTP 200 148ms
+     × answers PUT /status with the body 5 by make_response(1), HTTP 200 200ms
+     × answers PUT /notification with the body { by make_response(1), HTTP 200 170ms
+     × injects a group-failure on the next PUT: every attempted key answers Failed in an OK envelope, then once only 109ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 30 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > marks an in-range changed value as Valid and persists it for the next GET
+AssertionError: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'OK', code: +0, …(2) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---marks-an-in-range-changed-value-as-Valid-and-persists-it-for-the-next-GET.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[33m@@ -1,8 +1,8 @@[39m
+[2m  {[22m
+[2m    "code": 0,[22m
+[32m-   "descr": "Command executed",[39m
+[31m+   "descr": "OK",[39m
+[2m    "res": "OK",[22m
+[2m    "result": {[22m
+[2m      "SCD30": {[22m
+[2m        "MeasInterval": "Valid",[22m
+[2m      },[22m
+
+ ❯ tests_js/mock-server.test.js:263:34
+    261|         const put = await fetch("/sensors", { method: "PUT", body: JSO…
+    262|         // The whole envelope, as make_response(0, result=...) builds …
+    263|         expect(await put.json()).toEqual({ res: "OK", code: 0, descr: …
+       |                                  ^
+    264|
+    265|         const get = await fetch("/sensors");
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Invalid for a readonly key and stores nothing, as for any key no writable field lists
+AssertionError: expected { FirmwareVersion: 'Valid' } to deeply equal { FirmwareVersion: 'Invalid' }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Invalid-for-a-readonly-key-and-stores-nothing--as-for-any-key-no-writable-field-lists.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "FirmwareVersion": "Invalid",[39m
+[31m+   "FirmwareVersion": "Valid",[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:271:81
+    269|     it("answers Invalid for a readonly key and stores nothing, as for …
+    270|         uninstall = installMockFetch(DEFS, DATA);
+    271|         expect((await putJson("/system", { FirmwareVersion: "9.9.9" })…
+       |                                                                                 ^
+    272|         expect(await getJson("/system")).toEqual({ build: { FirmwareVe…
+    273|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > resets error counters and refills history with no-error placeholders (real reset() never shrinks it)
+AssertionError: expected { res: 'OK', code: +0, descr: 'OK' } to deeply equal { res: 'OK', code: +0, …(2) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---resets-error-counters-and-refills-history-with-no-error-placeholders--real-reset---never-shrinks-it-.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "code": 0,[22m
+[32m-   "descr": "Command executed",[39m
+[31m+   "descr": "OK",[39m
+[2m    "res": "OK",[22m
+[32m-   "result": {[39m
+[32m-     "ResetErrors": "Valid",[39m
+[32m-   },[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:278:24
+    276|         uninstall = installMockFetch(DEFS, DATA);
+    277|         const answer = await putJson("/status", { ResetErrors: true });
+    278|         expect(answer).toEqual({ res: "OK", code: 0, descr: "Command e…
+       |                        ^
+    279|
+    280|         const body = await getJson("/status");
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > leaves error counters untouched when ResetErrors is absent
+AssertionError: expected undefined to deeply equal {}
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---leaves-error-counters-untouched-when-ResetErrors-is-absent.png
+
+[32m- Expected:[39m
+{}
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/mock-server.test.js:287:55
+    285|     it("leaves error counters untouched when ResetErrors is absent", a…
+    286|         uninstall = installMockFetch(DEFS, DATA);
+    287|         expect((await putJson("/status", {})).result).toEqual({});
+       |                                                       ^
+    288|
+    289|         expect((await getJson("/status")).errcount.SCD30.counter).toBe…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers ResetErrors: false with Invalid and resets nothing, as _put_status() does
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers ResetErrors: 1 with Invalid and resets nothing, as _put_status() does
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers ResetErrors: "true" with Invalid and resets nothing, as _put_status() does
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers ResetErrors: null with Invalid and resets nothing, as _put_status() does
+AssertionError: expected undefined to deeply equal { ResetErrors: 'Invalid', …(1) }
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-ResetErrors--false-with-Invalid-and-resets-nothing--as-_put_status---does.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-ResetErrors--1-with-Invalid-and-resets-nothing--as-_put_status---does.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-ResetErrors---true--with-Invalid-and-resets-nothing--as-_put_status---does.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-ResetErrors--null-with-Invalid-and-resets-nothing--as-_put_status---does.png
+
+[32m- Expected:[39m
+{
+  "Bogus": "Invalid",
+  "ResetErrors": "Invalid",
+}
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/mock-server.test.js:294:88
+    292|     it.each([[false], [1], ["true"], [null]])("answers ResetErrors: %j…
+    293|         uninstall = installMockFetch(DEFS, DATA);
+    294|         expect((await putJson("/status", { ResetErrors: value, Bogus: …
+       |                                                                                        ^
+    295|         expect((await getJson("/status")).errcount.SCD30.counter).toBe…
+    296|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > dispatches PUT /sensors' ForceCalRef: range-validated, never Unchanged, and GET reads back the last reference applied (400 on a fresh mock)
+AssertionError: expected 400 to be 900 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---dispatches-PUT--sensors--ForceCalRef--range-validated--never-Unchanged--and-GET-reads-back-the-last-reference-applied--400-on-a-fresh-mock-.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 900[39m
+[31m+ 400[39m
+
+ ❯ tests_js/mock-server.test.js:526:76
+    524|         // The chip reports the most recently used reference within on…
+    525|         // (Interface Description 1.4.6).
+    526|         expect((await (await fetch("/sensors")).json()).SCD30.ForceCal…
+       |                                                                            ^
+    527|
+    528|         // Resubmitting the value just applied still reports Valid, ne…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > masks every field the definitions mark mask: true, not a fixed list
+AssertionError: expected [ '********', '********', …(2) ] to deeply equal [ '********', '********', …(2) ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---masks-every-field-the-definitions-mark-mask--true--not-a-fixed-list.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "********",[22m
+[2m    "********",[22m
+[32m-   "********",[39m
+[31m+   "fixture-proxy",[39m
+[2m    "fixture-host",[22m
+[2m  ][22m
+
+ ❯ tests_js/mock-server.test.js:602:72
+    600|         uninstall = installMockFetch(DEFS, DATA);
+    601|         const body = await getJson("/networking");
+    602|         expect([body.PW, body.HotspotPW, body.ProxyPW, body.Hostname])…
+       |                                                                        ^
+    603|     });
+    604|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > sets each measurement TS to the clock, jitters a plain number, and leaves a time key and a non-number leaf untouched
+AssertionError: expected 1001 to be 1791871200 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---sets-each-measurement-TS-to-the-clock--jitters-a-plain-number--and-leaves-a-time-key-and-a-non-number-leaf-untouched.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1791871200[39m
+[31m+ 1001[39m
+
+ ❯ tests_js/mock-server.test.js:611:31
+    609|         const body = await response.json();
+    610|
+    611|         expect(body.SCD30.TS).toBe(Math.floor(Date.now() / 1000)); // …
+       |                               ^
+    612|         expect(body.SCD30.SensorUptime).toBe(120); // a key ending Upt…
+    613|         expect(body.SCD30.Model).toBe("SCD30"); // non-number leaf: un…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers GET /status' UnixTime and WifiTS from the clock
+AssertionError: expected [ undefined, undefined ] to deeply equal [ 1791871200, 1791871200 ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-GET--status--UnixTime-and-WifiTS-from-the-clock.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   1791871200,[39m
+[32m-   1791871200,[39m
+[31m+   undefined,[39m
+[31m+   undefined,[39m
+[2m  ][22m
+
+ ❯ tests_js/mock-server.test.js:623:64
+    621|         const body = await getJson("/status");
+    622|         const now = Math.floor(Date.now() / 1000);
+    623|         expect([body.system.UnixTime, body.networking.WifiTS]).toEqual…
+       |                                                                ^
+    624|     });
+    625|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > steps SysUptime and WifiUptime by one per GET /status and saturates both at COUNTER_CAP
+AssertionError: expected [ 1073741823, 1073741823, …(2) ] to deeply equal [ 1073741823, 1073741823, …(2) ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---steps-SysUptime-and-WifiUptime-by-one-per-GET--status-and-saturates-both-at-COUNTER_CAP.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    1073741823,[22m
+[2m    1073741823,[22m
+[32m-   1073741823,[39m
+[32m-   1073741823,[39m
+[31m+   1073741824,[39m
+[31m+   1073741824,[39m
+[2m  ][22m
+
+ ❯ tests_js/mock-server.test.js:632:25
+    630|         const second = await getJson("/status");
+    631|         const uptimes = [first.system.SysUptime, first.networking.Wifi…
+    632|         expect(uptimes).toEqual([COUNTER_CAP, COUNTER_CAP, COUNTER_CAP…
+       |                         ^
+    633|     });
+    634|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > serves every other /status value as stored: LocalTime is the same over ten GETs
+AssertionError: expected [ …(10) ] to deeply equal [ …(10) ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---serves-every-other--status-value-as-stored--LocalTime-is-the-same-over-ten-GETs.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 8.14,[39m
+[31m+       "MDay": 13.1,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.11,[39m
+[2m        "Second": 0,[22m
+[32m-       "Weekday": 1,[39m
+[32m-       "Year": 2026,[39m
+[31m+       "Weekday": 1.04,[39m
+[31m+       "Year": 2031.96,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     104111.39,[39m
+[31m+     1764522695.33,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 8.04,[39m
+[31m+       "MDay": 13.2,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.14,[39m
+[2m        "Second": 0,[22m
+[32m-       "Weekday": 1,[39m
+[32m-       "Year": 2026,[39m
+[31m+       "Weekday": 1.06,[39m
+[31m+       "Year": 2078.15,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     101582.48,[39m
+[31m+     1786669214.92,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 8.11,[39m
+[31m+       "MDay": 12.94,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.05,[39m
+[2m        "Second": 0,[22m
+[2m        "Weekday": 1,[22m
+[32m-       "Year": 2026,[39m
+[31m+       "Year": 2034.15,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     105182.58,[39m
+[31m+     1768058730.65,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 7.97,[39m
+[31m+       "MDay": 13.09,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.17,[39m
+[2m        "Second": 0,[22m
+[32m-       "Weekday": 1,[39m
+[32m-       "Year": 2026,[39m
+[31m+       "Weekday": 1.02,[39m
+[31m+       "Year": 2053.68,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     101462.36,[39m
+[31m+     1764889716.69,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 8.05,[39m
+[31m+       "MDay": 12.9,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 9.97,[39m
+[2m        "Second": 0,[22m
+[32m-       "Weekday": 1,[39m
+[32m-       "Year": 2026,[39m
+[31m+       "Weekday": 1.03,[39m
+[31m+       "Year": 2037.85,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     104834.44,[39m
+[31m+     1770876665.42,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 8.05,[39m
+[31m+       "MDay": 13.21,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.23,[39m
+[2m        "Second": 0,[22m
+[32m-       "Weekday": 1,[39m
+[32m-       "Year": 2026,[39m
+[31m+       "Weekday": 1.01,[39m
+[31m+       "Year": 2033.96,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     102348.23,[39m
+[31m+     1767597143.43,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 8.11,[39m
+[31m+       "MDay": 13.1,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.25,[39m
+[2m        "Second": 0,[22m
+[32m-       "Weekday": 1,[39m
+[32m-       "Year": 2026,[39m
+[31m+       "Weekday": 1.01,[39m
+[31m+       "Year": 2025.19,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     103084.98,[39m
+[31m+     1780403781.44,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 8.19,[39m
+[31m+       "MDay": 13.02,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.14,[39m
+[2m        "Second": 0,[22m
+[2m        "Weekday": 1,[22m
+[32m-       "Year": 2026,[39m
+[31m+       "Year": 2020.16,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     104733.16,[39m
+[31m+     1754989125.12,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 7.97,[39m
+[31m+       "MDay": 13.14,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.14,[39m
+[2m        "Second": 0,[22m
+[32m-       "Weekday": 1,[39m
+[32m-       "Year": 2026,[39m
+[31m+       "Weekday": 1.03,[39m
+[31m+       "Year": 2061.92,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     101475.17,[39m
+[31m+     1772575972.07,[39m
+[2m    ],[22m
+[2m    [[22m
+[2m      {[22m
+[32m-       "Hour": 8,[39m
+[32m-       "MDay": 13,[39m
+[31m+       "Hour": 8.12,[39m
+[31m+       "MDay": 13.22,[39m
+[2m        "Minute": 0,[22m
+[32m-       "Month": 10,[39m
+[31m+       "Month": 10.19,[39m
+[2m        "Second": 0,[22m
+[2m        "Weekday": 1,[22m
+[32m-       "Year": 2026,[39m
+[31m+       "Year": 2024.19,[39m
+[2m      },[22m
+[32m-     104960,[39m
+[32m-     1754568003,[39m
+[31m+     103239.09,[39m
+[31m+     1773174883.3,[39m
+[2m    ],[22m
+[2m  ][22m
+
+ ❯ tests_js/mock-server.test.js:641:24
+    639|         const bodies = await Promise.all(Array.from({ length: 10 }, ()…
+    640|         const served = bodies.map((body) => [body.system.LocalTime, bo…
+    641|         expect(served).toEqual(Array.from({ length: 10 }, () => [local…
+       |                        ^
+    642|     });
+    643|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers at once with no timer when controls.delayMs is unset
+AssertionError: expected 2 to be +0 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-at-once-with-no-timer-when-controls-delayMs-is-unset.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 0[39m
+[31m+ 2[39m
+
+ ❯ tests_js/mock-server.test.js:648:36
+    646|         uninstall = installMockFetch(DEFS, DATA, {});
+    647|         const answers = Promise.all([fetch("/status"), fetch("/sensors…
+    648|         expect(vi.getTimerCount()).toBe(0);
+       |                                    ^
+    649|         expect((await answers).map((response) => response.status)).toE…
+    650|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > delays every answer by controls.delayMs, a fixed time
+AssertionError: expected true to be false // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---delays-every-answer-by-controls-delayMs--a-fixed-time.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+ ❯ tests_js/mock-server.test.js:661:26
+    659|         });
+    660|         await vi.advanceTimersByTimeAsync(249);
+    661|         expect(answered).toBe(false);
+       |                          ^
+    662|         await vi.advanceTimersByTimeAsync(1);
+    663|         expect(answered).toBe(true);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > jitters a nested measurement sub-object's leaves too, not just the top level
+AssertionError: expected 1001 to be 1791871200 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---jitters-a-nested-measurement-sub-object-s-leaves-too--not-just-the-top-level.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1791871200[39m
+[31m+ 1001[39m
+
+ ❯ tests_js/mock-server.test.js:677:34
+    675|         random.mockRestore();
+    676|
+    677|         expect(body.ISL29125.TS).toBe(Math.floor(Date.now() / 1000)); …
+       |                                  ^
+    678|         expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a …
+    679|         expect(body.ISL29125.Lux).toBe(303); // at or above 1: unchang…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > rejects DELETE /sensors, a method its route does not take, with make_response(405) and HTTP 405
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > rejects POST /status, a method its route does not take, with make_response(405) and HTTP 405
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > rejects PUT /measurements, a method its route does not take, with make_response(405) and HTTP 405
+AssertionError: expected { res: 'ERR', code: 405, …(1) } to deeply equal { res: 'ERR', code: 405, …(2) }
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---rejects-DELETE--sensors--a-method-its-route-does-not-take--with-make_response-405--and-HTTP-405.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---rejects-POST--status--a-method-its-route-does-not-take--with-make_response-405--and-HTTP-405.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---rejects-PUT--measurements--a-method-its-route-does-not-take--with-make_response-405--and-HTTP-405.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "code": 405,[22m
+[2m    "descr": "Method not allowed",[22m
+[2m    "res": "ERR",[22m
+[32m-   "result": {},[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:764:39
+    762|         expect(response.status).toBe(405);
+    763|         // The status is its code, and the envelope the catalog's (mak…
+    764|         expect(await response.json()).toEqual({ res: "ERR", code: 405,…
+       |                                       ^
+    765|     });
+    766|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > intercepts only the routes the definitions declare, passing every other path through
+AssertionError: expected '{}' to be 'passed through' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---intercepts-only-the-routes-the-definitions-declare--passing-every-other-path-through.png
+
+Expected: [32m"passed through"[39m
+Received: [31m"{}"[39m
+
+ ❯ tests_js/mock-server.test.js:774:65
+    772|             const defs = { ...DEFS, sections: DEFS.sections.filter((se…
+    773|             uninstall = installMockFetch(defs, DATA);
+    774|             expect(await (await fetch("/notification")).text()).toBe("…
+       |                                                                 ^
+    775|             expect((await fetch("/networking")).status).toBe(200);
+    776|             expect(passedThrough).toHaveBeenCalledTimes(1);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > injects exactly one HTTP error status via controls.nextFailure, then serves normally again
+AssertionError: expected { res: 'ERR', code: 5, …(1) } to deeply equal { res: 'ERR', code: 500, …(2) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---injects-exactly-one-HTTP-error-status-via-controls-nextFailure--then-serves-normally-again.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": 500,[39m
+[32m-   "descr": "Internal server error",[39m
+[31m+   "code": 5,[39m
+[31m+   "descr": "Simulated failure",[39m
+[2m    "res": "ERR",[22m
+[32m-   "result": {},[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:803:39
+    801|         expect(response.status).toBe(500);
+    802|         // The status is its code, with the catalog's text (make_respo…
+    803|         expect(await response.json()).toEqual({ res: "ERR", code: 500,…
+       |                                       ^
+    804|
+    805|         const second = await fetch("/sensors");
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers an injected status the catalog does not list with make_response()'s Unknown error
+AssertionError: expected { res: 'ERR', code: 5, …(1) } to deeply equal { res: 'ERR', code: 503, …(2) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-an-injected-status-the-catalog-does-not-list-with-make_response---s-Unknown-error.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": 503,[39m
+[32m-   "descr": "Unknown error",[39m
+[31m+   "code": 5,[39m
+[31m+   "descr": "Simulated failure",[39m
+[2m    "res": "ERR",[22m
+[32m-   "result": {},[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:814:39
+    812|         const response = await fetch("/status");
+    813|         expect(response.status).toBe(503);
+    814|         expect(await response.json()).toEqual({ res: "ERR", code: 503,…
+       |                                       ^
+    815|     });
+    816|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers PUT /sensors with the body nope by make_response(1), HTTP 200
+SyntaxError: Unexpected token 'o', "nope" is not valid JSON
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-PUT--sensors-with-the-body-nope-by-make_response-1---HTTP-200.png
+
+ ❯ body js/mock-server.js:595:33
+    593|         const rawBodyText = String(init?.body ?? "{}");
+    594|         /** @returns {Record<string, unknown>} */
+    595|         const body = () => JSON.parse(rawBodyText);
+       |                                 ^
+    596|
+    597|         if (method === "GET") {
+ ❯ window.fetch js/mock-server.js:603:62
+ ❯ tests_js/mock-server.test.js:852:30
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers PUT /sensors with the body [1,2] by make_response(1), HTTP 200
+AssertionError: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'ERR', code: 1, …(2) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-PUT--sensors-with-the-body--1-2--by-make_response-1---HTTP-200.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": 1,[39m
+[32m-   "descr": "Invalid JSON request",[39m
+[32m-   "res": "ERR",[39m
+[32m-   "result": {},[39m
+[31m+   "code": 0,[39m
+[31m+   "descr": "OK",[39m
+[31m+   "res": "OK",[39m
+[31m+   "result": {[39m
+[31m+     "0": "Invalid",[39m
+[31m+     "1": "Invalid",[39m
+[31m+   },[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:854:43
+    852|             const response = await fetch(path, { method: "PUT", body }…
+    853|             expect(response.status).toBe(200);
+    854|             expect(await response.json()).toEqual({ res: "ERR", code: …
+       |                                           ^
+    855|         },
+    856|     );
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers PUT /networking with the body "text" by make_response(1), HTTP 200
+AssertionError: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'ERR', code: 1, …(2) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-PUT--networking-with-the-body--text--by-make_response-1---HTTP-200.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": 1,[39m
+[32m-   "descr": "Invalid JSON request",[39m
+[32m-   "res": "ERR",[39m
+[32m-   "result": {},[39m
+[31m+   "code": 0,[39m
+[31m+   "descr": "OK",[39m
+[31m+   "res": "OK",[39m
+[31m+   "result": {[39m
+[31m+     "0": "Invalid",[39m
+[31m+     "1": "Invalid",[39m
+[31m+     "2": "Invalid",[39m
+[31m+     "3": "Invalid",[39m
+[31m+   },[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:854:43
+    852|             const response = await fetch(path, { method: "PUT", body }…
+    853|             expect(response.status).toBe(200);
+    854|             expect(await response.json()).toEqual({ res: "ERR", code: …
+       |                                           ^
+    855|         },
+    856|     );
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers PUT /system with the body null by make_response(1), HTTP 200
+TypeError: Cannot convert undefined or null to object
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-PUT--system-with-the-body-null-by-make_response-1---HTTP-200.png
+
+ ❯ window.fetch js/mock-server.js:641:63
+    639|             // sparse-PUT path so none reaches state[configKey], which…
+    640|             const dispatchKeys = DISPATCH_KEYS[endpointKey];
+    641|             const persistableBody = Object.fromEntries(Object.entries(…
+       |                                                               ^
+    642|             const results = applySparsePut(persistableBody, flatDefsBy…
+    643|             const { SystemCmd, PauseTime, LightCmdLED } = rawBody;
+ ❯ tests_js/mock-server.test.js:852:30
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers PUT /status with the body 5 by make_response(1), HTTP 200
+AssertionError: expected { res: 'OK', code: +0, descr: 'OK' } to deeply equal { res: 'ERR', code: 1, …(2) }
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-PUT--status-with-the-body-5-by-make_response-1---HTTP-200.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "code": 1,[39m
+[32m-   "descr": "Invalid JSON request",[39m
+[32m-   "res": "ERR",[39m
+[32m-   "result": {},[39m
+[31m+   "code": 0,[39m
+[31m+   "descr": "OK",[39m
+[31m+   "res": "OK",[39m
+[2m  }[22m
+
+ ❯ tests_js/mock-server.test.js:854:43
+    852|             const response = await fetch(path, { method: "PUT", body }…
+    853|             expect(response.status).toBe(200);
+    854|             expect(await response.json()).toEqual({ res: "ERR", code: …
+       |                                           ^
+    855|         },
+    856|     );
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers PUT /notification with the body { by make_response(1), HTTP 200
+SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-PUT--notification-with-the-body---by-make_response-1---HTTP-200.png
+
+ ❯ body js/mock-server.js:595:33
+    593|         const rawBodyText = String(init?.body ?? "{}");
+    594|         /** @returns {Record<string, unknown>} */
+    595|         const body = () => JSON.parse(rawBodyText);
+       |                                 ^
+    596|
+    597|         if (method === "GET") {
+ ❯ window.fetch js/mock-server.js:637:29
+ ❯ tests_js/mock-server.test.js:852:30
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/30]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > injects a group-failure on the next PUT: every attempted key answers Failed in an OK envelope, then once only
+RangeError: Failed to construct 'Response': The status provided (0) is outside the range [200, 599].
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---injects-a-group-failure-on-the-next-PUT--every-attempted-key-answers-Failed-in-an-OK-envelope--then-once-only.png
+
+ ❯ jsonResponse js/mock-server.js:722:12
+    720|  */
+    721| function jsonResponse(data, status = 200) {
+    722|     return new Response(JSON.stringify(data), {
+       |            ^
+    723|         status,
+    724|         headers: { "Content-Type": "application/json" },
+ ❯ window.fetch js/mock-server.js:586:20
+ ❯ getJson tests_js/mock-server.test.js:211:12
+ ❯ tests_js/mock-server.test.js:861:15
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=63ea454d:5684:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/30]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  30 failed | 91 passed (121)
+   Start at  06:24:39
+   Duration  27.55s (tests 98%, worker 1%, import 1%)
+
+== Summary: npm test ==
+Commit: 8fff76f (uncommitted changes)
+Levels: L0
+Counts (tests): passed 91 · failed 30 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/mock-server.test.js > installMockFetch > marks an in-range changed value as Valid and persists it for the next GET: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'OK', code: +0, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > answers Invalid for a readonly key and stores nothing, as for any key no writable field lists: expected { FirmwareVersion: 'Valid' } to deeply equal { FirmwareVersion: 'Invalid' }
+  - tests_js/mock-server.test.js > installMockFetch > resets error counters and refills history with no-error placeholders (real reset() never shrinks it): expected { res: 'OK', code: +0, descr: 'OK' } to deeply equal { res: 'OK', code: +0, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > leaves error counters untouched when ResetErrors is absent: expected undefined to deeply equal {}
+  - tests_js/mock-server.test.js > installMockFetch > answers ResetErrors: false with Invalid and resets nothing, as _put_status() does: expected undefined to deeply equal { ResetErrors: 'Invalid', …(1) }
+  - tests_js/mock-server.test.js > installMockFetch > answers ResetErrors: 1 with Invalid and resets nothing, as _put_status() does: expected undefined to deeply equal { ResetErrors: 'Invalid', …(1) }
+  - tests_js/mock-server.test.js > installMockFetch > answers ResetErrors: "true" with Invalid and resets nothing, as _put_status() does: expected undefined to deeply equal { ResetErrors: 'Invalid', …(1) }
+  - tests_js/mock-server.test.js > installMockFetch > answers ResetErrors: null with Invalid and resets nothing, as _put_status() does: expected undefined to deeply equal { ResetErrors: 'Invalid', …(1) }
+  - tests_js/mock-server.test.js > installMockFetch > dispatches PUT /sensors' ForceCalRef: range-validated, never Unchanged, and GET reads back the last reference applied (400 on a fresh mock): expected 400 to be 900 // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > masks every field the definitions mark mask: true, not a fixed list: expected [ '********', '********', …(2) ] to deeply equal [ '********', '********', …(2) ]
+  - tests_js/mock-server.test.js > installMockFetch > sets each measurement TS to the clock, jitters a plain number, and leaves a time key and a non-number leaf untouched: expected 1001 to be 1791871200 // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > answers GET /status' UnixTime and WifiTS from the clock: expected [ undefined, undefined ] to deeply equal [ 1791871200, 1791871200 ]
+  - tests_js/mock-server.test.js > installMockFetch > steps SysUptime and WifiUptime by one per GET /status and saturates both at COUNTER_CAP: expected [ 1073741823, 1073741823, …(2) ] to deeply equal [ 1073741823, 1073741823, …(2) ]
+  - tests_js/mock-server.test.js > installMockFetch > serves every other /status value as stored: LocalTime is the same over ten GETs: expected [ …(10) ] to deeply equal [ …(10) ]
+  - tests_js/mock-server.test.js > installMockFetch > answers at once with no timer when controls.delayMs is unset: expected 2 to be +0 // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > delays every answer by controls.delayMs, a fixed time: expected true to be false // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > jitters a nested measurement sub-object's leaves too, not just the top level: expected 1001 to be 1791871200 // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > rejects DELETE /sensors, a method its route does not take, with make_response(405) and HTTP 405: expected { res: 'ERR', code: 405, …(1) } to deeply equal { res: 'ERR', code: 405, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > rejects POST /status, a method its route does not take, with make_response(405) and HTTP 405: expected { res: 'ERR', code: 405, …(1) } to deeply equal { res: 'ERR', code: 405, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > rejects PUT /measurements, a method its route does not take, with make_response(405) and HTTP 405: expected { res: 'ERR', code: 405, …(1) } to deeply equal { res: 'ERR', code: 405, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > intercepts only the routes the definitions declare, passing every other path through: expected '{}' to be 'passed through' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > injects exactly one HTTP error status via controls.nextFailure, then serves normally again: expected { res: 'ERR', code: 5, …(1) } to deeply equal { res: 'ERR', code: 500, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > answers an injected status the catalog does not list with make_response()'s Unknown error: expected { res: 'ERR', code: 5, …(1) } to deeply equal { res: 'ERR', code: 503, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > answers PUT /sensors with the body nope by make_response(1), HTTP 200: Unexpected token 'o', "nope" is not valid JSON
+  - tests_js/mock-server.test.js > installMockFetch > answers PUT /sensors with the body [1,2] by make_response(1), HTTP 200: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'ERR', code: 1, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > answers PUT /networking with the body "text" by make_response(1), HTTP 200: expected { res: 'OK', code: +0, …(2) } to deeply equal { res: 'ERR', code: 1, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > answers PUT /system with the body null by make_response(1), HTTP 200: Cannot convert undefined or null to object
+  - tests_js/mock-server.test.js > installMockFetch > answers PUT /status with the body 5 by make_response(1), HTTP 200: expected { res: 'OK', code: +0, descr: 'OK' } to deeply equal { res: 'ERR', code: 1, …(2) }
+  - tests_js/mock-server.test.js > installMockFetch > answers PUT /notification with the body { by make_response(1), HTTP 200: Expected property name or '}' in JSON at position 1 (line 1 column 2)
+  - tests_js/mock-server.test.js > installMockFetch > injects a group-failure on the next PUT: every attempted key answers Failed in an OK envelope, then once only: Failed to construct 'Response': The status provided (0) is outside the range [200, 599].
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

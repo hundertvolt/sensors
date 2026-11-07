@@ -1,0 +1,38 @@
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_retired_default_value_rejected[true]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_retired_default_value_rejected[false]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_retired_default_value_rejected[42]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_clearable_is_a_flag
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_clearable_rejected_off_a_bool_or_a_string[# @web X section=networking submitGroup=dns label="L" clearable=yes\n-must be true or false-web.not-a-bool]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_clearable_rejected_off_a_bool_or_a_string[# @web X section=sensors submitGroup=self kind=number label="L" clearable=true\n-not a string field-web.key-needs-string]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_clearable_rejected_off_a_bool_or_a_string[# @web X section=sensors submitGroup=self kind=toggle label="L" clearable=true\n-not a string field-web.key-needs-string]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_ignored_when_set_names_a_sibling
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_ignored_when_set_naming_no_sibling_rejected[no-such-field]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_ignored_when_set_naming_no_sibling_rejected[another-group]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_ignored_when_set_naming_no_sibling_rejected[another-section]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_ignored_when_set_naming_no_sibling_rejected[itself]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_is_a_positive_number[0.01-0.01]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_is_a_positive_number[1-1.0]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_is_a_positive_number[0.5-0.5]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_is_a_positive_number[1e-3-0.001]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_rejected_off_a_positive_finite_number[abc-is not a number-tag.not-a-number]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_rejected_off_a_positive_finite_number[nan-is not a finite number-tag.non-finite-number]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_rejected_off_a_positive_finite_number[inf-is not a finite number-tag.non-finite-number]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_rejected_off_a_positive_finite_number[0-expected a positive number-web.value-not-in-set]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_rejected_off_a_positive_finite_number[-0.01-expected a positive number-web.value-not-in-set]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_rejected_off_a_positive_finite_number[1e-101-needs 101 decimals-web.decimals-range]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_off_a_number_field_rejected[string]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_off_a_number_field_rejected[readonly]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_off_a_number_field_rejected[toggle]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_resolution_off_a_number_field_rejected[enum]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_a_resolutions_decimals_are_the_digits_its_step_needs[0.01-2]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_a_resolutions_decimals_are_the_digits_its_step_needs[0.1-1]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_a_resolutions_decimals_are_the_digits_its_step_needs[1.0-0]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_a_resolutions_decimals_are_the_digits_its_step_needs[0.5-1]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_a_resolutions_decimals_are_the_digits_its_step_needs[0.25-2]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_a_resolutions_decimals_are_the_digits_its_step_needs[10.0-0]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_a_resolutions_decimals_are_the_digits_its_step_needs[0.001-3]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_a_resolutions_decimals_are_the_digits_its_step_needs[2.5-1]
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_real_scd30_page_keys
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_real_measurement_decimals
+FAILED tests_scripts/test_buildgen_web_tag.py::test_parse_web_tags_real_ntp_field_names
+37 failed, 120 passed in 1.38s

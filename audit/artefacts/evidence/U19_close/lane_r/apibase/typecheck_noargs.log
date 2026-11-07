@@ -1,0 +1,27 @@
+== Generating buildgen device modules into build/generated_src/ (for import resolution)
+Generated 6 device module(s) + wiring plan(s) + definitions into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19api/build/generated_src
+tests_hardware/device_scripts/allocation_need_per_source.py: note: In function "_sources":
+tests_hardware/device_scripts/allocation_need_per_source.py:92:8: error:
+"WebserverService" has no attribute "_static_mount"  [attr-defined]
+        if ws._static_mount is not None:  # the page the 2026-09-23 sittin...
+           ^~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/allocation_need_per_source.py:93:48: error:
+"WebserverService" has no attribute "_get_static_index"  [attr-defined]
+            probes.append(("route:/", _whole_route(ws._get_static_index)))
+                                                   ^~~~~~~~~~~~~~~~~~~~
+Found 2 errors in 1 file (checked 181 source files)
+Success: no issues found in 52 source files
+Success: no issues found in 185 source files
+== Summary: scripts/typecheck.sh ==
+Commit: 5f3787a
+Counts (checks): passed 6 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - main pass: pyproject.toml [tool.mypy]
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

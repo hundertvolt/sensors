@@ -1,0 +1,3 @@
+# u23/lead2/traced_live_matrix_command.js (the E3 trace's instrumented copy; 468/501 lines tracked, left out)
+It is instrument.py (kept here) applied to d34bdcd's tests_js/_live_matrix_command.js, byte for byte:
+git -C <repo> show d34bdcd:tests_js/_live_matrix_command.js | python3 -I instrument.py /dev/stdin <out> reproduces it.

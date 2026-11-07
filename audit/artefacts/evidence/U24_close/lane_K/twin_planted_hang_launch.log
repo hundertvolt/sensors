@@ -1,0 +1,71 @@
+PASS test_a_fault_naming_a_chip_this_run_never_wired_is_refused_by_name
+PASS test_a_hang_naming_a_chip_this_run_never_wired_is_refused_the_same_way
+PASS test_a_wlan_fault_still_bypasses_the_wiring_check
+digital_twin/launch.py starting - seed=7 fram_state_path=None scd30_state_path=None no_wdt_feed=True duration=0.5 faults=[('wlan', 'connect', 1)] hangs=[] wifi_outcomes=[]
+WLAN: startup failed: [Errno 5] EIO: digital_twin/launch.py --fault wlan:connect
+WLAN: status -> 0
+SGP40: raw=29493 ticks
+BMP3XX: pressure=966.4hPa temp=19.3C
+digital_twin/launch.py summary: {'would_have_triggered_count': 0, 'readings': 2, 'wifi_status': 0}
+FAIL test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary: left a task parked on the scheduler
+digital_twin/launch.py starting - seed=55 fram_state_path=None scd30_state_path=None no_wdt_feed=False duration=4.5 faults=[] hangs=[] wifi_outcomes=[]
+WLAN: status -> 1
+SGP40: raw=30215 ticks
+BMP3XX: pressure=968.2hPa temp=18.9C
+WLAN: status -> 3
+SGP40: raw=29882 ticks
+BMP3XX: pressure=965.1hPa temp=19.6C
+SGP40: raw=30761 ticks
+BMP3XX: pressure=961.9hPa temp=18.6C
+digital_twin/launch.py summary: {'would_have_triggered_count': 0, 'readings': 6, 'wifi_status': 3}
+FAIL test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driven_reading: left a task parked on the scheduler
+digital_twin/launch.py starting - seed=1234 fram_state_path=None scd30_state_path=None no_wdt_feed=True duration=None faults=[] hangs=[] wifi_outcomes=[]
+WLAN: status -> 1
+SGP40: raw=31735 ticks
+BMP3XX: pressure=963.0hPa temp=18.5C
+WLAN: status -> 3
+SGP40: raw=31666 ticks
+BMP3XX: pressure=959.7hPa temp=19.5C
+SGP40: raw=32146 ticks
+BMP3XX: pressure=959.1hPa temp=19.2C
+SGP40: raw=33129 ticks
+BMP3XX: pressure=956.1hPa temp=19.9C
+SGP40: raw=33696 ticks
+BMP3XX: pressure=955.3hPa temp=20.5C
+SGP40: raw=33991 ticks
+BMP3XX: pressure=957.7hPa temp=20.3C
+SGP40: raw=33431 ticks
+BMP3XX: pressure=961.2hPa temp=20.3C
+SGP40: raw=33697 ticks
+BMP3XX: pressure=965.0hPa temp=19.7C
+SGP40: raw=33953 ticks
+BMP3XX: pressure=960.1hPa temp=20.6C
+SGP40: raw=34000 ticks
+BMP3XX: pressure=957.7hPa temp=20.9C
+SGP40: raw=33260 ticks
+BMP3XX: pressure=957.1hPa temp=21.6C
+SGP40: raw=33160 ticks
+BMP3XX: pressure=952.6hPa temp=21.7C
+SGP40: raw=33171 ticks
+BMP3XX: pressure=957.1hPa temp=22.5C
+SGP40: raw=33427 ticks
+BMP3XX: pressure=952.4hPa temp=22.2C
+SGP40: raw=33846 ticks
+BMP3XX: pressure=954.1hPa temp=23.0C
+SGP40: raw=34000 ticks
+BMP3XX: pressure=958.2hPa temp=22.6C
+SGP40: raw=33278 ticks
+BMP3XX: pressure=962.5hPa temp=22.0C
+SGP40: raw=33450 ticks
+BMP3XX: pressure=961.9hPa temp=22.5C
+ABORT test_main_runs_end_to_end_and_returns_a_summary:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 121, in run
+  File "tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneK/work/twin/test_planted_launch_hang.py", line 233, in test_main_runs_end_to_end_and_returns_a_summary
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneK/work/twin/test_planted_launch_hang.py", line 40, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+KeyboardInterrupt: 
+3/29 passed, 3 failed, 0 skipped - aborted at test_main_runs_end_to_end_and_returns_a_summary, later tests not run

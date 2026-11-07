@@ -1,0 +1,1077 @@
+const	asy_api_response.py	_ERR_CALLBACK = const(14)
+const	asy_api_response.py	_UNKNOWN_DESCR = const("Unknown error")  # the descr of a code the catalog does not list
+const	asy_base_classes.py	COUNTER_CAP = const(0x3FFFFFFF)
+const	asy_base_classes.py	UNAVAILABLE = const("unavailable")
+const	asy_base_classes.py	_ERR_CALLBACK = const(14)
+const	asy_base_classes.py	_ERR_CFG_CALLBACK_RAISED = const(4)
+const	asy_base_classes.py	_ERR_CFG_GET_RAISED = const(3)
+const	asy_base_classes.py	_ERR_CFG_SET_RAISED = const(5)
+const	asy_base_classes.py	_ERR_CFG_SNAPSHOT_RAISED = const(7)
+const	asy_base_classes.py	_ERR_GIVE_UP = const(2)
+const	asy_base_classes.py	_ERR_PUSH_RAISED = const(6)
+const	asy_base_classes.py	_ERR_RECOVERY_READ_RAISED = const(8)
+const	asy_base_classes.py	_ERR_RECOVERY_WRITE_RAISED = const(9)
+const	asy_base_classes.py	_ERR_STREAK = const(1)
+const	asy_base_classes.py	_ERR_TIMER = const(17)
+const	asy_base_classes.py	_HOUR_S = const(3600)
+const	asy_base_classes.py	_RECOVER_BUS_AT = const(3)
+const	asy_base_classes.py	_RECOVER_CONTROLLER_AT = const(4)
+const	asy_base_classes.py	_RECOVER_DEVICE_AT = const(2)
+const	asy_base_classes.py	_RUNG_BUS = const(2)
+const	asy_base_classes.py	_RUNG_CONTROLLER = const(4)
+const	asy_base_classes.py	_RUNG_DEVICE = const(1)
+const	asy_base_classes.py	_WINDOW_HOURS = const(24)
+const	asy_base_classes.py	_WRN_BUS_RECOVERY = const(15)
+const	asy_base_classes.py	_WRN_CALLBACK_KEYS = const(1)
+const	asy_base_classes.py	_WRN_CFG_KEYS = const(2)
+const	asy_base_classes.py	_WRN_DEVICE_RECOVERY = const(14)
+const	asy_bmp3xx_driver.py	_APPLIED = const(0)
+const	asy_bmp3xx_driver.py	_CFG_UNREADABLE = const(1)
+const	asy_bmp3xx_driver.py	_CHIP_WRITE_FAILED = const(2)
+const	asy_bmp3xx_driver.py	_CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy is set whenever no command is executing (DS001 4.3.3); the datashee
+const	asy_bmp3xx_driver.py	_COMP_FALLBACK = const((0.0, 0.0, 0.0, 15.0))
+const	asy_bmp3xx_driver.py	_ERR_BAD_ARG = const(21)
+const	asy_bmp3xx_driver.py	_ERR_CFG_READ = const(26)
+const	asy_bmp3xx_driver.py	_ERR_CHIP_GET = const(12)
+const	asy_bmp3xx_driver.py	_ERR_CHIP_SET = const(13)
+const	asy_bmp3xx_driver.py	_ERR_INIT = const(10)
+const	asy_bmp3xx_driver.py	_ERR_READ = const(11)
+const	asy_bmp3xx_driver.py	_ERR_READ_RANGE = const(27)
+const	asy_bmp3xx_driver.py	_EVENT_POR_BIT = const(0x01)  # EVENT bit 0 "por_detected": set by a power-up or soft reset, clear-on-read (DS
+const	asy_bmp3xx_driver.py	_MAX_TRIGGER_S = const(3600)
+const	asy_bmp3xx_driver.py	_MEAS_TIMEOUT_MS = const(300)  # ~150 ms worst case at x32/x32 (3.9.2 typical + Table 22 max margin); 300 ms b
+const	asy_bmp3xx_driver.py	_MIN_TRIGGER_S = const(1)
+const	asy_bmp3xx_driver.py	_N_FLOAT_CFG = const(4)  # PresOffset + TempOffset + SeaLevelOffset + MeanAtmTemp
+const	asy_bmp3xx_driver.py	_N_INT_CFG = const(4)  # SampleInterval + PresOvers + TempOvers + FiltCoeff
+const	asy_bmp3xx_driver.py	_PT_BURST_LEN = const(8)  # ERR_REG, STATUS, then pressure + temperature 3 bytes each: contiguous 0x02-0x09 (s
+const	asy_bmp3xx_driver.py	_REGISTER_EVENT = const(0x10)
+const	asy_bmp3xx_driver.py	_REGISTER_PRESSUREDATA = const(0x04)  # pressure then temperature data, 0x04-0x09, read inside the burst from 
+const	asy_bmp3xx_driver.py	_REG_ERR_CMD_BIT = const(0x02)  # ERR_REG bit 1 "cmd_err": command execution failed (datasheet sec 4.3.2)
+const	asy_bmp3xx_driver.py	_REG_ERR_FATAL_BIT = const(0x01)  # ERR_REG bit 0 "fatal_err" (DS001/DS003 4.3.2, DS002 4.3.3)
+const	asy_bmp3xx_driver.py	_RESET_SETTLE_MS = const(3)  # Bosch's reference bmp3_soft_reset() settles 2 ms (DS001 4.3.22 gives none for 0
+const	asy_bmp3xx_driver.py	_SEA_LEVEL_PRESSURE_HPA = const(1013.25)  # ISA standard sea-level pressure, get_pressure_altitude()'s base
+const	asy_bmp3xx_driver.py	_STATUS_POLL_MS = const(2)  # the STATUS poll step
+const	asy_bmp3xx_driver.py	_VAL_FILT_COEFF = const((("FiltCoeff", "int", 0, None, None, _IIR_SETTINGS),))
+const	asy_bmp3xx_driver.py	_VAL_MEAN_ATM_TEMP = const((("MeanAtmTemp", "float", 15.0, -40.0, 50.0, None),))
+const	asy_bmp3xx_driver.py	_VAL_PRES_OFFSET = const((("PresOffset", "float", 0.0, -500.0, 500.0, None),))
+const	asy_bmp3xx_driver.py	_VAL_PRES_OVERS = const((("PresOvers", "int", 1, None, None, _OSR_SETTINGS),))
+const	asy_bmp3xx_driver.py	_VAL_SAMPLE_INTERVAL = const((("SampleInterval", "int", 2, _MIN_TRIGGER_S, _MAX_TRIGGER_S, None),))
+const	asy_bmp3xx_driver.py	_VAL_SEA_LEVEL_OFFSET = const((("SeaLevelOffset", "float", 0.0, -1000.0, 5000.0, None),))
+const	asy_bmp3xx_driver.py	_VAL_TEMP_OFFSET = const((("TempOffset", "float", 0.0, -10.0, 10.0, None),))
+const	asy_bmp3xx_driver.py	_VAL_TEMP_OVERS = const((("TempOvers", "int", 1, None, None, _OSR_SETTINGS),))
+const	asy_bmp3xx_driver.py	_WRN_BMP_CHIP_RESET = const(71)
+const	asy_bmp3xx_driver.py	_WRN_DERIVED_DOMAIN = const(11)
+const	asy_captive_dns.py	_ERROR_RETRY_WAIT_S = const(3)  # the serve loop's pause after an unexpected exception
+const	asy_captive_dns.py	_ERR_BAD_ARG = const(21)
+const	asy_captive_dns.py	_ERR_INIT = const(10)
+const	asy_captive_dns.py	_ERR_UNEXPECTED = const(23)
+const	asy_captive_dns.py	_QTYPE_ANY = const(b"\x00\xff")  # RFC 1035 SS3.2.3 QTYPE * (ANY)
+const	asy_captive_dns.py	_RECV_FAIL_BACKOFF_INITIAL_MS = const(500)
+const	asy_captive_dns.py	_RECV_FAIL_BACKOFF_MAX_MS = const(5000)
+const	asy_captive_dns.py	_WRN_DNS_RECV_FAILED = const(42)
+const	asy_captive_dns.py	_WRN_DNS_REPLY_DROPPED = const(41)
+const	asy_captive_dns.py	_WRN_SOCKET_TEARDOWN = const(12)
+const	asy_config_manager.py	_ERR_ALLOC = const(20)
+const	asy_config_manager.py	_ERR_BAD_ARG = const(21)
+const	asy_config_manager.py	_ERR_CFG_BAD_DEFAULT = const(32)
+const	asy_config_manager.py	_ERR_CFG_FILE_WRITE = const(33)
+const	asy_config_manager.py	_ERR_CFG_NOT_VALID = const(34)
+const	asy_config_manager.py	_ERR_CFG_NO_DEFAULTS = const(31)
+const	asy_config_manager.py	_ERR_CFG_PATH_IS_DIR = const(30)
+const	asy_config_manager.py	_ERR_CONTRACT = const(24)
+const	asy_config_manager.py	_ERR_UNEXPECTED = const(23)
+const	asy_config_manager.py	_WRN_CFG_FILE_JSON = const(21)
+const	asy_config_manager.py	_WRN_CFG_FILE_NOT_OBJECT = const(20)
+const	asy_config_manager.py	_WRN_CFG_FILE_UNREADABLE = const(22)
+const	asy_config_manager.py	_WRN_CFG_KEYS_REMOVED = const(23)
+const	asy_config_manager.py	_WRN_STORED_DEFAULT = const(10)
+const	asy_crc_checks.py	_WORD_BYTES = const(2)  # the widest register the one-word loop runs: its intermediates stay below 2**17
+const	asy_dns_client.py	DNS_FAILED = const(3)  # sent, but no A record came back: no reply, another error, a cut or unusable answer
+const	asy_dns_client.py	DNS_LABEL_MAX = const(63)  # RFC 1035 SS3.1's single-length-byte ceiling
+const	asy_dns_client.py	DNS_NAME_MAX = const(255)  # RFC 1035 SS3.1: a name is at most 255 octets on the wire
+const	asy_dns_client.py	DNS_NOT_SENT = const(1)  # no query left this device: no usable server, the query not built, or every send fai
+const	asy_dns_client.py	DNS_NXDOMAIN = const(2)  # a server answered that the name does not exist
+const	asy_dns_client.py	DNS_QTYPE_A = const(b"\x00\x01")
+const	asy_dns_client.py	DNS_RESOLVED = const(0)
+const	asy_dns_client.py	DNS_UDP_MAX = const(512)  # RFC 1035 SS4.2.1: a DNS message over UDP is at most 512 octets.
+const	asy_dns_client.py	_RCODE_NXDOMAIN = const(3)  # RFC 1035 SS4.1.1 "Name Error": the queried name does not exist
+const	asy_dns_client.py	_WRN_DNS_REPLY_TRUNCATED = const(16)
+const	asy_dns_client.py	_WRN_SOCKET_TEARDOWN = const(12)
+const	asy_fram_driver.py	_CMD_RDID = const(b"\x9f")
+const	asy_fram_driver.py	_CMD_RDSR = const(b"\x05")
+const	asy_fram_driver.py	_CMD_WRDI = const(b"\x04")
+const	asy_fram_driver.py	_CMD_WREN = const(b"\x06")
+const	asy_fram_driver.py	_ERR_BAD_ARG = const(21)
+const	asy_fram_driver.py	_ERR_CONTRACT = const(24)
+const	asy_fram_driver.py	_ERR_FRAM_BUS_DOWN = const(52)
+const	asy_fram_driver.py	_ERR_FRAM_CHIP_LOST = const(54)
+const	asy_fram_driver.py	_ERR_FRAM_WP_MISMATCH = const(45)
+const	asy_fram_driver.py	_ERR_FRAM_WP_PARTIAL = const(53)
+const	asy_fram_driver.py	_ERR_LOCK_TIMEOUT = const(19)
+const	asy_fram_driver.py	_ERR_NOT_INIT = const(18)
+const	asy_fram_driver.py	_ID_ATTEMPTS = const(3)
+const	asy_fram_driver.py	_PROBE_AT = const(2)
+const	asy_fram_driver.py	_SR_BP_MASK = const(0x0C)  # BP1 | BP0: any set bit protects part or all of the array
+const	asy_fram_driver.py	_SR_FIXED_ZERO = const(0x01)  # bit 0 reads 0 on a live chip of either part (both datasheets p.6)
+const	asy_fram_driver.py	_SV_BAD_RANGE = const(64)  # errno 21
+const	asy_fram_driver.py	_SV_BUS_DOWN = const(128)  # errno 52
+const	asy_fram_driver.py	_SV_CHIP_LOST = const(512)  # errno 54
+const	asy_fram_driver.py	_SV_NOT_INIT = const(16)  # errno 18
+const	asy_fram_driver.py	_SV_NOT_LOCKED = const(32)  # errno 24
+const	asy_fram_driver.py	_VERIFY_PRESENT_LOCK_TIMEOUT_MS = const(1000)
+const	asy_fram_driver.py	_WRN_FRAM_ID_RETRIED = const(29)
+const	asy_fram_driver.py	_WRN_FRAM_WEL_NOT_SET = const(26)
+const	asy_fram_driver.py	_WRN_FRAM_WEL_STUCK = const(27)
+const	asy_fram_driver.py	_WRN_FRAM_WRITE_PROTECTED = const(28)
+const	asy_fram_driver.py	_W_PROTECTED = const(1)  # wrnno 28
+const	asy_fram_driver.py	_W_WEL_NOT_SET = const(2)  # wrnno 26
+const	asy_fram_driver.py	_W_WEL_RETRIED = const(256)  # console only: a recovered transient
+const	asy_fram_driver.py	_W_WEL_STUCK = const(4)  # wrnno 27 - advisory: the operation itself still completed
+const	asy_fram_driver.py	_W_WP_MISMATCH = const(8)  # errno 45
+const	asy_fram_manager.py	_ERASE_UNIT = const(256)  # one erase write: 2.1 ms at the 1 MHz bus, divides both chip sizes; the size class 
+const	asy_fram_manager.py	_ERR_ALLOC = const(20)
+const	asy_fram_manager.py	_ERR_BAD_ARG = const(21)
+const	asy_fram_manager.py	_ERR_CALLBACK = const(14)
+const	asy_fram_manager.py	_ERR_FRAM_BLOCK_WRITE = const(100)
+const	asy_fram_manager.py	_ERR_FRAM_CLEAR = const(106)
+const	asy_fram_manager.py	_ERR_FRAM_CLEAR_WRITE = const(105)
+const	asy_fram_manager.py	_ERR_FRAM_COPIES_DIFFER = const(51)
+const	asy_fram_manager.py	_ERR_FRAM_CRC_FAILED = const(48)
+const	asy_fram_manager.py	_ERR_FRAM_DATA_CRC = const(49)
+const	asy_fram_manager.py	_ERR_FRAM_PAYLOAD_WRITE = const(103)
+const	asy_fram_manager.py	_ERR_FRAM_READ = const(104)
+const	asy_fram_manager.py	_ERR_FRAM_STATUS_BYTE = const(46)
+const	asy_fram_manager.py	_ERR_FRAM_STATUS_DISAGREE = const(47)
+const	asy_fram_manager.py	_ERR_FRAM_STATUS_READ = const(101)
+const	asy_fram_manager.py	_ERR_FRAM_STATUS_WRITE = const(102)
+const	asy_fram_manager.py	_ERR_FRAM_VERIFY = const(50)
+const	asy_fram_manager.py	_ERR_INIT = const(10)
+const	asy_fram_manager.py	_ERR_UNEXPECTED = const(23)
+const	asy_fram_manager.py	_TS_FMT = const("<Q")  # explicit little-endian, no padding - matches asy_print_log.py's own convention
+const	asy_fram_manager.py	_WRN_FRAM_BLOCK_INVALID = const(63)
+const	asy_fram_manager.py	_WRN_FRAM_PAUSED = const(25)
+const	asy_i2c_driver.py	_CLEAR_HALF_PERIOD_US = const(5)  # 100 kHz clock-out, the SCD30's ceiling (Interface Description p.2)
+const	asy_i2c_driver.py	_CLEAR_PULSES = const(9)  # one byte plus its acknowledge: an I2C protocol constant
+const	asy_i2c_driver.py	_DEFAULT_TIMEOUT_US = const(50000)  # rp2's machine.I2C default timeout (Part F.5.1): the SCL-release bound wh
+const	asy_i2c_driver.py	_MAX_ADDRSIZE = const(32)  # machine.I2C's own addrsize ceiling, in bits (fill_memaddr_buf())
+const	asy_i2c_driver.py	_PROBE_SETTLE_MS = const(100)  # the settle before and after _probe_for_device()'s zero-byte write
+const	asy_i2c_driver.py	_REC_NO_CONTROLLER = const(8)
+const	asy_i2c_driver.py	_REC_SCL_HELD = const(4)
+const	asy_i2c_driver.py	_REC_SDA_LOW = const(1)
+const	asy_i2c_driver.py	_REC_SDA_STUCK = const(2)
+const	asy_isl29125_driver.py	_ERR_BAD_ARG = const(21)
+const	asy_isl29125_driver.py	_ERR_CFG_READ = const(26)
+const	asy_isl29125_driver.py	_ERR_CHIP_GET = const(12)
+const	asy_isl29125_driver.py	_ERR_CHIP_SET = const(13)
+const	asy_isl29125_driver.py	_ERR_INIT = const(10)
+const	asy_isl29125_driver.py	_ERR_ISL_BUS_FAULT = const(56)
+const	asy_isl29125_driver.py	_ERR_ISL_STATUS_READ = const(55)
+const	asy_isl29125_driver.py	_ERR_READ = const(11)
+const	asy_isl29125_driver.py	_FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas
+const	asy_isl29125_driver.py	_ISL29125_ADDR = const(0x44)  # hard-wired "1000100" (FN8424 p15): a second part needs another bus
+const	asy_isl29125_driver.py	_MAX_DWELL_MS = const(300000)  # _MAX_DWELL_S in ms, the stored-tick bound of _evaluate_range()
+const	asy_isl29125_driver.py	_MAX_TRIGGER_S = const(3600)
+const	asy_isl29125_driver.py	_MIN_TRIGGER_S = const(1)
+const	asy_isl29125_driver.py	_N_BOOL_CFG = const(1)  # RangeAuto ALONE - Calibrate is command-only (see _VAL_CALIBRATE above)
+const	asy_isl29125_driver.py	_N_INT_CFG = const(5)  # SampleInterval + Resolution + Range + IRCompOffset + IRCompAdjust
+const	asy_isl29125_driver.py	_SETTLE_CYCLES = const(2)  # conversions discarded after a CONFIG1 write, fixed - see configure()
+const	asy_isl29125_driver.py	_VAL_AUTO_RANGE_DWELL = const((("AutoRangeDwell", "float", 10.0, _MIN_DWELL_S, _MAX_DWELL_S, None),))
+const	asy_isl29125_driver.py	_VAL_AUTO_RANGE_THRESH = const((("AutoRangeThresh", "float", 85.0, _MIN_AR_THRESH, _MAX_AR_THRESH, None),))
+const	asy_isl29125_driver.py	_VAL_CALIBRATE = const((("Calibrate", "bool", None, None, None, True),))
+const	asy_isl29125_driver.py	_VAL_FILT_COEFF = const((("FiltCoeff", "float", -1.0, _MIN_FILT_COEFF, _MAX_FILT_COEFF, None),))
+const	asy_isl29125_driver.py	_VAL_GAIN_RATIO = const((("GainRatio", "float", _GAIN_RATIO_NOMINAL, _GAIN_RATIO_MIN, _GAIN_RATIO_MAX, None),)
+const	asy_isl29125_driver.py	_VAL_IR_COMP_ADJUST = const((("IRCompAdjust", "int", 40, 0, 63, None),))
+const	asy_isl29125_driver.py	_VAL_IR_COMP_OFFSET = const((("IRCompOffset", "int", 0, None, None, _IR_OFFSETS),))
+const	asy_isl29125_driver.py	_VAL_RANGE = const((("Range", "int", 10000, None, None, _RANGES),))
+const	asy_isl29125_driver.py	_VAL_RANGE_AUTO = const((("RangeAuto", "bool", True, None, None, None),))
+const	asy_isl29125_driver.py	_VAL_RESOLUTION = const((("Resolution", "int", 16, None, None, _RESOLUTIONS),))
+const	asy_isl29125_driver.py	_VAL_SAMPLE_INTERVAL = const((("SampleInterval", "int", 1, _MIN_TRIGGER_S, _MAX_TRIGGER_S, None),))
+const	asy_isl29125_driver.py	_WRN_ISL_BROWNOUT = const(30)
+const	asy_isl29125_driver.py	_WRN_ISL_CAL_TIMEOUT = const(75)
+const	asy_isl29125_driver.py	_WRN_ISL_DIVERGED = const(31)
+const	asy_isl29125_driver.py	_WRN_ISL_PERIODIC_ONLY = const(32)
+const	asy_neopixel_driver.py	_LED_OVERL_BRI = const(50)
+const	asy_neopixel_driver.py	_MAX_SIGNAL_S = const(60.0)  # the REST ceiling of t (asy_webserver_service.py's _LIGHT_CMD_FIELDS, legacy led
+const	asy_neopixel_driver.py	_MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the non-finite fallback
+const	asy_neopixel_driver.py	_NEOPIXEL_FREQ_HZ = const(20)
+const	asy_neopixel_driver.py	_OVERLAY_REFRESH_MS = const(300000)
+const	asy_neopixel_driver.py	_SIGNAL_WAIT_MS = const(120000)
+const	asy_notification_service.py	_CFG_FAIL_INTERVAL_S = const(600)  # cycle interval while the own configuration cannot be read
+const	asy_notification_service.py	_ERR_CALLBACK = const(14)
+const	asy_notification_service.py	_ERR_CFG_READ = const(26)
+const	asy_notification_service.py	_ERR_SOURCE = const(15)
+const	asy_notification_service.py	_FIELDS = const(("Triggered", "State", "TS"))  # kept in sync with NOTIFY's own fields above
+const	asy_notification_service.py	_LOOP_TICK_S = const(1)  # _pause_loop()'s round: how late a measured pause can end
+const	asy_notification_service.py	_MIN_SLEEP_MS = const(100)  # floor of _monitor_loop()'s sleep to its next cycle
+const	asy_notification_service.py	_SAMPLE_MAX_AGE_S = const(10800)
+const	asy_notification_service.py	_STATE_CFG_UNREADABLE = const(4)
+const	asy_notification_service.py	_STATE_EVALUATED = const(0)
+const	asy_notification_service.py	_STATE_NO_CLOCK = const(2)
+const	asy_notification_service.py	_STATE_OFF = const(1)
+const	asy_notification_service.py	_STATE_PARTIAL = const(3)
+const	asy_notification_service.py	_VAL_FLASH_INTERVAL = const((("FlashInterval", "float", 300.0, 60.0, 3600.0, None),))
+const	asy_notification_service.py	_WRN_CFG_READ = const(13)
+const	asy_notification_service.py	_WRN_NOTIFY_NAME_COLLISION = const(44)
+const	asy_notification_service.py	_WRN_NOTIFY_SCHEMA_SHAPE = const(45)
+const	asy_notification_service.py	_WRN_NOTIFY_SIGNAL_DROPPED = const(67)
+const	asy_ntp_client.py	_DEFAULT_RETRY_MAX_S = const(600)
+const	asy_ntp_client.py	_DEFAULT_RETRY_S = const(10)
+const	asy_ntp_client.py	_DNS_FALLBACK_MAX = const(3)  # ipv4List items; the 47-character bound fits three dotted quads and two commas
+const	asy_ntp_client.py	_ERR_ALLOC = const(20)
+const	asy_ntp_client.py	_ERR_BAD_ARG = const(21)
+const	asy_ntp_client.py	_ERR_CALLBACK = const(14)
+const	asy_ntp_client.py	_ERR_CFG_READ = const(26)
+const	asy_ntp_client.py	_ERR_NTP_DNS = const(67)
+const	asy_ntp_client.py	_ERR_NTP_DNS_NOT_SENT = const(73)
+const	asy_ntp_client.py	_ERR_NTP_DNS_NXDOMAIN = const(74)
+const	asy_ntp_client.py	_ERR_NTP_IMPLAUSIBLE = const(68)
+const	asy_ntp_client.py	_ERR_NTP_MALFORMED = const(69)
+const	asy_ntp_client.py	_ERR_NTP_NOT_SENT = const(72)
+const	asy_ntp_client.py	_ERR_NTP_NO_REPLY = const(71)
+const	asy_ntp_client.py	_ERR_NTP_RETRIES = const(70)
+const	asy_ntp_client.py	_ERR_TIMER = const(17)
+const	asy_ntp_client.py	_NTP_PACKET_LEN = const(48)  # RFC 5905 SS7.3: the NTP header; the reply fields read end at byte 48
+const	asy_ntp_client.py	_NTP_STR_COUNT = const(2)  # _get_ntp_config() reads exactly NTPHost + DNSFallback
+const	asy_ntp_client.py	_NTP_UDP_PORT = const(123)  # RFC 5905 SS7.2
+const	asy_ntp_client.py	_VAL_DNS_FALLBACK = const((("DNSFallback", "str", "8.8.8.8,1.1.1.1", 0, 47, None),))
+const	asy_ntp_client.py	_VAL_DST_OFFSET = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
+const	asy_ntp_client.py	_VAL_GMT_OFFSET = const((("GMTOffset", "int", 3600, -43200, 43200, None),))
+const	asy_ntp_client.py	_VAL_NTP_HOST = const((("NTPHost", "str", "pool.ntp.org", 3, 253, None),))
+const	asy_ntp_client.py	_VAL_NTP_INTERVAL = const((("NTPInterval", "int", 12, 1, 24, None),))
+const	asy_ntp_client.py	_VAL_NTP_OFFSET = const((("NTPOffset", "int", 0, -43200, 43200, None),))
+const	asy_ntp_client.py	_WRN_NTP_UNSYNC_REPLY = const(40)
+const	asy_ntp_client.py	_WRN_SOCKET_TEARDOWN = const(12)
+const	asy_ntp_client.py	_WRN_STORED_DEFAULT = const(10)
+const	asy_print_log.py	_DEFAULT_HISTORY_LENGTH = const(10)
+const	asy_print_log.py	_ERR_LOG_RAM_ONLY = const(28)
+const	asy_print_log.py	_RESETS_ALL = const(0x1FFFFFFF)  # one bit per store reset() in flight at once, its lowest-free-bit step insid
+const	asy_print_log.py	_STACK_EXHAUSTED = const("maximum recursion depth exceeded")
+const	asy_print_log.py	_WRAP_MAX = const(0x3FFFFFFF)  # the wrapping counters' top, inside the small-int range: compared for equality
+const	asy_scd30_driver.py	_APPLY_ORDER = const(("TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"))
+const	asy_scd30_driver.py	_ASC_ENABLE_WAIT_MS = const(10)
+const	asy_scd30_driver.py	_CMD_RESPONSE_WAIT_MS = const(50)
+const	asy_scd30_driver.py	_CO2_MAX_PPM = const(40000.0)
+const	asy_scd30_driver.py	_CO2_MIN_PPM = const(0.0)
+const	asy_scd30_driver.py	_ERR_BAD_ARG = const(21)
+const	asy_scd30_driver.py	_ERR_CHIP_GET = const(12)
+const	asy_scd30_driver.py	_ERR_CHIP_SET = const(13)
+const	asy_scd30_driver.py	_ERR_INIT = const(10)
+const	asy_scd30_driver.py	_ERR_READ = const(11)
+const	asy_scd30_driver.py	_ERR_READ_RANGE = const(27)
+const	asy_scd30_driver.py	_FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "FRCState", "FRCWait", "TS"))  # kept in sync wi
+const	asy_scd30_driver.py	_FRC_DRIFTING = const(2)
+const	asy_scd30_driver.py	_FRC_MAX_WINDOW = const(1800)  # FRCWindow's 3600 s at the 2 s minimum interval
+const	asy_scd30_driver.py	_FRC_MIN_INTERVALS = const(5)
+const	asy_scd30_driver.py	_FRC_MIN_WINDOW = const(3)  # a residual about a fitted line needs three samples
+const	asy_scd30_driver.py	_FRC_NOISY = const(3)
+const	asy_scd30_driver.py	_FRC_NOT_MEASURING = const(0)
+const	asy_scd30_driver.py	_FRC_READY = const(4)
+const	asy_scd30_driver.py	_FRC_SETTLE_S = const(360)
+const	asy_scd30_driver.py	_FRC_SETTLING = const(1)
+const	asy_scd30_driver.py	_FRC_TEMP_PPM_PER_C = const(2.5)
+const	asy_scd30_driver.py	_HUM_MAX_PCT = const(100.0)
+const	asy_scd30_driver.py	_HUM_MIN_PCT = const(0.0)
+const	asy_scd30_driver.py	_NOT_READY_WARN_AT = const(5)  # consecutive not-ready reads, as ISL29125's _PERIODIC_ONLY_WARN_AT
+const	asy_scd30_driver.py	_SCD30_ADDR = const(0x61)  # Interface Description 1.1.1: the address is fixed
+const	asy_scd30_driver.py	_SOFT_RESET_WAIT_MS = const(2500)
+const	asy_scd30_driver.py	_START_TRIGGER_PERIOD_MS = const(500)
+const	asy_scd30_driver.py	_TEMP_MAX_C = const(70.0)
+const	asy_scd30_driver.py	_TEMP_MIN_C = const(-40.0)
+const	asy_scd30_driver.py	_VAL_ALTITUDE = const((("Altitude", "int", None, 0, 65535, None),))
+const	asy_scd30_driver.py	_VAL_AMB_PRES = const((("AmbPres", "int", None, 700, 1400, 0),))
+const	asy_scd30_driver.py	_VAL_FORCE_CAL_REF = const((("ForceCalRef", "int", None, 400, 2000, None),))
+const	asy_scd30_driver.py	_VAL_FRC_NOISE = const((("FRCNoise", "float", 20.0, 1.0, 500.0, None),))
+const	asy_scd30_driver.py	_VAL_FRC_RATE = const((("FRCRate", "float", 10.0, 0.1, 1000.0, None),))
+const	asy_scd30_driver.py	_VAL_FRC_WINDOW = const((("FRCWindow", "int", 60, 20, 3600, None),))
+const	asy_scd30_driver.py	_VAL_MEAS_INTERVAL = const((("MeasInterval", "int", None, 2, 1800, None),))
+const	asy_scd30_driver.py	_VAL_SELF_CAL = const((("SelfCal", "bool", None, None, None, None),))
+const	asy_scd30_driver.py	_VAL_TEMP_OFFSET = const((("TempOffset", "float", None, 0.0, 655.35, None),))
+const	asy_scd30_driver.py	_WRN_SCD_NOT_READY = const(73)
+const	asy_sgp40_driver.py	_COMP_MAX_AGE_S = const(10800)
+const	asy_sgp40_driver.py	_ERR_CALLBACK = const(14)
+const	asy_sgp40_driver.py	_ERR_CFG_READ = const(26)
+const	asy_sgp40_driver.py	_ERR_CHIP_SET = const(13)
+const	asy_sgp40_driver.py	_ERR_INIT = const(10)
+const	asy_sgp40_driver.py	_ERR_READ = const(11)
+const	asy_sgp40_driver.py	_ERR_SGP_ALGO_STATE = const(58)
+const	asy_sgp40_driver.py	_ERR_SGP_BACKUP_CLEAR = const(59)
+const	asy_sgp40_driver.py	_ERR_SGP_BACKUP_WRITE = const(110)
+const	asy_sgp40_driver.py	_ERR_SOURCE = const(15)
+const	asy_sgp40_driver.py	_FIELDS = const(("VOC", "Raw", "VOCState", "TS"))  # kept in sync with SGP40's own fields above
+const	asy_sgp40_driver.py	_GENERAL_CALL_RESET_WAIT_S = const(1)
+const	asy_sgp40_driver.py	_HEATER_OFF_MAX_MS = const(1)  # datasheet Table 8 maximum
+const	asy_sgp40_driver.py	_MEASURE_WAIT_MS = const(100)  # >3x the datasheet's 30 ms maximum (Table 8)
+const	asy_sgp40_driver.py	_NO_TIMESTAMP = const(0)  # Backup/restore without a timestamp: the FRAM chunk's uninitialised-timestamp value
+const	asy_sgp40_driver.py	_N_SETUP_CFG = const(2)  # value count of the _VAL_BACKUP_PERIOD + _VAL_WAIT_TIME_NTP batch read below
+const	asy_sgp40_driver.py	_N_STORAGE_CFG = const(3)  # value count of the _VAL_BACKUP_PERIOD + _VAL_BACKUP_MAX_AGE + _VAL_WAIT_TIME_NTP 
+const	asy_sgp40_driver.py	_RH_TICKS_MAX = const(100.0)
+const	asy_sgp40_driver.py	_SELF_TEST_WAIT_MS = const(500)
+const	asy_sgp40_driver.py	_SERIAL_READ_WAIT_MS = const(3)
+const	asy_sgp40_driver.py	_SGP40_ADDR = const(0x59)  # datasheet 4.2: the address is fixed
+const	asy_sgp40_driver.py	_T_TICKS_MAX_C = const(130.0)
+const	asy_sgp40_driver.py	_T_TICKS_MIN_C = const(-45.0)
+const	asy_sgp40_driver.py	_VAL_BACKUP_MAX_AGE = const((("BackupMaxAge", "int", 7200, 0, 10080, 0),))
+const	asy_sgp40_driver.py	_VAL_BACKUP_PERIOD = const((("BackupPeriod", "int", 1, 0, 1440, 0),))
+const	asy_sgp40_driver.py	_VAL_RESET_VOC = const((("ResetVOC", "bool", None, None, None, True),))
+const	asy_sgp40_driver.py	_VAL_WAIT_TIME_NTP = const((("WaitTimeNTP", "int", 30, 0, 600, 0),))
+const	asy_sgp40_driver.py	_VOC_SETTLED_SAMPLES = const(86400)  # 24 h learning time at the fixed 1 s period (Info Note VOC Index)
+const	asy_sgp40_driver.py	_WRN_SGP_BACKUP_AGE = const(34)
+const	asy_sgp40_driver.py	_WRN_SGP_NO_BACKUP = const(65)
+const	asy_sgp40_driver.py	_WRN_SGP_RESTORED_NO_TS = const(33)
+const	asy_sgp40_driver.py	_WRN_SGP_WRITTEN_NO_TS = const(35)
+const	asy_system_service.py	BOOT_CONSTRUCTION = const(1)
+const	asy_system_service.py	BOOT_DONE = const(6)
+const	asy_system_service.py	BOOT_NTP = const(5)
+const	asy_system_service.py	BOOT_SETUP = const(2)
+const	asy_system_service.py	BOOT_TASKS = const(3)
+const	asy_system_service.py	BOOT_TIMERS = const(4)
+const	asy_system_service.py	RR_INTERRUPTED = const(21)  # Ctrl-C on the console ended the run and the watchdog reset followed; the boot en
+const	asy_system_service.py	_BP_MAGIC = const(0x2A5E0002)
+const	asy_system_service.py	_CHIP_RESET = const(0x40064008)
+const	asy_system_service.py	_CHIP_RESET_BITS = const(0x110100)
+const	asy_system_service.py	_ERR_CALLBACK = const(14)
+const	asy_system_service.py	_ERR_STACK_EXHAUSTED = const(25)
+const	asy_system_service.py	_ERR_SUPERVISOR_RAISED = const(115)
+const	asy_system_service.py	_ERR_TASK_BUDGET_REBOOT = const(41)
+const	asy_system_service.py	_ERR_TASK_CANCELLED = const(43)
+const	asy_system_service.py	_ERR_TASK_RAISED = const(42)
+const	asy_system_service.py	_ERR_TASK_RETURNED = const(44)
+const	asy_system_service.py	_ERR_TASK_STARTER_RAISED = const(40)
+const	asy_system_service.py	_ERR_TIMER = const(17)
+const	asy_system_service.py	_ERR_UNEXPECTED = const(23)
+const	asy_system_service.py	_ESCALATION_ENTRY_WAIT_MS = const(1200)  # a fifth of the 6 s a pass has after its sleep for its five entry wr
+const	asy_system_service.py	_REASON_BITS = const(0x3)
+const	asy_system_service.py	_RESET_DELAY = const(4)  # seconds from arming the reset to running it; nothing feeds meanwhile, keep < watchd
+const	asy_system_service.py	_RR_BOOTLOADER = const(4)
+const	asy_system_service.py	_RR_BOOT_FAILURE = const(10)  # + the boot phase that never completed
+const	asy_system_service.py	_RR_CHECK = const(0x15A5A5A5)
+const	asy_system_service.py	_RR_COMMAND_INCOMPLETE = const(9)
+const	asy_system_service.py	_RR_CONFIG_RESET = const(7)
+const	asy_system_service.py	_RR_FRAM_ERASED = const(8)
+const	asy_system_service.py	_RR_LOOP_ENDED = const(22)  # any other exception ended the event loop after boot, the watchdog reset followed
+const	asy_system_service.py	_RR_MAGIC = const(0x2A5E0001)
+const	asy_system_service.py	_RR_POWER_ON = const(1)
+const	asy_system_service.py	_RR_REBOOT = const(3)
+const	asy_system_service.py	_RR_STACK_EXHAUSTED = const(20)  # outside the 10 + phase band of boot failures
+const	asy_system_service.py	_RR_STARVE_ARM_FAILED = const(6)
+const	asy_system_service.py	_RR_TASK_BUDGET = const(5)
+const	asy_system_service.py	_RR_UNKNOWN = const(0)
+const	asy_system_service.py	_RR_WATCHDOG = const(2)
+const	asy_system_service.py	_VAL_DEBUG_LEVEL = const((("DebugLevel", "int", 0, 0, 5, None),))  # range matches PrintLog's six levels
+const	asy_system_service.py	_WATCHDOG_REASON = const(0x40058008)
+const	asy_system_service.py	_WRN_CONFIG_LOST = const(69)
+const	asy_uart_comm.py	_BACKOFF_MAX_MULT = const(5)  # cap = 5 x timeout, matching asy_captive_dns.py's own 0.5s -> 5s shape
+const	asy_uart_comm.py	_CMD_ACK = const(0x01)
+const	asy_uart_comm.py	_CMD_GET = const(0x02)
+const	asy_uart_comm.py	_DEFAULT_CHUNK_BYTES = const(256)  # the webserver's piece size (Part I.3): the largest receive allocation
+const	asy_uart_comm.py	_DEFAULT_MAX_TRANSFER_BYTES = const(12192)  # (_CHUNKS_MAX - 1) x the default payload: no default train is ref
+const	asy_uart_comm.py	_DEFAULT_PAYLOAD_SIZE = const(48)  # agreed out of band with the peer, never tuned on one side (J.6)
+const	asy_uart_comm.py	_DEFAULT_TIMEOUT_MS = const(1000)  # agreed out of band with the peer, never tuned on one side (J.6)
+const	asy_uart_comm.py	_ERR_ALLOC = const(20)
+const	asy_uart_comm.py	_ERR_BAD_ARG = const(21)
+const	asy_uart_comm.py	_ERR_CALLBACK = const(14)
+const	asy_uart_comm.py	_ERR_NOT_INIT = const(18)
+const	asy_uart_comm.py	_ERR_TIMEOUT = const(22)
+const	asy_uart_comm.py	_ERR_UART_CODEC_SIZE = const(92)
+const	asy_uart_comm.py	_ERR_UART_FRAME_INVALID = const(80)
+const	asy_uart_comm.py	_ERR_UART_GET_ID_MISMATCH = const(87)
+const	asy_uart_comm.py	_ERR_UART_LINK_UNINTELLIGIBLE = const(89)
+const	asy_uart_comm.py	_ERR_UART_NO_ACK = const(81)
+const	asy_uart_comm.py	_ERR_UART_NO_BUS = const(77)
+const	asy_uart_comm.py	_ERR_UART_PAYLOAD_SIZE = const(75)
+const	asy_uart_comm.py	_ERR_UART_PAYLOAD_TOO_LARGE = const(83)
+const	asy_uart_comm.py	_ERR_UART_PEER_INITIATED = const(88)
+const	asy_uart_comm.py	_ERR_UART_POLL_RATE = const(91)
+const	asy_uart_comm.py	_ERR_UART_REENTRANT = const(85)
+const	asy_uart_comm.py	_ERR_UART_ROLE_REFUSED = const(79)
+const	asy_uart_comm.py	_ERR_UART_RXBUF = const(78)
+const	asy_uart_comm.py	_ERR_UART_SIZE_MISMATCH = const(84)
+const	asy_uart_comm.py	_ERR_UART_STREAM_SHORT = const(90)
+const	asy_uart_comm.py	_ERR_UART_TIMEOUT_PARAM = const(76)
+const	asy_uart_comm.py	_ERR_UART_TRANSFER_CAP = const(93)
+const	asy_uart_comm.py	_ERR_UART_WRITE_FAILED = const(82)
+const	asy_uart_comm.py	_ERR_UART_WRONG_KIND = const(86)
+const	asy_uart_comm.py	_ERR_UNEXPECTED = const(23)
+const	asy_uart_comm.py	_FLASH_HOLD_MAX_MS = const(2129)  # 5 erases x 400 + 43 page programs x 3, traced at v1.29.0 (Part N)
+const	asy_uart_comm.py	_POLL_WAIT_MAX_MS = const(9)  # J.6: a transaction polls at single-digit milliseconds
+const	asy_uart_comm.py	_TICKS_HORIZON_MS = const(0x1FFFFFFF)  # 2**29 - 1: the longest delay ticks_add() and sleep_ms() take and the 
+const	asy_uart_comm.py	_WRN_UART_CANCEL_UNACKED = const(55)
+const	asy_uart_comm.py	_WRN_UART_CMD_DECLINED = const(56)
+const	asy_uart_comm.py	_WRN_UART_DRAIN_BOUND = const(54)
+const	asy_uart_comm.py	_WRN_UART_RX_OVERRUN = const(57)
+const	asy_uart_driver.py	_DMACR_RXDMAE = const(0x01)  # Table 439
+const	asy_uart_driver.py	_DMA_BASE = const(0x50000000)  # each channel's TRANS_COUNT trigger alias sits at 0x40 * channel + 0x1C (2.5.7
+const	asy_uart_driver.py	_DMA_CH_STRIDE = const(0x40)
+const	asy_uart_driver.py	_DMA_TRANS_COUNT_TRIG = const(0x1C)
+const	asy_uart_driver.py	_DREQ_UART0_RX = const(21)  # RP2040 datasheet 2.5.3.1
+const	asy_uart_driver.py	_DREQ_UART1_RX = const(23)
+const	asy_uart_driver.py	_ERR_UART_TRANSFER_CAP = const(93)
+const	asy_uart_driver.py	_IMSC_RX = const(0x50)  # RXIM (bit 4) | RTIM (bit 6), Table 435
+const	asy_uart_driver.py	_NAME = const("UART")
+const	asy_uart_driver.py	_RSR_ERRORS = const(0x0D)
+const	asy_uart_driver.py	_RX_POS_MASK = const(0x1FFFFFFF)
+const	asy_uart_driver.py	_RX_RELOAD = const(0x20000000)
+const	asy_uart_driver.py	_RX_RING_MAX = const(32768)
+const	asy_uart_driver.py	_RX_RING_MIN = const(2)
+const	asy_uart_driver.py	_SEQ_HALF = const(0x20000000)  # half the 2**30 sequence space: a distance below it is "behind"
+const	asy_uart_driver.py	_UART0_DMACR = const(0x40034048)
+const	asy_uart_driver.py	_UART0_DR = const(0x40034000)
+const	asy_uart_driver.py	_UART0_IMSC = const(0x40034038)
+const	asy_uart_driver.py	_UART0_RSR = const(0x40034004)
+const	asy_uart_driver.py	_UART1_DMACR = const(0x40038048)
+const	asy_uart_driver.py	_UART1_DR = const(0x40038000)
+const	asy_uart_driver.py	_UART1_IMSC = const(0x40038038)
+const	asy_uart_driver.py	_UART1_RSR = const(0x40038004)
+const	asy_uart_driver.py	_UART_MIN_RXBUF = const(32)
+const	asy_uart_link_driver.py	_BANNER = const(b"uart-crossover")  # names the jumper it crosses, never a board variant
+const	asy_uart_link_driver.py	_ERR_UNEXPECTED = const(23)  # the catalog's shared code: an exception reached a task's top
+const	asy_uart_link_driver.py	_HAZARD_CMD_ID = const(0x07)  # the command id the raw first chunks carry
+const	asy_uart_link_driver.py	_HAZARD_RECOVERY_ATTEMPTS = const(2)  # after a hazard, a clean exchange within this many tries
+const	asy_uart_link_driver.py	_HEADER_BYTES = const(5)  # uid, cmd, size, chunks, cur_chunk (J.3)
+const	asy_uart_link_driver.py	_QUIET_TIMEOUTS = const(3)
+const	asy_uart_link_driver.py	_WINDOW_TIMEOUTS = const(8)
+const	asy_uart_link_driver.py	_WIRE_ACK = const(0x01)  # the wire's ACK and GET command bytes (J.3), for the raw first chunks below
+const	asy_uart_link_driver.py	_WIRE_GET = const(0x02)
+const	asy_udp_socket.py	_POLL_IDLE_MS = const(100)  # a wait with no deadline: the captive DNS listen
+const	asy_udp_socket.py	_POLL_WAIT_MS = const(20)  # a wait with a deadline: inside a DNS or NTP exchange
+const	asy_udp_socket.py	_RETRY_BACKOFF_MS = const(500)  # pause after a failed socket setup, connect() or bind()
+const	asy_webserver_service.py	_DEFAULT_MAX_CONNECTIONS = const(6)  # three below the firmware's MEMP_NUM_TCP_PCB (toolchain/versions.toml), 
+const	asy_webserver_service.py	_DEFAULT_MAX_CONTENT_LENGTH = const(2048)  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
+const	asy_webserver_service.py	_DEFAULT_OUTER_CAP_S = const(15.0)
+const	asy_webserver_service.py	_DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)
+const	asy_webserver_service.py	_DEFAULT_STATIC_INDEX = const("index.html")
+const	asy_webserver_service.py	_EPIPE = const(32)  # a refused head's errno: Microdot mutes 32 (ext/microdot.py:56-61); MicroPython's errno h
+const	asy_webserver_service.py	_ERROR_STATUSES = const((400, 404, 405, 413, 500))  # the five shaped statuses SPECIFICATION.md A.5 names; eac
+const	asy_webserver_service.py	_ERR_CALLBACK = const(14)
+const	asy_webserver_service.py	_ERR_UNEXPECTED = const(23)
+const	asy_webserver_service.py	_LED_BUSY_DESCR = const("LED busy - retry later")  # the envelope's descr when a running signal refused LightC
+const	asy_webserver_service.py	_MAX_HEADER_LINES = const(32)  # browsers send about 15-20 headers, curl about 4
+const	asy_webserver_service.py	_MAX_HEAD_BYTES = const(2048)  # the request line and headers together: no cookie or auth header on this devic
+const	asy_webserver_service.py	_START_RETRIES = const(3)
+const	asy_webserver_service.py	_START_RETRY_S = const(5)
+const	asy_webserver_service.py	_SYSTEM_CMDS = const(("reboot", "bootloader", "mempause", "resetconfig", "erasefram"))
+const	asy_webserver_service.py	_WRN_HTTP_BAD_HEAD = const(61)
+const	asy_webserver_service.py	_WRN_HTTP_CALL_TIMEOUT = const(49)
+const	asy_webserver_service.py	_WRN_HTTP_CLOSE_RAISED = const(52)
+const	asy_webserver_service.py	_WRN_HTTP_PEER_RESET = const(48)
+const	asy_webserver_service.py	_WRN_HTTP_REFUSED = const(60)
+const	asy_webserver_service.py	_WRN_HTTP_REQUEST_CAP = const(50)
+const	asy_webserver_service.py	_WRN_HTTP_SOCKET_ERROR = const(51)
+const	asy_webserver_service.py	_WRN_HTTP_START_FAILED = const(62)
+const	asy_webserver_service.py	_WRN_HTTP_WAIT_CLOSED = const(53)
+const	asy_wifi_service.py	_COUNTRY_CODE_LEN = const(2)  # alpha-2: the shape _country_ok() checks, inside _VAL_COUNTRY's own 2..2
+const	asy_wifi_service.py	_ERR_BAD_ARG = const(21)
+const	asy_wifi_service.py	_ERR_TIMEOUT = const(22)
+const	asy_wifi_service.py	_ERR_TIMER = const(17)
+const	asy_wifi_service.py	_ERR_UNEXPECTED = const(23)
+const	asy_wifi_service.py	_ERR_WLAN_AP_START = const(61)
+const	asy_wifi_service.py	_ERR_WLAN_GIVE_UP = const(66)
+const	asy_wifi_service.py	_ERR_WLAN_MODE_SWITCH = const(60)
+const	asy_wifi_service.py	_ERR_WLAN_STA_DISCONNECT = const(64)
+const	asy_wifi_service.py	_ERR_WLAN_STA_POLL = const(63)
+const	asy_wifi_service.py	_ERR_WLAN_STA_START = const(62)
+const	asy_wifi_service.py	_FIELDS = const(("Mode", "Connected", "IP", "Subnet", "Gateway", "DNS", "RSSI", "TS"))  # kept in sync with WI
+const	asy_wifi_service.py	_HOTSPOT_CFG_FIELDS = const(3)  # _VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW
+const	asy_wifi_service.py	_HOTSPOT_STATIONS_SETTLE_MS = const(100)  # before the stations query
+const	asy_wifi_service.py	_LED_DEACTIVATED_OFF_MS = const(2900)
+const	asy_wifi_service.py	_LED_DEACTIVATED_ON_MS = const(100)  # no readable Wi-Fi configuration: the hotspot pattern inverted, a short 
+const	asy_wifi_service.py	_LED_HOTSPOT_CLIENT_OFF_MS = const(1500)
+const	asy_wifi_service.py	_LED_HOTSPOT_CLIENT_ON_MS = const(1500)  # a station on the hotspot: an even slow blink
+const	asy_wifi_service.py	_LED_HOTSPOT_OFF_MS = const(100)
+const	asy_wifi_service.py	_LED_HOTSPOT_ON_MS = const(2900)  # the hotspot without a client: mostly lit
+const	asy_wifi_service.py	_PHASE_DEACTIVATED = const(3)  # terminal - no readable Wi-Fi configuration: the radio stays unused until a re
+const	asy_wifi_service.py	_PHASE_SILENT = const(4)  # Silent after a second failed streak: no hotspot, the LED dark, one connect attempt
+const	asy_wifi_service.py	_PM_NO_POWERSAVE = const(0xA11140)
+const	asy_wifi_service.py	_RECONNECT_CALLER_GRACE_S = const(5)  # lets the triggering caller's own final tasks finish
+const	asy_wifi_service.py	_RECONNECT_SETTLE_S = const(3)  # after the reconnect, once, for whatever else to settle
+const	asy_wifi_service.py	_STATIONS_UNSET = const(32)  # status("stations") with a chip that cannot come up: the binding's 32-entry buff
+const	asy_wifi_service.py	_STAT_JOINED_NO_IP = const(2)  # cyw43 CYW43_LINK_NOIP (cyw43.h:100): joined, no IP yet; network exports no na
+const	asy_wifi_service.py	_STA_CFG_FIELDS = const(4)  # _VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME
+const	asy_wifi_service.py	_STA_CONNECT_POLL_ITERS = const(10)  # its bound: 10 * 500 ms = 5 s
+const	asy_wifi_service.py	_STA_CONNECT_POLL_MS = const(500)  # one step of _poll_sta_connect_status()'s wait for a verdict
+const	asy_wifi_service.py	_STA_DISCONNECT_POLL_MS = const(500)  # one step of that wait
+const	asy_wifi_service.py	_STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 500 ms = 10 s max wait for isconnected() to clear -
+const	asy_wifi_service.py	_STA_RETRY_AFTER_LOSS_S = const(60)  # retry a previously successful connection after one minute
+const	asy_wifi_service.py	_VAL_COUNTRY = const((("Country", "str", "DE", 2, 2, None),))  # ISO 3166-1 alpha-2, checked by _country_ok()
+const	asy_wifi_service.py	_VAL_HOSTNAME = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 = network.hostname()'s real cap
+const	asy_wifi_service.py	_VAL_LED_WIFI_ON = const((("LEDWifiOn", "bool", True, None, None, None),))
+const	asy_wifi_service.py	_WIFI_REFRESH_S = const(5)  # _connect_loop()'s loop period between connection checks
+const	asy_wifi_service.py	_WLAN_DEINIT_SETTLE_S = const(1)  # after deinit(), before the new interface
+const	asy_wifi_service.py	_WLAN_DOWN_SETTLE_S = const(2)  # after disconnect() + active(False), before deinit()
+const	asy_wifi_service.py	_WLAN_MODE_SETTLE_S = const(1)  # after the new interface is created
+const	asy_wifi_service.py	_WRN_CFG_READ = const(13)
+const	asy_wifi_service.py	_WRN_STORED_DEFAULT = const(10)
+const	asy_wifi_service.py	_WRN_WLAN_AUTH_FAILED = const(36)
+const	asy_wifi_service.py	_WRN_WLAN_CONNECT_FAILED = const(38)
+const	asy_wifi_service.py	_WRN_WLAN_NO_AP = const(37)
+const	asy_wifi_service.py	_WRN_WLAN_NO_VERDICT = const(81)
+const	asy_wifi_service.py	_WRN_WLAN_SILENT = const(80)
+const	asy_wifi_service.py	_WRN_WLAN_STATIONS_UNKNOWN = const(77)
+const	asy_wifi_service.py	_WRN_WLAN_STATUS_UNKNOWN = const(39)
+const	asy_wifi_service.py	_WRN_WLAN_STATUS_UNREADABLE = const(78)
+const	asy_wifi_service.py	_WRN_WLAN_TO_HOTSPOT = const(79)
+const	math_helpers.py	_CCT_MAX = const(12500.0)
+const	math_helpers.py	_CCT_MIN = const(2000.0)
+const	math_helpers.py	_MAGNUS_RH_ROUNDING = const(0.001)
+const	math_helpers.py	_WB_CORNER_RH0 = const(75.0)
+const	math_helpers.py	_WB_CORNER_RH1 = const(5.0)
+const	math_helpers.py	_WB_CORNER_T0 = const(-20.0)
+const	math_helpers.py	_WB_CORNER_T1 = const(10.0)
+const	voc_algorithm.py	_FIX16_MINIMUM = const(-0x80000000)
+const	voc_algorithm.py	_FIX16_OVERFLOW = const(-0x80000000)
+const	voc_algorithm.py	_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__FIX16_MAX = const(16383)
+except	asy_base_classes.py	RegionBuffer.__init__	MemoryError
+except	asy_base_classes.py	RegionBuffer.__init__	OverflowError
+except	asy_base_classes.py	SensorReader._climb_ladder	Exception
+except	asy_base_classes.py	SensorReader._recover_failed_push	Exception
+except	asy_base_classes.py	SensorReader._set_dict_cfg	Exception
+except	asy_base_classes.py	arm_tick_timer	MemoryError
+except	asy_base_classes.py	arm_tick_timer	OSError
+except	asy_bmp3xx_driver.py	BMP3XX_Reader._apply_stored_config	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader._init_bmp	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader._read_bmp	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader._read_bmp	ValueError
+except	asy_bmp3xx_driver.py	BMP3XX_Reader._read_sensor_dict	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader._recover_device	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader.get_filter_coefficient	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader.get_pressure_oversampling	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader.get_temperature_oversampling	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader.set_filter_coefficient	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader.set_pressure_oversampling	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader.set_temperature_oversampling	Exception
+except	asy_bmp3xx_driver.py	BMP3XX_Reader.start_timer	MemoryError
+except	asy_bmp3xx_driver.py	BMP3XX_Reader.start_timer	OSError
+except	asy_captive_dns.py	CaptiveDNS.run	Exception
+except	asy_captive_dns.py	DNSQuery.__init__	MemoryError
+except	asy_config_manager.py	ConfigManager._flush_staged	Exception
+except	asy_config_manager.py	ConfigManager.delete_file	OSError
+except	asy_config_manager.py	_coerce_int	OverflowError
+except	asy_config_manager.py	_coerce_int	ValueError
+except	asy_dns_client.py	resolve_ipv4	OverflowError
+except	asy_fram_manager.py	FRAMManager.erase_chip	MemoryError
+except	asy_fram_manager.py	FRAMManager.setup	Exception
+except	asy_fram_manager.py	FRAMTimestampedChunk.read_into	Exception
+except	asy_fram_manager.py	FRAMTimestampedChunk.write_into	Exception
+except	asy_fram_manager.py	_FRAMBaseChunk.__init__	MemoryError
+except	asy_fram_manager.py	_FRAMBaseChunk.__init__	OverflowError
+except	asy_fram_manager.py	_FRAMBaseChunk._clear_chunk	Exception
+except	asy_fram_manager.py	_FRAMBaseChunk._copy_out	MemoryError
+except	asy_fram_manager.py	_FRAMBaseChunk._read_chunk	Exception
+except	asy_fram_manager.py	_FRAMBaseChunk._write_chunk	Exception
+except	asy_framing_codecs.py	FramingCOBS.__init__	MemoryError
+except	asy_framing_codecs.py	FramingCOBS.__init__	OverflowError
+except	asy_i2c_driver.py	I2C._write_all	OSError
+except	asy_i2c_driver.py	I2C.recover	OSError
+except	asy_i2c_driver.py	I2C.recover	ValueError
+except	asy_isl29125_driver.py	ISL29125_Reader._reapply_configuration	Exception
+except	asy_isl29125_driver.py	ISL29125_Reader._rearm_interrupt	Exception
+except	asy_isl29125_driver.py	ISL29125_Reader._set_int_armed	Exception
+except	asy_isl29125_driver.py	ISL29125_Reader._verify_config	Exception
+except	asy_isl29125_driver.py	ISL29125_Reader._write_thresholds_locked	Exception
+except	asy_neopixel_driver.py	NeopixelDriver._overlay_loop	TimeoutError
+except	asy_notification_service.py	NotificationService._check_one	Exception
+except	asy_notification_service.py	NotificationService._safe_local_time	Exception
+except	asy_notification_service.py	NotificationService._trigger_signal	Exception
+except	asy_ntp_client.py	NTPClient._arm_check_timer	MemoryError
+except	asy_ntp_client.py	NTPClient._arm_check_timer	OSError
+except	asy_ntp_client.py	NTPClient._handle_ntp_sync_failure	MemoryError
+except	asy_ntp_client.py	NTPClient._handle_ntp_sync_failure	OSError
+except	asy_ntp_client.py	NTPClient._parse_ntp_reply	MemoryError
+except	asy_ntp_client.py	NTPClient._parse_ntp_reply	OSError
+except	asy_ntp_client.py	NTPClient._run_ntp_sync_attempt	Exception
+except	asy_ntp_client.py	NTPClient._safe_get_dns_server	Exception
+except	asy_print_log.py	PrintLog.report_unretrieved	Exception
+except	asy_print_log.py	PrintLogHistoryStore.__init__	MemoryError
+except	asy_print_log.py	PrintLogHistoryStore._read	MemoryError
+except	asy_print_log.py	PrintLogHistoryStore._write	MemoryError
+except	asy_scd30_driver.py	SCD30_Reader._config_snapshot	Exception
+except	asy_scd30_driver.py	SCD30_Reader._read_scd	ValueError
+except	asy_scd30_driver.py	SCD30_Reader._recover_device	Exception
+except	asy_sgp40_driver.py	SGP40_Reader.__init__	MemoryError
+except	asy_sgp40_driver.py	SGP40_Reader._compensation	Exception
+except	asy_sgp40_driver.py	SGP40_Reader._recover_device	Exception
+except	asy_sgp40_driver.py	SGP40_Reader._run_restore	Exception
+except	asy_system_service.py	SystemService._flush_config_stores	Exception
+except	asy_system_service.py	SystemService._request_shutdown	BaseException
+except	asy_system_service.py	SystemService._request_shutdown	MemoryError
+except	asy_system_service.py	SystemService._reset_when_due	Exception
+except	asy_system_service.py	SystemService._run_timer_starter	Exception
+except	asy_system_service.py	SystemService._shutdown_sequence	CancelledError
+except	asy_system_service.py	SystemService._shutdown_sequence	Exception
+except	asy_system_service.py	SystemService._supervise	Exception
+except	asy_system_service.py	SystemService._supervise	MemoryError
+except	asy_system_service.py	SystemService._supervise	TimeoutError
+except	asy_system_service.py	SystemService.start_timers	MemoryError
+except	asy_system_service.py	SystemService.start_timers	OSError
+except	asy_uart_comm.py	UARTComm._accept_set	MemoryError
+except	asy_uart_comm.py	UARTComm._allocate	MemoryError
+except	asy_uart_comm.py	UARTComm._allocate	OverflowError
+except	asy_uart_comm.py	UARTComm._call	Exception
+except	asy_uart_comm.py	UARTComm._get_unlocked	MemoryError
+except	asy_uart_comm.py	UARTComm._listen_loop	Exception
+except	asy_uart_comm.py	UARTComm._pair	IndexError
+except	asy_uart_comm.py	UARTComm._pair	TypeError
+except	asy_uart_driver.py	UART._buffered	ValueError
+except	asy_uart_driver.py	UART._rx_copy	OSError
+except	asy_uart_driver.py	UART._rx_copy	ValueError
+except	asy_uart_driver.py	UART._rx_level	OSError
+except	asy_uart_driver.py	UART._rx_level	ValueError
+except	asy_uart_driver.py	UART.deinit	ValueError
+except	asy_uart_driver.py	UART.read	MemoryError
+except	asy_uart_driver.py	UART.readline	MemoryError
+except	asy_uart_driver.py	UART.ready	OverflowError
+except	asy_uart_driver.py	UART.setup_rx_ring	MemoryError
+except	asy_uart_driver.py	UART.setup_rx_ring	OSError
+except	asy_uart_driver.py	UART.setup_rx_ring	ValueError
+except	asy_uart_link_driver.py	UARTLinkDriver._initiate	Exception
+except	asy_udp_socket.py	UDPSocket._connect	MemoryError
+except	asy_udp_socket.py	UDPSocket._connect	OSError
+except	asy_udp_socket.py	UDPSocket._connect	TypeError
+except	asy_udp_socket.py	UDPSocket._disconnect_locked	MemoryError
+except	asy_udp_socket.py	UDPSocket._disconnect_locked	OSError
+except	asy_udp_socket.py	UDPSocket.ready	MemoryError
+except	asy_udp_socket.py	UDPSocket.ready	OSError
+except	asy_udp_socket.py	UDPSocket.recvfrom	MemoryError
+except	asy_udp_socket.py	UDPSocket.recvfrom	OSError
+except	asy_udp_socket.py	UDPSocket.sendto	MemoryError
+except	asy_udp_socket.py	UDPSocket.sendto	OSError
+except	asy_udp_socket.py	UDPSocket.sendto	TypeError
+except	asy_udp_socket.py	UDPSocket.write	MemoryError
+except	asy_udp_socket.py	UDPSocket.write	OSError
+except	asy_webserver_service.py	WebserverService._run_status_cmd	Exception
+except	asy_webserver_service.py	WebserverService._run_system_cmd	Exception
+except	asy_webserver_service.py	WebserverService._serve_loop	MemoryError
+except	asy_webserver_service.py	WebserverService._serve_loop	OSError
+except	asy_webserver_service.py	WebserverService._trace_before_close	TimeoutError
+except	asy_webserver_service.py	_StaticRoutes.serve	OSError
+except	asy_webserver_service.py	_TimeoutStreamProxy._bounded	TimeoutError
+except	asy_webserver_service.py	_TimeoutStreamProxy._check_head_line	UnicodeError
+except	asy_webserver_service.py	_TimeoutStreamProxy._check_head_line	ValueError
+except	asy_webserver_service.py	_TimeoutStreamProxy.awrite	OSError
+except	asy_webserver_service.py	_TimeoutStreamProxy.readexactly	EOFError
+except	asy_webserver_service.py	_body_as_dict	MemoryError
+except	asy_wifi_service.py	WifiService._activate_hotspot_ap	Exception
+except	asy_wifi_service.py	WifiService._arm_hotspot_timer	MemoryError
+except	asy_wifi_service.py	WifiService._arm_hotspot_timer	OSError
+except	asy_wifi_service.py	WifiService._disconnect_sta_and_wait	Exception
+except	asy_wifi_service.py	WifiService._flash_led	Exception
+except	asy_wifi_service.py	WifiService._get_hotspot_stations	Exception
+except	asy_wifi_service.py	WifiService._led_off	Exception
+except	asy_wifi_service.py	WifiService._led_on	Exception
+except	asy_wifi_service.py	WifiService._led_toggle	Exception
+except	asy_wifi_service.py	WifiService._poll_sta_connect_status	Exception
+except	asy_wifi_service.py	WifiService._print_wlan_diagnostics	Exception
+except	asy_wifi_service.py	WifiService._reset_wlan_connect_state	Exception
+except	asy_wifi_service.py	WifiService._switch_wlan_mode	Exception
+except	asy_wifi_service.py	WifiService._trigger_sta_connect	Exception
+except	asy_wifi_service.py	WifiService._update_wifi_snapshot	Exception
+except	asy_wifi_service.py	WifiService._wlan_isconnected_or_false	Exception
+except	asy_wifi_service.py	WifiService._wlan_status_or_none	Exception
+except	math_helpers.py	pressure_at_height	ArithmeticError
+except	math_helpers.py	pressure_at_height	ValueError
+except	voc_algorithm.py	DFRobot_vocalgorithmParams.pack_into	OverflowError
+except	voc_algorithm.py	DFRobot_vocalgorithmParams.pack_into	TypeError
+except	voc_algorithm.py	DFRobot_vocalgorithmParams.pack_into	ValueError
+except	voc_algorithm.py	DFRobot_vocalgorithmParams.unpack_from	OverflowError
+except	voc_algorithm.py	DFRobot_vocalgorithmParams.unpack_from	ValueError
+fatal	asy_api_response.py	handle_set_cmd	1
+fatal	asy_base_classes.py	Lockable.__aexit__	1
+fatal	asy_base_classes.py	SensorReader._climb_ladder	1
+fatal	asy_base_classes.py	SensorReader._get_dict_cfg	2
+fatal	asy_base_classes.py	SensorReader._recover_failed_push	2
+fatal	asy_base_classes.py	SensorReader._set_dict_cfg	3
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader._apply_stored_config	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader._init_bmp	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader._read_bmp	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader._read_sensor_dict	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader._recover_device	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader.get_filter_coefficient	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader.get_pressure_oversampling	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader.get_temperature_oversampling	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader.set_filter_coefficient	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader.set_pressure_oversampling	1
+fatal	asy_bmp3xx_driver.py	BMP3XX_Reader.set_temperature_oversampling	1
+fatal	asy_captive_dns.py	CaptiveDNS.run	2
+fatal	asy_captive_dns.py	DNSQuery.__init__	1
+fatal	asy_config_manager.py	ConfigManager._flush_staged	1
+fatal	asy_fram_driver.py	FRAM_SPI.__aexit__	1
+fatal	asy_fram_manager.py	FRAMManager.setup	1
+fatal	asy_fram_manager.py	FRAMTimestampedChunk.read_into	1
+fatal	asy_fram_manager.py	FRAMTimestampedChunk.write_into	1
+fatal	asy_fram_manager.py	_FRAMBaseChunk._clear_chunk	1
+fatal	asy_fram_manager.py	_FRAMBaseChunk._read_chunk	1
+fatal	asy_fram_manager.py	_FRAMBaseChunk._write_chunk	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._check_divergence	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._device_id_answers	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._init_isl	2
+fatal	asy_isl29125_driver.py	ISL29125_Reader._read_isl	2
+fatal	asy_isl29125_driver.py	ISL29125_Reader._read_on	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._read_sensor_dict	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._reapply_configuration	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._reapply_persist	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._rearm_interrupt	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._set_int_armed	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._snapshot_field	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._switch_range	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._verify_config	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader._write_thresholds_locked	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader.set_ir_comp_adjust	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader.set_ir_comp_offset	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader.set_range	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader.set_range_auto	1
+fatal	asy_isl29125_driver.py	ISL29125_Reader.set_resolution	1
+fatal	asy_notification_service.py	NotificationService._check_one	1
+fatal	asy_notification_service.py	NotificationService._safe_local_time	1
+fatal	asy_notification_service.py	NotificationService._trigger_signal	1
+fatal	asy_ntp_client.py	NTPClient._run_ntp_sync_attempt	1
+fatal	asy_ntp_client.py	NTPClient._safe_get_dns_server	1
+fatal	asy_scd30_driver.py	SCD30_Reader._config_snapshot	1
+fatal	asy_scd30_driver.py	SCD30_Reader._init_scd	1
+fatal	asy_scd30_driver.py	SCD30_Reader._read_scd	1
+fatal	asy_scd30_driver.py	SCD30_Reader._recover_device	1
+fatal	asy_scd30_driver.py	SCD30_Reader.get_altitude	1
+fatal	asy_scd30_driver.py	SCD30_Reader.get_ambient_pressure	1
+fatal	asy_scd30_driver.py	SCD30_Reader.get_forced_recalibration_reference	1
+fatal	asy_scd30_driver.py	SCD30_Reader.get_measurement_interval	1
+fatal	asy_scd30_driver.py	SCD30_Reader.get_self_calibration_enabled	1
+fatal	asy_scd30_driver.py	SCD30_Reader.get_temperature_offset	1
+fatal	asy_scd30_driver.py	SCD30_Reader.set_altitude	1
+fatal	asy_scd30_driver.py	SCD30_Reader.set_ambient_pressure	1
+fatal	asy_scd30_driver.py	SCD30_Reader.set_forced_recalibration_reference	1
+fatal	asy_scd30_driver.py	SCD30_Reader.set_measurement_interval	1
+fatal	asy_scd30_driver.py	SCD30_Reader.set_self_calibration_enabled	1
+fatal	asy_scd30_driver.py	SCD30_Reader.set_temperature_offset	1
+fatal	asy_scd30_driver.py	SCD30_Reader.stop_continuous_measurement	1
+fatal	asy_sgp40_driver.py	SGP40_Reader._compensation	1
+fatal	asy_sgp40_driver.py	SGP40_Reader._init_sgp	1
+fatal	asy_sgp40_driver.py	SGP40_Reader._read_sgp	1
+fatal	asy_sgp40_driver.py	SGP40_Reader._recover_device	1
+fatal	asy_sgp40_driver.py	SGP40_Reader._run_restore	1
+fatal	asy_system_service.py	SystemService._apply_level	1
+fatal	asy_system_service.py	SystemService._flush_config_stores	1
+fatal	asy_system_service.py	SystemService._log_dead_task	1
+fatal	asy_system_service.py	SystemService._ntp_boot_signature	1
+fatal	asy_system_service.py	SystemService._reset_when_due	1
+fatal	asy_system_service.py	SystemService._run_timer_starter	1
+fatal	asy_system_service.py	SystemService._shutdown_sequence	2
+fatal	asy_system_service.py	SystemService._start_task	1
+fatal	asy_system_service.py	SystemService._supervise	1
+fatal	asy_uart_comm.py	UARTComm._call	1
+fatal	asy_uart_comm.py	UARTComm._listen_loop	1
+fatal	asy_uart_link_driver.py	UARTLinkDriver._initiate	1
+fatal	asy_webserver_service.py	WebserverService._close_writer	2
+fatal	asy_webserver_service.py	WebserverService._dispatch_notification_led	1
+fatal	asy_webserver_service.py	WebserverService._dispatch_notification_pause	1
+fatal	asy_webserver_service.py	WebserverService._handle_unhandled_exception	1
+fatal	asy_webserver_service.py	WebserverService._print_exception	1
+fatal	asy_webserver_service.py	WebserverService._put_status	1
+fatal	asy_webserver_service.py	WebserverService._run_status_cmd	1
+fatal	asy_webserver_service.py	WebserverService._run_system_cmd	1
+fatal	asy_webserver_service.py	WebserverService._serve	2
+fatal	asy_webserver_service.py	WebserverService._write_errcount_entry	1
+fatal	asy_webserver_service.py	WebserverService._write_guarded	1
+fatal	asy_webserver_service.py	_body_as_dict	1
+fatal	asy_wifi_service.py	WifiService._activate_hotspot_ap	1
+fatal	asy_wifi_service.py	WifiService._disconnect_sta_and_wait	1
+fatal	asy_wifi_service.py	WifiService._flash_led	1
+fatal	asy_wifi_service.py	WifiService._get_hotspot_stations	1
+fatal	asy_wifi_service.py	WifiService._led_off	1
+fatal	asy_wifi_service.py	WifiService._led_on	1
+fatal	asy_wifi_service.py	WifiService._led_toggle	1
+fatal	asy_wifi_service.py	WifiService._poll_sta_connect_status	1
+fatal	asy_wifi_service.py	WifiService._print_wlan_diagnostics	1
+fatal	asy_wifi_service.py	WifiService._reset_wlan_connect_state	1
+fatal	asy_wifi_service.py	WifiService._switch_wlan_mode	1
+fatal	asy_wifi_service.py	WifiService._trigger_sta_connect	1
+fatal	asy_wifi_service.py	WifiService._update_wifi_snapshot	2
+fatal	asy_wifi_service.py	WifiService._wlan_isconnected_or_false	1
+fatal	asy_wifi_service.py	WifiService._wlan_status_or_none	1
+flag	asy_base_classes.py	SensorReader.__init__	_timer_reported
+flag	asy_base_classes.py	SensorReader._timer_failed	_timer_reported
+flag	asy_base_classes.py	SensorReader._timer_fault	_timer_reported
+flag	asy_bmp3xx_driver.py	BMP3XX_Reader.__init__	_comp_unreadable
+flag	asy_bmp3xx_driver.py	BMP3XX_Reader._init_bmp	_comp_unreadable
+flag	asy_bmp3xx_driver.py	BMP3XX_Reader._read_bmp	_comp_unreadable
+flag	asy_config_manager.py	ConfigManager.__init__	_closed
+flag	asy_config_manager.py	ConfigManager.__init__	_read_failing
+flag	asy_config_manager.py	ConfigManager.__init__	absent_at_boot
+flag	asy_config_manager.py	ConfigManager.__init__	faulted
+flag	asy_config_manager.py	ConfigManager.__init__	unpersisted
+flag	asy_config_manager.py	ConfigManager.__init__	writable
+flag	asy_config_manager.py	ConfigManager._flush_staged	unpersisted
+flag	asy_config_manager.py	ConfigManager._get_typed_values	_read_failing
+flag	asy_config_manager.py	ConfigManager._read_run_starts	_read_failing
+flag	asy_config_manager.py	ConfigManager._write_file	unpersisted
+flag	asy_config_manager.py	ConfigManager.close_writes	_closed
+flag	asy_config_manager.py	ConfigManager.get_dict	_read_failing
+flag	asy_config_manager.py	ConfigManager.reset_error_counter	_read_failing
+flag	asy_config_manager.py	ConfigManager.setup	absent_at_boot
+flag	asy_config_manager.py	ConfigManager.setup	faulted
+flag	asy_config_manager.py	ConfigManager.setup	unpersisted
+flag	asy_config_manager.py	ConfigManager.setup	writable
+flag	asy_fram_driver.py	FRAM_SPI._check_write_anomaly	initialized
+flag	asy_fram_manager.py	FRAMManager.__init__	_pause
+flag	asy_fram_manager.py	FRAMManager.__init__	initialized
+flag	asy_fram_manager.py	FRAMManager.setup	initialized
+flag	asy_fram_manager.py	_FRAMBaseChunk.__init__	_no_check_logged
+flag	asy_fram_manager.py	_FRAMBaseChunk.__init__	_read_fault
+flag	asy_fram_manager.py	_FRAMBaseChunk.__init__	_read_match
+flag	asy_fram_manager.py	_FRAMBaseChunk.__init__	_read_valid
+flag	asy_fram_manager.py	_FRAMBaseChunk._compare_with	_no_check_logged
+flag	asy_fram_manager.py	_FRAMBaseChunk._compare_with	_read_fault
+flag	asy_fram_manager.py	_FRAMBaseChunk._compare_with	_read_match
+flag	asy_fram_manager.py	_FRAMBaseChunk._compare_with	_read_valid
+flag	asy_fram_manager.py	_FRAMBaseChunk._read_chunk	_read_fault
+flag	asy_fram_manager.py	_FRAMBaseChunk._read_into	_read_fault
+flag	asy_fram_manager.py	_FRAMBaseChunk._read_into	_read_match
+flag	asy_fram_manager.py	_FRAMBaseChunk._read_into	_read_valid
+flag	asy_fram_manager.py	_FRAMBaseChunk._read_progress	_read_match
+flag	asy_fram_manager.py	_FRAMBaseChunk._read_progress	_read_valid
+flag	asy_fram_manager.py	_FRAMBaseChunk._set_check_sb	_read_fault
+flag	asy_isl29125_driver.py	ISL29125_Reader.__init__	_int_held
+flag	asy_isl29125_driver.py	ISL29125_Reader.__init__	_int_rearmed
+flag	asy_isl29125_driver.py	ISL29125_Reader.__init__	_unsettled_cycle
+flag	asy_isl29125_driver.py	ISL29125_Reader._init_isl	_int_held
+flag	asy_isl29125_driver.py	ISL29125_Reader._init_isl	_int_rearmed
+flag	asy_isl29125_driver.py	ISL29125_Reader._init_isl	_irq_fired
+flag	asy_isl29125_driver.py	ISL29125_Reader._note_decision_source	_int_rearmed
+flag	asy_isl29125_driver.py	ISL29125_Reader._read_isl	_unsettled_cycle
+flag	asy_isl29125_driver.py	ISL29125_Reader.set_range_auto	_int_held
+flag	asy_neopixel_driver.py	NeopixelDriver.__init__	_overlay_on
+flag	asy_neopixel_driver.py	NeopixelDriver.off	_overlay_on
+flag	asy_neopixel_driver.py	NeopixelDriver.on	_overlay_on
+flag	asy_notification_service.py	NotificationService.__init__	_auto_active
+flag	asy_notification_service.py	NotificationService._pause_loop	_auto_active
+flag	asy_ntp_client.py	NTPClient.__init__	_clock_valid
+flag	asy_ntp_client.py	NTPClient._handle_ntp_sync_success	_clock_valid
+flag	asy_ntp_client.py	NTPClient.ntp_force_sync	_clock_valid
+flag	asy_print_log.py	PrintLogHistory.__init__	_write_failing
+flag	asy_print_log.py	PrintLogHistory.__init__	restored
+flag	asy_print_log.py	PrintLogHistory._write_through	_write_failing
+flag	asy_print_log.py	PrintLogHistory.reset	_write_failing
+flag	asy_print_log.py	PrintLogHistoryStore.__init__	_heap_failed
+flag	asy_print_log.py	PrintLogHistoryStore.reset	_write_failing
+flag	asy_print_log.py	PrintLogHistoryStore.reset	initialized
+flag	asy_print_log.py	PrintLogHistoryStore.setup	restored
+flag	asy_scd30_driver.py	SCD30_Reader.__init__	_frc_cfg_ok
+flag	asy_scd30_driver.py	SCD30_Reader.__init__	_frc_measuring
+flag	asy_scd30_driver.py	SCD30_Reader._frc_not_measuring	_frc_measuring
+flag	asy_scd30_driver.py	SCD30_Reader._frc_step	_frc_measuring
+flag	asy_scd30_driver.py	SCD30_Reader._set_mgr_cfg	_frc_measuring
+flag	asy_sgp40_driver.py	SGP40_Reader.__init__	_reset_pending
+flag	asy_sgp40_driver.py	SGP40_Reader.__init__	_restore_waiting
+flag	asy_sgp40_driver.py	SGP40_Reader.__init__	_voc_restored
+flag	asy_sgp40_driver.py	SGP40_Reader._init_sgp	_restore_waiting
+flag	asy_sgp40_driver.py	SGP40_Reader._read_sgp	_reset_pending
+flag	asy_sgp40_driver.py	SGP40_Reader._run_restore	_restore_waiting
+flag	asy_sgp40_driver.py	SGP40_Reader.reset_voc	_reset_pending
+flag	asy_system_service.py	SystemService.__init__	_feed_owned
+flag	asy_system_service.py	SystemService.__init__	_reset_armed
+flag	asy_system_service.py	SystemService.__init__	_reset_decided
+flag	asy_system_service.py	SystemService.__init__	_start_time_set
+flag	asy_system_service.py	SystemService.__init__	_tick_failed
+flag	asy_system_service.py	SystemService._reboot	_reset_armed
+flag	asy_system_service.py	SystemService._request_shutdown	_feed_owned
+flag	asy_system_service.py	SystemService._request_shutdown	_reset_decided
+flag	asy_system_service.py	SystemService._status_loop	_start_time_set
+flag	asy_system_service.py	SystemService._supervise	_force_watchdog_starve
+flag	asy_system_service.py	SystemService._supervise	_reset_decided
+flag	asy_uart_comm.py	UARTComm.__init__	_busy
+flag	asy_uart_comm.py	UARTComm.__init__	_drain_bound_hit
+flag	asy_uart_comm.py	UARTComm.__init__	_holdoff_active
+flag	asy_uart_comm.py	UARTComm.__init__	_in_resync
+flag	asy_uart_comm.py	UARTComm.__init__	initialized
+flag	asy_uart_comm.py	UARTComm._await_write_gate	_holdoff_active
+flag	asy_uart_comm.py	UARTComm._drain	_drain_bound_hit
+flag	asy_uart_comm.py	UARTComm._hold_off_writes	_holdoff_active
+flag	asy_uart_comm.py	UARTComm._resync	_in_resync
+flag	asy_uart_comm.py	UARTComm._run_get	_busy
+flag	asy_uart_comm.py	UARTComm.setup	initialized
+flag	asy_uart_comm.py	UARTComm.uart_listen	_busy
+flag	asy_uart_comm.py	UARTComm.uart_listen	_holdoff_active
+flag	asy_uart_comm.py	UARTComm.uart_set_into	_busy
+flag	asy_uart_comm.py	UARTComm.uart_set_stream	_busy
+flag	asy_uart_driver.py	UART.__init__	_cancel
+flag	asy_uart_driver.py	UART.__init__	_rx_overrun_pending
+flag	asy_uart_driver.py	UART._ack_cancel	_cancel
+flag	asy_uart_driver.py	UART._arm_rx	_rx_overrun_pending
+flag	asy_uart_driver.py	UART._buffered	_rx_overrun_pending
+flag	asy_uart_driver.py	UART._rx_level	_rx_overrun_pending
+flag	asy_uart_driver.py	UART.cancel_read_timeout	_cancel
+flag	asy_uart_driver.py	UART.init	_rx_overrun_pending
+flag	asy_uart_link_driver.py	UARTLinkDriver.__init__	_hazard_pending
+flag	asy_uart_link_driver.py	UARTLinkDriver.__init__	initialized
+flag	asy_uart_link_driver.py	UARTLinkDriver._run_hazards	_hazard_pending
+flag	asy_uart_link_driver.py	UARTLinkDriver.request_hazard_run	_hazard_pending
+flag	asy_uart_link_driver.py	UARTLinkDriver.setup	initialized
+flag	asy_udp_socket.py	UDPSocket.__init__	connected
+flag	asy_udp_socket.py	UDPSocket._connect	connected
+flag	asy_udp_socket.py	UDPSocket._disconnect_locked	connected
+flag	asy_webserver_service.py	_TimeoutStreamProxy.__init__	_length_seen
+flag	asy_webserver_service.py	_TimeoutStreamProxy._check_head_line	_length_seen
+flag	asy_wifi_service.py	WifiService.__init__	_ap_selected
+flag	asy_wifi_service.py	WifiService.__init__	_hotspot_started_once
+flag	asy_wifi_service.py	WifiService.__init__	_hotspot_timer_running
+flag	asy_wifi_service.py	WifiService.__init__	_hw_op_failed
+flag	asy_wifi_service.py	WifiService.__init__	_reconn_wifi
+flag	asy_wifi_service.py	WifiService.__init__	_reconnect_fresh
+flag	asy_wifi_service.py	WifiService.__init__	_silent_attempt_due
+flag	asy_wifi_service.py	WifiService.__init__	_wifi_connected
+flag	asy_wifi_service.py	WifiService._activate_hotspot_ap	_hw_op_failed
+flag	asy_wifi_service.py	WifiService._arm_hotspot_timer	_hotspot_timer_running
+flag	asy_wifi_service.py	WifiService._connect_loop	_hw_op_failed
+flag	asy_wifi_service.py	WifiService._disconnect_sta_and_wait	_hw_op_failed
+flag	asy_wifi_service.py	WifiService._handle_reconnect_trigger	_hotspot_started_once
+flag	asy_wifi_service.py	WifiService._handle_reconnect_trigger	_hotspot_timer_running
+flag	asy_wifi_service.py	WifiService._handle_reconnect_trigger	_reconn_wifi
+flag	asy_wifi_service.py	WifiService._handle_reconnect_trigger	_reconnect_fresh
+flag	asy_wifi_service.py	WifiService._hotspot_client_absent	_hw_op_failed
+flag	asy_wifi_service.py	WifiService._hotspot_client_connected	_hotspot_timer_running
+flag	asy_wifi_service.py	WifiService._hotspot_timeout_loop	_silent_attempt_due
+flag	asy_wifi_service.py	WifiService._on_hotspot_window_end	_hotspot_timer_running
+flag	asy_wifi_service.py	WifiService._on_hotspot_window_end	_reconn_wifi
+flag	asy_wifi_service.py	WifiService._poll_sta_connect_status	_hw_op_failed
+flag	asy_wifi_service.py	WifiService._register_sta_connection_failure	_silent_attempt_due
+flag	asy_wifi_service.py	WifiService._reset_wlan_connect_state	_hotspot_started_once
+flag	asy_wifi_service.py	WifiService._reset_wlan_connect_state	_hotspot_timer_running
+flag	asy_wifi_service.py	WifiService._reset_wlan_connect_state	_reconn_wifi
+flag	asy_wifi_service.py	WifiService._run_silent_mode	_hotspot_timer_running
+flag	asy_wifi_service.py	WifiService._run_silent_mode	_hw_op_failed
+flag	asy_wifi_service.py	WifiService._run_silent_mode	_silent_attempt_due
+flag	asy_wifi_service.py	WifiService._start_hotspot	_hotspot_started_once
+flag	asy_wifi_service.py	WifiService._switch_wlan_mode	_ap_selected
+flag	asy_wifi_service.py	WifiService._switch_wlan_mode	_hw_op_failed
+flag	asy_wifi_service.py	WifiService._trigger_sta_connect	_hw_op_failed
+flag	asy_wifi_service.py	WifiService._uptime_loop	_wifi_connected
+flag	asy_wifi_service.py	WifiService.reconnect_wifi	_reconnect_fresh
+isinstance	asy_config_manager.py	ConfigManager.setup	1
+isinstance	asy_notification_service.py	NotificationService._check_one	2
+isinstance	asy_print_log.py	PrintLog._line	1
+isinstance	asy_print_log.py	PrintLogHistoryStore.setup	1
+isinstance	asy_print_log.py	report_if_fatal	1
+isinstance	asy_sgp40_driver.py	_current_value	1
+isinstance	asy_uart_comm.py	UARTComm.__init__	2
+isinstance	asy_uart_comm.py	UARTComm._accept_set	1
+isinstance	asy_uart_comm.py	UARTComm._answer_get	1
+isinstance	asy_uart_comm.py	UARTComm._check_buffer	1
+isinstance	asy_uart_comm.py	UARTComm._check_cmd_id	1
+isinstance	asy_uart_comm.py	UARTComm._check_size	1
+isinstance	asy_uart_comm.py	UARTComm._pair	1
+isinstance	asy_uart_comm.py	UARTComm._pull_chunk	1
+isinstance	asy_uart_comm.py	UARTComm._recv_train	1
+isinstance	asy_uart_comm.py	UARTComm._send_train	2
+isinstance	asy_uart_comm.py	UARTComm._validate_link	3
+isinstance	asy_uart_comm.py	UARTComm._validate_receive	2
+isinstance	asy_uart_driver.py	UART.deinit	1
+isinstance	asy_uart_driver.py	UART.ready	1
+isinstance	asy_uart_driver.py	UART.setup_rx_ring	2
+isinstance	asy_udp_socket.py	UDPSocket.__init__	3
+isinstance	asy_udp_socket.py	UDPSocket._connect	1
+isinstance	asy_udp_socket.py	UDPSocket._disconnect_locked	2
+isinstance	asy_udp_socket.py	UDPSocket.ready	1
+isinstance	asy_udp_socket.py	UDPSocket.recvfrom	1
+isinstance	asy_udp_socket.py	UDPSocket.sendto	1
+isinstance	asy_udp_socket.py	UDPSocket.write	1
+isinstance	asy_webserver_service.py	WebserverService._print_exception	1
+isinstance	asy_webserver_service.py	WebserverService._put_status	2
+isinstance	asy_webserver_service.py	_PieceWriter.add_value	1
+isinstance	asy_wifi_service.py	WifiService._push_wifi_led	1
+number	asy_base_classes.py	TickSeconds.read	1000
+number	asy_base_classes.py	arm_tick_timer	1000
+number	asy_bmp3xx_driver.py	BMP3XX_I2C._read	939
+number	asy_bmp3xx_driver.py	BMP3XX_I2C._read	999
+number	asy_bmp3xx_driver.py	BMP3XX_I2C._read	1000
+number	asy_bmp3xx_driver.py	BMP3XX_I2C._read	2000
+number	asy_bmp3xx_driver.py	BMP3XX_I2C.get_pressure_altitude	44307.7
+number	asy_bmp3xx_driver.py	BMP3XX_Reader.__init__	119
+number	asy_bmp3xx_driver.py	BMP3XX_Reader.start_timer	1000
+number	asy_captive_dns.py	DNSQuery.__init__	128
+number	asy_crc_checks.py	CRCBase._crc_wide	65535
+number	asy_dns_client.py	_reply_rcode	128
+number	asy_fram_manager.py	FRAMManager.__init__	8192
+number	asy_fram_manager.py	_owner_seed	65521
+number	asy_i2c_driver.py	I2C._fill_reg_addr	255
+number	asy_i2c_driver.py	I2C.set_bits	255
+number	asy_neopixel_driver.py	NeopixelDriver.__init__	1000
+number	asy_notification_service.py	NotificationService._monitor_loop	2000
+number	asy_notification_service.py	NotificationService._next_sleep_ms	1000
+number	asy_ntp_client.py	NTPClient._arm_check_timer	1000
+number	asy_ntp_client.py	NTPClient._handle_ntp_sync_failure	1000
+number	asy_ntp_client.py	NTPClient._refresh_loop	3600
+number	asy_scd30_driver.py	SCD30_I2C.read_measurement	100
+number	asy_scd30_driver.py	_temp_offset_ticks	100
+number	asy_system_service.py	SystemService._status_loop	1000
+number	asy_system_service.py	SystemService.start_tasks	1000
+number	asy_uart_comm.py	UARTComm._min_rxbuf	1000
+number	asy_uart_driver.py	UART.__init__	512
+number	asy_uart_driver.py	UART.init	512
+number	asy_webserver_service.py	WebserverService.__init__	1000
+number	asy_webserver_service.py	_StaticRoutes.serve	404
+number	asy_wifi_service.py	WifiService.__init__	60000
+number	math_helpers.py	abs_humidity	237.3
+number	math_helpers.py	pressure_at_height	273.15
+number	math_helpers.py	rel_humidity	237.3
+number	voc_algorithm.py	VOCAlgorithm.__init__	100.0
+number	voc_algorithm.py	VOCAlgorithm.__init__	1440.0
+number	voc_algorithm.py	_int32	2147483648
+number	voc_algorithm.py	_int32	4294967295
+number	voc_algorithm.py	_int32	4294967296
+raise	asy_bmp3xx_driver.py	BMP3XX_I2C._read	BMP3XX fatal error (ERR_REG fatal_err)
+raise	asy_bmp3xx_driver.py	BMP3XX_I2C._read	I2C bus not initialized
+raise	asy_bmp3xx_driver.py	BMP3XX_I2C._read_register	I2C bus not initialized
+raise	asy_bmp3xx_driver.py	BMP3XX_I2C._set_osr_setting	I2C bus not initialized
+raise	asy_bmp3xx_driver.py	BMP3XX_I2C._wait_status_bits	I2C bus not initialized
+raise	asy_bmp3xx_driver.py	BMP3XX_I2C.reset	I2C bus not initialized
+raise	asy_bmp3xx_driver.py	BMP3XX_I2C.set_filter_coefficient	I2C bus not initialized
+raise	asy_bmp3xx_driver.py	BMP3XX_I2C.take_por_detected	I2C bus not initialized
+raise	asy_bmp3xx_driver.py	BMP3XX_Reader._read_bmp	stored configuration not re-applied after a chip r
+raise	asy_captive_dns.py	DNSQuery.__init__	label type or length not supported
+raise	asy_captive_dns.py	DNSQuery.__init__	name longer than 255 octets
+raise	asy_captive_dns.py	DNSQuery.__init__	not a query with exactly one question
+raise	asy_dns_client.py	_build_query	not an encodable DNS name
+raise	asy_fram_driver.py	FRAM_SPI.setup	FRAM SPI device not found
+raise	asy_fram_driver.py	FRAM_SPI.setup	SPI bus not initialized
+raise	asy_i2c_driver.py	I2C._fill_reg_addr	invalid addrsize
+raise	asy_isl29125_driver.py	ISL29125_I2C._read_byte	I2C bus not initialized
+raise	asy_isl29125_driver.py	ISL29125_I2C._write_shadow_locked	I2C bus not initialized
+raise	asy_isl29125_driver.py	ISL29125_I2C.clear_brownout	I2C bus not initialized
+raise	asy_isl29125_driver.py	ISL29125_I2C.get_config_snapshot	I2C bus not initialized
+raise	asy_isl29125_driver.py	ISL29125_I2C.read_counts	I2C bus not initialized
+raise	asy_isl29125_driver.py	ISL29125_I2C.reset	I2C bus not initialized
+raise	asy_isl29125_driver.py	ISL29125_I2C.set_thresholds	I2C bus not initialized
+raise	asy_scd30_driver.py	SCD30_I2C._read_dev_register	I2C bus not initialized
+raise	asy_scd30_driver.py	SCD30_I2C._send_dev_command	CRC generation failed
+raise	asy_scd30_driver.py	SCD30_I2C._send_dev_command	I2C bus not initialized
+raise	asy_scd30_driver.py	SCD30_I2C.read_measurement	I2C bus not initialized
+raise	asy_sgp40_driver.py	SGP40_I2C._exchange	CRC check failed while reading data
+raise	asy_sgp40_driver.py	SGP40_I2C._exchange	I2C bus not initialized
+raise	asy_sgp40_driver.py	SGP40_I2C._reset	I2C bus not initialized
+raise	asy_sgp40_driver.py	SGP40_I2C.initialize	self test failed
+raise	asy_sgp40_driver.py	SGP40_I2C.initialize	serial number does not match
+raise	asy_sgp40_driver.py	SGP40_I2C.turn_heater_off	I2C bus not initialized
+raise	asy_sgp40_driver.py	SGP40_Reader._read_sgp	raw signal not measured
+raise	asy_spi_driver.py	SPI.configure	acquire the bus lock first
+raise	asy_uart_driver.py	UART.init	rx_ring is fixed once the ring is allocated
+time	asy_base_classes.py	TickSeconds.__init__	1
+time	asy_base_classes.py	TickSeconds.read	2
+time	asy_base_classes.py	TickSeconds.restart	1
+time	asy_base_classes.py	utc_now	2
+time	asy_i2c_driver.py	_scl_released	3
+time	asy_i2c_driver.py	_scl_released_sync	3
+time	asy_isl29125_driver.py	ISL29125_I2C.time_to_settle_ms	1
+time	asy_isl29125_driver.py	ISL29125_Reader._evaluate_range	1
+time	asy_isl29125_driver.py	ISL29125_Reader._expire_calibration	2
+time	asy_neopixel_driver.py	NeopixelDriver.request_signal	4
+time	asy_notification_service.py	NotificationService._monitor_loop	1
+time	asy_notification_service.py	NotificationService._next_sleep_ms	2
+time	asy_ntp_client.py	NTPClient._parse_ntp_reply	1
+time	asy_ntp_client.py	NTPClient.cettime	7
+time	asy_system_service.py	SystemService._status_loop	2
+time	asy_system_service.py	SystemService.pause_permanent_storage	2
+time	asy_system_service.py	SystemService.start_timers	4
+time	asy_uart_comm.py	UARTComm.__init__	1
+time	asy_uart_comm.py	UARTComm._await_write_gate	2
+time	asy_uart_comm.py	UARTComm._drain	3
+time	asy_uart_comm.py	UARTComm._hold_off_writes	2
+time	asy_uart_driver.py	UART._write_all	3
+time	asy_udp_socket.py	UDPSocket._poll	3

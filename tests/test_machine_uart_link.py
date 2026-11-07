@@ -2,10 +2,11 @@
 (SPECIFICATION.md Part J.7). The backend-agnostic half lives in _uart_link_contract.py and is re-run
 against digital_twin/machine.py's own link by test_digital_twin_machine_uart.py."""
 
+import errno
 import select
 
 import _uart_link_contract
-from machine import UART, LinkPoller, Pin, UARTLink
+from machine import _LOG_MAXLEN, UART, LinkPoller, Pin, UARTLink  # _LOG_MAXLEN: the bound is the fake's own
 
 try:
     from typing import TYPE_CHECKING
@@ -14,7 +15,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 
 
-def make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
+def _make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
     a = UART(0, tx=Pin(0), rx=Pin(1))
     b = UART(1, tx=Pin(8), rx=Pin(9))
     return a, b, UARTLink(a, b, **kwargs)
@@ -27,7 +28,14 @@ def make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
 
 def test_link_satisfies_the_shared_contract() -> None:
     for check in _uart_link_contract.ALL_CHECKS:
-        check(make_link)
+        check(_make_link)
+
+
+def test_every_contract_check_is_registered() -> None:
+    # A check defined but left out of ALL_CHECKS would never run on either tier.
+    registered = [check.__name__ for check in _uart_link_contract.ALL_CHECKS]
+    assert len(registered) == len(set(registered)), "a check is listed twice"
+    assert sorted(name for name in dir(_uart_link_contract) if name.startswith("check_")) == sorted(registered)
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +62,7 @@ def test_capacity_defaults_to_the_destination_rxbuf() -> None:
 
 
 def test_direction_from_rejects_a_foreign_endpoint() -> None:
-    a, _b, link = make_link()
+    a, _b, link = _make_link()
     other = UART(0, tx=Pin(0), rx=Pin(1))
     assert link.direction_from(a) is link.a_to_b
     try:
@@ -65,7 +73,7 @@ def test_direction_from_rejects_a_foreign_endpoint() -> None:
 
 
 def test_each_direction_counts_its_own_traffic() -> None:
-    a, b, link = make_link()
+    a, b, link = _make_link()
     a.write(b"123")
     b.write(b"45")
     assert link.direction_from(a).offered == 3
@@ -75,7 +83,7 @@ def test_each_direction_counts_its_own_traffic() -> None:
 
 def test_a_second_link_on_the_same_fakes_is_refused() -> None:
     # Cross-test contamination, one level down: an endpoint belongs to exactly one link.
-    a, b, _link = make_link()
+    a, b, _link = _make_link()
     try:
         UARTLink(a, b)
     except ValueError:
@@ -90,7 +98,7 @@ def test_a_second_link_on_the_same_fakes_is_refused() -> None:
 
 def test_poller_requeries_ioctl_on_every_call() -> None:
     # Readiness that was true once must not stay true.
-    a, b, _link = make_link()
+    a, b, _link = _make_link()
     poller = LinkPoller(b)
     assert poller.ipoll(0) == [(None, select.POLLOUT)]
     a.write(b"x")
@@ -101,7 +109,7 @@ def test_poller_requeries_ioctl_on_every_call() -> None:
 
 def test_poller_can_be_forced_not_ready_for_n_calls() -> None:
     # Without this the timeout paths are unreachable and every timeout test passes blindly.
-    a, b, _link = make_link()
+    a, b, _link = _make_link()
     a.write(b"x")
     poller = LinkPoller(b)
     poller.force_not_ready(2)
@@ -114,13 +122,34 @@ def test_poller_is_not_a_real_select_poll() -> None:
     # The standing rule, asserted rather than left to review. Compared by type *name*:
     # mypy can already prove the two classes unrelated, so an isinstance or identity form is
     # statically vacuous - it would read as a guard while checking nothing at runtime.
-    _a, b, _link = make_link()
+    _a, b, _link = _make_link()
     poller = LinkPoller(b)
     assert type(poller).__name__ != type(select.poll()).__name__
 
 
+def test_a_real_poll_consults_the_fake_and_is_counted() -> None:
+    # Only zero-timeout queries, which never wait: CLAUDE.md's hang (a real poll awaited forever) cannot arise here.
+    a, b, _link = _make_link()
+    poller = select.poll()
+    poller.register(b, select.POLLIN)
+    try:
+        assert [event for _obj, event in poller.ipoll(0)] == []  # an empty queue: the fake's answer, not stdin's
+        a.write(b"x")
+        assert [event for _obj, event in poller.ipoll(0)] == [select.POLLIN]
+        assert UART.real_poll_queries == 2
+    finally:
+        poller.unregister(b)
+        UART.real_poll_queries = 0  # counted on purpose here: the fake's after-each check fails any other count
+
+
+def test_an_unknown_ioctl_request_answers_einval() -> None:
+    # ports/rp2/machine_uart.c:694-697: MP_STREAM_GET_FILENO (10) and every other non-POLL request.
+    uart = UART(0, tx=Pin(0), rx=Pin(1))
+    assert uart.ioctl(10, 0) == -errno.EINVAL
+
+
 def test_poller_register_and_unregister_are_inert() -> None:
-    _a, b, _link = make_link()
+    _a, b, _link = _make_link()
     poller = LinkPoller(b)
     poller.register(b, select.POLLIN)
     poller.unregister(b)
@@ -135,7 +164,7 @@ def test_poller_register_and_unregister_are_inert() -> None:
 def test_fault_knobs_are_deterministic_across_identical_runs() -> None:
     # No unseeded randomness anywhere - two identical runs produce identical wire logs.
     def run_once() -> bytes:
-        a, b, link = make_link()
+        a, b, link = _make_link()
         link.direction_from(a).drop_indices = {2, 5}
         link.direction_from(a).corrupt_indices = {0: 0x0F}
         a.write(bytes(range(8)))
@@ -147,7 +176,7 @@ def test_fault_knobs_are_deterministic_across_identical_runs() -> None:
 
 def test_knobs_are_per_direction_and_independent() -> None:
     # A one-sided fault is the realistic case and must be expressible.
-    a, b, link = make_link()
+    a, b, link = _make_link()
     link.direction_from(a).silent = True
     a.write(b"lost")
     b.write(b"kept")
@@ -156,10 +185,10 @@ def test_knobs_are_per_direction_and_independent() -> None:
 
 
 def test_each_link_is_freshly_constructed() -> None:
-    # no module-level shared link object - two make_link() calls share no state.
-    a1, _b1, link1 = make_link()
+    # no module-level shared link object - two _make_link() calls share no state.
+    a1, _b1, link1 = _make_link()
     link1.direction_from(a1).silent = True
-    a2, b2, _link2 = make_link()
+    a2, b2, _link2 = _make_link()
     a2.write(b"ok")
     assert b2.read() == b"ok"
 
@@ -171,9 +200,7 @@ def test_the_call_log_is_bounded_and_says_when_it_dropped() -> None:
     # A plain list grew forever: measured at ~18 entries per fake per protocol transaction, which
     # exhausts the interpreter heap on a long run and surfaces as a MemoryError inside the code
     # under test, not here. Bounded now, and the drop is visible rather than silent.
-    from machine import _LOG_MAXLEN  # the bound is the fake's own, never repeated here
-
-    uart, _b, _link = make_link()
+    uart, _b, _link = _make_link()
     for index in range(_LOG_MAXLEN * 2):
         uart.log.append(("synthetic", index))
     assert len(uart.log) <= _LOG_MAXLEN, len(uart.log)
@@ -187,9 +214,7 @@ def test_the_call_log_is_bounded_and_says_when_it_dropped() -> None:
 
 def test_a_long_run_keeps_the_fake_log_from_growing_without_bound() -> None:
     # The functional half: real traffic, not synthetic appends.
-    uart, other, _link = make_link()
-    from machine import _LOG_MAXLEN
-
+    uart, other, _link = _make_link()
     for _ in range(_LOG_MAXLEN):
         uart.write(b"xy")
         other.read()

@@ -1,0 +1,2 @@
+FAILED tests_scripts/test_build_device_websites_sh.py::test_stage_only_skips_the_fixtures_and_freezes_nothing
+1 failed, 14 passed in 8.83s

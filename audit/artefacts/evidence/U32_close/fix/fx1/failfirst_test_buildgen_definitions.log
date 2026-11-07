@@ -1,0 +1,29 @@
+......................................................................F. [ 17%]
+........................................................................ [ 35%]
+........................................................................ [ 53%]
+........................................................................ [ 71%]
+........................................................................ [ 89%]
+.........................................                                [100%]
+=================================== FAILURES ===================================
+_______________ test_the_last_task_end_row_says_what_it_reports ________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u32fx1')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u32fx1/src')
+
+    def test_the_last_task_end_row_says_what_it_reports(repo_root: Path, src_dir: Path) -> None:
+        fields = {_str(f["key"]): f for f in _system_status_fields(repo_root, src_dir, DEVICE_NAMES[0])}
+>       assert fields["LastTaskEnd"] == {
+            "key": "LastTaskEnd", "label": "Task Last Ended", "kind": "readonly", "format": "lasttaskend",
+            "description": "The supervised task whose end the supervisor recorded last since boot, and the system uptime in seconds at that record; empty until one ends. The supervisor restarts it unless a reboot follows. The reason is in that module's and SYSTEM's error history.",
+        }
+E       assert {'key': 'Last...taskend', ...} == {'key': 'Last...taskend', ...}
+E         
+E         Omitting 4 identical items, use -vv to show
+E         Differing items:
+E         {'description': "The supervised task that ended most recently since boot (restarted automatically) and the system uptime in seconds when it ended; empty until one does. The reason is in that module's and SYSTEM's error history."} != {'description': "The supervised task whose end the supervisor recorded last since boot, and the system uptime in secon... ends. The supervisor restarts it unless a reboot follows. The reason is in that module's and SYSTEM's error history."}
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_definitions.py:407: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_definitions.py::test_the_last_task_end_row_says_what_it_reports
+1 failed, 400 passed in 3.67s

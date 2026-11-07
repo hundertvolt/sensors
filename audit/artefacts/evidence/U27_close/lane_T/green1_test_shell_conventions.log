@@ -1,0 +1,238 @@
+........FF.........F..F................F...............F..FFFFFF.F.....  [100%]
+=================================== FAILURES ===================================
+_ test_every_script_follows_the_static_convention[scripts/build_frozen_html.sh] _
+
+script = 'scripts/build_frozen_html.sh'
+
+    @pytest.mark.parametrize("script", _SCRIPTS)
+    def test_every_script_follows_the_static_convention(script: str) -> None:
+>       assert convention_problems(REPO_ROOT / script, script) == []
+E       AssertionError: assert ['scripts/bui... ($src_dirs)'] == []
+E         
+E         Left contains 2 more items, first extra item: 'scripts/build_frozen_html.sh:30: mktemp before the EXIT trap that removes it (line 31)'
+E         Use -v to get more diff
+
+tests_scripts/test_shell_conventions.py:124: AssertionError
+__ test_every_script_follows_the_static_convention[scripts/build_website.sh] ___
+
+script = 'scripts/build_website.sh'
+
+    @pytest.mark.parametrize("script", _SCRIPTS)
+    def test_every_script_follows_the_static_convention(script: str) -> None:
+>       assert convention_problems(REPO_ROOT / script, script) == []
+E       AssertionError: assert ['scripts/bui...it (line 34)'] == []
+E         
+E         Left contains one more item: 'scripts/build_website.sh:33: mktemp before the EXIT trap that removes it (line 34)'
+E         Use -v to get more diff
+
+tests_scripts/test_shell_conventions.py:124: AssertionError
+_______ test_every_script_follows_the_static_convention[scripts/test.sh] _______
+
+script = 'scripts/test.sh'
+
+    @pytest.mark.parametrize("script", _SCRIPTS)
+    def test_every_script_follows_the_static_convention(script: str) -> None:
+>       assert convention_problems(REPO_ROOT / script, script) == []
+E       assert ['scripts/tes...[@]}"})', ...] == []
+E         
+E         Left contains 7 more items, first extra item: 'scripts/test.sh: 2 EXIT traps (lines 115, 410) - one trap removes every temporary file'
+E         Use -v to get more diff
+
+tests_scripts/test_shell_conventions.py:124: AssertionError
+_ test_help_exits_0_with_the_usage_before_running_anything[-h-scripts/_run_lower_levels.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_help_exits_0_with_the_usa1')
+script = 'scripts/_run_lower_levels.sh', flag = '-h'
+
+    @pytest.mark.parametrize("script", _runnable(_SCRIPTS))
+    @pytest.mark.parametrize("flag", ["-h", "--help"])
+    def test_help_exits_0_with_the_usage_before_running_anything(sandbox: Path, tmp_path: Path, script: str, flag: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, flag)
+>       assert done.returncode == 0, f"{script} {flag} exited {done.returncode}:\n{done.stdout}\n{done.stderr}"
+E       AssertionError: scripts/_run_lower_levels.sh -h exited 2:
+E         
+E         Usage: scripts/_run_lower_levels.sh <L3|L4> - every level below it, stopping at the first failure
+E         
+E       assert 2 == 0
+E        +  where 2 = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9787/conventions0/.stub_bin/bash', '/tmp/pytest-of-root/pytest-9787...tdout='', stderr='Usage: scripts/_run_lower_levels.sh <L3|L4> - every level below it, stopping at the first failure\n').returncode
+
+tests_scripts/test_shell_conventions.py:131: AssertionError
+_ test_help_exits_0_with_the_usage_before_running_anything[--help-scripts/_run_lower_levels.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_help_exits_0_with_the_usa18')
+script = 'scripts/_run_lower_levels.sh', flag = '--help'
+
+    @pytest.mark.parametrize("script", _runnable(_SCRIPTS))
+    @pytest.mark.parametrize("flag", ["-h", "--help"])
+    def test_help_exits_0_with_the_usage_before_running_anything(sandbox: Path, tmp_path: Path, script: str, flag: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, flag)
+>       assert done.returncode == 0, f"{script} {flag} exited {done.returncode}:\n{done.stdout}\n{done.stderr}"
+E       AssertionError: scripts/_run_lower_levels.sh --help exited 2:
+E         
+E         Usage: scripts/_run_lower_levels.sh <L3|L4> - every level below it, stopping at the first failure
+E         
+E       assert 2 == 0
+E        +  where 2 = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9787/conventions0/.stub_bin/bash', '/tmp/pytest-of-root/pytest-9787...tdout='', stderr='Usage: scripts/_run_lower_levels.sh <L3|L4> - every level below it, stopping at the first failure\n').returncode
+
+tests_scripts/test_shell_conventions.py:131: AssertionError
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/_run_lower_levels.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_an_unknown_argument_exits0')
+script = 'scripts/_run_lower_levels.sh'
+
+    @pytest.mark.parametrize("script", [s for s in _runnable(_SCRIPTS) if not _FORWARDED_TAIL.search(_usage_line((REPO_ROOT / s).read_text(encoding="utf-8")))])
+    def test_an_unknown_argument_exits_2_naming_it_before_running_anything(sandbox: Path, tmp_path: Path, script: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, _UNKNOWN)
+        assert calls == [], f"{script} {_UNKNOWN} got past its argument check and ran {calls}"
+        assert done.returncode == 2, f"{script} {_UNKNOWN} exited {done.returncode}, not 2:\n{done.stderr}"
+>       assert _UNKNOWN in done.stderr, f"{script} refused {_UNKNOWN} without naming it:\n{done.stderr}"
+E       AssertionError: scripts/_run_lower_levels.sh refused --not-an-option without naming it:
+E         Usage: scripts/_run_lower_levels.sh <L3|L4> - every level below it, stopping at the first failure
+E         
+E       assert '--not-an-option' in 'Usage: scripts/_run_lower_levels.sh <L3|L4> - every level below it, stopping at the first failure\n'
+E        +  where 'Usage: scripts/_run_lower_levels.sh <L3|L4> - every level below it, stopping at the first failure\n' = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9787/conventions0/.stub_bin/bash', '/tmp/pytest-of-root/pytest-9787...tdout='', stderr='Usage: scripts/_run_lower_levels.sh <L3|L4> - every level below it, stopping at the first failure\n').stderr
+
+tests_scripts/test_shell_conventions.py:141: AssertionError
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/build_frozen_html.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_an_unknown_argument_exits3')
+script = 'scripts/build_frozen_html.sh'
+
+    @pytest.mark.parametrize("script", [s for s in _runnable(_SCRIPTS) if not _FORWARDED_TAIL.search(_usage_line((REPO_ROOT / s).read_text(encoding="utf-8")))])
+    def test_an_unknown_argument_exits_2_naming_it_before_running_anything(sandbox: Path, tmp_path: Path, script: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, _UNKNOWN)
+        assert calls == [], f"{script} {_UNKNOWN} got past its argument check and ran {calls}"
+>       assert done.returncode == 2, f"{script} {_UNKNOWN} exited {done.returncode}, not 2:\n{done.stderr}"
+E       AssertionError: scripts/build_frozen_html.sh --not-an-option exited 1, not 2:
+E         /tmp/pytest-of-root/pytest-9787/conventions0/scripts/build_frozen_html.sh: line 26: HTML_SRC_DIRS: HTML_SRC_DIRS must name the source dir(s) - scripts/build_website.sh sets it
+E         
+E       assert 1 == 2
+E        +  where 1 = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9787/conventions0/.stub_bin/bash', '/tmp/pytest-of-root/pytest-9787...rozen_html.sh: line 26: HTML_SRC_DIRS: HTML_SRC_DIRS must name the source dir(s) - scripts/build_website.sh sets it\n').returncode
+
+tests_scripts/test_shell_conventions.py:140: AssertionError
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/build_website.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_an_unknown_argument_exits4')
+script = 'scripts/build_website.sh'
+
+    @pytest.mark.parametrize("script", [s for s in _runnable(_SCRIPTS) if not _FORWARDED_TAIL.search(_usage_line((REPO_ROOT / s).read_text(encoding="utf-8")))])
+    def test_an_unknown_argument_exits_2_naming_it_before_running_anything(sandbox: Path, tmp_path: Path, script: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, _UNKNOWN)
+        assert calls == [], f"{script} {_UNKNOWN} got past its argument check and ran {calls}"
+>       assert done.returncode == 2, f"{script} {_UNKNOWN} exited {done.returncode}, not 2:\n{done.stderr}"
+E       AssertionError: scripts/build_website.sh --not-an-option exited 1, not 2:
+E         error: no devices/--not-an-option.toml
+E         
+E       assert 1 == 2
+E        +  where 1 = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9787/conventions0/.stub_bin/bash', '/tmp/pytest-of-root/pytest-9787...ipts/build_website.sh', '--not-an-option'], returncode=1, stdout='', stderr='error: no devices/--not-an-option.toml\n').returncode
+
+tests_scripts/test_shell_conventions.py:140: AssertionError
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/lint.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_an_unknown_argument_exits5')
+script = 'scripts/lint.sh'
+
+    @pytest.mark.parametrize("script", [s for s in _runnable(_SCRIPTS) if not _FORWARDED_TAIL.search(_usage_line((REPO_ROOT / s).read_text(encoding="utf-8")))])
+    def test_an_unknown_argument_exits_2_naming_it_before_running_anything(sandbox: Path, tmp_path: Path, script: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, _UNKNOWN)
+        assert calls == [], f"{script} {_UNKNOWN} got past its argument check and ran {calls}"
+        assert done.returncode == 2, f"{script} {_UNKNOWN} exited {done.returncode}, not 2:\n{done.stderr}"
+>       assert _UNKNOWN in done.stderr, f"{script} refused {_UNKNOWN} without naming it:\n{done.stderr}"
+E       AssertionError: scripts/lint.sh refused --not-an-option without naming it:
+E         Usage: scripts/lint.sh - no arguments; needs the project venv active (uv sync && source .venv/bin/activate)
+E         
+E       assert '--not-an-option' in 'Usage: scripts/lint.sh - no arguments; needs the project venv active (uv sync && source .venv/bin/activate)\n'
+E        +  where 'Usage: scripts/lint.sh - no arguments; needs the project venv active (uv sync && source .venv/bin/activate)\n' = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9787/conventions0/.stub_bin/bash', '/tmp/pytest-of-root/pytest-9787...stderr='Usage: scripts/lint.sh - no arguments; needs the project venv active (uv sync && source .venv/bin/activate)\n').stderr
+
+tests_scripts/test_shell_conventions.py:141: AssertionError
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_digital_twin_ci.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_an_unknown_argument_exits6')
+script = 'scripts/run_digital_twin_ci.sh'
+
+    @pytest.mark.parametrize("script", [s for s in _runnable(_SCRIPTS) if not _FORWARDED_TAIL.search(_usage_line((REPO_ROOT / s).read_text(encoding="utf-8")))])
+    def test_an_unknown_argument_exits_2_naming_it_before_running_anything(sandbox: Path, tmp_path: Path, script: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, _UNKNOWN)
+        assert calls == [], f"{script} {_UNKNOWN} got past its argument check and ran {calls}"
+        assert done.returncode == 2, f"{script} {_UNKNOWN} exited {done.returncode}, not 2:\n{done.stderr}"
+>       assert _UNKNOWN in done.stderr, f"{script} refused {_UNKNOWN} without naming it:\n{done.stderr}"
+E       AssertionError: scripts/run_digital_twin_ci.sh refused --not-an-option without naming it:
+E         usage: scripts/run_digital_twin_ci.sh <device> - one of: arzi dev grkizi klkizi schlafzi wozi
+E         
+E       assert '--not-an-option' in 'usage: scripts/run_digital_twin_ci.sh <device> - one of: arzi dev grkizi klkizi schlafzi wozi\n'
+E        +  where 'usage: scripts/run_digital_twin_ci.sh <device> - one of: arzi dev grkizi klkizi schlafzi wozi\n' = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9787/conventions0/.stub_bin/bash', '/tmp/pytest-of-root/pytest-9787...2, stdout='', stderr='usage: scripts/run_digital_twin_ci.sh <device> - one of: arzi dev grkizi klkizi schlafzi wozi\n').stderr
+
+tests_scripts/test_shell_conventions.py:141: AssertionError
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_manual_hardware_tests.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_an_unknown_argument_exits7')
+script = 'scripts/run_manual_hardware_tests.sh'
+
+    @pytest.mark.parametrize("script", [s for s in _runnable(_SCRIPTS) if not _FORWARDED_TAIL.search(_usage_line((REPO_ROOT / s).read_text(encoding="utf-8")))])
+    def test_an_unknown_argument_exits_2_naming_it_before_running_anything(sandbox: Path, tmp_path: Path, script: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, _UNKNOWN)
+>       assert calls == [], f"{script} {_UNKNOWN} got past its argument check and ran {calls}"
+E       AssertionError: scripts/run_manual_hardware_tests.sh --not-an-option got past its argument check and ran ['uv run --no-sync python tests_hardware/manual/__main__.py --not-an-option']
+E       assert ['uv run --no...ot-an-option'] == []
+E         
+E         Left contains one more item: 'uv run --no-sync python tests_hardware/manual/__main__.py --not-an-option'
+E         Use -v to get more diff
+
+tests_scripts/test_shell_conventions.py:139: AssertionError
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/setup_cross_browser_toolchain.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_an_unknown_argument_exits8')
+script = 'scripts/setup_cross_browser_toolchain.sh'
+
+    @pytest.mark.parametrize("script", [s for s in _runnable(_SCRIPTS) if not _FORWARDED_TAIL.search(_usage_line((REPO_ROOT / s).read_text(encoding="utf-8")))])
+    def test_an_unknown_argument_exits_2_naming_it_before_running_anything(sandbox: Path, tmp_path: Path, script: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, _UNKNOWN)
+>       assert calls == [], f"{script} {_UNKNOWN} got past its argument check and ran {calls}"
+E       AssertionError: scripts/setup_cross_browser_toolchain.sh --not-an-option got past its argument check and ran ['sudo apt-get update', 'sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends webkit2gtk-driver xvfb']
+E       assert ['sudo apt-ge...-driver xvfb'] == []
+E         
+E         Left contains 2 more items, first extra item: 'sudo apt-get update'
+E         Use -v to get more diff
+
+tests_scripts/test_shell_conventions.py:139: AssertionError
+_ test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/typecheck.sh] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-9787/conventions0')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9787/test_an_unknown_argument_exits10')
+script = 'scripts/typecheck.sh'
+
+    @pytest.mark.parametrize("script", [s for s in _runnable(_SCRIPTS) if not _FORWARDED_TAIL.search(_usage_line((REPO_ROOT / s).read_text(encoding="utf-8")))])
+    def test_an_unknown_argument_exits_2_naming_it_before_running_anything(sandbox: Path, tmp_path: Path, script: str) -> None:
+        done, calls = _run(sandbox, tmp_path, script, _UNKNOWN)
+>       assert calls == [], f"{script} {_UNKNOWN} got past its argument check and ran {calls}"
+E       AssertionError: scripts/typecheck.sh --not-an-option got past its argument check and ran ['python3 ', 'git rev-parse --short HEAD']
+E       assert ['python3 ', ...--short HEAD'] == []
+E         
+E         Left contains 2 more items, first extra item: 'python3 '
+E         Use -v to get more diff
+
+tests_scripts/test_shell_conventions.py:139: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/build_website.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/test.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[-h-scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[--help-scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/build_website.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/lint.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_digital_twin_ci.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_manual_hardware_tests.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/setup_cross_browser_toolchain.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/typecheck.sh]
+13 failed, 58 passed in 0.92s

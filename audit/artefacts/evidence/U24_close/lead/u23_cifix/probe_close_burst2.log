@@ -1,0 +1,40 @@
+== twin-alive run 1
+tab 6 attempt 1 loaded at 6979 ms
+tab 1 attempt 2 loaded at 9197 ms
+  page 3 closed after 14 ms
+  page 6 closed after 20 ms
+  page 5 closed after 22 ms
+  page 4 closed after 24 ms
+  page 2 closed after 29 ms
+  page 1 closed after 50 ms
+twin-alive all closed
+== parallel-stop run 1
+tab 6 attempt 1 loaded at 7190 ms
+tab 1 attempt 2 loaded at 9340 ms
+  page 6 closed after 42 ms
+  page 4 closed after 43 ms
+  page 2 closed after 43 ms
+  page 3 closed after 43 ms
+  page 5 closed after 44 ms
+  page 1 closed after 80 ms
+parallel-stop all closed
+== twin-alive run 2
+tab 6 attempt 1 loaded at 7077 ms
+tab 1 attempt 2 loaded at 9132 ms
+  page 5 closed after 18 ms
+  page 6 closed after 24 ms
+  page 3 closed after 26 ms
+  page 4 closed after 29 ms
+  page 2 closed after 33 ms
+  page 1 closed after 70 ms
+twin-alive all closed
+== parallel-stop run 2
+tab 6 attempt 1 loaded at 6897 ms
+tab 1 attempt 2 loaded at 9064 ms
+  page 4 closed after 23 ms
+  page 5 closed after 24 ms
+  page 2 closed after 26 ms
+  page 6 closed after 44 ms
+  page 3 closed after 54 ms
+  page 1 closed after 62 ms
+parallel-stop all closed

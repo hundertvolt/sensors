@@ -1,0 +1,52 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____________________ test_a_string_at_the_limit_still_runs _____________________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11351/test_a_string_at_the_limit_sti0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fa3f4663990>
+
+    def test_a_string_at_the_limit_still_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The boundary's other side: a wiring plan path and a MICROPYPATH entry of 255 bytes each run.
+        binary = _plant_binary(tmp_path, reports="standard")
+        seen: list[list[str]] = []
+        real_run = subprocess.run
+    
+        def run(argv: "list[str]", **kwargs: object) -> "subprocess.CompletedProcess[str]":
+            if argv[0] == "/bin/bash":  # the shared probe itself runs for real
+                return real_run(argv, **kwargs)  # type: ignore[call-overload, no-any-return]
+            seen.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "ok\n", "")
+    
+        pad = _LIMIT - len(os.fsencode(str(tmp_path))) - len(f"//{harness.bench_device()}_plan.json")
+        monkeypatch.setenv("PICO_TOOLCHAIN_DIR", str(tmp_path))
+        monkeypatch.setattr(twin_board, "PLAN_DIR", tmp_path / ("p" * pad))
+        monkeypatch.setattr(twin_board, "_TWIN_LAYOUT", f"/{'m' * (_LIMIT - 1)}:{_TWIN_LAYOUT}")
+        monkeypatch.setattr(subprocess, "run", run)
+>       assert twin_board.TwinBoard().run_isolated(_script(tmp_path, "print('ok')\n")) == "ok\n"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_twin_board.py:207: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_hardware/twin_board.py:122: in run_isolated
+    return self._run(harness.render_device_script(Path(script_path), **extras), timeout_s, expect_reset=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <twin_board.TwinBoard object at 0x7fa3f46d9910>
+script = PosixPath('/tmp/pytest-of-root/pytest-11351/test_a_string_at_the_limit_sti0/probe.py')
+timeout_s = None, expect_reset = False
+
+    def _run(self, script: Path, timeout_s: "float | None", *, expect_reset: bool) -> str:
+        # A launch the interpreter would die on before the runner starts fails first; then a missing build, or one of
+        # another build flavour, raises naming the probe's own fix.
+        args = [str(REPO_ROOT / RUNNER), str(_plan(self.device)), str(Path(script).resolve()), "--gc-threshold", str(self.gc_threshold), "--state-dir", self._state.name]
+        micropypath = twin_micropypath()
+        uninternable = _uninternable(args, micropypath)
+        if uninternable:
+>           raise HardwareTestFailureError(f"twin run of {script.name} was not started: {', '.join(uninternable)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")
+E           harness.HardwareTestFailureError: twin run of probe.py was not started: argument 1 (255 bytes), MICROPYPATH entry 1 (255 bytes) - the Unix port interns each as a qstr of at most 255 bytes and dies before the runner starts
+
+tests_hardware/twin_board.py:78: HardwareTestFailureError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_board.py::test_a_string_at_the_limit_still_runs
+1 failed, 22 deselected in 0.65s

@@ -1,0 +1,177 @@
+===== test_persistence_write_marker_completeness
+F......FF........F...F.F...                                              [100%]
+=================================== FAILURES ===================================
+E   AssertionError: these tests persist config to the RP2040's flash without @pytest.mark.persistence_write:
+        tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry PUTs ['NTPHost']
+        tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage PUTs ['NTPHost']
+    assert not ["tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_loa.../bench/test_network_resilience.py::test_ntp_recovers_by_its_own_retry_timer_after_a_transient_outage PUTs ['NTPHost']"]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_persistence_write_marker_completeness.py:254: AssertionError: these tests persist config to the RP2040's flash without @pytest.mark.persistence_write:
+E   AssertionError: test_put_nonsense_field_values_are_marked_invalid_not_crashed PUTs 5 persisting field(s) but proves only 4 of them are rejected or ignored - it may now persist, so the exemption no longer holds
+    assert 4 >= 5
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_persistence_write_marker_completeness.py:374: AssertionError: test_put_nonsense_field_values_are_marked_invalid_not_crashed PUTs 5 persisting field(s) but proves only 4 of them are rejected or ignored - it may now persist, so the exemption no longer holds
+E   AssertionError: the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.
+        added: ['scd30_write_worker']
+        gone: []
+    assert {'_recover_st..._worker', ...} == {'_recover_st..._worker', ...}
+      
+      Extra items in the left set:
+      'scd30_write_worker'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_persistence_write_marker_completeness.py:388: AssertionError: the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.
+E   AssertionError: these device scripts write flash or the SCD30's NVM outside the gate:
+        bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per_source.py (build_system() over the production config) unmarked
+        flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build runs fram_capacity_after_full_system_build.py (build_system() over the production config) unmarked
+        flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build runs heap_headroom_after_full_system_build.py (build_system() over the production config) unmarked
+        heap_layout_after_full_boot_sequence.py (build_system() over the production config) has no runner in tests_hardware/
+        scd30_same_device_rw_concurrency.py (set_ambient_pressure()) has no runner in tests_hardware/
+        flash/test_sensor_accuracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked
+        bench/test_uart_link_under_api_load.py::test_a_multi_chunk_set_echoes_intact_under_serving_load runs uart_link_echo_under_serving_load.py (main() over the production config) unmarked
+    assert not ['bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per....py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked', ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_persistence_write_marker_completeness.py:591: AssertionError: these device scripts write flash or the SCD30's NVM outside the gate:
+E   AssertionError: a raw socket PUT/POST the fetch() detector cannot read, neither marked nor justified: ['test_an_oversized_body_is_refused_before_it_is_read']
+    assert not ['test_an_oversized_body_is_refused_before_it_is_read']
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_persistence_write_marker_completeness.py:665: AssertionError: a raw socket PUT/POST the fetch() detector cannot read, neither marked nor justified: ['test_an_oversized_body_is_refused_before_it_is_read']
+E   AssertionError: unregistered markers (a collection error under --strict-markers): {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic': ['long_soak'], 'tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], 'tests_hardware/flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load': ['long_soak'], 'tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence': ['long_soak']}
+    assert not {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_att...test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], ...}
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_persistence_write_marker_completeness.py:719: AssertionError: unregistered markers (a collection error under --strict-markers): {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic': ['long_soak'], 'tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], 'tests_hardware/flash/test_memory_stress.py::test_single_core_timing_headroom_holds_under_normal_full_task_load': ['long_soak'], 'tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence': ['long_soak']}
+=========================== short test summary info ============================
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_every_test_that_persists_a_config_field_carries_the_marker
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_every_justified_exemption_still_rests_on_every_field_being_rejected
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_the_set_of_persisting_helpers_is_exactly_the_triaged_one
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_every_device_script_that_persists_is_run_only_by_a_gated_test
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_no_raw_socket_request_persists
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_no_test_carries_an_unregistered_marker
+6 failed, 21 passed in 2.48s
+===== test_persistence_write_marker_completeness rc=1 time=3.471964846
+===== test_bench_no_task_ended_completeness
+.F.......                                                                [100%]
+=================================== FAILURES ===================================
+E   AssertionError: these tests inject a fault but check no task ended (bench: assert_no_task_ended(); flash: the script's SYSTEM fact): bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared, bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname, bench/test_hotspot_role_reversal.py::test_hotspot_password_matches_known_fixed_value, bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window, bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease, bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet, bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip, bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way, bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly, bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped, bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored, bench/test_hotspot_role_reversal.py::test_dns_flood_backoff_curve_recovers_once_flood_stops, bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly, bench/test_hotspot_role_reversal.py::test_concurrent_multi_client_burst_is_out_of_scope_here, bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect, bench/test_hotspot_role_reversal.py::test_a_wrong_password_over_the_hotspot_reopens_the_hotspot, bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values, bench/test_hotspot_role_reversal.py::test_role_flip_back_and_reachability_are_asserted_in_fixture_teardown, bench/test_hotspot_role_reversal.py::test_post_condition_sta_connected_state_inferred_from_reachability, bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency, bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_real_packet_corruption, bench/test_network_resilience.py::test_rest_stays_reachable_under_duplicated_and_reordered_packets, bench/test_network_resilience.py::test_garbage_ssid_via_rest_config_is_handled_gracefully, flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery, flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery, flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write, flash/test_uart_crossover.py::test_one_sided_silence_recovers_and_a_parameter_mismatch_fails_loudly
+    assert not ['bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared', 'bench/test_hotspot_role_reve...ceives_a_valid_dhcp_lease', 'bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet', ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_no_task_ended_completeness.py:142: AssertionError: these tests inject a fault but check no task ended (bench: assert_no_task_ended(); flash: the script's SYSTEM fact): bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared, bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname, bench/test_hotspot_role_reversal.py::test_hotspot_password_matches_known_fixed_value, bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window, bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease, bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet, bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip, bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way, bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly, bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped, bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored, bench/test_hotspot_role_reversal.py::test_dns_flood_backoff_curve_recovers_once_flood_stops, bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link, bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly, bench/test_hotspot_role_reversal.py::test_concurrent_multi_client_burst_is_out_of_scope_here, bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect, bench/test_hotspot_role_reversal.py::test_a_wrong_password_over_the_hotspot_reopens_the_hotspot, bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values, bench/test_hotspot_role_reversal.py::test_role_flip_back_and_reachability_are_asserted_in_fixture_teardown, bench/test_hotspot_role_reversal.py::test_post_condition_sta_connected_state_inferred_from_reachability, bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_sustained_packet_loss_and_latency, bench/test_network_resilience.py::test_rest_stays_reachable_and_recovers_under_real_packet_corruption, bench/test_network_resilience.py::test_rest_stays_reachable_under_duplicated_and_reordered_packets, bench/test_network_resilience.py::test_garbage_ssid_via_rest_config_is_handled_gracefully, flash/test_bus_concurrency.py::test_fram_cs_pin_hijack_fault_injection_and_recovery, flash/test_bus_concurrency.py::test_fram_hard_reset_race_during_write_and_recovery, flash/test_fram_storage.py::test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write, flash/test_uart_crossover.py::test_one_sided_silence_recovers_and_a_parameter_mismatch_fails_loudly
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_no_task_ended_completeness.py::test_every_fault_injecting_test_asserts_no_task_ended
+1 failed, 8 passed in 0.30s
+===== test_bench_no_task_ended_completeness rc=1 time=.842885224
+===== test_level_containment
+...F..................                                                   [100%]
+=================================== FAILURES ===================================
+E   AssertionError: E.6.6 rows for scenarios an L3/L4 module now covers: {'uart-load-flush': ['uart_load']}
+    assert not {'uart-load-flush': ['uart_load']}
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_level_containment.py:140: AssertionError: E.6.6 rows for scenarios an L3/L4 module now covers: {'uart-load-flush': ['uart_load']}
+=========================== short test summary info ============================
+FAILED tests_scripts/test_level_containment.py::test_no_exception_row_names_a_covered_scenario
+1 failed, 21 passed in 0.75s
+===== test_level_containment rc=1 time=1.033221390
+===== test_bench_harness_helpers
+..................F.F..F....F........................................... [ 24%]
+..............F.............F........................................... [ 49%]
+..F..................................................................... [ 74%]
+.F...F......F........................................................... [ 98%]
+...                                                                      [100%]
+=================================== FAILURES ===================================
+E   AssertionError: test_end_to_end_timing.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 131', ...', 'line 227'] == []
+      
+      Left contains 5 more items, first extra item: 'line 131'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_end_to_end_timing.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_hotspot_role_reversal.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 217'] == []
+      
+      Left contains one more item: 'line 217'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_hotspot_role_reversal.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_rest_endpoints_over_sta.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 116', 'line 153'] == []
+      
+      Left contains 2 more items, first extra item: 'line 116'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_rest_endpoints_over_sta.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_wifi_networking.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 54', '...', 'line 124'] == []
+      
+      Left contains 3 more items, first extra item: 'line 54'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_wifi_networking.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_toolchain_flash_boot.py
+    assert ["line 49: ['..., '--output'"] == []
+      
+      Left contains 2 more items, first extra item: "line 49: ['uv', 'run', 'toolchain/setup_toolchain.py', 'env', '--tier"
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:681: AssertionError: test_toolchain_flash_boot.py
+E   AssertionError: manual_toolchain.py
+    assert ["line 27: ['..., '--output'"] == []
+      
+      Left contains one more item: "line 27: ['uv', 'run', 'scripts/build_firmware.py', 'dev', '--output'"
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:681: AssertionError: manual_toolchain.py
+E   AssertionError: test_sensor_config_push_over_real_hardware.py repairs no leftover through harness.schema_default()
+    assert []
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:790: AssertionError: test_sensor_config_push_over_real_hardware.py repairs no leftover through harness.schema_default()
+E   AssertionError: _load.py: stop and join the thread in a finally
+    assert ['start_readers (line 268)'] == []
+      
+      Left contains one more item: 'start_readers (line 268)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: _load.py: stop and join the thread in a finally
+E   AssertionError: test_end_to_end_timing.py: stop and join the thread in a finally
+    assert ['test_real_c...er (line 92)'] == []
+      
+      Left contains one more item: 'test_real_concurrent_client_burst_does_not_crash_the_webserver (line 92)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_end_to_end_timing.py: stop and join the thread in a finally
+E   AssertionError: test_serving_heap_at_default_gc.py: stop and join the thread in a finally
+    assert ['_burst (line 90)'] == []
+      
+      Left contains one more item: '_burst (line 90)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_serving_heap_at_default_gc.py: stop and join the thread in a finally
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_leftover_repair_reads_its_target_through_schema_default[test_sensor_config_push_over_real_hardware.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/_load.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_end_to_end_timing.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_serving_heap_at_default_gc.py]
+10 failed, 281 passed in 2.91s
+===== test_bench_harness_helpers rc=1 time=4.160469299
+===== test_hardware_clones
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+E   AssertionError: identical function bodies - one helper (or a device_scripts/_shared include) instead:
+        bench/test_end_to_end_timing.py::_try_fetch_ok = bench/test_hotspot_role_reversal.py::_dut_reachable_again = bench/test_wifi_networking.py::_http_ok
+        conformance.py::parse = isl29125_conformance.py::parse
+        device_scripts/bus_concurrency_cross_device_scd30_sgp40.py::sgp_loop = device_scripts/isl29125_cross_device_concurrency.py::sgp_loop
+        device_scripts/bus_concurrency_isl29125_write_vs_siblings.py::scd_loop = device_scripts/isl29125_cross_device_concurrency.py::scd_loop
+        device_scripts/bus_concurrency_scd30_write_vs_siblings.py::isl_loop = device_scripts/isl29125_cross_device_concurrency.py::isl_loop
+        device_scripts/heap_headroom_after_full_system_build.py::_dump_map = device_scripts/heap_layout_after_full_boot_sequence.py::_dump_map
+        device_scripts/heap_headroom_after_full_system_build.py::_largest_block = device_scripts/heap_layout_after_full_boot_sequence.py::_largest_block
+        device_scripts/heap_headroom_after_full_system_build.py::_report_checked = device_scripts/heap_layout_after_full_boot_sequence.py::_report_checked
+        device_scripts/heap_under_connection_ceiling.py::_dump = device_scripts/serving_at_default_gc.py::_dump
+        device_scripts/heap_under_connection_ceiling.py::_report_unretrieved = device_scripts/serving_at_default_gc.py::_report_unretrieved
+        device_scripts/uart_crossover_exchange.py::_settled = device_scripts/uart_crossover_recovery.py::_settled
+        flash/test_bus_concurrency.py::_assert_pass = flash/test_uart_crossover.py::_assert_pass = flash/test_unretrieved_task_exception_handler.py::_assert_pass
+        flash/test_bus_electrical_timing.py::_parse_result = flash/test_reboot_persistence.py::_parse_result
+    assert not [['bench/test_end_to_end_timing.py::_try_fetch_ok', 'bench/test_hotspot_role_reversal.py::_dut_reachable_again', 'benc...room_after_full_system_build.py::_dump_map', 'device_scripts/heap_layout_after_full_boot_sequence.py::_dump_map'], ...]
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26e/tests_scripts/test_hardware_clones.py:32: AssertionError: identical function bodies - one helper (or a device_scripts/_shared include) instead:
+=========================== short test summary info ============================
+FAILED tests_scripts/test_hardware_clones.py::test_no_function_body_is_copied_in_the_hardware_levels
+1 failed, 1 passed in 0.59s
+===== test_hardware_clones rc=1 time=.879535043
+===== test_error_catalog
+........................................                                 [100%]
+40 passed in 21.05s
+===== test_error_catalog rc=0 time=33.303917461
+===== test_bench_restores_serving
+............                                                             [100%]
+12 passed in 0.06s
+===== test_bench_restores_serving rc=0 time=.328177693
+===== test_tests_hardware_product_copies
+..                                                                       [100%]
+2 passed in 0.63s
+===== test_tests_hardware_product_copies rc=0 time=1.364386868

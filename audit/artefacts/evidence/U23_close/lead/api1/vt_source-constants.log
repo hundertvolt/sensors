@@ -1,0 +1,59 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23api
+
+ ❯ |chromium| tests_js/source-constants.test.js (7 tests | 1 failed) 198ms
+   ❯ readIntConst (4)
+     ✓ reads a module's integer constants 3ms
+     × reads the poll loop's back-off ceiling 186ms
+     ✓ reads a negative literal and takes no expression or nested declaration 3ms
+     ✓ throws on a name the module does not declare 1ms
+   ✓ readObjectConst (3)
+     ✓ reads the mock's envelope code table 1ms
+     ✓ reads every code of a table spread over lines, without evaluating it 2ms
+     ✓ throws on a name the module does not declare 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/source-constants.test.js > readIntConst > reads the poll loop's back-off ceiling
+Error: no const POLL_BACKOFF_MAX_MS in source
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/source-constants.test.js/readIntConst---reads-the-poll-loop-s-back-off-ceiling.png
+
+ ❯ readIntConst tests_js/_source_constants.js:23:15
+     21|     const match = new RegExp(`^(?:export )?const ${escaped(name)} = (?…
+     22|     if (match?.groups?.value === undefined) {
+     23|         throw new Error(`no const ${name} in source`);
+       |               ^
+     24|     }
+     25|     return Number(match.groups.value);
+ ❯ tests_js/source-constants.test.js:16:16
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1ff99ffe:5648:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  07:01:28
+   Duration  1.48s (tests 49%, worker 46%, import 5%)
+
+== Summary: npm test ==
+Commit: 3d29af9
+Levels: L0
+Counts (tests): passed 6 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/source-constants.test.js > readIntConst > reads the poll loop's back-off ceiling: no const POLL_BACKOFF_MAX_MS in source
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

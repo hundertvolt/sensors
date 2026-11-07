@@ -1,0 +1,94 @@
+scripts/_hardware_verdict.py: note: In member "__init__" of class "_Verdict":
+scripts/_hardware_verdict.py:72: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_hardware_verdict.py:72: note: Error code "explicit-any" not covered by "type: ignore[misc]" comment
+tests_hardware/http_client.py: note: In member "json" of class "HttpResponse":
+tests_hardware/http_client.py:19:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/http_client.py:22:9: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/http_client.py: note: In function "fetch":
+tests_hardware/http_client.py:30:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/harness.py: note: In function "_assert_probe_held":
+tests_hardware/harness.py:179:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_errcount":
+scripts/_digital_twin_ci_suite.py:465:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_errcount_all":
+scripts/_digital_twin_ci_suite.py:473:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_errcount_required":
+scripts/_digital_twin_ci_suite.py:480:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_error_codes":
+scripts/_digital_twin_ci_suite.py:490:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_error_type_count":
+scripts/_digital_twin_ci_suite.py:495:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_failure_events":
+scripts/_digital_twin_ci_suite.py:510:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_http":
+scripts/_digital_twin_ci_suite.py:548:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_link_failures":
+scripts/_digital_twin_ci_suite.py:558:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_non_empty_slots":
+scripts/_digital_twin_ci_suite.py:593:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_ntp_unreachable_verdict":
+scripts/_digital_twin_ci_suite.py:597:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_restore_is_all_or_nothing":
+scripts/_digital_twin_ci_suite.py:690:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_run_13_reboot_sequence":
+scripts/_digital_twin_ci_suite.py:979:5: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_run_3_sustained_bus_fault_matrix":
+scripts/_digital_twin_ci_suite.py:1097:5: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_run_5_recovery_after_bounded_fault":
+scripts/_digital_twin_ci_suite.py:1146:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py:1158:5: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_run_5b_error_log_restore_is_all_or_nothing":
+scripts/_digital_twin_ci_suite.py:1185:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_run_5c_storage_paused_shutdown_never_loses_the_error_log":
+scripts/_digital_twin_ci_suite.py:1217:5: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_wait_for_errcount_above":
+scripts/_digital_twin_ci_suite.py:1541:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py:1546:5: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_wait_for_error_type_count":
+scripts/_digital_twin_ci_suite.py:1574:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py:1578:5: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py: note: In function "_wait_for_failure_events":
+scripts/_digital_twin_ci_suite.py:1587:1: error: Explicit "Any" is not allowed  [explicit-any]
+scripts/_digital_twin_ci_suite.py:1590:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/error_log_helpers.py: note: In function "get_errcount":
+tests_hardware/error_log_helpers.py:56:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/error_log_helpers.py:59:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/error_log_helpers.py: note: In function "assert_no_module_logged_a_new_error":
+tests_hardware/error_log_helpers.py:111:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/error_log_helpers.py: note: In function "read_live_system_log":
+tests_hardware/error_log_helpers.py:124:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/error_log_helpers.py: note: In function "new_task_raised":
+tests_hardware/error_log_helpers.py:134:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/error_log_helpers.py: note: In function "assert_no_new_task_raised":
+tests_hardware/error_log_helpers.py:146:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_wifi_networking.py: note: In function "test_real_sta_connect_reaches_established_after_a_hard_reset":
+tests_hardware/bench/test_wifi_networking.py:40:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/conftest.py: note: In function "result_note":
+tests_hardware/conftest.py:139:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_uart_link_under_api_load.py: note: In function "_link_counters":
+tests_hardware/bench/test_uart_link_under_api_load.py:54:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py: note: In function "test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback":
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:48:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py: note: In function "test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback":
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:88:5: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_network_resilience.py: note: In function "test_real_wifi_outage_and_recovery_while_in_normal_sta_mode":
+tests_hardware/bench/test_network_resilience.py:122:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_network_resilience.py: note: In function "test_real_wifi_flaps_repeatedly_without_wedging_the_system":
+tests_hardware/bench/test_network_resilience.py:164:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_network_resilience.py: note: In function "test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status":
+tests_hardware/bench/test_network_resilience.py:936:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "_ceiling_retries_noted":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:95:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "fetch":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:100:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "_schema_sanity_findings":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:116:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:369:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:458:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py: note: In function "test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load":
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:547:1: error: Explicit "Any" is not allowed  [explicit-any]
+tests_scripts/test_cross_browser_smoke_probe.py: note: In function "_expected_probe":
+tests_scripts/test_cross_browser_smoke_probe.py:33:1: error: Explicit "Any" is not allowed  [explicit-any]
+Found 49 errors in 12 files (checked 225 source files)

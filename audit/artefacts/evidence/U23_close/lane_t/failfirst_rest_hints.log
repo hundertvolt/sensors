@@ -1,0 +1,212 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23t
+
+ ❯ |chromium| tests_js/templates.test.js (112 tests | 2 failed) 450ms
+   ✓ formatFieldValue (24)
+     ✓ shows an em dash for undefined/null 4ms
+     ✓ masks a masked field regardless of the underlying value 1ms
+     ✓ resolves an enum value to its label 1ms
+     ✓ formats a gmtimestruct field from its real structured shape, not a pre-formatted string 1ms
+     ✓ reads a time struct missing one of its members as an invalid time value, never 'undefined' 1ms
+     ✓ shows a timestamp 0 s before the device's clock as 0 s ago 1ms
+     ✓ shows a timestamp 119 s before the device's clock as 119 s ago 0ms
+     ✓ shows a timestamp 120 s before the device's clock as 2 min ago 0ms
+     ✓ shows a timestamp 7199 s before the device's clock as 119 min ago 1ms
+     ✓ shows a timestamp 7200 s before the device's clock as 2 h ago 1ms
+     ✓ shows a timestamp 172799 s before the device's clock as 47 h ago 0ms
+     ✓ shows a timestamp 172800 s before the device's clock as 2 d ago 0ms
+     ✓ says the age is unknown while the device's clock is not known 0ms
+     ✓ reads a timestamp more than 5 s ahead of the device's clock as a clock mismatch, and up to 5 s as now 0ms
+     ✓ shows a timestamp's special values as their text, never as a date or an age 1ms
+     ✓ leaves a timestamp without specials at the em dash when it is null 0ms
+     ✓ honours a decimals hint on a number 0ms
+     ✓ pads to the declared precision rather than only truncating 0ms
+     ✓ leaves a null at the em dash even with a decimals hint 0ms
+     ✓ passes a non-number through untouched, never into toFixed() 0ms
+     ✓ leaves a field with no decimals hint and no site default exactly as it was 1ms
+     ✓ rounds a fractional value with no decimals hint to the site default, an integer unchanged, a field's own decimals winning 0ms
+     ✓ joins a list's items, and names an empty list as none 0ms
+     ✓ lets an enum label win over a decimals hint 0ms
+   ❯ field markup, through a one-field buildFieldGroupCard() (24)
+     ✓ renders a non-editable field as a plain value span, never an input 6ms
+     ✓ renders a nested readonly field's own value, not [object Object] 1ms
+     ✓ shows a min/max range hint for an editable number field 4ms
+     ✓ shows a length hint for an editable string field 1ms
+     ✓ adds the UTF-8 byte bound to the length hint of a byte-bounded string 1ms
+     ✓ names a host label's character set in its hint 1ms
+     ✓ adds neither cue to a string with no byte bound and no shape 1ms
+     ✓ states a number field's resolution with its unit in the hint, and none without one 1ms
+     × lists a string field's special values in its hint, the value quoted 213ms
+     × names the form a host name or an IPv4 list takes, from the server's own shape rules 115ms
+     ✓ adds no form hint to a country code, whose description states its form 1ms
+     ✓ shows each special value's meaning in the description 1ms
+     ✓ includes field.description in the hint text, alongside a range hint 0ms
+     ✓ renders an editable toggle that flips its own On/Off state with no network call 1ms
+     ✓ renders an always-executed toggle with no reported state as unset, then cycles On, Off, On 1ms
+     ✓ renders a dispatch toggle with no reported state as Off, not unset 0ms
+     ✓ renders an editable enum as a select with the current value pre-selected 1ms
+     ✓ renders an editable enum with no matching current value as unselected, not silently defaulting to the first option (regression) 1ms
+     ✓ renders an editable composite field with one input per sub-field 1ms
+     ✓ renders an editable composite field with no subFields as an empty, non-crashing grid 0ms
+     ✓ renders an editable number field pre-filled via a current-value caption, not the input's value 1ms
+     ✓ gives a masked input type=password and autocomplete=new-password, starting empty 0ms
+     ✓ tags the field's own wrapper with a distinct data-field-wrapper-key, separate from the control's data-field-key 0ms
+     ✓ tags a composite field's own wrapper with data-field-wrapper-key too, distinct from the grid's data-field-key 1ms
+   ✓ field ids and labels (3)
+     ✓ ids each control by its group and field index, never by its key, and binds its label to that id 1ms
+     ✓ names a readonly value and a composite grid through a span label, with no label pointing at nothing 1ms
+     ✓ keeps the unit inside the label 1ms
+   ✓ clear button and warning (3)
+     ✓ puts a Clear button after a clearable string input, pointing at the input's id 1ms
+     ✓ gives no Clear button to a string that is not clearable, nor to a clearable one shown read-only 1ms
+     ✓ builds a hidden warning naming the sibling's label after the caption of a field ignored while that sibling is set 1ms
+   ✓ arzi's generated code fields (1)
+     ✓ render each code with its catalog text: a button with the description on click, or the toned text 2ms
+   ✓ dev's generated code fields (1)
+     ✓ render each code with its catalog text: a button with the description on click, or the toned text 1ms
+   ✓ grkizi's generated code fields (1)
+     ✓ render each code with its catalog text: a button with the description on click, or the toned text 1ms
+   ✓ klkizi's generated code fields (1)
+     ✓ render each code with its catalog text: a button with the description on click, or the toned text 2ms
+   ✓ schlafzi's generated code fields (1)
+     ✓ render each code with its catalog text: a button with the description on click, or the toned text 1ms
+   ✓ wozi's generated code fields (1)
+     ✓ render each code with its catalog text: a button with the description on click, or the toned text 1ms
+   ✓ codes and timestamps on read-only values (9)
+     ✓ shows a code as a button with its number, whose click shows and hides its description after it 1ms
+     ✓ says a code with no catalog entry has no description 0ms
+     ✓ names a code button by its label and its number together 0ms
+     ✓ opens a code's description from the keyboard 11ms
+     ✓ shows a toned code as its text and muted number, coloured by its tone 1ms
+     ✓ shows an unknown toned code as its number alone, with no tone 1ms
+     ✓ titles an epoch value with its UTC instant and shows its age against the device clock 1ms
+     ✓ gives a special timestamp no instant, and a timestamp no date can hold no title 1ms
+     ✓ rounds a fractional value with no decimals hint to the definitions' default 1ms
+   ✓ a group whose source is unavailable (4)
+     ✓ says unavailable in every number/string caption and placeholder, keeping the toggle and select 2ms
+     ✓ says unavailable on a read-only value 0ms
+     ✓ turns an available card's captions to unavailable in place when its source becomes the marker, and back 2ms
+     ✓ reads a source carrying the marker beside field values as available 1ms
+   ✓ buildFieldGroupCard (2)
+     ✓ adds an inert Apply button/result paragraph for a submit group - clicking it does nothing on its own 1ms
+     ✓ omits the Apply button entirely for a read-only group 0ms
+   ✓ updateFieldGroupValues (3)
+     ✓ rewrites a read-only value in the same node, keeping its element 1ms
+     ✓ keeps an open code description open and current when the code changes 1ms
+     ✓ leaves a toggle and a select the user set alone 1ms
+   ✓ resetControl (4)
+     ✓ clears a typed input and every composite sub-input 2ms
+     ✓ returns a command dropdown to its placeholder, and selects a reported option 1ms
+     ✓ gives a select with no matching option its placeholder 1ms
+     ✓ sets a toggle with its label and aria-pressed, and an always-executed toggle back to unset 1ms
+   ✓ buildErrcountGroup (18)
+     ✓ wraps the rollup and module list in a card with the group's heading, like every other field group 1ms
+     ✓ tags the card with data-group-key itself, like buildFieldGroupCard() (SPECIFICATION.md Part H.3: js/templates.js owns the hook) 0ms
+     ✓ starts fully collapsed to just the rollup - no module rows visible 1ms
+     ✓ rolls up how many modules have errors vs. warnings, by each module's worst history entry 0ms
+     ✓ colours a counted module with only warnings in its history as a warning, on the row's one severity 1ms
+     ✓ "Show flagged" reveals only modules whose worst entry is an error or warning 0ms
+     ✓ "Show all" reveals every module regardless of worst status 0ms
+     ✓ shows a module's own counter and its full history immediately once revealed - no separate expand click 0ms
+     ✓ renders an absent module as no data, never a zero 0ms
+     ✓ renders every row as no data, counted in the rollup, when the body carried no errcount 0ms
+     ✓ renders an unavailable module as unavailable, revealed by Show flagged 0ms
+     ✓ reads a counter at the firmware's cap as saturated, and one below it as exact 0ms
+     ✓ shows a placeholder message for a module with no history 0ms
+     ✓ renders each entry's raw errno, colored by type via data-err-type only - never the type itself as text 0ms
+     ✓ makes an error or warning number a button, leaving a no-error entry a plain span 0ms
+     ✓ shows a history code's catalog text below the row's history on click, hides it on a second click, and moves it on another pill 1ms
+     ✓ opens a history code's description from the keyboard 11ms
+     ✓ says a history code with no catalog entry has no description 2ms
+   ✓ updateErrcountGroup (5)
+     ✓ keeps the filter buttons, and the focus on them, while it updates the counts 3ms
+     ✓ re-applies the chosen filter, so a module that turns flagged shows at once 1ms
+     ✓ keeps a row's history nodes and open description while the history is unchanged, and rebuilds and closes them when it changes 2ms
+     ✓ drops the saturation mark when a capped counter falls after a reset 1ms
+     ✓ turns every row to no data when a later body carries no errcount, and back 2ms
+   ✓ buildSectionShell (1)
+     ✓ builds the heading/description and returns an empty grid plus a hidden error banner, clearing prior content 3ms
+   ✓ buildNavDrawer (1)
+     ✓ builds one inert data-section-key link per section plus a device-name heading 1ms
+   ✓ XSS safety (standing guideline: textContent only, never innerHTML) (5)
+     ✓ renders a hostile field label/value as literal text, never as parsed markup 1ms
+     ✓ renders a hostile field-group label as literal text 1ms
+     ✓ renders a hostile errcount module label as literal text 1ms
+     ✓ renders a hostile code description as literal text, on a value and on a history entry 2ms
+     ✓ renders a hostile device/section name in the nav drawer as literal text 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > lists a string field's special values in its hint, the value quoted
+AssertionError: expected 'Length: 8 to 63 characters' to be 'Length: 8 to 63 characters · "" = Ope…' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/templates.test.js/field-markup--through-a-one-field-buildFieldGroupCard-----lists-a-string-field-s-special-values-in-its-hint--the-value-quoted.png
+
+Expected: [32m"Length: 8 to 63 characters[7m · "" = Open network[27m"[39m
+Received: [31m"Length: 8 to 63 characters"[39m
+
+ ❯ tests_js/templates.test.js:298:76
+    296|         /** @type {FieldDef} */
+    297|         const field = { key: "PW", label: "Wi-Fi Password", kind: "str…
+    298|         expect(hintText(fieldCard(field, "••••••••", { editable: true …
+       |                                                                            ^
+    299|     });
+    300|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |chromium| tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > names the form a host name or an IPv4 list takes, from the server's own shape rules
+AssertionError: expected 'Length: 3 to 253 characters' to be 'Length: 3 to 253 characters · a host …' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/templates.test.js/field-markup--through-a-one-field-buildFieldGroupCard-----names-the-form-a-host-name-or-an-IPv4-list-takes--from-the-server-s-own-shape-rules.png
+
+Expected: [32m"Length: 3 to 253 characters[7m · a host name (letters, digits, '-' and '.') or an IPv4 address[27m"[39m
+Received: [31m"Length: 3 to 253 characters"[39m
+
+ ❯ tests_js/templates.test.js:307:79
+    305|         /** @type {FieldDef} */
+    306|         const host = { key: "NTPHost", label: "NTP Server Address", ki…
+    307|         expect(hintText(fieldCard(host, "pool.ntp.org", { editable: tr…
+       |                                                                               ^
+    308|         /** @type {FieldDef} */
+    309|         const list = { key: "DNSFallback", label: "Fallback DNS Server…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 110 passed (112)
+   Start at  09:35:48
+   Duration  1.85s (tests 59%, worker 26%, import 14%)
+
+== Summary: npm test ==
+Commit: f865d44 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 110 · failed 2 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > lists a string field's special values in its hint, the value quoted: expected 'Length: 8 to 63 characters' to be 'Length: 8 to 63 characters · "" = Ope…' // Object.is equality
+  - tests_js/templates.test.js > field markup, through a one-field buildFieldGroupCard() > names the form a host name or an IPv4 list takes, from the server's own shape rules: expected 'Length: 3 to 253 characters' to be 'Length: 3 to 253 characters · a host …' // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

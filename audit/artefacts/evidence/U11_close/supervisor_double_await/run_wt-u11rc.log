@@ -1,0 +1,12 @@
+Task exception wasn't retrieved
+future: <Task> coro= <generator object '_c' at 7f5483e2ed60>
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11h/double_await.py", line 9, in _c
+RuntimeError: probe death
+log_dead_task 140000966668928 first armed False
+log_dead_task 140000966676160 first armed False
+log_dead_task 140000966677728 first armed False
+log_dead_task 140000966679296 first armed False
+log_dead_task 140000966679296 again armed True
+exit=139

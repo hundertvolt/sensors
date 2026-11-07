@@ -1,0 +1,47 @@
+
+######## SubagentHandback 2026-10-13T08:45:30.703Z
+**Wave 1 is closed: W1 = `d90bd96`, and every red is on the expected list (none unexpected).** On `audit/u23-w1`: lane D merged cleanly as `5c96f47` with no conflict. The lead row is committed alone as `d90bd96`; `test_buildgen_error_contract.py` run alone in its own namespace passed 183, rc 0. Rebuild (`rebuild.sh wt-u23api`) rc 0, all six device sites built.
+
+**quick.sh `summary.txt`** (verbatim, line breaks turned into spaces): ruff rc=0 mypy_noargs rc=0 mypy_ci rc=0 mypy_twin rc=0 mypy_host rc=0 npm_lint rc=0 npm_typecheck rc=1 lint_html rc=0 lint_css rc=0 vt_definitions rc=0 vt_definitions-shape-corpus rc=0 vt_source-constants rc=1 vt_mock-server rc=0 vt_mock-server-put-matrix rc=0 vt_generated-definitions-render rc=0 vt_mock-data-compose rc=0 vt_definitions-mockdata-coverage rc=1 vt_app rc=0 vt_templates rc=0 vt_render rc=1 vt_lint-ceilings rc=1 vt_main rc=1 vt_api-reference-agreement rc=0 done
+- I added `api-reference-agreement` to the vitest list; it is the only changed test file the list lacked.
+
+**l0** (whole `tests_scripts/` tier): 4487 passed, 1 failed, 11 skipped, rc=1, 545 s. The one failure is `test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree`.
+
+**MicroPython, 47 files, all PASS at -1 and at 32768.** Every run has its `N/N passed` line and no memory markers (94/94 verdicts, list in `u23/w1/mp_files.txt`). The set is the 7 wave-1 test files (lwip_host included) plus every file that directly imports a touched `src/` module or `_sensortask_scenarios`:
+- lwip_host/modlwip_eagain (run alone at the end, 23.7 s / 23.6 s)
+- api_response, base_classes, bmp3xx, fram_manager, i2c, isl29125, neopixel, notification_service, ntp_client, print_log, scd30, sgp40, system_service, uart_comm, uart_driver, uart_link_driver, webserver_connections, webserver_service, wifi_service
+- bus_hazard_multi_device; twins: bus_hazard_concurrency, fram, isl29125_autorange, real_website_integration, scd30, sensortask_integration
+- fram_integration, neopixel_wifi, the 5 notification_* files, ntp_fram_system, ntp_wifi_dns, readiness_gates
+- sensortask × 6 devices, setter_microdot, ticks_rollover, uart_comm_hazard, website_build_integration
+- Slowest: bus_hazard_concurrency at 155 s / 159 s, under 240 s.
+
+**Reds, all EXPECTED:**
+- **Lane S:** `source-constants` "no const POLL_BACKOFF_MAX_MS" (it reads `js/poll-manager.js`, which is in S's set); `main.test.js:137` (`fetchStub` called once). Lines :49, :127 and :144 are not red tests.
+- **Lane C:** `render.test.js` has exactly five failures:
+  - mock texts at :330, :689, :1019
+  - defaultValue at :531
+  - partial-result at :1058
+- **Lane C:** `definitions-mockdata-coverage`, six device cases, e.g. `status/sensors/SGP40_BackupTS` (maintenance fields not read by path, row 62).
+- **Lead:** `lint-ceilings` "complexity sits at its measured maximum" (A-26).
+- **Lane C/S:** `npm run typecheck` reports exactly the four listed lines: `render.test.js` (513,134) and (1051,9); `live-backend-put-matrix.test.js` (54,40) and (65,56).
+- **Lane X:** the tunables check. Missing Part N rows for `web.default_decimals` (`buildgen/definitions.py:39`, `tests_scripts/test_buildgen_definitions.py:377`) and `l1.lwip_host_spin_window_rounds` (`tests/lwip_host/test_modlwip_eagain.py:34`).
+
+**GREEN on W1:** `test_citations`, `test_buildgen_error_contract`, and both of lane D's targets, `test_decision_vocabulary` and `test_digital_twin_generated_boot` (8 failures at api1, 0 now). The skip count is unchanged at 11.
+
+**Lane plan rows on W1:**
+- **X1** is in: `buildgen/api_reference.py:202` has `"unavailableMarker"`, read via `_read_wire_text(..., "UNAVAILABLE")`, and `:203` has `"unknownCodeText"` from `_UNKNOWN_DESCR`.
+- **X2** is in: `src/asy_base_classes.py:72` has `UNAVAILABLE = const("unavailable")`. Its sites are `asy_base_classes.py:447/449/455/461`, `asy_system_service.py:576`, and `asy_webserver_service.py:142` (`_UNAVAILABLE_TEXT`, used at :944/:954). `asy_api_response.py:52` has `_UNKNOWN_DESCR`, used at :82.
+- **X3 (OF-99)** is in: `src/asy_webserver_service.py:836` gathers with `return_exceptions=True`; :841 persists each raise and :843 answers "Failed".
+- **OF-128** is in: `buildgen/definitions.py:736` has `"TS"` with label "Last Cycle Time".
+- **`test_js_api_mirrors.py`** reads the X2 constant, not a literal. It evaluates `_UNAVAILABLE_TEXT` with `UNAVAILABLE` taken from `asy_base_classes.py` (:112-114, :124), and `test_src_spells_the_unavailable_marker_only_through_unavailable` (:183) rejects any other `src/` literal.
+- **`mock-data-compose.test.js`** reads maintenance fields by `path`: `namedPaths()` (:121-124, :160-162) and the case at :218. It is green (28/28).
+
+**Wave 2 worktrees:** `S/wt-u23t`, `wt-u23c` and `wt-u23s` are on branches `audit/u23-{t,c,s}` at `d90bd96`. Each got `node_modules/` from wt-u8 after the lock hash matched (`d63f0376…`, the same in all trees). Rebuild rc 0 for all three, 7 s each, all six device sites; all three trees are clean.
+
+**Briefs:** `mkbrief2.py d90bd96` wrote `brief_laneT.md` (11914 B, 110 lines), `brief_laneC.md` (12512 B, 115) and `brief_laneS.md` (13155 B, 117). Both text replacements took effect.
+
+**Disjointness:** T (5 files), C (6) and S (21) are pairwise disjoint; `comm -12` is empty for all three pairs. None of their files appears in `git diff --name-only 8fff76f d90bd96` (62 files), so the second check holds trivially.
+
+**One deviation: for about 30 s I ran over the cap of 4.** The first MicroPython pool read its "step-3 still running" pids from `setsid` parents that had already exited. It started 4 MicroPython files beside quick.sh and l0, so 6 heavy runs from 08:29:40 to about 08:30:10. I killed it by pid and moved its partial logs to `u23/w1/mp_discarded/`. I restarted it at 08:30:15 with the real pids (cap held from then on), and every MicroPython result above comes from that restart. quick.sh and l0 did overlap that window, but their results show no timing-related reds.
+
+**RUNS.md matches `ps`: yes.** No RUNNING line is left, my lines are closed (including the killed pool), and no process of mine remains. Logs are in `S/u23/w1/`.

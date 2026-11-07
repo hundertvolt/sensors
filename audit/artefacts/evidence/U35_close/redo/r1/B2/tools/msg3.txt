@@ -1,0 +1,23 @@
+U35: core: the absent-file warning, the plain uptime loop and escalation entry, the setup failure path
+
+A missing config file logs its persisted not-found warning again, once per boot, where its defaults are
+then written once (owner, 2026-10-01); a command-only schema keeps its printed note. The lost-config
+warning, the store's absent-at-boot flag and the logger's restored flag go: the warning raised itself
+after every scratch build.
+
+The status loop waits on the uptime tick again, with no one-second fallback or re-arm: a refused arm
+is logged once and uptime stays measured on each read. The escalation's entry write is awaited plainly:
+the reset code is recorded before it, so a write that never ends leaves that code to the watchdog's
+reset, and a C-stack overflow still reboots with its own reason.
+
+A chip setup failure ends its task and the supervisor's restart retries it, the restart budget's
+reboot above that: the smallest blast radius first (owner, 2026-09-30), with no bus recovery run on a
+setup failure.
+
+Cleanups: setup() returns nothing (its bools were read by tests only), set_utc_valid() only sets,
+the shutdown task is not kept, and the per-episode flags (the config store's read run, the timer's
+reported flag, the arm's quiet mode) go for the logger's one rule: "just don't repeat the same error
+in the slots. Pure and simple." (owner).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

@@ -1,0 +1,26 @@
+regen rc=0 2.2s Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp
+site_wozi rc=0 1.0s Wrote frozen_modules/frozen_html.py (mounts at /html on import)
+site_devices rc=0 5.2s Wrote build/generated_html/wozi/frozen_html.py (mounts at /html on import)
+ruff rc=0 0.3s All checks passed!
+mypy_noargs rc=0 10.3s Success: no issues found in 187 source files
+mypy_ci rc=0 10.3s Success: no issues found in 174 source files
+mypy_twin rc=0 2.5s Success: no issues found in 53 source files
+mypy_host rc=0 8.6s Success: no issues found in 199 source files
+collect_hw rc=0 0.8s 120/145 tests collected (25 deselected) in 0.47s
+py_test_buildgen_definitions rc=0 9.1s 250 passed in 7.51s
+py_test_error_catalog rc=0 27.6s 33 passed in 17.98s
+py_test_mypy_any_baseline rc=0 0.4s 7 passed in 0.08s
+py_test_citations rc=0 11.2s 15 passed in 10.85s
+py_test_decision_vocabulary rc=0 9.6s 6 passed in 9.22s
+py_test_comment_block_cap rc=0 5.0s 453 passed in 4.62s
+py_test_code_conventions rc=0 4.0s 23 passed in 3.14s
+py_test_tunables_register rc=1 4.3s 1 failed, 14 passed in 3.93s
+py_test_memory_error_gate_agreement rc=0 4.2s 13 passed in 3.93s
+py_test_lint_ceilings rc=0 11.1s 19 passed in 10.79s
+py_test_host_annotations rc=0 2.3s 12 passed in 1.98s
+py_test_import_placement rc=0 8.2s 7 passed in 7.87s
+py_test_legacy_paths rc=0 2.2s 3 passed in 1.90s
+py_test_fault_or_warning_never_both rc=0 3.7s 11 passed in 2.95s
+py_test_level_containment rc=0 0.9s 22 passed in 0.62s
+py_test_persistence_write_marker_completeness rc=0 2.7s 16 passed in 2.08s
+DONE

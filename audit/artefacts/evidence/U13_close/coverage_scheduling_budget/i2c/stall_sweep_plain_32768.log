@@ -1,0 +1,8 @@
+== plain th=32768 offset=1 k=2 D=44
+rep 0 PASS
+  offset 1 waits(us): [50625, 5437, 5410, 5459, 5412, 6709, 5449, 5638, 5437, 5448, 5418] 
+fails 0 / 1
+== plain th=32768 offset=1 k=2 D=46
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+  offset 1 waits(us): [50609] held
+fails 1 / 1

@@ -1,0 +1,5 @@
+tests/test_digital_twin_bus_hazard_concurrency.py@32768
+tests/test_digital_twin_uart_link.py@32768
+tests_scripts/test_buildgen_generate.py
+tests_scripts/test_buildgen_definitions.py
+tests_scripts/test_definitions_js_mirrors.py

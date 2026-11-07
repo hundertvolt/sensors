@@ -1,0 +1,17 @@
+.................................F..                                     [100%]
+=================================== FAILURES ===================================
+________ test_the_heap_probe_constants_live_once_in_the_shared_include _________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+
+    def test_the_heap_probe_constants_live_once_in_the_shared_include(repo_root: Path) -> None:
+>       assert _probe_constant_findings(repo_root / "tests_hardware" / "device_scripts", repo_root / _PROBE) == []
+E       assert ["heap_headro...BE_RETRIES']"] == []
+E         
+E         Left contains 2 more items, first extra item: "heap_headroom_after_full_system_build.py keeps its own ['_PROBE_MAX', '_PROBE_MIN', '_PROBE_RETRIES']"
+E         Use -v to get more diff
+
+tests_scripts/test_digital_twin_boot_contiguity.py:460: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_heap_probe_constants_live_once_in_the_shared_include
+1 failed, 35 passed in 13.19s

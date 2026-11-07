@@ -1,0 +1,44 @@
+..F.....                                                                 [100%]
+=================================== FAILURES ===================================
+_ test_a_string_no_test_file_could_intern_exits_2_naming_it_before_any_file_starts[home-relative entry without HOME] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v4-bite')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11392/test_a_string_no_test_file_cou0')
+case = 'home-relative entry without HOME'
+
+    @pytest.mark.parametrize("case", ["lwip script directory", "micropypath entry", "multibyte micropypath entry", "home-relative entry without HOME", "test file", "coverage data file"])
+    def test_a_string_no_test_file_could_intern_exits_2_naming_it_before_any_file_starts(repo_root: Path, tmp_path: Path, case: str) -> None:
+        # Each one the interpreter interns before the file's first line, in bytes as it measures them: the script's real
+        # directory, a MICROPYPATH entry (a ~/ one too once $HOME is unset), an argument from the script on.
+        root, layout, coverage, env, raw_dir, files = _padded_root(tmp_path, "tests/lwip_host", 200), _UNIT_LAYOUT, False, {}, "/raw", ()
+        if case == "lwip script directory":
+            root = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1)
+            named = f"the script's directory {root}/tests/lwip_host ({_LIMIT + 1} bytes)"
+        elif case == "micropypath entry":
+            layout = f"src:{'m' * (_LIMIT + 1)}"
+            named = f"MICROPYPATH entry 2 {'m' * (_LIMIT + 1)} ({_LIMIT + 1} bytes)"
+        elif case == "multibyte micropypath entry":
+            layout = f"{chr(0xE9) * ((_LIMIT + 1) // 2)}:src"
+            named = f"MICROPYPATH entry 1 {chr(0xE9) * ((_LIMIT + 1) // 2)} ({_LIMIT + 1} bytes)"
+        elif case == "home-relative entry without HOME":
+            layout, env = f"src:~/{'m' * (_LIMIT - 1)}", {"HOME": None}
+            named = f"MICROPYPATH entry 2 ~/{'m' * (_LIMIT - 1)} ({_LIMIT + 1} bytes)"
+        elif case == "test file":
+            files = (f"tests/test_{'t' * (_LIMIT - 13)}.py",)
+            named = f"argument 0 {files[0]} ({_LIMIT + 1} bytes)"
+        else:
+            coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json"))
+            named = ", ".join(f"argument 2 {raw_dir}/test_p[{device}].json ({_LIMIT + 1} bytes)" for device in _PER_DEVICE_DEVICES)
+        done = _run_intern_check(repo_root, tmp_path, root, coverage=coverage, layout=layout, raw_dir=raw_dir, files=files, env=env)
+>       assert (done.returncode, done.stdout, done.stderr) == (2, "", f"error: no test file was started: {named}{_INTERN_REFUSAL}"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-11392/test_a_string_no_test_file_cou0/intern_check.sh'], returncode=0, stdout='PASSED
+E         ', stderr='')
+E       assert (0, 'PASSED\n', '') == (2, '', 'erro...ile starts\n')
+E         
+E         At index 0 diff: 0 != 2
+E         Use -v to get more diff
+
+tests_scripts/test_test_sh.py:1383: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_a_string_no_test_file_could_intern_exits_2_naming_it_before_any_file_starts[home-relative entry without HOME]
+1 failed, 7 passed, 182 deselected in 5.90s

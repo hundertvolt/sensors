@@ -1,0 +1,22 @@
+U22 lane W: the remaining test families for the silent mode; idle silent iterations leave the hardware streak
+
+Tests (tests/test_asy_wifi_service.py, 260 cases, base 232): error handling (a failed period arm,
+OSError and MemoryError, persisted once per failure and retried; a raising silent attempt through
+the device rung, the give-up and the restart, the mode kept; the stations query raising under a
+listed client), resilience (500 periods stay silent and structurally bounded: one arm, one history
+slot, no task or interface left; a restart keeps the mode dark and re-arms; a dropped fire; the
+first attempt waits a full period after the entry), self-healing (three end-to-end integrations on
+the running tasks: silent then rejoining, new credentials reopening the hotspot once more, an
+unfilled stations answer never holding the hotspot), non-blocking (no scan, by source text and by
+a recorded radio; the lock is free and other tasks advance every iteration), the LEDWifiOn push
+while silent, and the no-configuration state no settings change reaches. The new tests were seen
+failing against the pre-change module; the guards are named as such.
+
+Product, a silent-failure scan finding the silent branch owns (decided on the owner's behalf for
+review, agent, 2026-10-12): an idle silent iteration made no radio call yet healed the hardware
+streak, so a connect() that always raises was persisted every period but never reached the
+device rung or the give-up. _run_silent_mode() now returns whether an attempt ran, and the loop
+judges the streak only when it did or _hw_op_failed is set; no other phase changes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

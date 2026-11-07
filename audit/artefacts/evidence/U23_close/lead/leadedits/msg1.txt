@@ -1,0 +1,8 @@
+U23 lead: the rollup selector escapes its key like every other key selector
+
+paintRollupText() built its [data-rollup] selector from a raw interpolation; every other key
+selector in js/ goes through CSS.escape(), and the layering test's real-tree case named this line
+as the one breach. The callers pass fixed words today, so nothing visible changes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

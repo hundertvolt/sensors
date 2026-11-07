@@ -1,0 +1,4 @@
+PASS test_a_planted_alias_reset_and_a_generated_watchdog_are_found
+PASS test_reset_and_bootloader_calls_confined_to_system_service
+PASS test_the_watchdog_is_armed_once_first_in_each_generated_boot_entry_and_nowhere_else
+3/3 passed, 0 failed, 0 skipped

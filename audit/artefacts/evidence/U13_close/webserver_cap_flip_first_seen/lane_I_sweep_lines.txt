@@ -1,0 +1,6 @@
+# lane I sweep (u13i/sweep.sh over wt-u13i, 2026-10-07 11:48), sweep1.txt lines 53-54:
+tests/test_asy_webserver_service.py stage=-1 rc=1 mem=0 197/198 passed, 1 failed, 0 skipped FAIL test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code: 
+tests/test_asy_webserver_service.py stage=32768 rc=0 mem=0 198/198 passed, 0 failed, 0 skipped 
+# the same file in the lane's later sweep2.txt (2026-10-07 12:07):
+tests/test_asy_webserver_service.py stage=-1 rc=0 mem=0 198/198 passed, 0 failed, 0 skipped 
+tests/test_asy_webserver_service.py stage=32768 rc=0 mem=0 198/198 passed, 0 failed, 0 skipped 

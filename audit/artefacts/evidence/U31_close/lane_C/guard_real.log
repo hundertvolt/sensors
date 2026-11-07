@@ -1,0 +1,2 @@
+PASS test_boot_feeds_the_watchdog_exactly_once_per_setup_call
+1/1 passed, 0 failed, 0 skipped

@@ -1,0 +1,6 @@
+b1: 2 failed, 287 passed in 2.46s
+b2: 3 failed, 286 passed in 2.52s
+b3: 5 failed, 284 passed in 2.46s
+b4: 3 failed, 286 passed in 2.76s
+b5: 29 failed, 260 passed in 5.20s
+b6: 1 failed, 288 passed in 3.08s

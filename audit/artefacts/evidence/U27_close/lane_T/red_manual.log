@@ -1,0 +1,10 @@
+E         Counts (manual steps): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (manual steps): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (manual steps): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+FAILED tests_scripts/test_manual_runner_summary.py::test_the_fram_pull_records_the_seconds_to_the_first_fram_entry[answering-late]
+FAILED tests_scripts/test_manual_runner_summary.py::test_the_fram_pull_records_the_seconds_to_the_first_fram_entry[never]
+FAILED tests_scripts/test_manual_runner_summary.py::test_the_uart_crossover_pull_records_its_codes_and_its_recovery
+FAILED tests_scripts/test_manual_runner_summary.py::test_a_link_that_never_resumes_fails_the_pull_step_naming_it
+FAILED tests_scripts/test_manual_runner_summary.py::test_a_device_without_a_uart_link_fails_the_pull_step_before_any_instruction
+FAILED tests_scripts/test_manual_runner_summary.py::test_a_fresh_interpreter_lists_every_manual_step
+6 failed, 7 passed in 1.81s

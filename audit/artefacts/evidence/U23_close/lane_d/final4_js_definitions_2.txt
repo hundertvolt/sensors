@@ -1,0 +1,52 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d
+
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts a minimal well-formed document 4ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a non-object 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a missing/unsupported schemaVersion 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a landingSection that matches no real section 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a section missing key or label 1ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a section missing rest.get 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a section with a missing or unrecognized pollGroup 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts every real pollGroup value 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a non-positive or non-numeric section pollIntervalMs when present 1ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a missing or non-positive defaultPollIntervalMs 1ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > holds both poll intervals to setTimeout's ceiling 1ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > takes the site's default decimals as an integer from 0 to 100 only 1ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a missing device.id 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a missing landingSection 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a missing/empty sections array 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a section that isn't an object 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a section missing groups (not an array) and a group missing key/label 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects an errcount group whose modules isn't an array 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a non-errcount group whose fields isn't an array 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts an errcount group without requiring fields 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts a readonly field carrying a nested path and a decimals hint 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a malformed path 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a path on a writable field, where a PUT body is always flat 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > asks for confirmation on an enum or a toggle only, and only with a boolean 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > rejects a malformed decimals hint 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts the generated arzi definitions 1ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts the generated dev definitions 1ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts the generated grkizi definitions 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts the generated klkizi definitions 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts the generated schlafzi definitions 0ms
+ ✓ |chromium| tests_js/definitions.test.js > validateDefinitions > accepts the generated wozi definitions 1ms
+ ✓ |chromium| tests_js/definitions.test.js > resolveFieldValue > reads a flat key when no path is given 0ms
+ ✓ |chromium| tests_js/definitions.test.js > resolveFieldValue > walks a nested path instead of the flat key 0ms
+ ✓ |chromium| tests_js/definitions.test.js > resolveFieldValue > distinguishes RGB.B from HSB.B, which is the whole reason the body is nested 0ms
+ ✓ |chromium| tests_js/definitions.test.js > resolveFieldValue > yields undefined for a path that does not resolve, never a half-walked sub-object 0ms
+ ✓ |chromium| tests_js/definitions.test.js > resolveFieldValue > yields undefined for a value the GET did not report, whatever the field's kind 0ms
+ ✓ |chromium| tests_js/definitions.test.js > resolveFieldValue > passes a null through as a real value 0ms
+ ✓ |chromium| tests_js/definitions.test.js > loadDefinitions > returns the parsed definitions on a valid fetch 2ms
+ ✓ |chromium| tests_js/definitions.test.js > loadDefinitions > throws on a non-ok HTTP response 3ms
+ ✓ |chromium| tests_js/definitions.test.js > loadDefinitions > throws with the validation problems on a malformed document 1ms
+ ✓ |chromium| tests_js/definitions.test.js > loadDefinitions > throws a clear message (not a raw SyntaxError) when the response isn't valid JSON (a transmission error) 1ms
+ ✓ |chromium| tests_js/definitions.test.js > loadDefinitions > waits for the request already in flight before it fetches (one request at a time) 5ms
+ ✓ |chromium| tests_js/definitions.test.js > loadDefinitions > never hangs forever on a connection that never responds 3ms
+
+ Test Files  1 passed (1)
+      Tests  43 passed (43)
+   Start at  07:56:08
+   Duration  1.20s (worker 58%, import 30%, tests 11%)
+

@@ -1,0 +1,16 @@
+U23 lead: remountAndReadField's JSDoc says what a remount proves
+
+No behaviour change: a comment only.
+
+The JSDoc cited SPECIFICATION.md Part H.3 for "an in-place poll never
+touches those controls", a sentence H.3 no longer carries (H.3 now says
+each poll updates every card in place, keeping the nodes). What the
+remount itself proves holds either way: renderSection() builds a fresh
+shell and its first poll's GET (js/poll-manager.js queues each request
+on its own, no sharing) paints new cards, so the control read afterwards
+shows the device's value, not the page's own state. The JSDoc now states
+that, citing H.3. No other comment in js/ or tests_js/ cites H.3 for
+"never touches" or "only number/string captions".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

@@ -1,0 +1,10 @@
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [27] last_k 25 19968 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 plant crc 0 1 / 1 passed 19968 ms
+test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [21] last_k 24 17443 ms
+SUMMARY test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 plant crc 0 1 / 1 passed 17443 ms
+test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [17] last_k 19 13610 ms
+SUMMARY test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 plant crc 0 1 / 1 passed 13610 ms
+test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 rep 0 PASS clean_awaits [16] last_k 16 14448 ms
+SUMMARY test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 plant crc 0 1 / 1 passed 14448 ms
+test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 rep 0 PASS clean_awaits [18] last_k 20 11398 ms
+SUMMARY test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 plant crc 0 1 / 1 passed 11398 ms

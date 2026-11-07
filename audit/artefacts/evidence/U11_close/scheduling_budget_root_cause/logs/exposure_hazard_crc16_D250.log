@@ -1,0 +1,58 @@
+ok   test_a_bad_argument_reports_bad_arg_before_anything_reaches_the_wire_crc16 0/16 sleeps=16 clean=21ms
+FLIP test_a_break_like_run_of_nulls_recovers_to_a_working_exchange_crc16 1/42 k=[698] first=AssertionError: the link never recovered from a break-like null run @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 904, in _check_a_bre
+     kind: AssertionError: the link never recovered from a break-like null run @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 904, in _check_a_bre  k=[698]
+ok   test_a_corrupted_byte_stream_recovers_to_a_working_exchange_crc16 0/41 sleeps=1208 clean=990ms
+ok   test_a_corrupted_header_byte_is_caught_by_structural_validation_crc16 0/41 sleeps=889 clean=621ms
+ok   test_a_disconnect_then_reconnect_mid_frame_recovers_crc16 0/41 sleeps=2145 clean=1710ms
+FLIP test_a_dropped_byte_mid_frame_recovers_to_a_working_exchange_crc16 1/41 k=[1561] first=AssertionError: the link never recovered after a dropped byte @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 694, in _check_a_dropped_b
+     kind: AssertionError: the link never recovered after a dropped byte @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 694, in _check_a_dropped_b  k=[1561]
+FLIP test_a_frame_delivered_in_two_fragments_still_assembles_crc16 9/38 k=[18, 20, 21, 25, 26, 27, 29, 30, 31] first=AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 731, in _check_a_frame_delivered_in_two_fragments_still_assembles
+     kind: AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 731, in _check_a_frame_delivered_in_two_fragments_still_assembles  k=[18, 20, 21, 25, 26, 27, 29, 30, 31]
+ok   test_a_legal_frame_is_acknowledged_on_the_wire_crc16 0/18 sleeps=18 clean=16ms
+ok   test_a_listener_whose_frame_never_arrives_reports_a_read_timeout_crc16 0/43 sleeps=344 clean=382ms
+FLIP test_a_long_run_of_transactions_retains_no_memory_crc16 27/41 k=[100, 199, 397, 496, 595, 793, 1090, 1189, 1288, 1486, 1585, 1684, 1783, 1882, 1981, 2080, 2575, 2674, 2773, 2872, 2971, 3070, 3169, 3268, 3367, 3664, 3763] first=AssertionError: 119 @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 575, in _check_a_long_run_of_transactions_retains_no_memory
+     kind: AssertionError: 119 @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 575, in _check_a_long_run_of_transactions_retains_no_memory  k=[100, 199, 397, 496, 595, 793, 1090, 1189, 1288, 1486, 1585, 1684, 1783, 1882, 1981, 2080, 2575, 2674, 2773, 2872, 2971, 3070, 3169, 3268, 3367, 3664, 3763]
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_crc16 0/41 sleeps=928 clean=1013ms
+ok   test_a_payload_size_mismatch_never_delivers_wrong_data_crc16 0/41 sleeps=1125 clean=628ms
+ok   test_a_peer_initiating_mid_transaction_is_detected_and_both_recover_crc16 0/41 sleeps=692 clean=750ms
+ok   test_a_peer_initiating_mid_transaction_reports_peer_initiated_crc16 0/43 sleeps=344 clean=380ms
+ok   test_a_peer_that_never_produces_a_valid_frame_is_diagnosed_crc16 0/41 sleeps=5447 clean=3514ms
+ok   test_a_peer_that_resets_mid_transaction_converges_once_it_returns_crc16 0/41 sleeps=2152 clean=1715ms
+ok   test_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction_crc16 0/0 sleeps=0 clean=0ms
+ok   test_a_receive_overrun_recovers_to_a_working_exchange_crc16 0/41 sleeps=1421 clean=993ms
+ok   test_a_reentrant_call_reports_its_own_errno_crc16 0/41 sleeps=563 clean=620ms
+FLIP test_a_second_call_during_a_transaction_is_refused_with_a_sentinel_crc16 12/35 k=[17, 18, 19, 20, 21, 23, 24, 25, 26, 27, 28, 29] first=AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 198, in _check_a_second_call_during_a_transaction_is_refused_with_a_sen
+     kind: AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 198, in _check_a_second_call_during_a_transaction_is_refused_with_a_sen  k=[17, 18, 19, 20, 21, 23, 24, 25, 26, 27, 28, 29]
+ok   test_a_silent_peer_reports_no_ack_not_a_generic_failure_crc16 0/41 sleeps=568 clean=618ms
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16 3/48 k=[19, 25, 31] first=AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 671, in _check_a_size_mismatch_against_an_expected_size_reports_it_dist
+     kind: AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 671, in _check_a_size_mismatch_against_an_expected_size_reports_it_dist  k=[19, 25, 31]
+ok   test_a_train_whose_chunks_total_changes_is_rejected_before_the_data_is_kept_crc16 0/44 sleeps=346 clean=377ms
+ok   test_a_train_with_a_stale_data_chunk_uid_is_rejected_crc16 0/44 sleeps=345 clean=378ms
+ok   test_a_truncated_frame_recovers_to_a_working_exchange_crc16 0/41 sleeps=1452 clean=988ms
+ok   test_an_oversized_payload_reports_payload_too_large_crc16 0/14 sleeps=14 clean=17ms
+ok   test_clear_racing_a_transaction_leaves_it_completed_or_cleanly_failed_crc16 0/43 sleeps=676 clean=384ms
+ok   test_clear_terminates_even_while_a_listener_is_parked_forever_crc16 0/22 sleeps=22 clean=23ms
+ok   test_corruption_plus_dropped_bytes_still_converges_crc16 0/41 sleeps=2726 clean=2562ms
+ok   test_duplicated_bytes_on_the_wire_recover_to_a_working_exchange_crc16 0/41 sleeps=1576 clean=1350ms
+ok   test_faults_in_both_directions_at_once_still_converges_crc16 0/41 sleeps=3776 clean=3158ms
+SKIPLONG test_hammering_a_faulted_link_never_raises_and_still_recovers_crc16 clean=4339ms sleeps=6415
+ok   test_injected_noise_before_a_real_frame_is_recovered_from_crc16 0/41 sleeps=1249 clean=989ms
+ok   test_no_ack_is_emitted_for_any_rejected_frame_crc16 0/41 sleeps=3035 clean=3398ms
+ok   test_one_sided_silence_recovers_once_the_direction_returns_crc16 0/41 sleeps=1467 clean=989ms
+SKIPLONG test_overrun_plus_duplication_still_converges_crc16 clean=4004ms sleeps=5301
+ok   test_silence_then_corruption_then_clean_still_converges_crc16 0/41 sleeps=2787 clean=2438ms
+FLIP test_sustained_hammering_never_degrades_or_grows_the_heap_crc16 26/41 k=[252, 1005, 1256, 1507, 1758, 2009, 2260, 2762, 3013, 3264, 3515, 3766, 4770, 5021, 5774, 6276, 6778, 7280, 7531, 7782, 8033, 8284, 8535, 8786, 9037, 9288] first=AssertionError: only 149/150 hammered transactions completed @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1059, in _hammer_clean
+     kind: AssertionError: only 149/150 hammered transactions completed @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1059, in _hammer_clean  k=[252, 1005, 1256, 1507, 1758, 2009, 2260, 2762, 3013, 3264, 3515, 3766, 4770, 5021, 5774, 6276, 6778, 7280, 7531, 7782, 8033, 8284, 8535, 8786, 9037, 9288]
+ok   test_the_chunks_field_sweep_rejects_zero_and_one_for_a_set_crc16 0/14 sleeps=14 clean=32ms
+ok   test_the_command_field_sweep_accepts_only_the_expected_command_crc16 0/15 sleeps=15 clean=34ms
+FLIP test_the_crc_appears_on_the_wire_big_endian_after_the_payload_crc16 7/37 k=[18, 19, 20, 23, 25, 29, 30] first=AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1261, in _check_the_crc_appears_on_the_wire_big_endian_after_the_payloa
+     kind: AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1261, in _check_the_crc_appears_on_the_wire_big_endian_after_the_payloa  k=[18, 19, 20, 23, 25, 29, 30]
+ok   test_the_current_chunk_field_sweep_matches_only_the_expected_index_crc16 0/14 sleeps=14 clean=34ms
+ok   test_the_first_chunk_size_field_sweep_accepts_only_one_crc16 0/12 sleeps=12 clean=33ms
+ok   test_the_middle_chunk_size_field_sweep_accepts_only_a_full_payload_crc16 0/14 sleeps=14 clean=34ms
+FLIP test_the_probed_payload_offset_lands_on_a_frames_payload_start_crc16 12/37 k=[18, 19, 20, 21, 23, 24, 25, 26, 27, 28, 29, 30] first=AssertionError: the probe GET did not complete, so no offset can be derived from it @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 758,
+     kind: AssertionError: the probe GET did not complete, so no offset can be derived from it @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 758,  k=[18, 19, 20, 21, 23, 24, 25, 26, 27, 28, 29, 30]
+ok   test_the_uid_field_sweep_stops_at_0xfe_crc16 0/11 sleeps=11 clean=40ms
+ok   test_truncation_plus_noise_still_converges_crc16 0/41 sleeps=4866 clean=3639ms
+ok   test_two_tasks_initiating_at_once_never_interleave_frames_crc16 0/30 sleeps=30 clean=27ms
+ok   test_with_a_crc_configured_the_same_payload_corruption_is_caught_crc16 0/42 sleeps=905 clean=620ms

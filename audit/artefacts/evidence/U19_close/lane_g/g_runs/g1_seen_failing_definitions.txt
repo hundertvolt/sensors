@@ -1,0 +1,10 @@
+
+tests_scripts/test_buildgen_definitions.py:212: KeyError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_definitions.py::test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time[arzi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time[dev]
+FAILED tests_scripts/test_buildgen_definitions.py::test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time[grkizi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time[klkizi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time[schlafzi]
+FAILED tests_scripts/test_buildgen_definitions.py::test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time[wozi]
+6 failed, 208 deselected in 1.24s

@@ -1,0 +1,1 @@
+PASS tests/test_asy_wifi_service.py m1 rc=0 wall=19.8s mem=0 [261/261 passed, 0 failed, 0 skipped]

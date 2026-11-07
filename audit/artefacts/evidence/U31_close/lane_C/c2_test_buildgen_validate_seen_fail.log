@@ -1,0 +1,77 @@
+........................................................................ [ 17%]
+...............................................FFFF..................... [ 34%]
+........................................................................ [ 52%]
+........................................................................ [ 69%]
+........................................................................ [ 87%]
+.....................................................                    [100%]
+=================================== FAILURES ===================================
+________ test_an_i2c_timeout_past_a_uart_links_reply_slack_is_rejected _________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11546/test_an_i2c_timeout_past_a_uar0')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31c/src')
+
+    def test_an_i2c_timeout_past_a_uart_links_reply_slack_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+        # 1000ms reply timeout - (2 x 2 + 900 + 21) = 75ms of slack on the responder, below a register read's two 200ms transfers.
+        doc = with_uart_pair(base_doc())
+        table_at(doc, "bus", "uart1")["poll_idle_ms"] = 900
+>       with pytest.raises(BuildError, match=r"bus\.i2c0 \(i2c\) timeout 200000 us: .*hold the loop 400000 us, above the 75000 us uart_link_resp's reply slack") as info:
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_buildgen_validate.py:726: Failed
+__ test_an_i2c_timeout_at_a_uart_links_bound_builds_and_one_above_is_rejected __
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11546/test_an_i2c_timeout_at_a_uart_0')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31c/src')
+
+    def test_an_i2c_timeout_at_a_uart_links_bound_builds_and_one_above_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+        # 75ms of the responder's reply slack gives each of a register read's two transfers 37500 us.
+        doc = _bmp3xx_alone_on_i2c0(with_uart_pair(base_doc()))
+        table_at(doc, "bus", "uart1")["poll_idle_ms"] = 900
+        table_at(doc, "bus", "i2c0")["timeout"] = 37500
+        _build(tmp_path, src_dir, doc)
+        table_at(doc, "bus", "i2c0")["timeout"] = 37501
+>       with pytest.raises(BuildError, match=r"timeout 37501 us: .*above the 75000 us uart_link_resp's reply slack") as info:
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_buildgen_validate.py:738: Failed
+_ test_an_i2c_timeout_at_the_watchdogs_bound_builds_and_one_above_is_rejected __
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11546/test_an_i2c_timeout_at_the_wat0')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31c/src')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc6d3b1bc10>
+
+    def test_an_i2c_timeout_at_the_watchdogs_bound_builds_and_one_above_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # No uart_link: the consumer is the watchdog's room beside one 2s supervisor sleep, 75ms under a 2075ms watchdog.
+        monkeypatch.setattr(validate_mod, "_WDT_TIMEOUT_MS", 2075)
+        doc = _bmp3xx_alone_on_i2c0(base_doc())
+        table_at(doc, "bus", "i2c0")["timeout"] = 37500
+        _build(tmp_path, src_dir, doc)
+        table_at(doc, "bus", "i2c0")["timeout"] = 37501
+>       with pytest.raises(BuildError, match=r"timeout 37501 us: .*above the 75000 us the watchdog's 2075ms less one 2s supervisor sleep") as info:
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_buildgen_validate.py:750: Failed
+___________ test_an_unstated_i2c_timeout_is_held_at_the_rp2_default ____________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11546/test_an_unstated_i2c_timeout_i0')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31c/src')
+
+    def test_an_unstated_i2c_timeout_is_held_at_the_rp2_default(tmp_path: Path, src_dir: Path) -> None:
+        # No timeout stated: rp2's own 50000 us default is what boots (asy_i2c_driver's _DEFAULT_TIMEOUT_US), above a 37500 us bound.
+        doc = _bmp3xx_alone_on_i2c0(with_uart_pair(base_doc()))
+        table_at(doc, "bus", "uart1")["poll_idle_ms"] = 900
+        del table_at(doc, "bus", "i2c0")["timeout"]
+>       with pytest.raises(BuildError, match=r"bus\.i2c0 \(i2c\) timeout 50000 us \(rp2 default\): ") as info:
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_buildgen_validate.py:760: Failed
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_validate.py::test_an_i2c_timeout_past_a_uart_links_reply_slack_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_an_i2c_timeout_at_a_uart_links_bound_builds_and_one_above_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_an_i2c_timeout_at_the_watchdogs_bound_builds_and_one_above_is_rejected
+FAILED tests_scripts/test_buildgen_validate.py::test_an_unstated_i2c_timeout_is_held_at_the_rp2_default
+4 failed, 409 passed in 5.99s
+
+real	0m7.319s
+user	0m6.284s
+sys	0m0.656s

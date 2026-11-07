@@ -1,0 +1,41 @@
+tests/test_asy_udp_socket.py:127:20: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:129:20: error: "UDPSocket" has no attribute
+tests/test_asy_udp_socket.py:185:13: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:195:9: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:201:9: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:207:9: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:857:26: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:881:21: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:906:21: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:1018:28: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:1105:20: error: "UDPSocket" has no attribute
+tests/test_asy_udp_socket.py:1105:20: error: "UDPSocket" has no attribute
+tests/test_asy_udp_socket.py:1125:24: error: "UDPSocket" has no attribute
+tests/test_asy_udp_socket.py:1125:24: error: "UDPSocket" has no attribute
+tests/test_asy_udp_socket.py:1169:30: error: Missing named argument "tries" for
+tests/test_asy_udp_socket.py:1200:30: error: Missing named argument "tries" for
+tests/test_asy_udp_socket.py:1234:28: error: Missing named argument "tries" for
+tests/test_asy_udp_socket.py:1361:5: error: "UDPSocket" has no attribute
+tests/test_asy_udp_socket.py:1435:16: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:1461:16: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:1491:16: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:1520:16: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:1670:26: error: Unexpected keyword argument
+tests/test_asy_udp_socket.py:1704:40: error: Unexpected keyword argument
+tests/test_ntp_wifi_dns_integration.py:209:18: error: Missing positional
+tests/test_ntp_wifi_dns_integration.py:290:30: error: Unexpected keyword
+tests/test_ntp_wifi_dns_integration.py:449:25: error: Module has no attribute
+tests/test_ntp_wifi_dns_integration.py:450:5: error: Module has no attribute
+tests/test_ntp_wifi_dns_integration.py:459:9: error: Module has no attribute
+tests/test_asy_ntp_client.py:2240:38: error: Function
+tests/test_asy_ntp_client.py:2276:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2276:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2326:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2326:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2364:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2364:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2664:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2664:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2696:18: error: redirect_udp_port? has no
+tests/test_asy_ntp_client.py:2696:18: error: redirect_udp_port? has no
+tests/test_ntp_fram_system_integration.py:218:30: error: Unexpected keyword

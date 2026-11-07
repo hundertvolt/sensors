@@ -1,0 +1,81 @@
+EEE..................................................................... [ 11%]
+........................................................................ [ 23%]
+........................................................................ [ 34%]
+........................................................................ [ 46%]
+........................................................................ [ 58%]
+........................................................................ [ 69%]
+........................................................................ [ 81%]
+........................................................................ [ 93%]
+...........................................                              [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_the_fixture_page_passes_with_the_sites_own_attribute_kinds _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint')
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7fee3247a910>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-10786'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def lint(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> "tuple[int, dict[str, list[str]]]":
+        # One html-validate run over every page: its exit code, and each page's findings as "rule: message".
+        node = shutil.which("node")
+        assert node is not None, "node is not on PATH - npm run lint:html cannot run without it either"
+        pages = tmp_path_factory.mktemp("pages")
+        (pages / "control.html").write_text(_PAGE.format(attribute=""), encoding="utf-8")
+        for name, attribute in _PLANTED.items():
+            (pages / name).write_text(_PAGE.format(attribute=f' {attribute}="1"'), encoding="utf-8")
+        cli = repo_root / _CLI
+>       assert cli.is_file(), f"{_CLI} is not installed - npm ci installs it (npm run lint:html needs it too)"
+E       AssertionError: node_modules/html-validate/bin/html-validate.mjs is not installed - npm ci installs it (npm run lint:html needs it too)
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint/node_modules/html-validate/bin/html-validate.mjs').is_file
+
+tests_scripts/test_html_validate_config.py:42: AssertionError
+_ ERROR at setup of test_an_attribute_the_element_does_not_know_fails_the_lint[frobnicate.html-frobnicate-attr] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint')
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7fee3247a910>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-10786'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def lint(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> "tuple[int, dict[str, list[str]]]":
+        # One html-validate run over every page: its exit code, and each page's findings as "rule: message".
+        node = shutil.which("node")
+        assert node is not None, "node is not on PATH - npm run lint:html cannot run without it either"
+        pages = tmp_path_factory.mktemp("pages")
+        (pages / "control.html").write_text(_PAGE.format(attribute=""), encoding="utf-8")
+        for name, attribute in _PLANTED.items():
+            (pages / name).write_text(_PAGE.format(attribute=f' {attribute}="1"'), encoding="utf-8")
+        cli = repo_root / _CLI
+>       assert cli.is_file(), f"{_CLI} is not installed - npm ci installs it (npm run lint:html needs it too)"
+E       AssertionError: node_modules/html-validate/bin/html-validate.mjs is not installed - npm ci installs it (npm run lint:html needs it too)
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint/node_modules/html-validate/bin/html-validate.mjs').is_file
+
+tests_scripts/test_html_validate_config.py:42: AssertionError
+_ ERROR at setup of test_an_attribute_the_element_does_not_know_fails_the_lint[calss.html-calss] _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint')
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7fee3247a910>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-10786'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def lint(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> "tuple[int, dict[str, list[str]]]":
+        # One html-validate run over every page: its exit code, and each page's findings as "rule: message".
+        node = shutil.which("node")
+        assert node is not None, "node is not on PATH - npm run lint:html cannot run without it either"
+        pages = tmp_path_factory.mktemp("pages")
+        (pages / "control.html").write_text(_PAGE.format(attribute=""), encoding="utf-8")
+        for name, attribute in _PLANTED.items():
+            (pages / name).write_text(_PAGE.format(attribute=f' {attribute}="1"'), encoding="utf-8")
+        cli = repo_root / _CLI
+>       assert cli.is_file(), f"{_CLI} is not installed - npm ci installs it (npm run lint:html needs it too)"
+E       AssertionError: node_modules/html-validate/bin/html-validate.mjs is not installed - npm ci installs it (npm run lint:html needs it too)
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint/node_modules/html-validate/bin/html-validate.mjs').is_file
+
+tests_scripts/test_html_validate_config.py:42: AssertionError
+=========================== short test summary info ============================
+ERROR tests_scripts/test_html_validate_config.py::test_the_fixture_page_passes_with_the_sites_own_attribute_kinds
+ERROR tests_scripts/test_html_validate_config.py::test_an_attribute_the_element_does_not_know_fails_the_lint[frobnicate.html-frobnicate-attr]
+ERROR tests_scripts/test_html_validate_config.py::test_an_attribute_the_element_does_not_know_fails_the_lint[calss.html-calss]
+616 passed, 3 errors in 4.18s

@@ -1,0 +1,210 @@
+== FIXEDv2 th=-1 offset=1 k=1 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [51183, 5840, 5456, 5469, 5445, 5471, 5465, 5558, 5449, 5472, 5483] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=2 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [51069, 5452, 5460, 5456, 5438, 5441, 5431, 5438, 5837, 5424, 5524] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=5 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [51030, 5493, 5442, 5604, 5483, 5496, 5462, 5460, 5466, 5474, 5468] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=7 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [5749, 51410, 5472, 5462, 5464, 6126, 5496, 5470, 5452, 5452, 5457] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=30 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [5463, 5572, 5516, 5499, 5933, 51221, 5459, 5469, 5527, 5461, 5468] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=52 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [5454, 5410, 5418, 5404, 5423, 5412, 5416, 5406, 5358, 5427, 51506] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=55 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [5456, 5476, 7382, 5457, 5452, 5454, 5460, 5476, 5463, 5466, 50507] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=1 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [255212, 5475, 5441, 5471, 5429, 5473, 5423, 5484, 5477, 5462, 5462] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=2 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [255571, 7653, 5454, 5469, 5629, 5551, 5500, 5654, 5491, 4388, 5451] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=5 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [255274, 5479, 5438, 5453, 5444, 5454, 5463, 5452, 5425, 5446, 5464] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=7 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [5460, 255958, 5433, 5471, 5443, 5466, 5451, 5448, 5448, 5441, 5467] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=30 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [5460, 5442, 5448, 5446, 5426, 255129, 5476, 5445, 5470, 5449, 5472] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=52 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [5474, 5467, 4406, 5451, 5505, 5595, 5456, 5486, 5510, 5494, 254491] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=55 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [5474, 5481, 5464, 5447, 5464, 5431, 5420, 5444, 5451, 5472, 255095] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=1 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [1005309, 5480, 5432, 5475, 5452, 5437, 5452, 5436, 5456, 5481, 5422] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=2 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [1005456, 5468, 6415, 5442, 5439, 5441, 5456, 5432, 5454, 5459, 5467] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=5 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [1004674, 5722, 5647, 5597, 5597, 5588, 5573, 5596, 5650, 6373, 5612] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=7 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [5479, 1006644, 5489, 5447, 5464, 5465, 5470, 5457, 5443, 5694, 5774] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=30 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [5612, 5475, 5454, 5455, 5490, 1005407, 5491, 5515, 5435, 5469, 5442] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=52 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [5455, 5465, 5463, 5439, 5440, 5456, 5454, 5475, 5458, 5475, 1005030] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=-1 offset=1 k=55 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [5476, 5540, 5476, 5551, 5428, 5466, 5449, 5467, 5455, 5473, 1005258] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=1 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [51001, 5466, 5474, 5494, 6240, 5498, 5484, 5461, 5474, 5506, 5481] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=2 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [50916, 5467, 5587, 5470, 6309, 5625, 5486, 5473, 5475, 5455, 5441] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=5 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [51948, 5469, 5446, 6212, 5547, 5454, 5464, 5465, 5493, 5498, 5476] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=7 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [5555, 51537, 5478, 5423, 5445, 6193, 5455, 5482, 5451, 5486, 5474] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=30 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [5460, 5421, 5462, 6184, 5476, 50869, 5471, 5454, 5480, 5456, 5469] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=52 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [5487, 5442, 5542, 6368, 5528, 5464, 5494, 5478, 5558, 5520, 51480] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=55 D=46ms
+rep 0 PASS
+  offset 1 waits(us): [5480, 5461, 5446, 6064, 6188, 5469, 5470, 5515, 5492, 5491, 51177] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=1 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [255073, 5476, 5455, 5472, 6298, 5480, 5513, 5514, 5562, 5470, 5664] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=2 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [255360, 5463, 5452, 6208, 5463, 5457, 5465, 5474, 5467, 5471, 5454] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=5 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [255234, 5760, 5435, 6169, 5615, 5616, 5480, 5527, 5547, 5548, 5466] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=7 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [5468, 255482, 5464, 5466, 5449, 5488, 5481, 5467, 5482, 5458, 5521] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=30 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [5475, 5492, 5515, 6264, 5540, 255785, 5515, 5527, 5464, 5472, 5453] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=52 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [5498, 5469, 5477, 6266, 5481, 5588, 5584, 5466, 5548, 5496, 255351] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=55 D=250ms
+rep 0 PASS
+  offset 1 waits(us): [5486, 5465, 5419, 5652, 6309, 5464, 5425, 5537, 5463, 5610, 254932] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=1 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [1005735, 5481, 5412, 5448, 4399, 5503, 5455, 5467, 5784, 5566, 5495] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=2 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [1005584, 5507, 5450, 6226, 5473, 5629, 5547, 5719, 5549, 5496, 5491] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=5 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [1005288, 5608, 5472, 6232, 5499, 5478, 5756, 5587, 5747, 5502, 5459] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=7 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [5539, 1005156, 5445, 6252, 5578, 4550, 5725, 5558, 5656, 5683, 5647] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=30 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [5701, 6385, 5477, 5701, 5730, 1005237, 5484, 5447, 5480, 6386, 5483] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=52 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [5471, 5483, 6579, 5581, 5446, 6348, 5395, 5534, 5545, 5526, 1005178] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1
+== FIXEDv2 th=32768 offset=1 k=55 D=1000ms
+rep 0 PASS
+  offset 1 waits(us): [5467, 5461, 5465, 6171, 5461, 5476, 5429, 5433, 5471, 5501, 1004687] 
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+fails 0 / 1

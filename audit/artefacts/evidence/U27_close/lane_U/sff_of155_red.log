@@ -1,0 +1,15 @@
+== tests/test_generated_boot_entry.py
+FAIL test_an_interrupt_the_stub_did_not_plant_ends_the_run:
+  File "tests/test_generated_boot_entry.py", line 144, in test_an_interrupt_the_stub_did_not_plant_ends_the_run
+AssertionError: _boot() answered an interrupt it did not plant: KeyboardInterrupt()
+4/5 passed, 1 failed, 0 skipped
+== tests/test_digital_twin_unix_port_unretrieved_report.py
+FAIL test_the_raised_helper_lets_an_interrupt_through:
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 226, in test_the_raised_helper_lets_an_interrupt_through
+AssertionError: _raised() swallowed the interrupt: KeyboardInterrupt()
+9/10 passed, 1 failed, 0 skipped
+== tests/test_asy_system_service.py
+FAIL test_the_raised_helper_lets_an_interrupt_through:
+  File "tests/test_asy_system_service.py", line 3868, in test_the_raised_helper_lets_an_interrupt_through
+AssertionError: _raised() swallowed the interrupt: KeyboardInterrupt()
+166/167 passed, 1 failed, 0 skipped

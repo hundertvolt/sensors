@@ -1,0 +1,22 @@
+test_digital_twin_sensortask_integration.-1 rc=0 wall=41.62 mem=0 :: 8/8 passed, 0 failed, 0 skipped
+test_digital_twin_bus_hazard_concurrency.-1 rc=0 wall=151.26 mem=0 :: 20/20 passed, 0 failed, 0 skipped
+test_digital_twin_wifi_modes.-1 rc=0 wall=101.44 mem=0 :: 1/1 passed, 0 failed, 0 skipped
+test_digital_twin_generic_wiring.32768 rc=0 wall=0.07 mem=0 :: 10/10 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.32768 rc=0 wall=43.33 mem=0 :: 8/8 passed, 0 failed, 0 skipped
+test_digital_twin_bus_hazard_concurrency.32768 rc=0 wall=155.10 mem=0 :: 20/20 passed, 0 failed, 0 skipped
+test_digital_twin_wifi_modes.32768 rc=0 wall=101.94 mem=0 :: 1/1 passed, 0 failed, 0 skipped
+test_digital_twin_uart_link.32768 rc=0 wall=80.59 mem=0 :: 19/19 passed, 0 failed, 0 skipped
+test_digital_twin_isl29125_autorange.32768 rc=0 wall=51.65 mem=0 :: 20/20 passed, 0 failed, 0 skipped
+test_digital_twin_construction.arzi.-1 rc=0 wall=2.05 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.arzi.32768 rc=0 wall=2.55 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.dev.-1 rc=0 wall=2.93 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.dev.32768 rc=0 wall=3.81 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.grkizi.-1 rc=0 wall=2.10 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.grkizi.32768 rc=0 wall=2.47 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.klkizi.-1 rc=0 wall=2.02 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.klkizi.32768 rc=0 wall=2.46 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.schlafzi.-1 rc=0 wall=2.01 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.schlafzi.32768 rc=0 wall=2.43 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.wozi.-1 rc=0 wall=2.43 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+test_digital_twin_construction.wozi.32768 rc=0 wall=3.05 mem=0 :: 4/4 passed, 0 failed, 0 skipped
+BATCH-DONE

@@ -1,0 +1,21 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________ test_every_src_guard_is_the_plain_two_line_form_and_is_removed ________
+
+strip_module = <module '_strip_type_checking' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27e2orig/scripts/_strip_type_checking.py'>
+stripped_trees = {'asy_api_response.py': (<ast.Module object at 0x7fbfe6b0cd30>, <ast.Module object at 0x7fbfe68b4550>), 'asy_base_clas...fe64aa500>), 'asy_captive_dns.py': (<ast.Module object at 0x7fbfe6567fd0>, <ast.Module object at 0x7fbfe639bfd0>), ...}
+
+    def test_every_src_guard_is_the_plain_two_line_form_and_is_removed(strip_module: ModuleType, stripped_trees: "dict[str, tuple[ast.Module, ast.Module]]") -> None:
+        # D.6's guard form, the one the strip recognises: any other body would leave the name defined nowhere.
+        for name, (tree, stripped) in stripped_trees.items():
+            guards = [n for n in ast.walk(tree) if isinstance(n, ast.Try) and any(isinstance(s, ast.ImportFrom) and s.module == "typing" and any(a.name == "TYPE_CHECKING" for a in s.names) for s in n.body)]
+            for guard in guards:
+                assert strip_module._is_type_checking_import_guard(guard), f"{name}:{guard.lineno}: not the plain D.6 guard"
+>           assert not [n for n in ast.walk(stripped) if isinstance(n, ast.ImportFrom) and any(a.name == "TYPE_CHECKING" for a in n.names)], name
+E           AssertionError: asy_api_response.py
+E           assert not [<ast.ImportFrom object at 0x7fbfe68b68c0>]
+
+tests_scripts/test_strip_type_checking.py:186: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_strip_type_checking.py::test_every_src_guard_is_the_plain_two_line_form_and_is_removed
+1 failed in 0.97s

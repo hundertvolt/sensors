@@ -1,0 +1,18 @@
+.F.....                                                                  [100%]
+=================================== FAILURES ===================================
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('digital_twin/launch.py', 'main', 'random')
+E           ('digital_twin/run_generic_integration.py', '_apply_fault', 'errno')
+E           ('digital_twin/run_generic_integration.py', '_ensure_dir', 'os')
+E           ('digital_twin/run_generic_integration.py', 'main', 'random')
+E       assert not [('digital_twin/launch.py', 'main', 'random'), ('digital_twin/run_generic_integration.py', '_apply_fault', 'errno'), (..._twin/run_generic_integration.py', '_ensure_dir', 'os'), ('digital_twin/run_generic_integration.py', 'main', 'random')]
+
+tests_scripts/test_import_placement.py:230: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+1 failed, 6 passed in 6.23s

@@ -1,0 +1,19 @@
+..............                                                           [100%]
+============================== slowest durations ===============================
+0.39s call     tests_scripts/test_manual_runner_summary.py::test_the_fram_pull_records_the_seconds_to_the_first_fram_entry[never]
+0.22s call     tests_scripts/test_manual_runner_summary.py::test_a_link_that_never_resumes_fails_the_pull_step_naming_it
+0.19s call     tests_scripts/test_manual_runner_summary.py::test_a_device_without_a_uart_link_fails_the_pull_step_before_any_instruction
+0.18s call     tests_scripts/test_manual_runner_summary.py::test_codes_the_ring_no_longer_holds_are_counted_not_dropped
+0.18s call     tests_scripts/test_manual_runner_summary.py::test_the_uart_crossover_pull_records_its_codes_and_its_recovery
+0.17s call     tests_scripts/test_manual_runner_summary.py::test_the_fram_pull_records_the_seconds_to_the_first_fram_entry[answering-late]
+0.16s call     tests_scripts/test_manual_runner_summary.py::test_an_unknown_only_name_prints_the_block_and_exits_2
+0.15s call     tests_scripts/test_manual_runner_summary.py::test_an_observation_is_a_verdict_only_with_text
+0.15s call     tests_scripts/test_manual_runner_summary.py::test_a_step_returning_with_no_judgment_fails
+0.15s call     tests_scripts/test_manual_runner_summary.py::test_one_pass_and_one_fail_print_the_block_and_exit_1
+0.15s call     tests_scripts/test_manual_runner_summary.py::test_a_fresh_interpreter_lists_every_manual_step
+0.14s call     tests_scripts/test_manual_runner_summary.py::test_an_unexpected_exception_fails_its_step_and_the_run_continues
+0.14s call     tests_scripts/test_manual_runner_summary.py::test_ctrl_c_fails_the_current_step_lists_the_rest_as_not_run_and_exits_130
+0.13s call     tests_scripts/test_manual_runner_summary.py::test_every_step_passing_exits_0_with_a_pass_block
+
+(28 durations < 0.005s hidden.  Use -vv to show these durations.)
+14 passed in 2.58s

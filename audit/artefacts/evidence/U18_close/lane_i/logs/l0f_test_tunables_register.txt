@@ -1,0 +1,22 @@
+.F.............                                                          [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18i')
+real_tags = [Tag(path='vitest.config.js', line=35, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=698, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_udp_socket.py:32: udp.poll_wait_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_udp_socket.py:34: udp.poll_idle_ms is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:8594: udp.conn_tries_default is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:8595: udp.round_trip_tries_default is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:8596: udp.ready_poll_ms is a tuned row, but no file carries its @tunable tag
+E       assert not ['src/asy_udp_socket.py:32: udp.poll_wait_ms is tagged but has no SPECIFICATION.md Part N row', 'src/asy_udp_socket.py...ies its @tunable tag', 'SPECIFICATION.md:8596: udp.ready_poll_ms is a tuned row, but no file carries its @tunable tag']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+1 failed, 14 passed in 6.08s

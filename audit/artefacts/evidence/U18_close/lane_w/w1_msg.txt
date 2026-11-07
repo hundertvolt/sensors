@@ -1,0 +1,15 @@
+U18 lane W WIP W1: the WiFi API - one 8-field networking snapshot, getters off the radio
+
+- WIFI/_FIELDS carry Mode, Connected, IP, Subnet, Gateway, DNS, RSSI, TS; _update_wifi_snapshot()
+  reads ifconfig() once, RSSI only on a selected STA with a link, nothing while deactivated, and
+  holds the DHCP DNS (_dhcp_dns) that get_dns_server_ip() now returns, lock held or not.
+- get_wlan_ifconfig(), get_wlan_rssi() and wlan_isconnected() removed; _switch_wlan_mode() records
+  the selected interface (_ap_selected) the snapshot reads instead of the radio.
+- host_label_ok imported from asy_dns_client (the local copy goes); the code block gains E17 TIMER
+  and the WIFI warnings W77-W81; PW carries special "" "Open network", HotspotPW is published
+  masked; get_task_starters() returns list[TaskStarter].
+- Tests: the snapshot and DHCP-DNS cases, the selected-interface record, the outage-retry getters
+  answering from held state; the removed getters' tests go.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

@@ -1,0 +1,21 @@
+browser 153.0.8010.12
+frozen at 1342 ms with 2 request(s) in flight
+while frozen: in-flight drained at null ms (null = not within 3 s)
+while frozen: new server hits 10 in ~2.5 s
+after active: new server hits 3 in 1.5 s
+page alive: complete
+rc=0
+browser 141.0.7390.37
+frozen at 1248 ms with 2 request(s) in flight
+while frozen: in-flight drained at null ms (null = not within 3 s)
+while frozen: new server hits 10 in ~2.5 s
+after active: new server hits 3 in 1.5 s
+page alive: complete
+rc=0
+browser 141.0.7390.37
+frozen at 1422 ms with 2 request(s) in flight
+while frozen: in-flight drained at null ms (null = not within 3 s)
+while frozen: new server hits 10 in ~2.5 s
+after active: new server hits 3 in 1.5 s
+page alive: complete
+rc=0

@@ -1,0 +1,11 @@
+FAIL test_the_identity_hook_lands_in_the_fresh_boot_state
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2046, in test_the_identity_hook_lands_in_the_fresh_boot_state
+AssertionError: 2
+FAIL test_a_settings_trigger_beside_a_window_end_wins
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2028, in test_a_settings_trigger_beside_a_window_end_wins
+AssertionError: True
+selected: 2 failed: 2

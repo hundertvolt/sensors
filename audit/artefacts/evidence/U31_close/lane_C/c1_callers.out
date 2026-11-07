@@ -1,0 +1,6 @@
+tests/test_asy_system_service.py@-1 rc=0 23.342984690 mem=0 173/173 passed, 0 failed, 0 skipped
+tests/test_asy_system_service.py@32768 rc=0 24.332629935 mem=0 173/173 passed, 0 failed, 0 skipped
+tests/test_ntp_wifi_dns_integration.py@-1 rc=0 1.474419518 mem=0 13/13 passed, 0 failed, 0 skipped
+tests/test_ntp_wifi_dns_integration.py@32768 rc=0 1.491478036 mem=0 13/13 passed, 0 failed, 0 skipped
+tests/test_ntp_fram_system_integration.py@-1 rc=0 7.584522747 mem=0 12/12 passed, 0 failed, 0 skipped
+tests/test_ntp_fram_system_integration.py@32768 rc=0 7.663846276 mem=0 12/12 passed, 0 failed, 0 skipped

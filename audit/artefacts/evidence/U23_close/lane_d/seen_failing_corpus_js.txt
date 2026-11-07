@@ -1,0 +1,336 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d
+
+ ❯ |chromium| tests_js/definitions-shape-corpus.test.js (133 tests | 43 failed) 3818ms
+   ✓ a minimal well-formed document 3ms
+   ✓ pollGroup settings 0ms
+   ✓ pollGroup none 0ms
+   ✓ a positive section pollIntervalMs 0ms
+   ✓ an errcount group with modules and no f… 0ms
+   ✓ an errcount group carrying its codes bl… 0ms
+   ✓ a readonly field with a nested path and… 0ms
+   ✓ decimals at 0 0ms
+   ✓ decimals at the toFixed ceiling 0ms
+   ✓ a readonly epoch field 1ms
+   ✓ a readonly gmtimestruct field 0ms
+   ✓ a readonly field with a codes table 0ms
+   ✓ a byte-bounded host-label string 0ms
+   ✓ a country-code string 0ms
+   ✓ a host-name string 0ms
+   ✓ an IPv4-list string 0ms
+   ✓ a string with a string special value 0ms
+   ✓ not an object: null 0ms
+   ✓ not an object: a string 0ms
+   ✓ schemaVersion missing 0ms
+   ✓ schemaVersion not a semantic version 0ms
+   ✓ schemaVersion with a trailing newline 1ms
+   ✓ schemaVersion not a string 0ms
+   ✓ schemaVersion of an unsupported major 0ms
+   ✓ device.id missing 0ms
+   ✓ device not an object 0ms
+   ✓ landingSection missing 0ms
+   ✓ landingSection matching no section 0ms
+   ✓ defaultPollIntervalMs missing 0ms
+   ✓ defaultPollIntervalMs zero 0ms
+   ✓ defaultPollIntervalMs negative 0ms
+   ✓ defaultPollIntervalMs a string 0ms
+   ✓ defaultPollIntervalMs a boolean 0ms
+   ✓ sections missing 0ms
+   ✓ sections empty 0ms
+   ✓ a section that is not an object 0ms
+   ✓ section key missing 0ms
+   ✓ section label missing 0ms
+   ✓ section rest missing 0ms
+   ✓ section rest.get missing 0ms
+   ✓ pollGroup missing 0ms
+   ✓ pollGroup misspelled 0ms
+   ✓ section pollIntervalMs zero 0ms
+   ✓ section pollIntervalMs a string 0ms
+   ✓ section pollIntervalMs null 0ms
+   ✓ groups not an array 0ms
+   ✓ group key missing 1ms
+   ✓ group label missing 0ms
+   ✓ errcount modules not an array 0ms
+   ✓ errcount codes not an object 0ms
+   ✓ errcount codes without a W table 0ms
+   ✓ errcount codes with a non-string descri… 0ms
+   ✓ fields not an array 0ms
+   ✓ path not an array 0ms
+   ✓ path empty 0ms
+   ✓ path with an empty step 0ms
+   ✓ path with a non-string step 0ms
+   ✓ path null 0ms
+   ✓ path on a writable field 0ms
+   ✓ decimals -1 0ms
+   ✓ decimals 1.5 0ms
+   ✓ decimals a string 0ms
+   ✓ decimals 101 0ms
+   ✓ decimals null 2ms
+   ✓ decimals a boolean 0ms
+   ✓ format unknown 0ms
+   ✓ format on a writable field 0ms
+   ✓ field codes not an object 0ms
+   ✓ field codes with a non-string descripti… 0ms
+   ✓ byteLength not a boolean 0ms
+   ✓ byteLength on a number field 0ms
+   ✓ shape unknown 0ms
+   ✓ shape on a number field 0ms
+   ✓ defaultPollIntervalMs at setTimeout's c… 0ms
+   × defaultPollIntervalMs above setTimeout'… 197ms
+   ✓ section pollIntervalMs at setTimeout's … 0ms
+   × section pollIntervalMs above setTimeout… 80ms
+   ✓ defaultDecimals at 2 1ms
+   ✓ defaultDecimals at the toFixed ceiling 0ms
+   × defaultDecimals 1.5 91ms
+   × defaultDecimals -1 96ms
+   × defaultDecimals 101 89ms
+   × defaultDecimals a string 91ms
+   × duplicate section keys 131ms
+   × a group that is null 87ms
+   ✓ a group that is a string 0ms
+   × duplicate group keys 70ms
+   × errcount module missing its label 85ms
+   × errcount module that is not an object 107ms
+   ✓ a submit group under a section with res… 0ms
+   × a submit group under a section without … 77ms
+   × a field that is null 80ms
+   × a field that is a number 85ms
+   × field key missing 93ms
+   × field label missing 73ms
+   × field kind missing 89ms
+   × field kind unknown 79ms
+   × duplicate field keys 88ms
+   ✓ a composite field with sub-fields 0ms
+   × composite subFields not an array 80ms
+   × composite subFields missing 81ms
+   × composite with a sub-field missing its … 88ms
+   × specialValues not an array 78ms
+   × a special value without a meaning 89ms
+   ✓ a clearable string 0ms
+   × clearable not a boolean 92ms
+   × clearable on a number field 70ms
+   ✓ a readonly field reading its value from… 0ms
+   ✓ a number field reading its value from a… 0ms
+   × statusPath empty 79ms
+   × statusPath with an empty step 87ms
+   × statusPath not an array 86ms
+   × statusPath on a toggle field 86ms
+   ✓ a readonly field with codes and codeTon… 1ms
+   × codeTones key outside codes 76ms
+   × codeTones without codes 83ms
+   × codeTones with an unknown tone 84ms
+   × codeTones not an object 85ms
+   ✓ a number field ignored while its siblin… 0ms
+   × ignoredWhenSet naming no sibling 78ms
+   × ignoredWhenSet naming the field itself 90ms
+   × ignoredWhenSet not a string 112ms
+   ✓ a number field with a resolution 0ms
+   × resolution 0 89ms
+   × resolution -1 78ms
+   × resolution a string 71ms
+   × resolution on a string field 82ms
+   ✓ an always-executed field 0ms
+   ✓ alwaysExecuted not a boolean 0ms
+   ✓ an enum field asking for confirmation 0ms
+   ✓ a toggle field asking for confirmation 0ms
+   × confirm not a boolean 86ms
+   × confirm on a number field 76ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 43 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > defaultPollIntervalMs above setTimeout'…
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > section pollIntervalMs above setTimeout…
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > defaultDecimals 1.5
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > defaultDecimals -1
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > defaultDecimals 101
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > defaultDecimals a string
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > duplicate section keys
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > duplicate group keys
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > errcount module missing its label
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > errcount module that is not an object
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > a submit group under a section without …
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > a field that is null
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > a field that is a number
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > field key missing
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > field label missing
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > field kind missing
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > field kind unknown
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > duplicate field keys
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > composite subFields not an array
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > composite subFields missing
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > composite with a sub-field missing its …
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > specialValues not an array
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > a special value without a meaning
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > clearable not a boolean
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > clearable on a number field
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > statusPath empty
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > statusPath with an empty step
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > statusPath not an array
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > statusPath on a toggle field
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > codeTones key outside codes
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > codeTones without codes
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > codeTones with an unknown tone
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > codeTones not an object
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > ignoredWhenSet naming no sibling
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > ignoredWhenSet naming the field itself
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > ignoredWhenSet not a string
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > resolution 0
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > resolution -1
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > resolution a string
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > resolution on a string field
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > confirm not a boolean
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > confirm on a number field
+AssertionError: expected true to be false // Object.is equality
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/defaultPollIntervalMs-above-setTimeout--.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/section-pollIntervalMs-above-setTimeout-.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/defaultDecimals-1-5.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/defaultDecimals--1.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/defaultDecimals-101.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/defaultDecimals-a-string.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/duplicate-section-keys.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/duplicate-group-keys.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/errcount-module-missing-its-label.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/errcount-module-that-is-not-an-object.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/a-submit-group-under-a-section-without--.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/a-field-that-is-null.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/a-field-that-is-a-number.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/field-key-missing.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/field-label-missing.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/field-kind-missing.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/field-kind-unknown.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/duplicate-field-keys.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/composite-subFields-not-an-array.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/composite-subFields-missing.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/composite-with-a-sub-field-missing-its--.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/specialValues-not-an-array.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/a-special-value-without-a-meaning.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/clearable-not-a-boolean.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/clearable-on-a-number-field.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/statusPath-empty.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/statusPath-with-an-empty-step.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/statusPath-not-an-array.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/statusPath-on-a-toggle-field.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/codeTones-key-outside-codes.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/codeTones-without-codes.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/codeTones-with-an-unknown-tone.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/codeTones-not-an-object.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/ignoredWhenSet-naming-no-sibling.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/ignoredWhenSet-naming-the-field-itself.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/ignoredWhenSet-not-a-string.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/resolution-0.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/resolution--1.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/resolution-a-string.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/resolution-on-a-string-field.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/confirm-not-a-boolean.png
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/confirm-on-a-number-field.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+ ❯ tests_js/definitions-shape-corpus.test.js:8:59
+      6|
+      7| it.each(cases)("$name", ({ definitions, valid }) => {
+      8|     expect(validateDefinitions(definitions).length === 0).toBe(valid);
+       |                                                           ^
+      9| });
+     10|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5294:63
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5648:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/43]⎯
+
+ FAIL  |chromium| tests_js/definitions-shape-corpus.test.js > a group that is null
+TypeError: Cannot read properties of null (reading 'key')
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/definitions-shape-corpus.test.js/a-group-that-is-null.png
+
+ ❯ validateDefinitions js/definitions.js:196:26
+    194|             const gWhere = `${where}.groups[${gIndex}]`;
+    195|             const g = /** @type {Record<string, unknown>} */ (group);
+    196|             if (typeof g.key !== "string" || typeof g.label !== "strin…
+       |                          ^
+    197|                 problems.push(`${gWhere} is missing key/label`);
+    198|             }
+ ❯ tests_js/definitions-shape-corpus.test.js:8:12
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5294:63
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=d1fc22bb:5684:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/43]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  43 failed | 90 passed (133)
+   Start at  06:30:50
+   Duration  6.18s (tests 82%, worker 16%, import 2%)
+
+== Summary: npm test ==
+Commit: 8fff76f (uncommitted changes)
+Levels: L0
+Counts (tests): passed 90 · failed 43 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/definitions-shape-corpus.test.js > defaultPollIntervalMs above setTimeout'…: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > section pollIntervalMs above setTimeout…: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > defaultDecimals 1.5: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > defaultDecimals -1: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > defaultDecimals 101: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > defaultDecimals a string: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > duplicate section keys: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > a group that is null: Cannot read properties of null (reading 'key')
+  - tests_js/definitions-shape-corpus.test.js > duplicate group keys: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > errcount module missing its label: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > errcount module that is not an object: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > a submit group under a section without …: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > a field that is null: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > a field that is a number: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > field key missing: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > field label missing: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > field kind missing: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > field kind unknown: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > duplicate field keys: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > composite subFields not an array: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > composite subFields missing: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > composite with a sub-field missing its …: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > specialValues not an array: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > a special value without a meaning: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > clearable not a boolean: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > clearable on a number field: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > statusPath empty: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > statusPath with an empty step: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > statusPath not an array: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > statusPath on a toggle field: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > codeTones key outside codes: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > codeTones without codes: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > codeTones with an unknown tone: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > codeTones not an object: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > ignoredWhenSet naming no sibling: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > ignoredWhenSet naming the field itself: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > ignoredWhenSet not a string: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > resolution 0: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > resolution -1: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > resolution a string: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > resolution on a string field: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > confirm not a boolean: expected true to be false // Object.is equality
+  - tests_js/definitions-shape-corpus.test.js > confirm on a number field: expected true to be false // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

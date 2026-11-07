@@ -1,0 +1,16 @@
+after run_generic_integration std exit=0 wall=1.8s
+after run_generic_integration thr exit=0 wall=1.7s
+after run_generic_integration cov exit=0 wall=1.6s
+after real_website_integration std exit=0 wall=12.5s
+after real_website_integration thr exit=0 wall=16.1s
+after real_website_integration cov exit=0 wall=18.3s
+after uart_link std exit=0 wall=96.6s
+after uart_link thr exit=0 wall=164.9s
+after uart_link cov exit=0 wall=318.6s
+after sensortask_integration std exit=0 wall=67.6s
+after sensortask_integration thr exit=0 wall=75.4s
+after sensortask_integration cov exit=0 wall=105.5s
+after bus_hazard_concurrency std exit=0 wall=163.9s
+after bus_hazard_concurrency thr exit=0 wall=166.1s
+after bus_hazard_concurrency cov exit=0 wall=177.5s
+DONE

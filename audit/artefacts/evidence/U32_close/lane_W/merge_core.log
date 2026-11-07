@@ -1,0 +1,11 @@
+Merge made by the 'ort' strategy.
+ buildgen/codegen.py                        |  20 +++++-
+ buildgen/definitions.py                    |   4 ++
+ src/asy_system_service.py                  |  29 ++++++--
+ tests/_boot_contiguity_probe.py            |   7 +-
+ tests/test_asy_system_service.py           | 107 ++++++++++++++++++++++++-----
+ tests/test_ntp_fram_system_integration.py  |   8 +--
+ tests_scripts/definitions_shape_cases.json |   1 +
+ tests_scripts/test_buildgen_definitions.py |  12 +++-
+ tests_scripts/test_buildgen_generate.py    |  32 +++++++--
+ 9 files changed, 181 insertions(+), 39 deletions(-)

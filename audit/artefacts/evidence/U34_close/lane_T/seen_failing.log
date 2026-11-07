@@ -1,0 +1,38 @@
+......F.F..                                                              [100%]
+=================================== FAILURES ===================================
+___________ test_no_pass_exempts_an_unlisted_module[pyproject.toml] ____________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u34t')
+config = 'pyproject.toml'
+
+    @pytest.mark.parametrize("config", ["pyproject.toml", *_INI_PASSES])
+    def test_no_pass_exempts_an_unlisted_module(repo_root: Path, config: str) -> None:
+        _, _, exempt = _passes(repo_root)[config]
+        unlisted = _unlisted(config, exempt)
+>       assert not unlisted, f"{config} exempts {unlisted} from {_FLAG}, which its residual list does not name - clear the module's explicit Any instead"
+E       AssertionError: pyproject.toml exempts ['allocation_need_per_source', 'uart_crossover_exchange', 'uart_crossover_recovery', 'uart_driver_read_never_blocks_the_loop'] from disallow_any_explicit, which its residual list does not name - clear the module's explicit Any instead
+E       assert not ['allocation_need_per_source', 'uart_crossover_exchange', 'uart_crossover_recovery', 'uart_driver_read_never_blocks_the_loop']
+
+tests_scripts/test_mypy_any_baseline.py:93: AssertionError
+_________ test_no_pass_exempts_an_unlisted_module[host_typecheck.ini] __________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u34t')
+config = 'host_typecheck.ini'
+
+    @pytest.mark.parametrize("config", ["pyproject.toml", *_INI_PASSES])
+    def test_no_pass_exempts_an_unlisted_module(repo_root: Path, config: str) -> None:
+        _, _, exempt = _passes(repo_root)[config]
+        unlisted = _unlisted(config, exempt)
+>       assert not unlisted, f"{config} exempts {unlisted} from {_FLAG}, which its residual list does not name - clear the module's explicit Any instead"
+E       AssertionError: host_typecheck.ini exempts ['http_client'] from disallow_any_explicit, which its residual list does not name - clear the module's explicit Any instead
+E       assert not ['http_client']
+
+tests_scripts/test_mypy_any_baseline.py:93: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_mypy_any_baseline.py::test_no_pass_exempts_an_unlisted_module[pyproject.toml]
+FAILED tests_scripts/test_mypy_any_baseline.py::test_no_pass_exempts_an_unlisted_module[host_typecheck.ini]
+2 failed, 9 passed in 0.14s
+
+real	0m0.631s
+user	0m0.317s
+sys	0m0.045s

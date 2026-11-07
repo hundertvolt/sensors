@@ -1,0 +1,6 @@
+E       TypeError: main() takes 0 positional arguments but 1 was given
+E       TypeError: main() takes 0 positional arguments but 1 was given
+E           TypeError: main() takes 0 positional arguments but 1 was given
+E           TypeError: main() takes 0 positional arguments but 1 was given
+E           TypeError: main() takes 0 positional arguments but 1 was given
+5 failed, 9 deselected in 0.17s

@@ -1,0 +1,36 @@
+FAIL test_a_real_poll_consults_the_fake_and_is_counted
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 129, in test_a_real_poll_consults_the_fake_and_is_counted
+AssertionError: 
+rc=0 -- test_a_real_poll_consults_the_fake_and_is_counted
+FAIL test_an_unknown_ioctl_request_answers_einval
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 141, in test_an_unknown_ioctl_request_answers_einval
+AssertionError: 
+rc=0 -- test_an_unknown_ioctl_request_answers_einval
+FAIL test_ioctl_answers_einval_to_get_fileno
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 40, in test_ioctl_answers_einval_to_get_fileno
+AssertionError: 
+rc=0 -- test_ioctl_answers_einval_to_get_fileno
+FAIL test_poll_mask_reports_what_the_link_delivered
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 45, in test_poll_mask_reports_what_the_link_delivered
+AttributeError: 'UART' object has no attribute 'poll_mask'
+rc=0 -- test_poll_mask_reports_what_the_link_delivered
+FAIL test_spi_bit_order_numbers_are_rp2s
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 301, in test_spi_bit_order_numbers_are_rp2s
+AssertionError: 
+rc=0 -- test_spi_bit_order_numbers_are_rp2s
+FAIL test_the_fault_injector_counts_its_pending_entries
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneF/tools/run_one.py", line 9, in <module>
+  File "<string>", line 308, in test_the_fault_injector_counts_its_pending_entries
+AttributeError: 'FaultInjector' object has no attribute 'pending'
+rc=0 -- test_the_fault_injector_counts_its_pending_entries

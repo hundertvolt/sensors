@@ -1,0 +1,19 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+.........F....                                                           [100%]
+=================================== FAILURES ===================================
+______ test_write_protection_actually_gates_a_real_write_and_a_real_read _______
+
+board = <twin_board.TwinBoard object at 0x7f005358fa90>
+
+    def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: "Board") -> None:
+        facts = _run(board, "fram_write_protect_roundtrip.py", _SHORT_SCRIPT_TIMEOUT_S)
+>       assert facts.get("failure") is None, f"write protection: {facts.get('failure')}; facts {facts}"
+E       AssertionError: write protection: data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d; facts {'setup': True, 'allocated': True, 'blocked_write': True, 'blocked_read': True, 'data_survived': False, 'left_protected': False, 'cleared_last': True, 'failure': 'data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d'}
+E       assert 'data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d' is None
+E        +  where 'data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read 02070c11161b20252a2f34393e43484d' = <built-in method get of dict object at 0x7f005246d4c0>('failure')
+E        +    where <built-in method get of dict object at 0x7f005246d4c0> = {'setup': True, 'allocated': True, 'blocked_write': True, 'blocked_read': True, ...}.get
+
+tests_hardware/flash/test_fram_storage.py:148: AssertionError
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_fram_storage.py::test_write_protection_actually_gates_a_real_write_and_a_real_read
+1 failed, 13 passed in 84.16s (0:01:24)

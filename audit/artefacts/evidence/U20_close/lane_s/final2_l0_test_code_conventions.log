@@ -1,0 +1,16 @@
+.........F.............                                                  [100%]
+=================================== FAILURES ===================================
+____________ test_the_generated_narrowing_exemption_is_still_needed ____________
+
+modules = [Module(path='src/asy_api_response.py', tree=<ast.Module object at 0x7f2537253fd0>), Module(path='src/asy_base_classes...dule object at 0x7f2536f37fd0>), Module(path='src/asy_crc_checks.py', tree=<ast.Module object at 0x7f2536dfe830>), ...]
+
+    def test_the_generated_narrowing_exemption_is_still_needed(modules: list[Module]) -> None:
+        exempted = [m.path for m in modules if m.generated for n in ast.walk(m.tree) if isinstance(n, ast.Assert) and _is_generated_narrowing(n)]
+>       assert exempted, "no generated narrowing assert is left - delete the exemption in no_assert()"
+E       AssertionError: no generated narrowing assert is left - delete the exemption in no_assert()
+E       assert []
+
+tests_scripts/test_code_conventions.py:355: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_code_conventions.py::test_the_generated_narrowing_exemption_is_still_needed
+1 failed, 22 passed in 4.18s

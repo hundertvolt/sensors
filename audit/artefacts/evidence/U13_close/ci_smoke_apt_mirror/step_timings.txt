@@ -1,0 +1,39 @@
+== run 37595858830 job 112709659085
+1 Set up job 2026-10-07T08:49:01Z 2026-10-07T08:49:02Z success
+2 Run actions/checkout@v7 2026-10-07T08:49:02Z 2026-10-07T08:49:06Z success
+3 Run actions/setup-node@v7 2026-10-07T08:49:06Z 2026-10-07T08:49:09Z success
+4 Install dependencies 2026-10-07T08:49:09Z 2026-10-07T08:49:13Z success
+5 Cache Playwright Chromium 2026-10-07T08:49:13Z 2026-10-07T08:49:18Z success
+6 Install Playwright Chromium 2026-10-07T08:49:18Z 2026-10-07T08:49:18Z skipped
+7 Install Playwright OS dependencies (cache hit) 2026-10-07T08:49:18Z 2026-10-07T08:49:31Z success
+8 Set up MicroPython toolchain (install uv, restore cache) 2026-10-07T08:49:31Z 2026-10-07T08:49:41Z success
+9 Build MicroPython Unix port (if not cached) and every device's website 2026-10-07T08:49:41Z 2026-10-07T08:49:48Z success
+10 Cache Firefox + geckodriver (conda-forge) 2026-10-07T08:49:48Z 2026-10-07T08:49:52Z success
+11 Install WebKit, Edge, and Firefox+geckodriver 2026-10-07T08:49:52Z 2026-10-07T08:50:01Z success
+12 Run cross-browser smoke check 2026-10-07T08:50:01Z 2026-10-07T08:54:21Z success
+20 Post Cache Firefox + geckodriver (conda-forge) 2026-10-07T08:54:21Z 2026-10-07T08:54:21Z success
+21 Post Set up MicroPython toolchain (install uv, restore cache) 2026-10-07T08:54:21Z 2026-10-07T08:54:22Z success
+22 Post Cache Playwright Chromium 2026-10-07T08:54:22Z 2026-10-07T08:54:22Z success
+23 Post Run actions/setup-node@v7 2026-10-07T08:54:22Z 2026-10-07T08:54:22Z success
+24 Post Run actions/checkout@v7 2026-10-07T08:54:22Z 2026-10-07T08:54:23Z success
+25 Complete job 2026-10-07T08:54:23Z 2026-10-07T08:54:23Z success
+== run 37638089345 job 112851391345
+1 Set up job 2026-10-07T14:40:12Z 2026-10-07T14:40:13Z success
+2 Run actions/checkout@v7 2026-10-07T14:40:13Z 2026-10-07T14:40:17Z success
+3 Run actions/setup-node@v7 2026-10-07T14:40:17Z 2026-10-07T14:40:21Z success
+4 Install dependencies 2026-10-07T14:40:21Z 2026-10-07T14:40:25Z success
+5 Cache Playwright Chromium 2026-10-07T14:40:25Z 2026-10-07T14:40:29Z success
+6 Install Playwright Chromium 2026-10-07T14:40:29Z 2026-10-07T14:40:29Z skipped
+7 Install Playwright OS dependencies (cache hit) 2026-10-07T14:40:29Z 2026-10-07T14:45:24Z success
+8 Set up MicroPython toolchain (install uv, restore cache) 2026-10-07T14:45:24Z 2026-10-07T14:45:35Z success
+9 Build MicroPython Unix port (if not cached) and every device's website 2026-10-07T14:45:35Z 2026-10-07T14:45:41Z success
+10 Cache Firefox + geckodriver (conda-forge) 2026-10-07T14:45:41Z 2026-10-07T14:45:45Z success
+11 Install WebKit, Edge, and Firefox+geckodriver 2026-10-07T14:45:45Z 2026-10-07T15:04:01Z success
+12 Run cross-browser smoke check 2026-10-07T15:04:01Z 2026-10-07T15:05:26Z cancelled
+20 Post Cache Firefox + geckodriver (conda-forge) 2026-10-07T15:05:26Z 2026-10-07T15:05:26Z skipped
+21 Post Set up MicroPython toolchain (install uv, restore cache) 2026-10-07T15:05:26Z 2026-10-07T15:05:26Z success
+22 Post Cache Playwright Chromium 2026-10-07T15:05:26Z 2026-10-07T15:05:26Z skipped
+23 Post Run actions/setup-node@v7 2026-10-07T15:05:26Z 2026-10-07T15:05:26Z skipped
+24 Post Run actions/checkout@v7 2026-10-07T15:05:26Z 2026-10-07T15:05:26Z success
+25 Complete job 2026-10-07T15:05:26Z 2026-10-07T15:05:26Z success
+== run 37643676687 job 112884683311

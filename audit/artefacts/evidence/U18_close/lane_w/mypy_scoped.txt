@@ -1,0 +1,10 @@
+src/asy_wifi_service.py:18:1: error: Module "asy_dns_client" has no attribute
+"host_label_ok"  [attr-defined]
+    from asy_dns_client import host_label_ok
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/asy_wifi_service.py: note: In function "_radio_value_ok":
+src/asy_wifi_service.py:117:9: error: Returning Any from function declared to
+return "bool"  [no-any-return]
+            return host_label_ok(value)
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 2 errors in 1 file (checked 167 source files)

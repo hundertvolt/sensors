@@ -1,0 +1,14 @@
+# per-test wall_us at gc.threshold(32768), heapsize scaled; c=collect_us_each after the test (20 collects); variants: basecopy=<BASE> test file, k=basecopy+'_X = 1', tests=lane N file (src at acc007a+API)
+4M basecopy test_a_262_byte_ wall_us=299885 collect_us=17 | test_cobs_round_ wall_us=433942 collect_us=18 | 
+4M k test_a_262_byte_ wall_us=289728 collect_us=15 | test_cobs_round_ wall_us=599945 collect_us=19 | 
+4M tests test_a_262_byte_ wall_us=338008 collect_us=184 | test_cobs_round_ wall_us=629479 collect_us=177 | 
+16M basecopy test_a_262_byte_ wall_us=267307 collect_us=21 | test_cobs_round_ wall_us=442757 collect_us=20 | 
+16M k test_a_262_byte_ wall_us=451032 collect_us=19 | test_cobs_round_ wall_us=784435 collect_us=16 | 
+16M tests test_a_262_byte_ wall_us=490143 collect_us=548 | test_cobs_round_ wall_us=800569 collect_us=551 | 
+64M basecopy test_a_262_byte_ wall_us=293098 collect_us=49 | test_cobs_round_ wall_us=432826 collect_us=18 | 
+64M k test_a_262_byte_ wall_us=969961 collect_us=24 | test_cobs_round_ wall_us=2098917 collect_us=16 | 
+64M tests test_a_262_byte_ wall_us=1258768 collect_us=2386 | test_cobs_failed wall_us=101 collect_us=2109 | test_cobs_reject wall_us=69 collect_us=1588 | test_cobs_round_ wall_us=2016960 collect_us=1993 | 
+# gc disabled around each test (allocated bytes, wall)
+16M basecopy test_a_262_byte_ bytes=2166112 wall_us=260467 | test_cobs_round_ bytes=4302816 wall_us=391167 | 
+16M k test_a_262_byte_ bytes=2166112 wall_us=235695 | test_cobs_round_ bytes=4302816 wall_us=435469 | 
+16M tests test_a_262_byte_ bytes=2166144 wall_us=226699 | test_cobs_round_ bytes=4302816 wall_us=396833 | 

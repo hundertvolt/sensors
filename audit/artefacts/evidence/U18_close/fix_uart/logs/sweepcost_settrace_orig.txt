@@ -1,0 +1,10 @@
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 0 FAIL no recovery within two transactions after step 22 clean_awaits [24] last_k 22 3962 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 plant crc 0 0 / 1 passed 3962 ms
+test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [21] last_k 23 3567 ms
+SUMMARY test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 plant crc 0 1 / 1 passed 3567 ms
+test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [19] last_k 22 3037 ms
+SUMMARY test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 plant crc 0 1 / 1 passed 3037 ms
+test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 rep 0 PASS clean_awaits [16] last_k 21 3947 ms
+SUMMARY test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16 plant crc 0 1 / 1 passed 3947 ms
+test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 rep 0 PASS clean_awaits [24] last_k 22 2872 ms
+SUMMARY test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16 plant crc 0 1 / 1 passed 2872 ms

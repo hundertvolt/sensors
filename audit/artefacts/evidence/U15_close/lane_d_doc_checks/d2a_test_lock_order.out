@@ -1,0 +1,141 @@
+F.FFFFFFFF                                                               [100%]
+=================================== FAILURES ===================================
+_________________ test_every_lock_is_tabled_and_taken_in_order _________________
+
+    def test_every_lock_is_tabled_and_taken_in_order() -> None:
+>       assert all_findings(SRC, _spec()) == []
+E       assert ["asy_isl2912...s lock table"] == []
+E         
+E         Left contains 3 more items, first extra item: "asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table"
+E         Use -v to get more diff
+
+tests_scripts/test_lock_order.py:298: AssertionError
+______________ test_a_lower_level_taken_before_a_higher_one_fails ______________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5535/test_a_lower_level_taken_befor0/src')
+
+    def test_a_lower_level_taken_before_a_higher_one_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_bmp3xx_driver.py", "\n\nasync def _planted(dev):\n    async with dev.i2c_device as i2c, dev._i2c_bmp3xx as s:\n        pass\n")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "asy_bmp3xx_driver.py _planted():" in findings[0], findings
+E       AssertionError: ["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", 'asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"]
+E       assert (4 == 1)
+E        +  where 4 = len(["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", 'asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"])
+
+tests_scripts/test_lock_order.py:315: AssertionError
+____________________ test_an_untabled_lock_attribute_fails _____________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5535/test_an_untabled_lock_attribut0/src')
+
+    def test_an_untabled_lock_attribute_fails(src_copy: Path) -> None:
+        path = src_copy / "asy_neopixel_driver.py"
+        text = path.read_text(encoding="utf-8")
+        anchor = "        self._overlay_lock = asyncio.Lock()"
+        assert anchor in text
+        path.write_text(text.replace(anchor, "        self._extra_lock = asyncio.Lock()\n" + anchor), encoding="utf-8")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "NeopixelDriver._extra_lock: an asyncio.Lock() with no row" in findings[0], findings
+E       AssertionError: ["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", "asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"]
+E       assert (4 == 1)
+E        +  where 4 = len(["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", "asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"])
+
+tests_scripts/test_lock_order.py:326: AssertionError
+_________________ test_an_acquisition_inside_a_leaf_lock_fails _________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5535/test_an_acquisition_inside_a_l0/src')
+
+    def test_an_acquisition_inside_a_leaf_lock_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_base_classes.py", "\n\nasync def _planted(r):\n    async with r._data_lock:\n        async with r._overlay_lock:\n            pass\n")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "_planted():" in findings[0] and "taken inside the leaf lock SensorReader._data_lock" in findings[0], findings
+E       AssertionError: ["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", 'asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"]
+E       assert (4 == 1)
+E        +  where 4 = len(["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", 'asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"])
+
+tests_scripts/test_lock_order.py:332: AssertionError
+_______________ test_an_unlevelled_row_nested_with_another_fails _______________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5535/test_an_unlevelled_row_nested_0/src')
+
+    def test_an_unlevelled_row_nested_with_another_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_wifi_service.py", "\n\nasync def _planted(w, s):\n    async with w.wifi_mode_lock:\n        async with s._connect_lock:\n            pass\n")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "UDPSocket._connect_lock nested with WifiService.wifi_mode_lock" in findings[0], findings
+E       AssertionError: ["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", "asy...t._connect_lock nested with WifiService.wifi_mode_lock, and a row without a level is never nested inside one function']
+E       assert (4 == 1)
+E        +  where 4 = len(["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", "asy...t._connect_lock nested with WifiService.wifi_mode_lock, and a row without a level is never nested inside one function'])
+
+tests_scripts/test_lock_order.py:338: AssertionError
+_________________ test_an_acquire_call_holds_until_its_release _________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5535/test_an_acquire_call_holds_unt0/src')
+
+    def test_an_acquire_call_holds_until_its_release(src_copy: Path) -> None:
+        planted = "\n\nasync def _planted(f):\n    await f._bus_lock.acquire()\n    f._bus_lock.release()\n    await f.session_lock.acquire()\n    async with f._bus_lock:\n        await f._op_lock.acquire()\n"
+        _append(src_copy, "asy_fram_driver.py", planted)
+        findings = all_findings(src_copy, _spec())
+        # The released bus lock is not held at the session acquire; both locks held at the _op_lock acquire are.
+>       assert sorted(f.split(": ", 1)[1] for f in findings) == [
+            "_FRAMBaseChunk._op_lock level 3 taken while holding level 1 (FRAM_SPI._bus_lock): a higher level comes first",
+            "_FRAMBaseChunk._op_lock level 3 taken while holding level 2 (Lockable.session_lock): a higher level comes first",
+        ], findings
+E       AssertionError: ["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", 'asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"]
+E       assert ['_FRAMBaseCh...s lock table"] == ['_FRAMBaseCh... comes first']
+E         
+E         Left contains 3 more items, first extra item: "`self._threshold_lock` resolves to no row of C.8's lock table"
+E         Use -v to get more diff
+
+tests_scripts/test_lock_order.py:346: AssertionError
+_______________ test_an_acquisition_the_table_cannot_name_fails ________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5535/test_an_acquisition_the_table_0/src')
+
+    def test_an_acquisition_the_table_cannot_name_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_udp_socket.py", "\n\nasync def _planted(x):\n    async with x.mystery:\n        pass\n")
+        findings = all_findings(src_copy, _spec())
+>       assert findings == [findings[0]] and "`x.mystery` resolves to no row" in findings[0], findings
+E       AssertionError: ["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", "asy...to no row of C.8's lock table", "asy_udp_socket.py _planted():218: `x.mystery` resolves to no row of C.8's lock table"]
+E       assert (["asy_isl2912...s lock table"] == ["asy_isl2912...s lock table"]
+E         
+E         Left contains 3 more items, first extra item: "asy_isl29125_driver.py ISL29125_Reader._switch_range():903: `self._threshold_lock` resolves to no row of C.8's lock table"
+E         Use -v to get more diff)
+
+tests_scripts/test_lock_order.py:355: AssertionError
+__________________ test_a_lock_outside_a_self_attribute_fails __________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-5535/test_a_lock_outside_a_self_att0/src')
+
+    def test_a_lock_outside_a_self_attribute_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_udp_socket.py", "\n\n_SHARED = asyncio.Lock()\n")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "asy_udp_socket.py:" in findings[0] and "not held in a self attribute" in findings[0], findings
+E       AssertionError: ["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", 'asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"]
+E       assert (4 == 1)
+E        +  where 4 = len(["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", 'asy...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"])
+
+tests_scripts/test_lock_order.py:361: AssertionError
+____________________________ test_a_stale_row_fails ____________________________
+
+    def test_a_stale_row_fails() -> None:
+        spec = _spec().replace(_END, "| `UDPSocket._gone_lock` | \u2014 | nothing | nothing |\n" + _END)
+        findings = all_findings(SRC, spec)
+>       assert findings == ["C.8 lock table: UDPSocket._gone_lock is assigned nowhere in src/ (stale row)"], findings
+E       AssertionError: ["asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table", 'C.8...9125_driver.py ISL29125_Reader._write_thresholds():933: `self._threshold_lock` resolves to no row of C.8's lock table"]
+E       assert ["asy_isl2912...s lock table"] == ['C.8 lock ta... (stale row)']
+E         
+E         At index 0 diff: "asy_isl29125_driver.py:275 ISL29125_Reader._threshold_lock: an asyncio.Lock() with no row in C.8's lock table" != 'C.8 lock table: UDPSocket._gone_lock is assigned nowhere in src/ (stale row)'
+E         Left contains 3 more items, first extra item: 'C.8 lock table: UDPSocket._gone_lock is assigned nowhere in src/ (stale row)'
+E         Use -v to get more diff
+
+tests_scripts/test_lock_order.py:367: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_lock_order.py::test_every_lock_is_tabled_and_taken_in_order
+FAILED tests_scripts/test_lock_order.py::test_a_lower_level_taken_before_a_higher_one_fails
+FAILED tests_scripts/test_lock_order.py::test_an_untabled_lock_attribute_fails
+FAILED tests_scripts/test_lock_order.py::test_an_acquisition_inside_a_leaf_lock_fails
+FAILED tests_scripts/test_lock_order.py::test_an_unlevelled_row_nested_with_another_fails
+FAILED tests_scripts/test_lock_order.py::test_an_acquire_call_holds_until_its_release
+FAILED tests_scripts/test_lock_order.py::test_an_acquisition_the_table_cannot_name_fails
+FAILED tests_scripts/test_lock_order.py::test_a_lock_outside_a_self_attribute_fails
+FAILED tests_scripts/test_lock_order.py::test_a_stale_row_fails - AssertionEr...
+9 failed, 1 passed in 3.06s

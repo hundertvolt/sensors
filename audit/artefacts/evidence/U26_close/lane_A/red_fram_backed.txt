@@ -1,0 +1,12 @@
+E       KeyError: 'fram_backed_loggers'
+tests_scripts/test_buildgen_generate.py:415: KeyError
+E       KeyError: 'fram_backed_loggers'
+tests_scripts/test_buildgen_generate.py:415: KeyError
+E       KeyError: 'fram_backed_loggers'
+tests_scripts/test_buildgen_generate.py:415: KeyError
+E       KeyError: 'fram_backed_loggers'
+tests_scripts/test_buildgen_generate.py:415: KeyError
+E       KeyError: 'fram_backed_loggers'
+tests_scripts/test_buildgen_generate.py:415: KeyError
+E       KeyError: 'fram_backed_loggers'
+tests_scripts/test_buildgen_generate.py:415: KeyError

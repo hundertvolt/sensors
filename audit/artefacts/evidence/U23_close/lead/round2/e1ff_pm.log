@@ -1,0 +1,69 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L
+
+ ❯ |chromium| tests_js/poll-manager.test.js (22 tests | 1 failed) 592ms
+   ❯ pollManager (14)
+     ✓ serializes concurrent requests - one in flight at a time 67ms
+     ✓ parses the JSON body and reports ok/status 1ms
+     ✓ rejects with a clear message (and the original SyntaxError as cause) when the body isn't valid JSON 1ms
+     ✓ answers a non-ok response whose body is not JSON with its status and a null body 2ms
+     ✓ rejects with a clear message when the connection drops mid-stream, while reading the response body 2ms
+     ✓ still advances the queue after a torn-JSON failure - the next request isn't stuck behind it 2ms
+     ✓ still advances the queue when a request fails 1ms
+     ✓ times out and unblocks the queue when a request hangs forever 4ms
+     ✓ times out a response whose body never finishes, then runs the next queued request 1ms
+     ✓ succeeds when the body completes just before the timeout (guard) 2ms
+     ✓ aborts the underlying fetch's signal when a request times out 1ms
+     ✓ rejects a queued request whose signal aborts before its turn with AbortError, never fetching it 53ms
+     ✓ rejects an in-flight request with AbortError when its signal aborts, and the queue advances 52ms
+     × drops a queued request when its queue signal aborts, while one already in flight runs to its end 256ms
+   ✓ startPolling (8)
+     ✓ waits for one poll to resolve before scheduling the next 2ms
+     ✓ reports each failure through onError and keeps polling at the doubled interval 22ms
+     ✓ backs off 3000, 6000, 12000 ... capped at POLL_BACKOFF_MAX_MS while failing, and returns to 3000 after one success 49ms
+     ✓ ends the loop after the first success when stopAfterSuccess is set, releasing the visibility listener 18ms
+     ✓ schedules nothing after a stop() that lands while a poll is in flight (guard) 10ms
+     ✓ pauses while the page is hidden, ticks once on becoming visible, and releases its listener on stop 23ms
+     ✓ runs nothing while the page starts hidden, and ticks once it becomes visible 10ms
+     ✓ runs no tick for a visibility change that arrives after stop() (guard) 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/poll-manager.test.js > pollManager > drops a queued request when its queue signal aborts, while one already in flight runs to its end
+Error: expected the promise to reject, but it resolved
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/poll-manager.test.js/pollManager---drops-a-queued-request-when-its-queue-signal-aborts--while-one-already-in-flight-runs-to-its-end.png
+
+ ❯ rejectionOf tests_js/poll-manager.test.js:62:11
+     60|         return error;
+     61|     }
+     62|     throw new Error("expected the promise to reject, but it resolved");
+       |           ^
+     63| }
+     64|
+ ❯ tests_js/poll-manager.test.js:314:45
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 21 passed (22)
+   Start at  12:05:45
+   Duration  1.84s (tests 69%, worker 27%, import 4%)
+
+== Summary: npm test ==
+Commit: d4d4408 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 21 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/poll-manager.test.js > pollManager > drops a queued request when its queue signal aborts, while one already in flight runs to its end: expected the promise to reject, but it resolved
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

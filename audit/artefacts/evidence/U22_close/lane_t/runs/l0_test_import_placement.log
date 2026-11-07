@@ -1,0 +1,16 @@
+F......                                                                  [100%]
+=================================== FAILURES ===================================
+_______ test_no_function_level_or_dynamic_import_outside_the_named_lists _______
+
+    def test_no_function_level_or_dynamic_import_outside_the_named_lists() -> None:
+        unexpected = collect_sites() - Counter(_PENDING)
+        new = sorted(site for site in unexpected.elements() if not is_named(site))
+>       assert not new, "imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:\n" + "\n".join(f"  {s}" for s in new)
+E       AssertionError: imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:
+E           ('tests/test_digital_twin_network_neopixel.py', 'test_a_downed_access_point_fails_every_interface_object_until_switched_back', 'network')
+E       assert not [('tests/test_digital_twin_network_neopixel.py', 'test_a_downed_access_point_fails_every_interface_object_until_switched_back', 'network')]
+
+tests_scripts/test_import_placement.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists
+1 failed, 6 passed in 7.60s

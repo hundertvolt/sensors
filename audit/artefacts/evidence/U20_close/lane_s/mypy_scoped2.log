@@ -1,0 +1,90 @@
+tests/test_asy_system_service.py: note: In function "make_fram_manager":
+tests/test_asy_system_service.py:117:12: error: Incompatible types in
+assignment (expression has type "SPI | None", variable has type
+"type[FakeMB85RS64V]")  [assignment]
+        chip = manager.fram._spidev.spi._spi
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_system_service.py:119:5: error: Statement is unreachable 
+[unreachable]
+        return manager, chip
+        ^~~~~~~~~~~~~~~~~~~~
+tests/test_asy_system_service.py: note: In function "test_a_fram_write_in_flight_completes_both_blocks_and_a_later_one_is_refused":
+tests/test_asy_system_service.py:1801:17: error: "PrintLogHistory" has no
+attribute "fram"  [attr-defined]
+            chunk = rig.svc.pr.fram
+                    ^~~~~~~~~~~~~~~
+tests/test_asy_system_service.py: note: At top level:
+tests/test_asy_system_service.py:1817: error: Unused "type: ignore" comment 
+[unused-ignore]
+            chunk._write_chunk = gated  # type: ignore[method-assign]
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_system_service.py: note: In function "test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset":
+tests/test_asy_system_service.py:1984:28: error: Incompatible types in
+assignment (expression has type
+"def gated_err_s(*args: object, errno: int = ..., real: Callable[..., Coroutine[Any, Any, None]] = ..., release: Event = ..., reached: Event = ...) -> Coroutine[Any, Any, None]",
+variable has type
+"def err_s(self, *args: object, errno: int = ..., sep: str = ..., end: str = ...) -> Coroutine[Any, Any, None]")
+ [assignment]
+            rig.svc.pr.err_s = gated_err_s  # type: ignore[method-assign]
+                               ^~~~~~~~~~~
+tests/test_asy_system_service.py:1984:28: note: Error code "assignment" not covered by "type: ignore[method-assign]" comment
+tests/test_asy_system_service.py: note: In function "test_a_hang_in_any_step_is_never_fed":
+tests/test_asy_system_service.py:2127:34: error: Incompatible types in
+assignment (expression has type
+"def held(_task: Task[Any], _n: int) -> Coroutine[Any, Any, None]", variable has
+type
+"def _log_dead_task(self, task: Task[Any], n: int) -> Coroutine[Any, Any, None]")
+ [assignment]
+            rig.svc._log_dead_task = held  # type: ignore[method-assign]
+                                     ^~~~
+tests/test_asy_system_service.py:2127:34: note: Error code "assignment" not covered by "type: ignore[method-assign]" comment
+tests/test_asy_system_service.py:2169:46: error: Incompatible types in
+assignment (expression has type
+"def stuck_report(_status: int) -> Coroutine[Any, Any, bool]", variable has type
+"def report_set_values(self, status: int) -> Coroutine[Any, Any, bool]") 
+[assignment]
+            rig.manager.fram.report_set_values = stuck_report  # type: ign...
+                                                 ^~~~~~~~~~~~
+tests/test_asy_system_service.py:2169:46: note: Error code "assignment" not covered by "type: ignore[method-assign]" comment
+tests/test_asy_system_service.py: note: In function "test_a_raising_setup_propagates_and_nothing_after_it_runs":
+tests/test_asy_system_service.py:2995:61: error: Argument 1 to "run_setups" of
+"SystemService" has incompatible type
+"list[Callable[[], Coroutine[Any, Any, bool]]]"; expected
+"list[Callable[[], Awaitable[bool]]]"  [arg-type]
+            _with_recording_gc(svc, events, wdt, svc.run_setups(setups))
+                                                                ^~~~~~
+tests/test_asy_system_service.py:2995:61: note: "list" is invariant -- see https://mypy.readthedocs.io/en/stable/common_issues.html#variance
+tests/test_asy_system_service.py:2995:61: note: Consider using "Sequence" instead, which is covariant
+tests/test_asy_system_service.py: note: In function "_rest_rig":
+tests/test_asy_system_service.py:3112:28: error: List item 0 has incompatible
+type "SensorReaderConfig"; expected "_ModuleLike"  [list-item]
+        routes = RouteSources([module], {"system": [SettingsGroup(svc, ("D...
+                               ^~~~~~
+tests/test_asy_system_service.py:3112:28: note: "SensorReaderConfig" is missing following "_ModuleLike" protocol members:
+tests/test_asy_system_service.py:3112:28: note:     get_dict_cfg, get_dict_data
+tests/test_asy_system_service.py:3112:28: note: Following member(s) of "SensorReaderConfig" have conflicts:
+tests/test_asy_system_service.py:3112:28: note:     Expected:
+tests/test_asy_system_service.py:3112:28: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+tests/test_asy_system_service.py:3112:28: note:     Got:
+tests/test_asy_system_service.py:3112:28: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+tests/test_asy_system_service.py:3112:63: error: Argument 1 to "SettingsGroup"
+has incompatible type "SystemService"; expected "_ModuleLike"  [arg-type]
+    ...RouteSources([module], {"system": [SettingsGroup(svc, ("DebugLevel",))...
+                                                        ^~~
+tests/test_asy_system_service.py:3112:63: note: "SystemService" is missing following "_ModuleLike" protocol member:
+tests/test_asy_system_service.py:3112:63: note:     get_dict_data
+tests/test_asy_system_service.py:3112:63: note: Following member(s) of "SystemService" have conflicts:
+tests/test_asy_system_service.py:3112:63: note:     Expected:
+tests/test_asy_system_service.py:3112:63: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+tests/test_asy_system_service.py:3112:63: note:     Got:
+tests/test_asy_system_service.py:3112:63: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], _cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+tests/test_asy_system_service.py:3112:63: note:     Expected:
+tests/test_asy_system_service.py:3112:63: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, JsonValue]]]
+tests/test_asy_system_service.py:3112:63: note:     Got:
+tests/test_asy_system_service.py:3112:63: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, int | float | str | bool | None]]]
+tests/test_asy_system_service.py: note: In function "test_a_config_put_mid_write_when_a_command_starts_is_flushed_before_the_arm":
+tests/test_asy_system_service.py:3183:13: error: Statement is unreachable 
+[unreachable]
+                if purpose != "_RR_CONFIG_RESET":
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 11 errors in 1 file (checked 172 source files)

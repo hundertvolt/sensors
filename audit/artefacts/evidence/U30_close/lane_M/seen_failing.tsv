@@ -1,0 +1,2 @@
+test_asy_uart_driver@-1	6.31	1	0	156/162 passed, 6 failed, 0 skipped
+test_asy_uart_comm@-1	61.46	1	0	192/193 passed, 1 failed, 0 skipped

@@ -1,0 +1,30 @@
+# Pass 3 merge ledger — agent D (G7.md, G8.md), 2026-09-29
+
+- P002 | G7/R21 | applied | Req gains the board-side yield and bounded-failure rule; State gains the two `scd_loop()` sites, lines corrected to `:66-85` and `:36-45` at HEAD
+- P008 | G8/R01 | applied | both sites added to the variant-set/count list (OR78.a), checked at HEAD
+- P011 | G7/R19 | applied | State gains the 53-of-58 board-side verdict scripts (counted at HEAD: 58 scripts, 5 without PASS/FAIL); the G1/R03 part is not in this agent's files
+- P012 | G8/R34 | applied | State gains the fixed 42123/42153 CPython-side ports (`:292-293` checked)
+- P013 | G8/R35 | applied | Req widened to every runner and to coverage reports and per-file logs; State gains the U7/U27 sites (all checked at HEAD)
+- P016 | G8/R47 | applied | State gains `tests/network.py` (no pass names it) and the five-fixture `tests_scripts/conftest.py` (SPEC B.15 site is `:1474`)
+- P017 | G8/R62 | applied | State gains the zero-candidate ARG002/ARG004/ARG005 per-file rules (`ruff --isolated` shows no findings for each)
+- P019 | G8/R33 | applied | Req validates the two timeout variables too; State gains `scripts/test.sh:238, :314`
+- P051 | G7/R28 | applied | Req adds "no random per-request latency" to the no-jitter sentence (`js/mock-server.js:369-371` checked)
+- P052 | G7/R38 | applied | Req adds "an unknown PUT result word ranks worst" (`js/render.js:129, 157-160` checked: unknown maps to 4, after `Unchanged`)
+- P056 | G8/R35 | applied | State gains `_ensure_dir()` swallowing every `OSError` (`:319-325` checked)
+- P063 | G8/R62 | applied | State gains the `preview` script fix (`package.json:21` checked); no conflict with OR52.a (3), which covers the device's REST, not a dev-box file server
+- P078 | G8/R47 | applied | Req gains the owner's 2026-07-13 centralised-config rule with its named exceptions; Rank records that owner source
+- P079 | G7/R05 | applied | Rank: asyncio timers, catchable reset and wall clock marked owner answers (2026-08-12), the rest stays agent
+- P079 | G7/R06 | applied | Rank gains the inert WDT with a would-have-fired signal (owner, 2026-08-12)
+- P079 | G7/R08 | applied | Rank: instant bus timing and per-chip values marked owner answers (2026-08-12), the rest stays agent
+- P079 | G7/R09 | applied | Rank: the real connect phases and scriptable connect failures marked owner answers (2026-08-12), the rest stays agent
+- P079 | G7/R26 | applied | Rank: real HTTP/sockets/server and the address default marked owner answers (2026-08-13); the shared client contract stays agent
+- P090 | G8/R06 | applied | Rank: no-partial-output and error-path tests are owner (2026-09-09, `b2625e9`)
+- P091 | G8/R08 | applied | Rank becomes owner (`3622e50`); State gains the SPEC L.5 :6332 tag (text checked at HEAD); "holds" becomes work
+- P099 | G7/R16 | applied | Sources gain the 2026-08-20 owner twin-coverage scope, marked overtaken
+- P125 | G7/R23 | applied | State gains both sleep sites; `_drained()` corrected to its definition at `:190` (`:783` is a call site)
+- P132 | G8/R61 | applied, corrected | there are six `import-not-found` ignores on `microdot` imports, not two; five sit in main-pass files (all listed), and `_webserver_concurrency_scenarios.py:37` follows whichever pass names it (G8/R47); `follow_imports = "silent"` is already global (`pyproject.toml:359`), so it needs no per-module entry
+- P133 | G8/R08 | applied | State gains the `build_model()` switch for `test_device_tomls.py` (header `:1-3` and `build_model()` at `buildgen/validate.py:730` checked)
+- P134 | G8/R14 | applied | `scripts/build_website.sh:27` added to the doc sites
+- P137 | G7/R04 | applied | State gains the BMP3xx probe reading the dev board's BMP384 block (`dev_legacy/README.md:45`) and the README text; fault-queue lines corrected to `:882-886`
+- P137 | G7/R03 | applied | the synthetic BMP3xx calibration and the generic fault queue added to the fidelity-table rows (the line's "(G7/R03)"; O.87's register names both blocks)
+- L17 | G7/R12 | applied | Req removal trigger replaced with the owner's known-limitation wording; Rank gains OR102.a (10); State gains the README doc work, lines corrected to `:917-919`

@@ -1,0 +1,112 @@
+FAIL test_a_failed_period_arm_is_persisted_and_retried_in_the_silent_mode
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2751, in test_a_failed_period_arm_is_persisted_and_retried_in_the_silent_mode
+  File "tests/test_asy_wifi_service.py", line 2742, in _failed_period_arm_case
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 2736, in scenario
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+FAIL test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2782, in test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+FAIL test_500_silent_periods_stay_silent_and_bounded
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2837, in test_500_silent_periods_stay_silent_and_bounded
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 2826, in scenario
+  File "tests/test_asy_wifi_service.py", line 277, in _fire_period
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+FAIL test_a_restart_in_the_silent_mode_keeps_it_dark_and_re_arms_the_period
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2851, in test_a_restart_in_the_silent_mode_keeps_it_dark_and_re_arms_the_period
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+PASS test_a_restart_in_the_window_end_streak_still_clears_the_hotspot_use
+FAIL test_a_dropped_silent_period_fire_is_recovered_by_the_next_period
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2913, in test_a_dropped_silent_period_fire_is_recovered_by_the_next_period
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 2901, in scenario
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+FAIL test_the_first_silent_attempt_waits_one_period_after_the_entry
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2925, in test_the_first_silent_attempt_waits_one_period_after_the_entry
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+FAIL test_the_wifi_service_never_scans
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2954, in test_the_wifi_service_never_scans
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 2947, in scenario
+  File "tests/test_asy_wifi_service.py", line 277, in _fire_period
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+FAIL test_the_silent_wait_holds_no_lock_and_yields
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2966, in test_the_silent_wait_holds_no_lock_and_yields
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+FAIL test_integration_a_unit_goes_silent_after_its_second_streak_and_rejoins_when_the_router_returns
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 4214, in test_integration_a_unit_goes_silent_after_its_second_streak_and_rejoins_when_the_router_returns
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 4194, in scenario
+AssertionError: the second streak must go silent
+FAIL test_integration_new_credentials_over_the_hotspot_reopen_it_once_more
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 4243, in test_integration_new_credentials_over_the_hotspot_reopen_it_once_more
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 4233, in scenario
+AssertionError: the hotspot must reopen
+FAIL test_integration_an_unfilled_stations_answer_never_holds_the_hotspot
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 4272, in test_integration_an_unfilled_stations_answer_never_holds_the_hotspot
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 4263, in scenario
+AssertionError: the unfilled answer must arm the window
+FAIL test_a_raising_stations_query_under_a_client_arms_the_window_until_the_next_good_check
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 3222, in test_a_raising_stations_query_under_a_client_arms_the_window_until_the_next_good_check
+AssertionError: 
+FAIL test_turning_the_wifi_led_on_while_silent_lights_nothing_until_the_link
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 1265, in test_turning_the_wifi_led_on_while_silent_lights_nothing_until_the_link
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 1257, in scenario
+  File "tests/test_asy_wifi_service.py", line 277, in _fire_period
+AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+PASS test_a_settings_change_cannot_reach_the_no_configuration_state
+selected: 15 failed: 13

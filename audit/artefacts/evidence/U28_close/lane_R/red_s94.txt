@@ -1,0 +1,2 @@
+u28/laneR/scratch/s94/test_mfta_noignore.py:34:18: error:
+Found 1 error in 1 file (checked 1 source file)

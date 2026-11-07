@@ -1,0 +1,188 @@
+tests/test_asy_udp_socket.py: note: In function "test_init_accepts_every_valid_mode_and_conn_tries_combination":
+tests/test_asy_udp_socket.py:127:20: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+                sock = UDPSocket(("127.0.0.1", 12345), mode=mode, conn_tri...
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:127:20: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py:129:20: error: "UDPSocket" has no attribute
+"_conn_tries"  [attr-defined]
+                assert sock._conn_tries == conn_tries
+                       ^~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py: note: At top level:
+tests/test_asy_udp_socket.py:185: error: Unused "type: ignore" comment 
+[unused-ignore]
+                UDPSocket(("127.0.0.1", 12345), mode="client", conn_tries=...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py: note: In function "test_init_rejects_non_int_conn_tries":
+tests/test_asy_udp_socket.py:185:13: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+                UDPSocket(("127.0.0.1", 12345), mode="client", conn_tries=...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:185:13: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:185:13: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_init_rejects_multiple_invalid_parameters_at_once":
+tests/test_asy_udp_socket.py:195:9: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            UDPSocket(("bad", "addr", "shape"), mode="bogus", conn_tries=N...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:195:9: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:195:9: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py:201:9: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            UDPSocket(12345, mode="client", conn_tries="nope")  # type: ig...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:201:9: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:201:9: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py:207:9: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            UDPSocket(None, mode=42, conn_tries=1.5)  # type: ignore[arg-t...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:207:9: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:207:9: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ready_survives_a_concurrent_disconnect_mid_poll_loop":
+tests/test_asy_udp_socket.py:857:26: error: Unexpected keyword argument
+"wait_time_ms" for "ready" of "UDPSocket"  [call-arg]
+                return await sock.ready(select.POLLIN, timeout_ms=_RECV_TI...
+                             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:857:26: note: "ready" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_conn_tries_retries_within_a_single_connect_call":
+tests/test_asy_udp_socket.py:881:21: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            contender = UDPSocket(bad_addr, mode="server", conn_tries=3)
+                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:881:21: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_connect_self_heals_after_conn_tries_exhausted":
+tests/test_asy_udp_socket.py:906:21: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            contender = UDPSocket(bad_addr, mode="server", conn_tries=1)
+                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:906:21: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ready_wait_time_ms_is_milliseconds_not_seconds":
+tests/test_asy_udp_socket.py:1018:28: error: Unexpected keyword argument
+"wait_time_ms" for "ready" of "UDPSocket"  [call-arg]
+                result = await sock.ready(select.POLLIN, timeout_ms=_MS_CH...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1018:28: note: "ready" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_async_context_manager_disconnects_on_exit":
+tests/test_asy_udp_socket.py:1105:20: error: "UDPSocket" has no attribute
+"__aenter__"  [attr-defined]
+            async with UDPSocket(addr, mode="server") as sock:
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1105:20: error: "UDPSocket" has no attribute
+"__aexit__"  [attr-defined]
+            async with UDPSocket(addr, mode="server") as sock:
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py: note: In function "test_async_context_manager_disconnects_even_on_exception":
+tests/test_asy_udp_socket.py:1125:24: error: "UDPSocket" has no attribute
+"__aenter__"  [attr-defined]
+                async with sock:
+                           ^~~~
+tests/test_asy_udp_socket.py:1125:24: error: "UDPSocket" has no attribute
+"__aexit__"  [attr-defined]
+                async with sock:
+                           ^~~~
+tests/test_asy_udp_socket.py: note: In function "test_ntp_client_pattern_end_to_end_success":
+tests/test_asy_udp_socket.py:1169:30: error: Missing named argument "tries" for
+"write_and_recvfrom" of "UDPSocket"  [call-arg]
+                msg, add = await cli.write_and_recvfrom(ntp_request, 1024,...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1169:30: note: "write_and_recvfrom" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ntp_client_pattern_no_server_reachable":
+tests/test_asy_udp_socket.py:1200:30: error: Missing named argument "tries" for
+"write_and_recvfrom" of "UDPSocket"  [call-arg]
+                msg, add = await cli.write_and_recvfrom(ntp_request, 1024,...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1200:30: note: "write_and_recvfrom" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected":
+tests/test_asy_udp_socket.py:1234:28: error: Missing named argument "tries" for
+"write_and_recvfrom" of "UDPSocket"  [call-arg]
+                msg, _ = await cli.write_and_recvfrom(ntp_request, 1024, t...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1234:28: note: "write_and_recvfrom" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: At top level:
+tests/test_asy_udp_socket.py:1361: error: Unused "type: ignore" comment 
+[unused-ignore]
+        sock._conn_tries = None  # type: ignore[assignment]
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py: note: In function "test_connect_self_heals_when_conn_tries_mutated_to_a_non_int":
+tests/test_asy_udp_socket.py:1361:5: error: "UDPSocket" has no attribute
+"_conn_tries"  [attr-defined]
+        sock._conn_tries = None  # type: ignore[assignment]
+        ^~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1361:5: note: Error code "attr-defined" not covered by "type: ignore[assignment]" comment
+tests/test_asy_udp_socket.py: note: In function "test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry":
+tests/test_asy_udp_socket.py:1435:16: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1435:16: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_none":
+tests/test_asy_udp_socket.py:1461:16: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1461:16: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_cancelling_a_task_that_holds_the_connect_lock_releases_it":
+tests/test_asy_udp_socket.py:1491:16: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            sock = UDPSocket(bad_addr, mode="server", conn_tries=5)
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1491:16: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy":
+tests/test_asy_udp_socket.py:1520:16: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1520:16: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: At top level:
+tests/test_asy_udp_socket.py:1670: error: Unused "type: ignore" comment 
+[unused-ignore]
+                return await sock.ready(select.POLLIN, timeout_ms=200, wai...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py: note: In function "test_ready_returns_false_sentinel_for_a_malformed_wait_time_ms":
+tests/test_asy_udp_socket.py:1670:26: error: Unexpected keyword argument
+"wait_time_ms" for "ready" of "UDPSocket"  [call-arg]
+                return await sock.ready(select.POLLIN, timeout_ms=200, wai...
+                             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1670:26: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:1670:26: note: "ready" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ready_cancellation_still_propagates_through_the_new_try_except":
+tests/test_asy_udp_socket.py:1704:40: error: Unexpected keyword argument
+"wait_time_ms" for "ready" of "UDPSocket"  [call-arg]
+                task = asyncio.create_task(sock.ready(select.POLLIN, timeo...
+                                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1704:40: note: "ready" defined in "asy_udp_socket"
+tests/test_asy_dns_client.py: note: In member "__init__" of class "_ResolvingAsyUDPSocket":
+tests/test_asy_dns_client.py:76:22: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            self._real = _RealAsyUDPSocket(_resolved(addr[0], addr[1]), mo...
+                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:76:22: note: "UDPSocket" defined in "asy_udp_socket"
+src/asy_ntp_client.py: note: In member "_fetch_ntp_reply" of class "NTPClient":
+src/asy_ntp_client.py:196:33: error: Missing named argument "tries" for
+"write_and_recvfrom" of "UDPSocket"  [call-arg]
+            msg, _addr_from = await cli.write_and_recvfrom(
+                                    ^~~~~~~~~~~~~~~~~~~~~~~
+src/asy_ntp_client.py:196:33: note: "write_and_recvfrom" defined in "asy_udp_socket"
+tests/test_ntp_wifi_dns_integration.py: note: In function "__enter__":
+tests/test_ntp_wifi_dns_integration.py:290:30: error: Unexpected keyword
+argument "conn_tries"  [call-arg]
+                    self._real = real_cls(resolved, mode=mode, conn_tries=...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_ntp_wifi_dns_integration.py:290:30: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_ntp_wifi_dns_integration.py:290:30: note: Called function defined in "asy_udp_socket"
+tests/test_asy_ntp_client.py: note: In function "__enter__":
+tests/test_asy_ntp_client.py:2147:30: error: Unexpected keyword argument
+"conn_tries"  [call-arg]
+                    self._real = real_cls(resolved, mode=mode, conn_tries=...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_ntp_client.py:2147:30: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_ntp_client.py:2147:30: note: Called function defined in "asy_udp_socket"
+tests/test_ntp_fram_system_integration.py: note: In function "__enter__":
+tests/test_ntp_fram_system_integration.py:218:30: error: Unexpected keyword
+argument "conn_tries"  [call-arg]
+                    self._real = real_cls(resolved, mode=mode, conn_tries=...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_ntp_fram_system_integration.py:218:30: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_ntp_fram_system_integration.py:218:30: note: Called function defined in "asy_udp_socket"
+Found 32 errors in 6 files (checked 181 source files)

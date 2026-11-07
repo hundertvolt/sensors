@@ -1,0 +1,33 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__ test_a_store_built_through_a_module_helper_or_an_attribute_call_is_a_store __
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10674/test_a_store_built_through_a_m0')
+
+    def test_a_store_built_through_a_module_helper_or_an_attribute_call_is_a_store(tmp_path: Path) -> None:
+        # Both derivations read stores through _is_store, so one it misses drops out of both and they still agree.
+        (tmp_path / "asy_probe.py").write_text(
+            "import asy_config_manager\n"
+            "from asy_config_manager import ConfigManager\n\n\n"
+            "def _make_store(cfg_path, name):\n    return ConfigManager(cfg_path + name, (), name)\n\n\n"
+            "class Helped:\n    def __init__(self, cfg_path):\n        self.cfgmgr = _make_store(cfg_path, 'X')\n\n\n"
+            "class Dotted:\n    def __init__(self):\n        self.cfgmgr = asy_config_manager.ConfigManager('config_Y.cfg', (), 'Y')\n\n\n"
+            "class Inherits(Helped):\n    pass\n\n\n"
+            "class Plain:\n    def __init__(self):\n        self.cfg = None\n",
+            encoding="utf-8",
+        )
+        classes = _classes(tmp_path)
+>       assert {name: _is_store(name, classes) for name in classes} == {"Helped": True, "Dotted": True, "Inherits": True, "Plain": False}
+E       AssertionError: assert {'Helped': Fa...Plain': False} == {'Helped': Tr...Plain': False}
+E         
+E         Omitting 1 identical items, use -vv to show
+E         Differing items:
+E         {'Dotted': False} != {'Dotted': True}
+E         {'Inherits': False} != {'Inherits': True}
+E         {'Helped': False} != {'Helped': True}
+E         Use -v to get more diff
+
+tests_scripts/test_stored_config_golden.py:156: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_stored_config_golden.py::test_a_store_built_through_a_module_helper_or_an_attribute_call_is_a_store
+1 failed, 18 deselected in 0.09s

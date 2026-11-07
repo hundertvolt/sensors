@@ -1,0 +1,56 @@
+== plain th=-1 stall role=init k=40 D=900
+rep 0 PASS elapsed_ms 4609 polls {'resp': 581, 'init': 594} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [732, 911, 1, 1], 'init': [735, 901, 1, 1]}
+   fault ('STALL', 'init', 40, 900)
+== plain th=-1 stall role=init k=40 D=1100
+rep 0 FAIL the maximum-length train did not complete elapsed_ms 3793 polls {'resp': 448, 'init': 919} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [16, 1504, 3, 3], 'init': [21, 1502, 2, 3]}
+   fault ('STALL', 'init', 40, 1100)
+   fault ('UART_init', 81, ('no ACK for frame', 6), 38372609)
+   fault ('UART_resp', 22, ('train stalled at chunk', 7), 38373618)
+   lastwait ('resp', 1000, 2, True)
+   lastwait ('init', 1000, 8, True)
+   lastwait ('init', 1000, 2, True)
+   lastwait ('init', 1000, 1, True)
+   lastwait ('init', 1000, 1102, False)
+   lastwait ('resp', 1000, 1112, True)
+   lastwait ('init', 1500, 6, True)
+   lastwait ('init', 1500, 1, True)
+   lastwait ('init', 1500, 2, True)
+   lastwait ('resp', 1000, 1003, False)
+   lastwait ('init', 1500, 1502, False)
+   lastwait ('resp', 1500, 1504, False)
+== plain th=-1 stall role=resp k=40 D=900
+rep 0 PASS elapsed_ms 4523 polls {'resp': 588, 'init': 595} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [740, 902, 1, 1], 'init': [738, 913, 1, 1]}
+   fault ('STALL', 'resp', 40, 900)
+== plain th=-1 stall role=resp k=40 D=1100
+rep 0 FAIL the maximum-length train did not complete elapsed_ms 3947 polls {'resp': 925, 'init': 490} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [53, 1503, 2, 3], 'init': [53, 1503, 3, 3]}
+   fault ('STALL', 'resp', 40, 1100)
+   fault ('UART_resp', 22, ('train stalled at chunk', 17), 38381327)
+   fault ('UART_init', 81, ('no ACK for frame', 17), 38382338)
+   lastwait ('init', 1000, 2, True)
+   lastwait ('resp', 1000, 8, True)
+   lastwait ('resp', 1000, 1, True)
+   lastwait ('resp', 1000, 2, True)
+   lastwait ('resp', 1000, 1105, False)
+   lastwait ('init', 1000, 1113, True)
+   lastwait ('resp', 1500, 8, True)
+   lastwait ('resp', 1500, 1, True)
+   lastwait ('resp', 1500, 2, True)
+   lastwait ('init', 1000, 1003, False)
+   lastwait ('resp', 1500, 1503, False)
+   lastwait ('init', 1500, 1503, False)
+== ORIG plain th=-1 stall role=init k=5 D=1100
+rep 0 PASS elapsed_ms 4663 polls {'resp': 557, 'init': 603} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [751, 14, 0, 1], 'init': [763, 1112, 1, 1]}
+   fault ('STALL', 'init', 5, 1100)
+== ORIG plain th=-1 stall role=init k=300 D=1100
+rep 0 FAIL the maximum-length train did not complete elapsed_ms 5428 polls {'resp': 747, 'init': 1223} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [376, 1504, 3, 3], 'init': [384, 1502, 2, 
+   fault ('STALL', 'init', 300, 1100)
+   fault ('UART_init', 81, ('no ACK for frame', 125), 38717190)
+   fault ('UART_resp', 22, ('train stalled at chunk', 126), 38718199)
+== ORIG plain th=-1 stall role=resp k=5 D=1100
+rep 0 PASS elapsed_ms 4636 polls {'resp': 563, 'init': 593} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [766, 1112, 1, 1], 'init': [770, 55, 0, 1]}
+   fault ('STALL', 'resp', 5, 1100)
+== ORIG plain th=-1 stall role=resp k=300 D=1100
+rep 0 FAIL the maximum-length train did not complete elapsed_ms 5556 polls {'resp': 1235, 'init': 791} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [404, 1503, 2, 3], 'init': [415, 1503, 3, 
+   fault ('STALL', 'resp', 300, 1100)
+   fault ('UART_resp', 22, ('train stalled at chunk', 137), 38727623)
+   fault ('UART_init', 81, ('no ACK for frame', 137), 38728634)

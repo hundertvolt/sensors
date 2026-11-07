@@ -1,0 +1,25 @@
+DIAG_KI_CAPTURED True
+digital_twin/run_generic_integration.py starting - device='dev' module='sensortask_dev' host='127.0.0.1' port=21202 state=StatePaths(fram='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/run3/state_002/fram_state.json', scd30='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/run3/state_002/scd30_state.json', mem_backup='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/run3/state_002/mem_backup_state.json') config_dir='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/run3/state_002/config/' online_ntp=False injections=Injections(seed=None, faults=[], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=None, gc_threshold=32768, mem_sample_interval_ms=None, stop_file=None)
+Serving forever at http://127.0.0.1:21202/ - Ctrl+C to stop
+HANG S5reset
+WATCHDOG_WOULD_TRIGGER count=1
+DIAG_KI_ESCAPED:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_diag.py", line 918, in <module>
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_isl29125_driver.py", line 738, in _read_loop
+  File "src/asy_isl29125_driver.py", line 695, in _read_isl
+  File "src/asy_isl29125_driver.py", line 1475, in read_counts
+  File "src/asy_i2c_driver.py", line 470, in get_register_bytes
+  File "src/asy_i2c_driver.py", line 239, in get_register_bytes
+  File "src/asy_i2c_driver.py", line 190, in _read_into_scratch
+  File "digital_twin/machine.py", line 525, in readfrom_into
+  File "digital_twin/_twin_common.py", line 60, in fill_buffer
+KeyboardInterrupt: 
+mem: total=14581333, current=6424406, peak=6424676
+stack: 1264 out of 80000
+GC: total: 2072832, used: 1166624, free: 906208
+ No. of 1-blocks: 7080, 2-blocks: 1778, max blk sz: 1025, max free sz: 27514
+digital_twin/run_generic_integration.py [dev] shutdown: would_have_triggered_count=1 feed_count=16 largest_feed_gap_ms=1920 wdt_timeout_ms=8000 mem_backup: r0=0x2a5e0001,0x00000009,0x15a5a5ac,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=239 gc_block_bytes=32 uart=uart_link_init:transfers=10,failures=0,overruns=0 uart=uart_link_resp:transfers=0,failures=0,overruns=0
+digital_twin/run_generic_integration.py: interrupted

@@ -1,0 +1,49 @@
+............FFF                                                          [100%]
+=================================== FAILURES ===================================
+___ test_a_naive_shifted_or_stale_build_date_is_refused[2026-09-12T10:00:00] ___
+
+stamp = '2026-09-12T10:00:00'
+
+    @pytest.mark.parametrize("stamp", ["2026-09-12T10:00:00", "2026-09-12T12:00:00+02:00", "2026-09-12T09:58:30Z"])
+    def test_a_naive_shifted_or_stale_build_date_is_refused(stamp: str) -> None:
+        # Against a clock at 10:00:00 UTC: no zone, another zone, or ninety seconds old is no build-time UTC now.
+>       assert _build_date_problems(f"_BUILD_DATE = const('{stamp}')\n", datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
+E       AssertionError: 2026-09-12T10:00:00
+E       assert []
+E        +  where [] = _build_date_problems("_BUILD_DATE = const('2026-09-12T10:00:00')\n", datetime.datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc))
+E        +    where datetime.datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc) = datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc)
+
+tests_scripts/test_buildgen_generate.py:700: AssertionError
+_ test_a_naive_shifted_or_stale_build_date_is_refused[2026-09-12T12:00:00+02:00] _
+
+stamp = '2026-09-12T12:00:00+02:00'
+
+    @pytest.mark.parametrize("stamp", ["2026-09-12T10:00:00", "2026-09-12T12:00:00+02:00", "2026-09-12T09:58:30Z"])
+    def test_a_naive_shifted_or_stale_build_date_is_refused(stamp: str) -> None:
+        # Against a clock at 10:00:00 UTC: no zone, another zone, or ninety seconds old is no build-time UTC now.
+>       assert _build_date_problems(f"_BUILD_DATE = const('{stamp}')\n", datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
+E       AssertionError: 2026-09-12T12:00:00+02:00
+E       assert []
+E        +  where [] = _build_date_problems("_BUILD_DATE = const('2026-09-12T12:00:00+02:00')\n", datetime.datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc))
+E        +    where datetime.datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc) = datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc)
+
+tests_scripts/test_buildgen_generate.py:700: AssertionError
+__ test_a_naive_shifted_or_stale_build_date_is_refused[2026-09-12T09:58:30Z] ___
+
+stamp = '2026-09-12T09:58:30Z'
+
+    @pytest.mark.parametrize("stamp", ["2026-09-12T10:00:00", "2026-09-12T12:00:00+02:00", "2026-09-12T09:58:30Z"])
+    def test_a_naive_shifted_or_stale_build_date_is_refused(stamp: str) -> None:
+        # Against a clock at 10:00:00 UTC: no zone, another zone, or ninety seconds old is no build-time UTC now.
+>       assert _build_date_problems(f"_BUILD_DATE = const('{stamp}')\n", datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
+E       AssertionError: 2026-09-12T09:58:30Z
+E       assert []
+E        +  where [] = _build_date_problems("_BUILD_DATE = const('2026-09-12T09:58:30Z')\n", datetime.datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc))
+E        +    where datetime.datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc) = datetime(2026, 9, 12, 10, 0, tzinfo=datetime.timezone.utc)
+
+tests_scripts/test_buildgen_generate.py:700: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_generate.py::test_a_naive_shifted_or_stale_build_date_is_refused[2026-09-12T10:00:00]
+FAILED tests_scripts/test_buildgen_generate.py::test_a_naive_shifted_or_stale_build_date_is_refused[2026-09-12T12:00:00+02:00]
+FAILED tests_scripts/test_buildgen_generate.py::test_a_naive_shifted_or_stale_build_date_is_refused[2026-09-12T09:58:30Z]
+3 failed, 12 passed, 329 deselected in 2.68s

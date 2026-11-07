@@ -1,0 +1,6 @@
+
+> sensors-website@0.1.0 typecheck
+> tsc --noEmit && tsc --noEmit -p tsconfig.node.json
+
+tests_js/live-backend-put-matrix.test.js(54,40): error TS2339: Property 'defaultValue' does not exist on type 'FieldDef'.
+tests_js/live-backend-put-matrix.test.js(65,56): error TS2339: Property 'defaultValue' does not exist on type 'FieldDef'.

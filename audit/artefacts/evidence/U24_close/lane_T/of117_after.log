@@ -1,0 +1,27 @@
+.F.                                                                      [100%]
+=================================== FAILURES ===================================
+___________ test_an_unnamed_host_site_fails_and_a_named_file_passes ____________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7976/test_an_unnamed_host_site_fail0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fd7f6d28a10>
+
+    def test_an_unnamed_host_site_fails_and_a_named_file_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "loader.py").write_text("import importlib.util\nmod = __import__('json')\nrun = 'import importlib'\n", encoding="utf-8")
+        (tmp_path / "buildgen").mkdir()
+        (tmp_path / "buildgen" / "validate.py").write_text("import importlib.util\n", encoding="utf-8")
+        monkeypatch.setattr(sys.modules[__name__], "REPO_ROOT", tmp_path)
+>       assert sorted(unnamed_host_sites(["tools/loader.py", "buildgen/validate.py"])) == [
+            ("tools/loader.py", 1, "import importlib.util"),
+            ("tools/loader.py", 2, "__import__"),
+            ("tools/loader.py", 3, "import importlib"),
+        ]
+E       AssertionError: assert [('tools/load...'__import__')] == [('tools/load...t importlib')]
+E         
+E         Right contains one more item: ('tools/loader.py', 3, 'import importlib')
+E         Use -v to get more diff
+
+tests_scripts/test_import_graph.py:321: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_import_graph.py::test_an_unnamed_host_site_fails_and_a_named_file_passes
+1 failed, 2 passed, 18 deselected in 3.22s

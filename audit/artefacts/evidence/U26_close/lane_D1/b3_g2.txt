@@ -1,0 +1,109 @@
+=== test_bench_harness_helpers
+................FF.F.F.F....F........................................... [ 24%]
+................F.............F......................................... [ 48%]
+...FF................................................................... [ 72%]
+.......FF...F...F.F..................................................... [ 96%]
+.........                                                                [100%]
+=================================== FAILURES ===================================
+E   AssertionError: test_bus_concurrency_under_api_load.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 435'] == []
+      
+      Left contains one more item: 'line 435'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_bus_concurrency_under_api_load.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_end_to_end_timing.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 131', ...', 'line 227'] == []
+      
+      Left contains 5 more items, first extra item: 'line 131'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_end_to_end_timing.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_hotspot_role_reversal.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 217'] == []
+      
+      Left contains one more item: 'line 217'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_hotspot_role_reversal.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_network_resilience.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 151', ...ine 441', ...] == []
+      
+      Left contains 10 more items, first extra item: 'line 151'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_network_resilience.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_rest_endpoints_over_sta.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 116', 'line 153'] == []
+      
+      Left contains 2 more items, first extra item: 'line 116'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_rest_endpoints_over_sta.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_wifi_networking.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 54', '...', 'line 124'] == []
+      
+      Left contains 3 more items, first extra item: 'line 54'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_wifi_networking.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_toolchain_flash_boot.py
+    assert ["line 49: ['..., '--output'"] == []
+      
+      Left contains 2 more items, first extra item: "line 49: ['uv', 'run', 'toolchain/setup_toolchain.py', 'env', '--tier"
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:681: AssertionError: test_toolchain_flash_boot.py
+E   AssertionError: manual_toolchain.py
+    assert ["line 27: ['..., '--output'"] == []
+      
+      Left contains one more item: "line 27: ['uv', 'run', 'scripts/build_firmware.py', 'dev', '--output'"
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:681: AssertionError: manual_toolchain.py
+E   AssertionError: test_network_resilience.py repairs no leftover through harness.schema_default()
+    assert []
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:790: AssertionError: test_network_resilience.py repairs no leftover through harness.schema_default()
+E   AssertionError: test_sensor_config_push_over_real_hardware.py repairs no leftover through harness.schema_default()
+    assert []
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:790: AssertionError: test_sensor_config_push_over_real_hardware.py repairs no leftover through harness.schema_default()
+E   AssertionError: test_bus_concurrency_under_api_load.py: stop and join the thread in a finally
+    assert ['test_concur...d (line 547)'] == []
+      
+      Left contains 6 more items, first extra item: 'test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes (line 139)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_bus_concurrency_under_api_load.py: stop and join the thread in a finally
+E   AssertionError: test_end_to_end_timing.py: stop and join the thread in a finally
+    assert ['test_real_c...er (line 92)'] == []
+      
+      Left contains one more item: 'test_real_concurrent_client_burst_does_not_crash_the_webserver (line 92)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_end_to_end_timing.py: stop and join the thread in a finally
+E   AssertionError: test_network_resilience.py: stop and join the thread in a finally
+    assert ['test_concur... (line 1167)'] == []
+      
+      Left contains 3 more items, first extra item: 'test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status (line 936)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_network_resilience.py: stop and join the thread in a finally
+E   AssertionError: test_serving_heap_at_default_gc.py: stop and join the thread in a finally
+    assert ['_burst (line 90)'] == []
+      
+      Left contains one more item: '_burst (line 90)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_serving_heap_at_default_gc.py: stop and join the thread in a finally
+E   AssertionError: test_uart_link_under_api_load.py: stop and join the thread in a finally
+    assert ['test_the_li...e (line 176)'] == []
+      
+      Left contains 3 more items, first extra item: 'test_the_link_stays_healthy_while_the_api_is_hammered (line 77)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_uart_link_under_api_load.py: stop and join the thread in a finally
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[flash/test_toolchain_flash_boot.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_hardware_module_runs_uv_without_no_sync[manual/manual_toolchain.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_leftover_repair_reads_its_target_through_schema_default[test_network_resilience.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_leftover_repair_reads_its_target_through_schema_default[test_sensor_config_push_over_real_hardware.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_bus_concurrency_under_api_load.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_end_to_end_timing.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_network_resilience.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_serving_heap_at_default_gc.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_uart_link_under_api_load.py]
+15 failed, 282 passed in 2.10s
+=== rc=1 time=3.024692570 test_bench_harness_helpers

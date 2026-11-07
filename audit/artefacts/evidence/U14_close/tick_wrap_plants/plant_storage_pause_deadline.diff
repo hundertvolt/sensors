@@ -1,0 +1,11 @@
+--- src/asy_system_service.py@d4067a0
++++ plant_unp/asy_system_service.py
+@@ -334,7 +334,7 @@
+                 await self._uptime_event.wait()
+             uptime = self._uptime.read()
+             self.pr.all("System uptime:", uptime)
+-            if self._unpause_at is not None and time.ticks_diff(time.ticks_ms(), self._unpause_at) >= 0:
++            if self._unpause_at is not None and time.ticks_ms() - self._unpause_at >= 0:
+                 self._unpause_at = None
+                 # A reset has paused storage for good; a late auto-unpause must not reopen it.
+                 if not self._reset_armed and self._storage_pause is not None:

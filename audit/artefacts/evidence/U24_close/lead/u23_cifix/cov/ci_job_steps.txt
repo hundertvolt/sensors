@@ -1,0 +1,14 @@
+1 Set up job success 2026-10-13T18:05:52Z 2026-10-13T18:05:54Z
+2 Run actions/checkout@v7 success 2026-10-13T18:05:54Z 2026-10-13T18:06:01Z
+3 Set up MicroPython toolchain (install uv, restore cache) success 2026-10-13T18:06:01Z 2026-10-13T18:06:12Z
+4 Sync dev dependencies (retried - third-party build downloads are not always up) success 2026-10-13T18:06:12Z 2026-10-13T18:06:12Z
+5 Run unit tests with coverage (the test result gates, the report does not) failure 2026-10-13T18:06:12Z 2026-10-13T18:21:16Z
+6 Add coverage summary to job summary success 2026-10-13T18:21:16Z 2026-10-13T18:21:16Z
+7 Add digital_twin/ coverage summary to job summary success 2026-10-13T18:21:16Z 2026-10-13T18:21:16Z
+8 Upload coverage to Codecov success 2026-10-13T18:21:16Z 2026-10-13T18:21:19Z
+9 Upload digital_twin/ coverage to Codecov success 2026-10-13T18:21:19Z 2026-10-13T18:21:22Z
+10 Upload HTML coverage report artifact success 2026-10-13T18:21:22Z 2026-10-13T18:21:23Z
+11 Upload digital_twin/ HTML coverage report artifact success 2026-10-13T18:21:23Z 2026-10-13T18:21:25Z
+21 Post Set up MicroPython toolchain (install uv, restore cache) success 2026-10-13T18:21:25Z 2026-10-13T18:21:25Z
+22 Post Run actions/checkout@v7 success 2026-10-13T18:21:25Z 2026-10-13T18:21:25Z
+23 Complete job success 2026-10-13T18:21:25Z 2026-10-13T18:21:25Z

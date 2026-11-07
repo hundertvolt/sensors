@@ -1,0 +1,10 @@
+FACT setup=true
+FACT allocated=true
+FACT cleared_first=true
+FACT hog_deinit_failures={"first": [], "total": 0}
+FACT ts_cleared_last=true
+FACT cleared_last=true
+FACT failures={"first": ["a refused clear still wiped the real chip"], "total": 1}
+FACT skipped={"first": ["exhausted-pool pause: 1 Timers armed, pool exhausted False - the premise did not hold"], "total": 1}
+DONE
+

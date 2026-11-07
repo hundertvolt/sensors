@@ -1,0 +1,2 @@
+base test_sensortask_dev gc-1 rc=1 secs=69.002642086 pass=79 fail=2 mem=0 load=9.28 tail=79/81 passed, 2 failed, 0 skipped
+base test_sensortask_wozi gc-1 rc=1 secs=50.276246714 pass=79 fail=2 mem=0 load=10.58 tail=79/81 passed, 2 failed, 0 skipped

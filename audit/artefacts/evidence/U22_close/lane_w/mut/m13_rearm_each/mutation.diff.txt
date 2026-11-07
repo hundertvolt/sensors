@@ -1,0 +1,12 @@
+# mutant m13_rearm_each against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m13_rearm_each
+@@ -733,7 +733,7 @@
+     async def _run_silent_mode(self) -> None:
+         # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a
+         # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
+-        if not self._hotspot_timer_running:
++        if True:
+             await self._arm_hotspot_timer()  # a failed arm is persisted and retried next iteration
+         if not self._silent_attempt_due:
+             return

@@ -1,0 +1,85 @@
+Plugin "vitest:mocks:interceptor" defines Vite-specific hooks (configureServer) in a plugin returned from applyToEnvironment. These hooks will be ignored.
+
+ RUN  v5.0.0 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20b
+      API started at http://localhost:63315/
+
+ ❯ |chromium| tests_js/definitions-mockdata-coverage.test.js (8 tests | 6 failed) 1044ms
+   ❯ definitions and mockdata agree (8)
+     × every readonly field arzi's definitions name resolves in its composed mock data 384ms
+     × every readonly field dev's definitions name resolves in its composed mock data 230ms
+     × every readonly field grkizi's definitions name resolves in its composed mock data 110ms
+     × every readonly field klkizi's definitions name resolves in its composed mock data 79ms
+     × every readonly field schlafzi's definitions name resolves in its composed mock data 109ms
+     × every readonly field wozi's definitions name resolves in its composed mock data 130ms
+     ✓ reports a field whose mockdata is genuinely absent 1ms
+     ✓ reports a nested path that stops on a group instead of a leaf 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field arzi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field dev's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field grkizi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field klkizi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field schlafzi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field wozi's definitions name resolves in its composed mock data
+AssertionError: expected [ …(2) ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-arzi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-dev-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-grkizi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-klkizi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-schlafzi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-wozi-s-definitions-name-resolves-in-its-composed-mock-data.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/system/ConfigFaults (an object, not a leaf)",[39m
+[31m+   "status/system/ConfigUnpersisted (an object, not a leaf)",[39m
+[31m+ ][39m
+
+ ❯ tests_js/definitions-mockdata-coverage.test.js:98:56
+     96|         const defs = /** @type {import("../js/definitions.js").SiteDef…
+     97|         const data = composeMockData(defs, /** @type {import("../js/de…
+     98|         expect(unrenderableReadonlyFields(defs, data)).toEqual([]);
+       |                                                        ^
+     99|     });
+    100|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=545b542e:5034:63
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=545b542e:3848:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=545b542e:4951:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=545b542e:5440:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=545b542e:5435:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=545b542e:5424:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=545b542e:5388:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 2 passed (8)
+   Start at  11:24:50
+   Duration  4.75s (tests 48%, worker 27%, import 24%)
+
+== Summary: npm test ==
+Commit: db6ce58 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 2 · failed 6 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field arzi's definitions name resolves in its composed mock data: expected [ …(2) ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field dev's definitions name resolves in its composed mock data: expected [ …(2) ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field grkizi's definitions name resolves in its composed mock data: expected [ …(2) ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field klkizi's definitions name resolves in its composed mock data: expected [ …(2) ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field schlafzi's definitions name resolves in its composed mock data: expected [ …(2) ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field wozi's definitions name resolves in its composed mock data: expected [ …(2) ] to deeply equal []
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

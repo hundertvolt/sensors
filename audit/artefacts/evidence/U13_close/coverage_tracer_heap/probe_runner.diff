@@ -1,0 +1,11 @@
+--- /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-cov/tests/_coverage_runner.py	2026-10-07 15:01:00.684284797 +0000
++++ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13cov_probe/_probe_runner.py	2026-10-07 15:44:11.160066447 +0000
+@@ -28,6 +28,8 @@
+     test_file = sys.argv[1]
+     out_path = sys.argv[2]
+     hits: dict[str, dict[int, bool]] = {}
++    import _probe_hits
++    _probe_hits.hits = hits
+ 
+     def local_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object]":
+         if event == "line":

@@ -1,0 +1,38 @@
+== test_decision_vocabulary 9.36 s
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+2 failed, 4 passed in 9.12s
+== test_citations 10.98 s
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+2 failed, 13 passed in 10.74s
+== test_comment_block_cap 4.72 s
+588 passed in 4.47s
+== test_tunables_register 4.69 s
+15 passed in 4.42s
+== test_legacy_paths 2.10 s
+3 passed in 1.86s
+== test_import_placement 8.57 s
+FAILED tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists
+1 failed, 6 passed in 8.32s
+== test_host_annotations 2.72 s
+12 passed in 2.47s
+== test_lint_ceilings 10.92 s
+19 passed in 10.64s
+== test_memory_error_gate_agreement 4.29 s
+14 passed in 4.01s
+== test_shell_conventions 1.14 s
+FAILED tests_scripts/test_shell_conventions.py::test_every_script_follows_the_static_convention[scripts/test.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[-h-scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_help_exits_0_with_the_usage_before_running_anything[--help-scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/_run_lower_levels.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_digital_twin_ci.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/run_manual_hardware_tests.sh]
+FAILED tests_scripts/test_shell_conventions.py::test_an_unknown_argument_exits_2_naming_it_before_running_anything[scripts/setup_cross_browser_toolchain.sh]
+7 failed, 65 passed in 0.86s
+== test_require_python 0.49 s
+27 passed in 0.21s
+== test_twin_never_needs_tests_on_its_path 0.89 s
+FAILED tests_scripts/test_twin_never_needs_tests_on_its_path.py::test_every_twin_launch_reads_the_layout_file
+1 failed, 53 passed in 0.65s
+ALL DONE

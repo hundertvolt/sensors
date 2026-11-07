@@ -1,0 +1,15 @@
+tests/test_asy_isl29125_driver.py@-1	4.37	0
+tests/test_asy_isl29125_driver.py@32768	3.87	0
+tests/test_asy_uart_comm.py@-1	61.06	0
+tests/test_asy_uart_comm.py@32768	64.95	0
+tests/test_math_helpers.py@-1	0.02	0
+tests/test_math_helpers.py@32768	0.03	0
+tests/test_digital_twin_bus_hazard_concurrency.py@-1	151.55	0
+tests/test_digital_twin_bus_hazard_concurrency.py@32768	157.05	0
+tests_scripts/test_device_script_config_schemas.py	13.75	0
+tests_scripts/test_stored_config_golden.py	8.01	0
+tests_scripts/test_config_schemas.py	1.94	0
+tests_scripts/test_buildgen_graph.py	22.11	0
+tests_scripts/test_buildgen_pico_gpio.py	0.84	0
+tests_scripts/test_bench_harness_helpers.py	3.29	0
+tests_scripts/test_board_image_fixture.py	0.49	0

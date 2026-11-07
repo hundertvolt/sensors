@@ -1,13 +1,20 @@
+// Tests js/definitions.js: validateDefinitions()'s accepts and refusals of the document's shape, isRecord(),
+// resolveFieldValue()'s flat keys and nested paths, loadDefinitions(), and the generated loader's TOML stamp.
 import { afterEach, describe, expect, it, vi } from "vitest";
-// These tests run in a real browser (Playwright + Chromium), so the shipped definitions are
-// imported as modules - node:fs is not reachable here. Same import shape the PUT matrix uses.
-import woziDefs from "../html/definitions/wozi.json";
-import devDefs from "../html/definitions/dev.json";
-import { loadDefinitions, resolveFieldValue, SUPPORTED_SCHEMA_MAJOR, validateDefinitions } from "../js/definitions.js";
+// Every device's generated definitions come from tests_js/_generated_definitions.js (a real browser run: no node:fs).
+import { GENERATED_DEFINITIONS, staleAgainst } from "./_generated_definitions.js";
+import { readIntConst } from "./_source_constants.js";
+import definitionsSource from "../js/definitions.js?raw";
+import pollManagerSource from "../js/poll-manager.js?raw";
+import { isRecord, loadDefinitions, resolveFieldValue, validateDefinitions } from "../js/definitions.js";
+import { pollManager } from "../js/poll-manager.js";
+
+const SUPPORTED_SCHEMA_MAJOR = readIntConst(definitionsSource, "SUPPORTED_SCHEMA_MAJOR");
+const DEFAULT_TIMEOUT_MS = readIntConst(pollManagerSource, "DEFAULT_TIMEOUT_MS");
 
 const MINIMAL_VALID = {
     schemaVersion: "1.0.0",
-    device: { id: "wozi", displayName: "wozi" },
+    device: { id: "fixture-device", displayName: "Fixture Device" },
     landingSection: "measurements",
     defaultPollIntervalMs: 3000,
     sections: [
@@ -202,14 +209,22 @@ describe("validateDefinitions", () => {
         }
     });
 
-    // Nothing anywhere ran this validator against the shipped dev definitions before: the PUT
-    // matrix imports that file raw, and this suite only ever loaded wozi's. A malformed dev
-    // definitions file therefore shipped and failed in a browser instead of here.
-    it.each([
-        ["wozi", woziDefs],
-        ["dev", devDefs],
-    ])("accepts the shipped %s definitions file", (_device, shipped) => {
-        expect(validateDefinitions(shipped)).toEqual([]);
+    it.each([...GENERATED_DEFINITIONS])("accepts the generated %s definitions", (_device, generated) => {
+        expect(validateDefinitions(generated)).toEqual([]);
+    });
+});
+
+describe("isRecord", () => {
+    it("accepts every object but null and an array, an Object.create(null) one and a class instance included", () => {
+        for (const value of [{}, { a: 1 }, Object.create(null), new Date(0), new Map()]) {
+            expect(isRecord(value)).toBe(true);
+        }
+    });
+
+    it("refuses null, an array, a function and a primitive", () => {
+        for (const value of [null, undefined, [], [{ a: 1 }], () => ({}), 0, Number.NaN, "{}", true, Symbol("s")]) {
+            expect(isRecord(value)).toBe(false);
+        }
     });
 });
 
@@ -239,16 +254,14 @@ describe("resolveFieldValue", () => {
         expect(resolveFieldValue({ ...field, path: ["RGB"] }, { RGB: { R: 1 } })).toEqual({ R: 1 });
     });
 
-    it("still falls back to defaultValue when a path resolves to nothing", () => {
-        /** @type {import("../js/definitions.js").FieldDef} */
-        const field = { key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], defaultValue: 0 };
-        expect(resolveFieldValue(field, {})).toBe(0);
+    it("yields undefined for a value the GET did not report, whatever the field's kind", () => {
+        // An always-executed toggle the GET cannot report (SCD30's ContMeas) stays unset, never a stand-in.
+        expect(resolveFieldValue({ key: "ContMeas", label: "Continuous Measurement", kind: "toggle", alwaysExecuted: true }, {})).toBeUndefined();
     });
 
-    it("passes a null through as a real value rather than falling back", () => {
-        // CCT is legitimately null in a dark room - the renderer shows an em dash for it, and a
-        // defaultValue fallback here would silently invent a colour temperature instead.
-        expect(resolveFieldValue({ key: "CCT", label: "CCT", kind: "readonly", defaultValue: 5000 }, { CCT: null })).toBeNull();
+    it("passes a null through as a real value", () => {
+        // CCT is legitimately null in a dark room; the renderer shows an em dash for it.
+        expect(resolveFieldValue({ key: "CCT", label: "CCT", kind: "readonly" }, { CCT: null })).toBeNull();
     });
 });
 
@@ -261,13 +274,15 @@ describe("loadDefinitions", () => {
 
     it("returns the parsed definitions on a valid fetch", async () => {
         window.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify(MINIMAL_VALID), { status: 200 })));
-        const defs = await loadDefinitions("definitions/wozi.json");
-        expect(defs.device.id).toBe("wozi");
+        const defs = await loadDefinitions("definitions/fixture-device.json");
+        expect(defs.device.id).toBe("fixture-device");
     });
 
     it("throws on a non-ok HTTP response", async () => {
-        window.fetch = vi.fn(() => Promise.resolve(new Response("not found", { status: 404 })));
-        await expect(loadDefinitions("definitions/missing.json")).rejects.toThrow("404");
+        // The device answers a missing file with its JSON envelope (asy_api_response.make_response()).
+        const envelope = { res: "ERR", code: 404, descr: "Not found", result: {} };
+        window.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify(envelope), { status: 404 })));
+        await expect(loadDefinitions("definitions/missing.json")).rejects.toThrow("Failed to fetch definitions/missing.json: HTTP 404");
     });
 
     it("throws with the validation problems on a malformed document", async () => {
@@ -278,6 +293,33 @@ describe("loadDefinitions", () => {
     it("throws a clear message (not a raw SyntaxError) when the response isn't valid JSON (a transmission error)", async () => {
         window.fetch = vi.fn(() => Promise.resolve(new Response("{not valid json", { status: 200 })));
         await expect(loadDefinitions("definitions/torn.json")).rejects.toThrow(/not valid json/i);
+    });
+
+    it("waits for the request already in flight before it fetches (one request at a time)", async () => {
+        let inFlight = 0;
+        let maxInFlight = 0;
+        /** @type {(() => void)[]} */
+        const releases = [];
+        window.fetch = vi.fn((url) => {
+            inFlight += 1;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            return new Promise((resolve) => {
+                releases.push(() => {
+                    inFlight -= 1;
+                    resolve(new Response(String(url).endsWith(".json") ? JSON.stringify(MINIMAL_VALID) : "{}", { status: 200 }));
+                });
+            });
+        });
+        const pending = pollManager.request("/status");
+        const loading = loadDefinitions("definitions/fixture-device.json");
+        await vi.waitFor(() => expect(releases).toHaveLength(1), { interval: 1 });
+        expect(window.fetch).toHaveBeenCalledTimes(1);
+        releases[0]?.();
+        await pending;
+        await vi.waitFor(() => expect(releases).toHaveLength(2), { interval: 1 });
+        releases[1]?.();
+        expect((await loading).device.id).toBe("fixture-device");
+        expect(maxInFlight).toBe(1);
     });
 
     it("never hangs forever on a connection that never responds", async () => {
@@ -292,9 +334,26 @@ describe("loadDefinitions", () => {
 
         const pending = loadDefinitions("definitions/hangs.json");
         const assertion = expect(pending).rejects.toThrow(/timed out/i);
-        await vi.advanceTimersByTimeAsync(15000); // fetchWithTimeout()'s own DEFAULT_TIMEOUT_MS
+        await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
         await assertion;
+    });
+});
 
-        vi.useRealTimers();
+describe("the generated-definitions loader's TOML stamp", () => {
+    const TOML = 'name = "fixture-device"\n';
+    // sha256 of TOML's UTF-8 bytes, as sha256sum prints it.
+    const TOML_SHA256 = "7dd835ef5e55c7c98444b97605ce72fb468a0a1d9ac2d9734b1d256b50b8b1cf";
+
+    it("passes a stamp naming exactly the TOMLs, each with its own hash", async () => {
+        expect(await staleAgainst(new Map([["fixture-device", TOML]]), { tomls: { "fixture-device": TOML_SHA256 } })).toEqual([]);
+    });
+
+    it.each([
+        ["a TOML changed since generation", { tomls: { "fixture-device": "0".repeat(64) } }, ["fixture-device: changed since the tree was generated"]],
+        ["a TOML the stamp does not name", { tomls: {} }, ["fixture-device: no stamp"]],
+        ["a stamped device with no TOML", { tomls: { "fixture-device": TOML_SHA256, "gone-device": TOML_SHA256 } }, ["gone-device: stamped, but no such TOML"]],
+        ["no stamp at all", undefined, ["no TOML stamp"]],
+    ])("reports %s", async (_case, stamp, problems) => {
+        expect(await staleAgainst(new Map([["fixture-device", TOML]]), stamp)).toEqual(problems);
     });
 });

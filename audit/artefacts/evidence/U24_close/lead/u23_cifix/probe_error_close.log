@@ -1,0 +1,24 @@
+browser 153.0.8010.12
+round 1 first: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url about:blank
+round 1 reload: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url chrome-error://chromewebdata/
+round 1 close: pending after 10000 ms (10010 ms)
+round 2 first: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url about:blank
+round 2 reload: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url chrome-error://chromewebdata/
+round 2 close: pending after 10000 ms (10019 ms)
+round 3 first: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url about:blank
+round 3 reload: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url chrome-error://chromewebdata/
+round 3 close: pending after 10000 ms (10007 ms)
+context.close: settled
+rc=0
+browser 141.0.7390.37
+round 1 first: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url about:blank
+round 1 reload: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url chrome-error://chromewebdata/
+round 1 close: settled (32 ms)
+round 2 first: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url about:blank
+round 2 reload: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url chrome-error://chromewebdata/
+round 2 close: settled (17 ms)
+round 3 first: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url about:blank
+round 3 reload: Error: page.goto: net::ERR_CONNECTION_RESET at http://127.0.0.1:19481/; url chrome-error://chromewebdata/
+round 3 close: settled (10 ms)
+context.close: settled
+rc=0

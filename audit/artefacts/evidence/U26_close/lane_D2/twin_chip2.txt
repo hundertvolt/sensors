@@ -1,0 +1,9 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+NOTE (scd30_measuring): already measuring (no write)
+......                                                                   [100%]
+6 passed in 62.94s (0:01:02)
+
+real	1m3.554s
+user	0m2.666s
+sys	0m0.525s
+rc=0

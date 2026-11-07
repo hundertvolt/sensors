@@ -1,0 +1,40 @@
+after klkizi gc-1 rc=0 secs=46.956703517 pass=88 fail=0 mem=0 load=1.39 tail=   46.95 88/88 passed, 0 failed, 0 skipped
+after arzi gc-1 rc=0 secs=47.129971470 pass=88 fail=0 mem=0 load=1.39 tail=   47.12 88/88 passed, 0 failed, 0 skipped
+before arzi gc-1 rc=0 secs=50.024980705 pass=81 fail=0 mem=0 load=1.39 tail=   50.02 81/81 passed, 0 failed, 0 skipped
+before klkizi gc-1 rc=0 secs=50.081520112 pass=81 fail=0 mem=0 load=1.39 tail=   50.08 81/81 passed, 0 failed, 0 skipped
+after klkizi gc32768 rc=0 secs=65.710761359 pass=88 fail=0 mem=0 load=2.73 tail=   65.71 88/88 passed, 0 failed, 0 skipped
+before klkizi gc32768 rc=0 secs=62.921977405 pass=81 fail=0 mem=0 load=2.73 tail=   62.92 81/81 passed, 0 failed, 0 skipped
+after arzi gc32768 rc=0 secs=65.909885283 pass=88 fail=0 mem=0 load=2.73 tail=   65.91 88/88 passed, 0 failed, 0 skipped
+before arzi gc32768 rc=0 secs=63.295678209 pass=81 fail=0 mem=0 load=2.73 tail=   63.29 81/81 passed, 0 failed, 0 skipped
+before klkizi settrace rc=0 secs=92.125859160 pass=81 fail=0 mem=0 load=3.25 tail=   92.11 81/81 passed, 0 failed, 0 skipped
+before arzi settrace rc=0 secs=91.876226245 pass=81 fail=0 mem=0 load=3.25 tail=   91.86 81/81 passed, 0 failed, 0 skipped
+after arzi settrace rc=0 secs=96.016342753 pass=88 fail=0 mem=0 load=3.23 tail=   95.99 88/88 passed, 0 failed, 0 skipped
+after klkizi settrace rc=0 secs=98.633588231 pass=88 fail=0 mem=0 load=3.23 tail=   98.62 88/88 passed, 0 failed, 0 skipped
+before schlafzi gc-1 rc=0 secs=51.262850220 pass=81 fail=0 mem=0 load=2.39 tail=   51.25 81/81 passed, 0 failed, 0 skipped
+after schlafzi gc-1 rc=0 secs=48.410119548 pass=88 fail=0 mem=0 load=2.36 tail=   48.41 88/88 passed, 0 failed, 0 skipped
+before dev gc-1 rc=0 secs=80.844517881 pass=81 fail=0 mem=0 load=2.19 tail=   80.84 81/81 passed, 0 failed, 0 skipped
+after dev gc-1 rc=0 secs=77.466969361 pass=88 fail=0 mem=0 load=2.19 tail=   77.46 88/88 passed, 0 failed, 0 skipped
+before schlafzi gc32768 rc=0 secs=63.492904500 pass=81 fail=0 mem=0 load=2.16 tail=   63.49 81/81 passed, 0 failed, 0 skipped
+after schlafzi gc32768 rc=0 secs=67.698113570 pass=88 fail=0 mem=0 load=2.45 tail=   67.69 88/88 passed, 0 failed, 0 skipped
+before dev gc32768 rc=0 secs=104.856689176 pass=81 fail=0 mem=0 load=2.87 tail=  104.85 81/81 passed, 0 failed, 0 skipped
+after dev gc32768 rc=0 secs=108.381389519 pass=88 fail=0 mem=0 load=2.80 tail=  108.37 88/88 passed, 0 failed, 0 skipped
+before schlafzi settrace rc=0 secs=93.182723081 pass=81 fail=0 mem=0 load=2.92 tail=   93.16 81/81 passed, 0 failed, 0 skipped
+after schlafzi settrace rc=0 secs=97.838145581 pass=88 fail=0 mem=0 load=3.01 tail=   97.81 88/88 passed, 0 failed, 0 skipped
+before wozi gc-1 rc=0 secs=56.978381851 pass=81 fail=0 mem=0 load=2.81 tail=   56.97 81/81 passed, 0 failed, 0 skipped
+after wozi gc-1 rc=0 secs=51.810297628 pass=88 fail=0 mem=0 load=2.76 tail=   51.81 88/88 passed, 0 failed, 0 skipped
+before dev settrace rc=0 secs=139.540046582 pass=81 fail=0 mem=0 load=3.02 tail=  139.52 81/81 passed, 0 failed, 0 skipped
+after dev settrace rc=0 secs=136.455784576 pass=88 fail=0 mem=0 load=3.02 tail=  136.43 88/88 passed, 0 failed, 0 skipped
+before wozi gc32768 rc=0 secs=70.038484739 pass=81 fail=0 mem=0 load=2.94 tail=   70.03 81/81 passed, 0 failed, 0 skipped
+after wozi gc32768 rc=0 secs=70.887216162 pass=88 fail=0 mem=0 load=2.80 tail=   70.88 88/88 passed, 0 failed, 0 skipped
+after grkizi gc-1 rc=0 secs=47.416232955 pass=88 fail=0 mem=0 load=3.18 tail=   47.41 88/88 passed, 0 failed, 0 skipped
+before grkizi gc-1 rc=0 secs=51.798614034 pass=81 fail=0 mem=0 load=3.08 tail=   51.79 81/81 passed, 0 failed, 0 skipped
+after grkizi gc32768 rc=0 secs=67.775857409 pass=88 fail=0 mem=0 load=3.82 tail=   67.77 88/88 passed, 0 failed, 0 skipped
+before grkizi gc32768 rc=0 secs=68.593025912 pass=81 fail=0 mem=0 load=3.76 tail=   68.59 81/81 passed, 0 failed, 0 skipped
+before wozi settrace rc=0 secs=121.733055378 pass=81 fail=0 mem=0 load=3.71 tail=  121.71 81/81 passed, 0 failed, 0 skipped
+before worker done 14:22:37
+after wozi settrace rc=0 secs=114.491255471 pass=88 fail=0 mem=0 load=3.74 tail=  114.47 88/88 passed, 0 failed, 0 skipped
+after worker done 14:22:38
+before grkizi settrace rc=0 secs=86.602089714 pass=81 fail=0 mem=0 load=2.84 tail=   86.59 81/81 passed, 0 failed, 0 skipped
+before worker done 14:23:53
+after grkizi settrace rc=0 secs=95.151323441 pass=88 fail=0 mem=0 load=2.84 tail=   95.13 88/88 passed, 0 failed, 0 skipped
+after worker done 14:23:57

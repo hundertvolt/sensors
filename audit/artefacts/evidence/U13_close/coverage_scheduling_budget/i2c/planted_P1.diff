@@ -1,0 +1,12 @@
+--- ../wt-u13rc/src/asy_i2c_driver.py	2026-10-07 16:03:00.880541884 +0000
++++ planted_P1/asy_i2c_driver.py	2026-10-07 16:20:32.142566492 +0000
+@@ -371,8 +371,8 @@
+     async def recover(self) -> int:
+         # The controller rung: the bus clear, then a re-construction with the stored arguments - rp2's only
+         # controller re-init (Part F.5.1) - under one bus-lock hold. _REC_NO_CONTROLLER leaves no bus.
++        status = await self._clear_locked()  # PLANTED P1: the clear runs outside the bus lock
+         async with self.bus_lock:
+-            status = await self._clear_locked()
+             try:
+                 self.init(*self._args)
+             except (OSError, ValueError):

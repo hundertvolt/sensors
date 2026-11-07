@@ -1,0 +1,19 @@
+U22 close evidence: what was left out, and why.
+
+Refused by the checks against the tracked trees (65088de^..8386afa and the five lane branches):
+  a (blob)  lane_t/runs/rr_head.py                       = tests_hardware/bench/test_hotspot_role_reversal.py
+  a (blob)  lane_t/runs/prew1_overlay/asy_wifi_service.py = src/asy_wifi_service.py
+  c (90%)   lane_t/runs/section51.py                     142/153 lines in tests/test_digital_twin_sensortask_integration.py
+  c (90%)   lane_w/runs/w2_block_heal.py                 88/95 lines in tests/test_asy_wifi_service.py
+  c (90%)   lane_w/runs/w2_block_silent.py               206/227 lines in tests/test_asy_wifi_service.py
+  c (90%)   lane_w/mut/m12_lock_over_wait/mutation.diff.txt  3/3 diff lines repeat tracked lines; kept as mutation.txt (prose)
+
+Left out by construction (scratch copies of tracked files, each a product or test source):
+  lane W: the mutants' full module copies (mut/*/asy_wifi_service.py, kept as diffs), its two lane snapshots
+          (oldsrc/, prestreak/), probe_w1_test.py (a test-file copy)
+  lane P: alloc/old/ and alloc/new/ (the driver before and after, kept as old_vs_new.diff.txt); two pid files
+  lane T: network_before_reorder.py, setter_before.py, si_base.py (test and twin copies before the lane's edits)
+
+Credentials: every hit of password/PSK/secret/token was read. They are test names, prose, and test-fixture values
+("short", "othersecret", "otherpassword"); the one literal is the accepted hotspot fallback, in a refused file. No
+real credential is in the evidence.
