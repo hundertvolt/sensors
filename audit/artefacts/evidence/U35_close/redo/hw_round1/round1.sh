@@ -9,7 +9,7 @@ H=$(cd "$(dirname "$0")" && pwd)
 ME=$H/round1.sh
 HM=$(dirname "$H")/hw_handover/mp
 L=$H/logs
-HB=$H/HANDBACK.md
+
 BRANCH=${BENCH_BRANCH:-claude/u35-bench-campaign}
 MPC=scripts/mpremote_connect.sh
 UF2=build/firmware-dev.uf2
@@ -209,9 +209,9 @@ rollover() {  # row 15: the tick-offset image's two hours (FC 1), then the final
   return "$r"
 }
 
-handback() {  # rebuilds HANDBACK.md and pushes it to the bench branch, with October's retries
-  printf '%s\n' "${STEPS[@]}" | py handback "$L" "$HB" || return 1
-  git add -f "$HB" "$WEAR" && git commit -q -m "Round 1 bench hand-back, $(date -u '+%F %H:%M') UTC [skip ci]" -- "$HB" "$WEAR" || return 0
+handback() {  # the step rollup stays in logs/; HANDBACK.md is appended to by hand (bench-routines). Only WEAR.txt is committed and pushed, with October's retries
+  printf '%s\n' "${STEPS[@]}" | py handback "$L" "$L/handback_rollup.md" || return 1
+  git add -f "$WEAR" && git commit -q -m "Round 1 wear record, $(date -u '+%F %H:%M') UTC [skip ci]" -- "$WEAR" || return 0
   local w=2
   for _ in 1 2 3 4 5; do git push -q origin "HEAD:refs/heads/$BRANCH" && return 0; sleep "$w"; w=$((w * 2)); done
   echo "push failed; HANDBACK.md is committed locally" >&2
@@ -291,7 +291,7 @@ usage() { echo "usage: $0 list | run FROM [TO] (TO defaults to FROM) | summary" 
 main() {
   case "${1:-}" in
     list) list ;;
-    summary) if [ -f "$HB" ]; then sed -n '1,/^## Logs/p' "$HB"; else echo "no hand-back yet"; fi ;;
+    summary) if [ -f "$L/handback_rollup.md" ]; then sed -n '1,/^## Logs/p' "$L/handback_rollup.md"; else echo "no rollup yet"; fi ;;
     run) shift; run_range "$@" ;;
     _body) local r cmd; r=${STEPS[$(index "$2")]}; read -ra cmd <<< "${r##*|}"; wear "$2"; "${cmd[@]}" ;;
     *) usage ;;
