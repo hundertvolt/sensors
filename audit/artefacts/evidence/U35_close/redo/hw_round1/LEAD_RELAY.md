@@ -1,5 +1,53 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 08:15 UTC, 2026-11-07: your 08:11 skill proposals, cross-checked against the main line
+Status taken: reflash 08:02, one flash cycle today; /status's longest loop hold 122 ms against yesterday's
+747-2,313 ms; .data +128 B and .bss equal, so the bench image's heap is 128 B smaller than CI's (noted for the
+free-heap wrap-up, not near a margin). handback(): no objection; restore from the last pushed HANDBACK.md plus the
+blocks appended since.
+Keep the skills generic: what only round1.sh or this campaign needs goes in HANDOVER. Fold each change into an
+existing bullet or row where one fits. After any skill text change run
+`.venv/bin/python -m pytest -q tests_scripts/test_decision_vocabulary.py tests_scripts/test_citations.py` (seconds;
+both scan .claude/skills); after a helper change, test_work_routines_helpers.py as well.
+Clashes, not to apply as written:
+- 2, its last sentence: work-routines' "Show any message meant for another session to the owner in a copy-paste code
+  block" carries the owner's rule to the lead, and narrowing it changes an owner rule's scope (CLAUDE.md's
+  decision-record rule 3). Leave that line as it is. The rest of 2 with three changes: name no tool ("a cross-session
+  message"; the tool differs by host); results stay in the hand-back, the record, and a message carries notes and
+  questions; the relay sentence quotes the owner's 14:35 instruction verbatim with its (owner, date) tag.
+- 7, "a runner's rc 0 only means the step ran": true of round1.sh, not of the tier runners, which exit with
+  `_require_clean_hardware_run.sh`'s verdict (0: everything that ran passed; read the deselected count, as
+  work-routines says). That half goes in HANDOVER. The FRAM half is right (conftest saves `errcount-session-start.json`
+  into the archive): name it as START in "After every run".
+- 3, the grep: 45 tracked lines hold 192.168. addresses legitimately (docs, the twin, test fixtures), so a count on
+  it flags real changes. Check the staged diff for the bench's own addresses from your env file instead
+  (`git diff --cached | grep -cF "$ADDR"` per address, expect 0), and mask those in printed output.
+Wording:
+- 1: one clause on the "Fetch before every new command" bullet: "and before answering the owner".
+- 5: right. Spell the merge `git merge -m "[skip ci] Merge relays" FETCH_HEAD` (a default message would start CI on
+  the push), then the ancestor check, then push. Change all three ff-only places alike (the standing rule, session
+  start 1, before a reflash 3), and say build only from a pushed commit, so the image record's commit resolves here.
+- 6: the journalctl row is fine. The soak runner joins the runner list in "Running" rather than a row:
+  `scripts/run_bench_soak_tests.sh --duration {short,mid,long} [pytest args]`, `--duration` first; `--dut-ip` is a
+  pytest option and passes through.
+- 8: the port half exists: `harness.resolve_board_device()` picks the board by USB vendor ID and its by-id name, so
+  the Arduino is never a candidate. Add "never a fixed /dev/ttyACM*" to the "Find the board" row and point an ad-hoc
+  script at the resolver. The bounding line is fine.
+- 9: one clause on the "Watch a long run" bullet.
+- 10: 21 joins the existing ResetReason 2 row (tests_hardware/README.md "Bench traps" already says a hard_reset() of a
+  running board reads 21). The ResetReason 1 row is fine.
+- 11: the copy line is fine; drop its second half, session start step 4 already says it.
+- 13: keep the pinned uv (0.8.17) outside the worktree, e.g. ~/.local/uv-0.8.17/bin: an untracked folder inside it
+  shows in _tidy.sh's report and is copied into a chroot leg with the checkout.
+- 15: date the owner's quote, and keep the owner's own exceptions in the same line: a reflash, a wear-gated run, work
+  outside the plan, a budget stop and a genuinely open decision still go to the owner.
+- 16: right for MPREMOTE_DEVICE (unset is OK with exactly one MicroPython board). BENCH_DEVICE defaults to the one
+  devices/*.toml with bench = true, whatever the board count, so unset is OK there always. "Bench host
+  configuration" then calls both optional overrides.
+Fine as proposed: 4 (one line, a few words of reason per item), 12, 14.
+Apply them in your own commits with skill: blocks; I carry each into the main line from the hand-back.
+The 20:38 order for day 3 is unchanged.
+
 ## 08:09 UTC, 2026-11-07: your 08:00 note - the skill fix is in the main line; the two facts; the image's 1,304 B
 No new code for you: the image you built from 7cd1a24a stays, and the reflash waits on the owner's OK, as you have it.
 - Skill fix 105a9fd6: right (/status carries ResetReason and SysUptime in its system group; BuildDate is only in
