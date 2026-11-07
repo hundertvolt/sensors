@@ -1,5 +1,14 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 17:32 UTC, 2026-11-07: one timing read on the chip, no writes; the fix image comes after its gate
+No new code on this branch; this relay's commit only.
+- The owner (17:31): both fixes go ahead, and the CRC's per-byte yield is settled by a measurement, not a ruling. The
+  figure needed is the chip's: on the board's current image, run
+  `tests_hardware/flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term` three times
+  (it runs `loop_stretch_timing.py` from RAM: no reflash, no file writes). Report per run, verbatim: crc_total_us,
+  crc_gap_max_us, routine_stall_us, gc_threshold, and the verdict. Ask the owner's OK for the run as usual.
+- The fix image follows after its gate (tonight or tomorrow); no reflash before it. Logs stay in /dev/shm.
+
 ## 16:47 UTC, 2026-11-07: the fix waits for a design check; no image this evening
 No new code on this branch; this relay's commit only.
 - The 8-20 s backup is a defect, not FRAM timing: the 264-byte backup's CRC runs bit by bit inside the FRAM lock and
