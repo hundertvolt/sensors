@@ -452,6 +452,16 @@ Three standing practices:
   missing files, headings or numbered decisions (existing text allow-listed until rewritten; the
   list only shrinks). No owner trace never means the owner did not decide; the most recent owner
   decision wins (owner, 2026-09-26: 'in case of changes by myself take my most recent decision').
+  A decision also names the facts it rests on; when one is shown false, the decision goes back to
+  its maker with the new facts, neither kept nor overridden silently. A measurement names its
+  condition (idle or loaded, which case, silicon or Unix port), and a budget row names its real
+  consumers, read from the code (agent, 2026-11-07).
+- **An owner question comes after the principles are checked at every level** (owner, 2026-11-07:
+  "check the whole situation against our pillars, which you should already have done before even
+  asking me"): its subject is checked against SPECIFICATION.md Parts 0 and D at each level 0.1
+  names, and what that check answers is not asked; a cost in it carries its context — the lock or
+  bus it holds, under which load, who waits meanwhile (D.8) — never an isolated figure
+  (agent, 2026-11-07).
 - **Every file opens with exactly one header comment block, and every comment block — header or
   inline — keeps to three prose lines, prefer fewer** (owner, 2026-09-14, re-confirmed 2026-09-18;
   every file of every language, owner, 2026-09-26): a concise header and a few short, genuinely

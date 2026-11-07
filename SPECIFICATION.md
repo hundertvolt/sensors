@@ -42,8 +42,15 @@ fallback layers, has premium quality code, has all its main cases all the way th
 cases tested, and runs efficiently and compact on a low end hardware device" (owner, 2026-09-26).
 The lifetime target is "indefinitely": no span of months or years is a design limit. Every
 principle binds the whole tree — firmware, generated code, tests, build chain, website, docs — and a
-case no rule covers is decided by this concept (agent, 2026-11-05; owner-reviewed, 2026-11-06). The refactor keeps the deployed
-system's top-level features (CLAUDE.md, working agreements).
+case no rule covers is decided by this concept (agent, 2026-11-05; owner-reviewed, 2026-11-06).
+Every principle, agreement and part of this specification also binds at every level — function,
+module, import, integration with its upstream and downstream, full system — and is checked from
+each of those viewpoints (owner, 2026-11-07: "The agreements apply on function, module, import,
+integration and upstream and downstream, and full system - the specs (not just that one statement,
+in general!) apply to micro, medium and macro level!"): a property shown at one level is not shown
+at the next, as a per-byte yield that keeps the loop free inside a function stretches its caller's
+lock hold for every task waiting on that lock. The refactor keeps the deployed system's top-level
+features (CLAUDE.md, working agreements).
 
 ## 0.2 The pillars
 
@@ -57,7 +64,7 @@ system's top-level features (CLAUDE.md, working agreements).
 | P6 | Efficient and compact on low-end hardware: heap, frozen size, CPU and loop latency, never starving the watchdog | D.4; D.5; F.1; F.3; Part I |
 | P7 | One source of truth: a fact is generated from its one home, never copied | Part L; H.5 |
 | P8 | Operating and testing wear nothing a test does not own | F.1 (the stores that wear); E.6; CLAUDE.md's wear rule |
-| P9 | Grounded and traceable: a hardware or runtime claim cites its primary source at the pinned version; a decision names its actor and date | A.6; Part F; CLAUDE.md's decision records |
+| P9 | Grounded and traceable: a hardware or runtime claim cites its primary source at the pinned version; a measurement names its condition and a budget row its real consumers; a decision names its actor, date and the facts it rests on, and goes back to its maker when one is shown false (agent, 2026-11-07) | A.6; Part F; CLAUDE.md's decision records |
 | P10 | Contracts at boundaries: one normative text and a conformance check per interface the project cannot change in one commit | Part J; A.8; L.3 |
 | P11 | A workaround names its defect and what retires it | F.9 |
 
@@ -4870,11 +4877,25 @@ partially-initialized variable reaching `return` on some path but not others. my
 this — still read every `return` by eye for something technically valid but semantically wrong (a
 clamp that silently clips instead of signaling invalid).
 
-## D.8 General improvement pass, without changing functionality
+## D.8 The design questions, answered by cost against need
 
-Look for genuine improvements (speed, resources, accuracy, complexity) as long as observable
-behavior stays identical for every valid input — a hard constraint, the full test suite must still
-pass unchanged. A genuine pass, not a mandate to rewrite for style.
+All code, what is already in `src/` included, answers the design questions at every level 0.1
+names: structure (good, understandable, lean); setup (reasonable, resilient, reliable); inheritance
+(correct and complete); integration (coherent with the project's other code); the module's
+specialties; simplification, "especially as much code was accumulated"; anything missing; the
+purpose fully met (owner, 2026-09-26, paraphrase of the pre-merge instructions). In the owner's
+words: "is that reasonable, is that minimal and efficient for the intended function, could the same
+outcome be implemented leaner without losing anything" (owner, 2026-11-07).
+
+A reading does not answer them; one figure per operation does (agent, 2026-11-07): its physical
+need (the bytes, bus transactions and computation its job requires) against its worst-case cost
+(the largest input it meets, under load, on silicon; an idle or Unix-port figure is named as such)
+and who waits meanwhile (the loop, each task behind a lock or bus it holds, a peer's timeout),
+taken at each level — a function inside its callers' locks, a module inside its integration, the
+system under its heaviest concurrent load. A cost far beyond its need is a defect fixed at its
+source, never a fact to document (agent, 2026-11-07). Such a fix, like any improvement (speed,
+resources, accuracy, complexity), is made without changing functionality: every valid input keeps
+its result, and the suite passes with only mechanical test changes (E.2.2).
 
 ## D.9 Check against current MicroPython, not the version this code predates
 
@@ -10189,7 +10210,8 @@ before any code, never followed silently (CLAUDE.md's flagging rule).
 ## K.2 Write the driver, to the Part C/D bar
 
 *Every module; the shape a sensor driver.* Layered shape (Part C.1–C.10), config schema (C.5),
-error/logging contract (C.7), concurrency model (C.8), the quality bar (Part D in full), and every
+error/logging contract (C.7), concurrency model (C.8), the quality bar (Part D in full, D.8's
+design questions answered per operation by cost against need at every level), and every
 row of 0.4's conventions catalog checked for the new code. Every tuned value takes an `@tunable`
 tag and a Part N row (N.1); a new `src/` file then gets CLAUDE.md's bird's-eye scan over `src/`,
 its discrepancies reported, not fixed. Two points easy to miss reading Part C/D alone:
