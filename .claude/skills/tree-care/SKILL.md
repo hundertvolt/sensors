@@ -31,8 +31,8 @@ runner. `--bench` adds the bench variables and one MicroPython board on USB, wit
   scripts/_generate_sensortask_modules.py` and `scripts/build_website.sh <device>` (test.sh uses the first device).
 - `uv run toolchain/setup_toolchain.py test` re-verifies an installed toolchain offline in a few minutes; `setup
   --clean` rebuilds its build folders without re-cloning.
-- A clean-chroot leg follows README.md "Build-environment verification" in a real checkout, not a copied worktree
-  (test.sh's checkout-write guard needs its own `.git`), with Node installed: the recipe's minimal chroot has none.
+- A clean-chroot leg follows README.md "Build-environment verification" as written, in a real checkout, not a copied
+  worktree (test.sh's checkout-write guard needs its own `.git`); its `env --tier generic` step installs the pinned Node.
 
 ## Clean up: `scripts/_tidy.sh`
 

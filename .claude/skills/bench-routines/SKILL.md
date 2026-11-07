@@ -22,6 +22,11 @@ technical reference ("Running", "Bench traps", "Persistence-write gating"); this
 - Count every real flash cycle as it happens, one ledger line each: `FC +1 <UTC> <commit>`. A rerun of a step that
   flashes is another cycle; a per-step budget figure is not the count.
 - Write no new board-control code before checking the index below: the harness already does it, with its retries.
+- The three skills (`bench-routines`, `work-routines`, `tree-care`) and their `scripts/_*` helpers are the bench's to
+  fix too (owner, 2026-11-07: "The bench shall use them, but also be allowed to adapt and repair them in case
+  something does not fit or is missing, and shall communicate such things back to you."). When a step, an index
+  entry or a helper is wrong or missing, fix it on the bench branch in its own commit and append a `skill:` block to
+  the hand-back (below), so the lead carries the fix into the main line.
 
 ## Board control: what already exists
 
@@ -113,6 +118,12 @@ Append, never rewrite. One block per run:
 errcount added: <_errcount_digest.py's changed lines, or "none">
 ResetReason after: <n> (<REASON bits>); flash cycles today: <n>; logs/<file names>
 status: confirmed | inferred | not traced, and why
+```
+
+A fix to a skill or helper gets its own block:
+
+```
+<UTC> skill: <skill or helper>: <what did not fit or was missing>; changed: <what>; commit <short sha>
 ```
 
 Never paste a raw log, a whole console, a FRAM dump or a picotool progress bar into it; name the file under `logs/`.

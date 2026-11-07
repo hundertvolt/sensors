@@ -33,4 +33,4 @@ fails is the symptom new. The full account is where the last column points.
 | Allocation figures 4-5x too high | Measured under `--coverage` (the settrace binary) | Measure on `build-standard` | SPECIFICATION.md E.5.2 |
 | `call-overload` at a bare `Timer()` | A gap in the board stub, seen only in a src-only mypy run | Run the full `scripts/typecheck.sh` | CLAUDE.md (typecheck notes); SPECIFICATION.md B.15 |
 | `lint.sh` or `typecheck.sh` refuses to start | No venv, or another tree's venv (`_require_venv.sh`) | `uv sync && source .venv/bin/activate` in this tree | CLAUDE.md "Code quality tooling" |
-| The clean-chroot leg fails 60+ host tests with `node is not on PATH` | The recipe installs no Node; the host tier needs it | Run `uv run toolchain/setup_toolchain.py env --tier generic` first and put its Node on PATH | README.md (clean-chroot recipe) |
+| The clean-chroot leg fails 60+ host tests with `node is not on PATH` | A recipe older than 2026-11-07 ran `uv sync` alone and installed no Node | Follow the current recipe: `env --tier generic`, then its Node on PATH | README.md (clean-chroot recipe) |
