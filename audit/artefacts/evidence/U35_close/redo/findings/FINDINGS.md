@@ -909,3 +909,14 @@ the bus across its 50 ms waits (bench check before shipping); (4) boot stagger b
 completeness pass (every occurrence of the 12.100 mechanism: rulings without keep-words, Parts A-M beyond F.3/N, tests,
 twin, build chain) and the prevention check (specfund's rules applied in every brief). Snapshot 48 pushed with CI 47
 still running, on the owner's order. Next steps: S/u35r/r5/NEXT.md.
+
+## 12.108 stretch back (S/u35r/r5/STRETCH.md)
+(1) The 104-122 ms "serving stretch" is the sum of one slice per task queued ahead (C, asyncio order; Unix probe); the
+longest /status slice is `system` ~41 ms, ~17-20 ms per errcount entry (I), and a build allocates 160 KB for ~7.4 KB of
+JSON (C). Fix at source: `_write_errcount_entry()` writes each history item as one formatted fragment (bytes identical,
+3.1x cheaper, 3.2x less allocation, C). (2) The 41.3 ms VOC step is the port's boxed 32-bit arithmetic (42 mul, 11 div,
+79.5 constant conversions, 18.5 KB per step, C); need <=0.1 ms (I). Fix: fold the 53 constant expressions to ints and
+compute mul/div as exact int products with libfixmath rounding: bit-identical (0/50k vectors, 4,000 steps, C), 2.5x
+faster, 18.7 -> 6.4 KB per step. (3) The 21 ms bound has no consumer in the code; it is J.6's GC term; the smallest real
+consumer is the 50 ms LED frame; the floor term should be the measured silicon lag. Both fixes are D.8 necessities
+(identical results): added to the unit after bfix with the owner's five. Probes ran beside bfix's gate (ratios only).
