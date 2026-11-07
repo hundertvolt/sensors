@@ -303,8 +303,8 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
   the files, and a name with no TOML of that name in `devices/` is a usage error. The option is exported as the
   variable for the session, so every harness helper that takes a device by default reads it.
 - `--dut-ip ADDR` - the DUT's last known address on the bench network: the session then saves
-  `GET /status` (the FRAM-backed `errcount` and the in-RAM reset reason) before anything resets the
-  board. Without it the session notes that nothing was saved over REST and starts from the raw FRAM
+  `GET /status` (the FRAM-backed `errcount` and the in-RAM reset reason) before anything touches the
+  board, the `board` fixture's own reachability `exec` included. Without it the session notes that nothing was saved over REST and starts from the raw FRAM
   dump alone. To find the address without disturbing the running system (an `exec` stops `main.py`):
   the firmware sets `network.hostname()` from the `Hostname` setting (`devices/dev.toml`'s `hostname`
   until changed) before it connects, and rp2's lwIP sends it in the DHCP request and answers mDNS for
