@@ -1,5 +1,23 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 14:40 UTC, 2026-11-07: the owner on the microSD's wear: no more heavy writes to it; the trixie rebuild is off
+No new code on this branch; this relay's commit only.
+- The owner, 14:39 UTC: "I hope that's not wear of the card, and too heavy write cycles should not be conducted
+  allover again..." The standing wear rule already covers the host's own storage; this applies it to the microSD.
+- Off: the trixie rebuild from 14:14. A fresh chroot (debootstrap, toolchain build, npm, Chromium) is the heaviest
+  card write this campaign has. The trixie leg stays at this morning's run (GCC 14: env, lint, typecheck 0, 5,838 unit
+  tests passed); its 8 failures are the freeze class step 3 traced to the card on noble.
+- The 16-job noble run finishes as it is (scratch in RAM). After it: no new chroot, no rebuild and no test.sh leg on
+  the card unless a relay asks. Every log, vmstat output and console capture stays in /dev/shm until you send it.
+- Read only, nothing written; send the numbers: (1) the root filesystem's lifetime writes and the card's size:
+  `findmnt -n -o SOURCE /`, then /sys/fs/ext4/<that partition>/lifetime_write_kbytes, and `lsblk -b -d -o NAME,SIZE`;
+  (2) the card's make: /sys/block/mmcblk0/device/{name,manfid,oemid,date}; (3) any card errors in the kernel log
+  (`dmesg | grep -iE 'mmc|i/o error'`, or `journalctl -k` if dmesg has rotated); (4) the noble chroot's size
+  (`du -sxh`): whether a later periodic check can run with the whole chroot in RAM; (5) if the 12:33-13:33 vmstat log
+  kept its bo column, its sum (KiB step 2 wrote).
+- Unchanged: the reflash to the trace image after the owner's OK, read (b') up to three times, the hammer after the
+  fixed image. Their logs follow the /dev/shm rule above.
+
 ## 14:23 UTC, 2026-11-07: the owner chose to trace, then fix, the UART miss: a trace image (new image)
 New code on this branch: 3c0fafe2, with this relay's commit on top. src/ changed: a new image, bench only. It also
 carries main line 2f6d1453 (the twin CI soak's fixed warm-up; nothing the board or test.sh runs).
