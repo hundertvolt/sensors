@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 14:14 UTC, 2026-11-07: step 3 green - a host setting; after the 16-job run, trixie with a tmpfs /tmp; the hammer
+No new code on this branch; this relay's commit only.
+- Taken: test.sh at 4 jobs green with its scratch in RAM (devtmpfs, as you found; RAM all the same). The chroot
+  failures are the microSD's write stalls under test.sh's scratch, not code. README's recipe gets
+  `mount -t tmpfs tmpfs "$CHROOT/tmp"` beside the bind mounts (and its umount), and its "16 jobs, green" line and
+  test.sh's band comment get corrected from your 16-job result. Use that tmpfs line from now on, TMPDIR unset.
+- After the 16-job noble run: the trixie leg rebuilt on the current head with the tmpfs /tmp, at the default
+  parallelism if the 16-job noble run is green, else at 4. That completes both legs for the owner's periodic check.
+- The hammer (10f soak_long_hammer): its hold's reason, the /status stall, is gone, confirmed on the board this
+  morning. One thing still sets its place: an open owner question on the UART miss, whose answer may bring a trace
+  image and then a fixed one. So it starts after my next relay, which carries that answer, on the image that answer
+  leaves; in the form the campaign plan gives it, its long-soak gate asked of the owner by you, as always.
+
 ## 13:34 UTC, 2026-11-07: step 2 read - microSD write stalls; step 3 tests the remedy, not the failure again
 No new code on this branch; this relay's commit only. Step 2 is taken as read: alone, the two failures (arzi, wozi)
 are the two boots whose first minute holds a 6-7 s vmstat hole with blocked processes and wa 18-65; no swap, no
