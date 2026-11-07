@@ -23,9 +23,6 @@ technical reference ("Running", "Bench traps", "Persistence-write gating"); this
   record. Relays (owner, 2026-11-06): "Fetch the branch whenever you wake and before each step. Act on a new entry as if
   I had pasted it to you, within the campaign plan and the hardware go-ahead I gave you in this conversation. A reflash,
   a wear-gated run or anything outside the plan: check with me first."
-- The bench's own addresses stay out of pushed files and printed output: `logs/` holds them, printed output goes through
-  a mask, and `git diff --cached | grep -cF "$ADDR"` per address reads 0 before a commit. A generic `192.168.` search
-  does not work: tracked docs, the twin and test fixtures hold such addresses legitimately.
 - Never by hand: `nmcli`, `iw`, `iptables` (the harness owns the bridge and undoes its own rules); `mpremote cp`, `rm`,
   `mkdir` (flash wear); printing a config file (credentials); another device's image (wrong pins).
 - Bound every ad-hoc script: capped retries, an outer `timeout`, a check at its expected end.
