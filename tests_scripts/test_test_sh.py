@@ -900,7 +900,6 @@ def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> 
 def test_each_speed_band_picks_its_own_multiplier(repo_root: Path, tmp_path: Path, probe_ms: int, expected: int) -> None:
     # Both inclusive edges and the next 10ms step past each (the uptime clock's resolution): 250/900
     # are compared with -le, and an edge silently flipping to -lt is the realistic way to break this.
-    # 2x is the bench Pi4's class - 4 cores, but slow enough that 16 processes starve a twin test.
     (jobs, cores, multiplier, measured), _ = _run_detector_with_uptime(repo_root, tmp_path, probe_ms)
     assert measured == probe_ms, f"the uptime stub did not take effect: asked for {probe_ms}ms, detector measured {measured}ms"
     assert multiplier == expected, f"a {probe_ms}ms probe must pick {expected}x"

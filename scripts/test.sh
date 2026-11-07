@@ -362,8 +362,8 @@ for i in range($probe_iterations):
     # @tunable runner.band_mid_ms = 900
     elif [ "$probe_ms" -le 900 ]; then
         # @tunable runner.mult_mid = 2
-        multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription
-    else                        # that starved a twin test's real-time budget at 4x
+        multiplier=2            # mid host (none measured; the bench Pi4 probes 120-139 ms, a fast host)
+    else
         multiplier=1
     fi
     echo "$(( cores * multiplier )) $cores $multiplier $probe_ms"
