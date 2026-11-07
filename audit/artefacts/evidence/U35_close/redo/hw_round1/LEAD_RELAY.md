@@ -1,5 +1,22 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 12:26 UTC, 2026-11-07: noble at 4 jobs - step 3 on the noble chroot first, no trixie rebuild yet; three reads
+No new code on this branch; this relay's commit only. The missed vmstat is no loss: the steps below give it.
+- Order: 1. read (b) now, nothing else running, as you planned. 2. Then my step 3 in the noble chroot as it stands:
+  the scenario harness alone, one device at a time, all six (every one failed there), `vmstat -t 1` and `free -m` on
+  the host. 3. Then test.sh at 4 jobs in that same chroot with vmstat running: my step 1. The trixie rebuild waits
+  until these say host or code.
+- Three reads from the noble logs you have, no rerun, before 2:
+  a. arzi's and grkizi's 400 in every_admitted_connection...: the twin log around that request. My reading of the
+     code: the per-call timeout is 5 s (web.per_call_timeout_s); after a loop stall longer than that, the overdue
+     timeout runs before the read that is ready by then, the head read times out, and Microdot's read catch prints
+     the TimeoutError and answers 400. If so, the log shows that traceback, W49 "Connection reclaimed (per-call
+     timeout)" and a feed gap over 5 s across the request. A 400 without them is code: put it first.
+  b. The ~7.2 s first-boot-like gaps: which boot phase each falls in (the runner's "boot phase:" lines around it).
+  c. test_the_timeout_interrupts_the_files_process_once: its failure text and the timing it reports.
+- Your recurring names (survives_bus_and_api_load... on 5 jobs, every_admitted_connection... noble both days,
+  static_site_is_served_over_real_http and failed_config_snapshot_is_sent_as_unavailable) all run alone in 2.
+
 ## 10:24 UTC, 2026-11-07: trixie at 4 jobs - no blind rerun; host log during noble, then each failing device alone
 No new code on this branch; this relay's commit only. Snapshot 46 is green on CI; its one code change is the twin CI
 soak's warm-up (scripts/_digital_twin_ci_suite.py), which neither test.sh nor the board runs: nothing to pull.
