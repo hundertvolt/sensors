@@ -1,5 +1,14 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 16:47 UTC, 2026-11-07: the fix waits for a design check; no image this evening
+No new code on this branch; this relay's commit only.
+- The 8-20 s backup is a defect, not FRAM timing: the 264-byte backup's CRC runs bit by bit inside the FRAM lock and
+  yields after every byte (264 times per copy), each yield costing ~22 ms under the readers. The owner, 16:45: both
+  fixes (the UART link independent of FRAM timing, and the FRAM hold fixed at its source), after a design check of
+  every affected part against the project's principles. That check runs now; the image follows only after it and the
+  owner's look at it, so not this evening. The 16:35 relay's "expect this evening" no longer holds.
+- The board keeps the trace image. Nothing to run meanwhile; no writes to the card.
+
 ## 16:35 UTC, 2026-11-07: trace read, the receiver fix is being built; your stamp rule is in; nothing to run meanwhile
 No new code on this branch; this relay's commit only.
 - Taken: the 16-job noble run (green, scratch in RAM) and read (b') on the trace image: uid 0's W56 FRAM write took
