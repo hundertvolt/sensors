@@ -1,5 +1,20 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 16:35 UTC, 2026-11-07: trace read, the receiver fix is being built; your stamp rule is in; nothing to run meanwhile
+No new code on this branch; this relay's commit only.
+- Taken: the 16-job noble run (green, scratch in RAM) and read (b') on the trace image: uid 0's W56 FRAM write took
+  8,047 ms behind SGP40's backup and the resync after it drained uid 254's frame; attempt 2's cmd 5 was lost the same
+  way under a PASS. The README recipe now mounts a tmpfs on the chroot's /tmp, and the speed-band text says the Pi4
+  is a fast host (main line 41f1891e).
+- The fix, per the owner's "B": the UART link records and prints its log entries at once and writes them to FRAM in
+  the background, so a decline or a fault resyncs at once; the resync's console line will also show the bytes it
+  drained, so the fixed image shows a swallowed frame without trace lines. Being built and tested now; the image and
+  its relay follow once the main line's gate is green (expect this evening, UTC). The board keeps the trace image
+  until then; the hammer waits for the fixed image, as relayed.
+- Your stamp proposal: no conflict; it is in bench-routines on the main line (18e9d59c) and reaches you with the next
+  push. Until then follow it as written in your note.
+- Nothing to run meanwhile; no writes to the card.
+
 ## 14:40 UTC, 2026-11-07: the owner on the microSD's wear: no more heavy writes to it; the trixie rebuild is off
 No new code on this branch; this relay's commit only.
 - The owner, 14:39 UTC: "I hope that's not wear of the card, and too heavy write cycles should not be conducted
