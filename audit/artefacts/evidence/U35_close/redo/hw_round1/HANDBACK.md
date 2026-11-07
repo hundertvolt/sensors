@@ -42847,3 +42847,14 @@ Names that recur across legs: survives_bus_and_api_load_while_ntp_is_unreachable
 Missed: the lead's 10:24 vmstat log during this leg. The relay landed at 10:25:09, after my last fetch before the leg; I fetched next at 12:23. No host log exists for this leg. The trixie chroot was removed at 10:27 after its logs were copied, so step 3 needs it rebuilt.
 logs/day3_20261107/chroot_evidence/noble/ (test.log, env.log, lint.log, typecheck.log, test_sh_archive/)
 status: failures confirmed; cause not traced; no host-load reading for it.
+
+12:32:25 UTC 2026-11-07 lead 08:59 read (b): hazard run by PUT /uart under 3 readers on GET /status for its length (194 answered 200), board console read passively with host UTC per line; nothing else running; HEAD 6f00e4ac; image 2026-11-07T07:55:06Z
+FieldSweep as expected this time, uid [True, True, False]; TwoInitiations [True, False]; Crossed [True, False, 1, True]; about 214 s. So 3 readers alone did not reproduce the test's miss. One known difference: the test calls reset_all_error_logs() first; this run cleared nothing.
+Console: 7 "UART_resp callback rejected command 7" lines, one per legal swept value; chunks 2 and 255 at 12:27:29.660 and 12:27:32.958 (3.30 s apart), uid 0x00 and 0xFE at 12:28:19.765 and 12:28:22.268 (2.50 s apart). The stamps are when a line reached the host, not when it was printed. SGP40 "Backup counter: 59 Trigger: 60" at 12:28:22.123, so its backup came right after 0xFE.
+errcount added: UART_init +2 (E85,E88; E88 in place of the loaded runs' E81), UART_resp +25 (as in the earlier no-reader run)
+logs/day3_20261107/readb_console.txt, readb_probe.txt, readb_{start,end}_status.json
+status: confirmed for this run; the miss is not reproduced, so its cause stays open.
+12:32:25 UTC 2026-11-07 lead 12:26 reads from the noble logs, no rerun:
+a. arzi and grkizi's 400 (every_admitted_connection...): in shared_boots/twin_01, "WEBSERVER Connection reclaimed (per-call timeout):" then "WEBSERVER Microdot caught:" (empty text), in a boot whose largest feed gap is 6,511 ms (arzi) and 6,498 ms (grkizi), both over the 5 s per-call timeout; no traceback printed. That the gap spans the request is inferred: the twin lines carry no times.
+b. The ~7.2 s gaps (dev 7,196, 7,166, 7,177; arzi 7,172; grkizi 7,182): erasefram_on_a_silent_chip... twin_01 and shared_boots twin_01/02. Every such boot reached BOOT_DONE; the phase lines carry no times and the shutdown line gives only the largest gap, so the phase it fell in cannot be read from these logs. The ~9,0xx gaps on dev, arzi and grkizi are watchdog_fault_block/twin_01, with would_have_triggered_count 1: the deliberate one.
+c. test_the_timeout_interrupts_the_files_process_once: "the interpreter got 0 SIGINTs", count file 0; no timing printed. Its counter process writes the count every 10 ms and kill_after_s is 1, so 0 means it never counted a delivery within 1 s of the SIGINT. Inferred: a stall over 1 s.
