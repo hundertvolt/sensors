@@ -42888,3 +42888,5 @@ Feed gaps: the pytest tier's twins at most 161 of 8000 ms (2 %), the watchdog ne
 Host: vmstat 1,793 samples, si/so 0, wa >= 20 on 27, a blocked process on 48, no hole of 3 s or more (output in RAM, as in the 4-job run).
 logs/day3_20261107/chroot_evidence/noble/shm_default/ (test_shm_.log, vmstat.txt, free_start.txt, run.log, test_sh_archive/)
 status: confirmed green at 16 jobs with the scratch in RAM; this decides README's "16 jobs, green" line and test.sh's band comment per the lead's 14:14 relay. The trixie leg stays at this morning's run (rebuild off, lead 14:40).
+
+FC +1 2026-11-07T16:10:30Z ea2f3a1c (owner's OK this session, "Yes go ahead"; lead 14:23 UART trace image, bench only; image BuildDate 2026-11-07T16:04:12Z, 57,588 B free, dirty false; board read back match, ResetReason 21 after the restore; flash cycles today: 2; copy logs/images/trace_20261107T160412Z.uf2)
