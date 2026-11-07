@@ -42817,3 +42817,10 @@ status: confirmed, one run each; a heap low point is a sample of one run, so 7,7
 08:29:39 UTC 2026-11-07 skill: work-routines: items 14, 15; changed: Read logs, Working with the owner; commit c55da08e
 08:29:39 UTC 2026-11-07 skill: _preflight.sh: item 16; changed: MPREMOTE_DEVICE unset is OK with exactly one board, BENCH_DEVICE unset always OK; commit e5b28b9d; test_work_routines_helpers, test_citations, test_decision_vocabulary 34 passed; shellcheck clean
 08:29:39 UTC 2026-11-07 HANDOVER.md: item 7's rc half and the runner's new hand-back behaviour written in. This bench still keeps its uv in .uvpin inside the worktree (the runner reads it there); not moved, as a chroot leg clones rather than copies.
+
+08:41:03 UTC 2026-11-07 step lead-19:04 item 3 rerun 2 (one repeat, my addition): same -k; HEAD f07ea3cc at start; image 2026-11-07T07:55:06Z
+pytest: 1 failed, 135 deselected in 328.85s; the same verdict, FieldSweep uid [True, False, False]; load.failures empty again
+errcount added: UART entries as in the first run; WEBSERVER none
+Same image, no readers, one hazard run by PUT /uart (no flash write, heap_probe not used; logs/day3_20261107/hazard_noload.txt): FieldSweep as expected, uid [True, True, False], about 205 s. The probe's 180 s bound was too short and its second PUT landed during the first run: Runs read 1 afterwards, so its one printed verdict is that run's. 2 misses of 2 at 3 readers, 0 of 1 with none.
+ResetReason after: 21; flash cycles today: 1; logs/day3_20261107/rerun3b_hazard_archive/, rerun3b_hazard.out
+status: the load dependence confirmed on these three runs only; the 500 ms margin (lead, 08:35) inferred. No fix here: the lead takes it to the owner.
