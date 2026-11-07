@@ -62,8 +62,9 @@ bash $H/round1.sh summary                   # the hand-back's verdict table, wea
 touch $H/STOP                               # end after the running step
 ```
 
-`run` first continues the fetched bench branch. After every step it reads `/status` and rebuilds `HANDBACK.md`, then
-commits it `[skip ci]` and pushes it. The logs stay in `$H/logs/` (git-ignored, they hold the LAN address).
+`run` first continues the fetched bench branch. After every step it reads `/status` and rebuilds `logs/handback_rollup.md`,
+then commits and pushes `WEAR.txt` when it changed, `[skip ci]`. Its rc 0 only means the step ran: read `run_record.json`.
+The logs stay in `$H/logs/` (git-ignored, they hold the LAN address).
 
 ## Stopping
 
@@ -144,7 +145,9 @@ prerequisite file writes up to 422 (the tiers twice, 136 + 66 each, then 10a, 10
 
 ## What comes back
 
-`HANDBACK.md` in this folder, on `claude/u35-bench-campaign`, pushed after every step. It holds:
+`HANDBACK.md` in this folder, on `claude/u35-bench-campaign`, appended to by hand in bench-routines' block format (lead's
+23:15 relay, 2026-11-06); the part above its day-3 blocks is the old rollup, kept as written. `logs/handback_rollup.md`,
+local, holds:
 - the verdict table: per step its verdict, `ResetReason` after it, start time, duration, the host's 1-minute load at
   its end (the owner may use the Pi meanwhile; both step lines carry `/proc/loadavg`) and wear;
 - the wear started against the round's budget;

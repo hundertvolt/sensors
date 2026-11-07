@@ -42804,3 +42804,16 @@ The 13 GET /status refusals are gone: load.failures was empty and that assertion
 errcount added: UART_init counter 2 (E85,E81); UART_resp counter 23 (W56,E80 repeated, history keeps the last); WEBSERVER none in the session-end read (the test clears first)
 ResetReason after: 21; flash cycles today: 1; logs/day3_20261107/rerun3_hazard_archive/, rerun3_hazard.out
 status: failure confirmed, once. Cause not traced; inferred candidate: the responder had not finished its timeout and resync for uid 0x00's unfinished first chunk when 0xFE arrived, since the sweep waits a fixed quiet time on a loop now under load. Not ruled out: the ACK read window itself.
+
+08:29:39 UTC 2026-11-07 step lead-19:04 item 4 rerun: -k 'test_serving_sweep_at_the_reactive_default or test_heap_at_peak_while_a_full_ceiling_is_held'; HEAD 99771995 at start; image 2026-11-07T07:55:06Z
+pytest: 2 passed, 134 deselected in 398.75s
+serving_sweep at -1: 0 allocation failures; N=4 48 answered, N=6 72, N=8 72 answered and 24 refused; lowest load sample free 7,744 B, largest run 704 B (load16); before the fix 368 B and 320 B. Lowest largest run elsewhere: 864 B, load19. Largest run at pre00-03 5,664-10,512 B, at post00-02 3,280-8,496 B.
+heap_at_peak at 32768: ceiling 6, held 3-6, 100 of 146 samples at the ceiling; after boot free 43,232 B, largest run 26,576 B; at peak largest run 21,600 B, 10 slots; before the fix 102 of 146, free 40,784 B, 28,992 B, at peak 21,552 B, 10 slots.
+errcount added: WEBSERVER counter 0->78 (W48,W60 repeated), both named by the two tests' refusals at the ceiling; nothing else
+ResetReason after: 21; flash cycles today: 1; logs/day3_20261107/rerun4_sweep_heap_archive/, rerun4_sweep_heap.out
+status: confirmed, one run each; a heap low point is a sample of one run, so 7,744 against 368 B is not a bound.
+08:29:39 UTC 2026-11-07 skill: bench-routines: items 1, 2 (no owner-rule change), 3 (per-address check), 4, 5, 6, 7 (FRAM half), 8, 9, 10, 11 (copy line) of the 08:11 note as the lead worded them at 08:15; changed: standing rules, index, Bench host configuration, session start, before a reflash, running, symptoms; commit cb6a1b78
+08:29:39 UTC 2026-11-07 skill: tree-care: items 12, 13; changed: Set up, Keep the repository lean; commit d2737a05
+08:29:39 UTC 2026-11-07 skill: work-routines: items 14, 15; changed: Read logs, Working with the owner; commit c55da08e
+08:29:39 UTC 2026-11-07 skill: _preflight.sh: item 16; changed: MPREMOTE_DEVICE unset is OK with exactly one board, BENCH_DEVICE unset always OK; commit e5b28b9d; test_work_routines_helpers, test_citations, test_decision_vocabulary 34 passed; shellcheck clean
+08:29:39 UTC 2026-11-07 HANDOVER.md: item 7's rc half and the runner's new hand-back behaviour written in. This bench still keeps its uv in .uvpin inside the worktree (the runner reads it there); not moved, as a chroot leg clones rather than copies.
