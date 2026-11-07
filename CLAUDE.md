@@ -456,7 +456,8 @@ Three standing practices:
   its maker with the new facts, neither kept nor overridden silently. A measurement names its
   condition (idle or loaded, which case, silicon or Unix port), and a budget row names its real
   consumers, read from the code (agent, 2026-11-07).
-- **An owner question comes after the principles are checked at every level** (owner, 2026-11-07:
+- **An owner question comes after the principles are checked at every level; what they leave
+  genuinely open is flagged to the owner, never guessed** (owner, 2026-11-07:
   "check the whole situation against our pillars, which you should already have done before even
   asking me"): its subject is checked against SPECIFICATION.md Parts 0 and D at each level 0.1
   names, and what that check answers is not asked; a cost in it carries its context — the lock or

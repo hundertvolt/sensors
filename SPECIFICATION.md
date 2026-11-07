@@ -4887,15 +4887,15 @@ purpose fully met (owner, 2026-09-26, paraphrase of the pre-merge instructions).
 words: "is that reasonable, is that minimal and efficient for the intended function, could the same
 outcome be implemented leaner without losing anything" (owner, 2026-11-07).
 
-A reading does not answer them; one figure per operation does (agent, 2026-11-07): its physical
-need (the bytes, bus transactions and computation its job requires) against its worst-case cost
-(the largest input it meets, under load, on silicon; an idle or Unix-port figure is named as such)
-and who waits meanwhile (the loop, each task behind a lock or bus it holds, a peer's timeout),
-taken at each level — a function inside its callers' locks, a module inside its integration, the
-system under its heaviest concurrent load. A cost far beyond its need is a defect fixed at its
-source, never a fact to document (agent, 2026-11-07). Such a fix, like any improvement (speed,
-resources, accuracy, complexity), is made without changing functionality: every valid input keeps
-its result, and the suite passes with only mechanical test changes (E.2.2).
+Reading alone does not show whether code is minimal and efficient; one figure per operation does
+(agent, 2026-11-07): its physical need (the bytes, bus transactions and computation its job
+requires) against its worst-case cost (the largest input it meets, under load, on silicon; an idle
+or Unix-port figure is named as such) and who waits meanwhile (the loop, each task behind a lock or
+bus it holds, a peer's timeout), taken at each level — a function inside its callers' locks, a
+module inside its integration, the system under its heaviest concurrent load. A cost far beyond its
+need is a defect fixed at its source, never a fact to document (agent, 2026-11-07). Such a fix, like
+any improvement (speed, resources, accuracy, complexity), is made without changing functionality:
+every valid input keeps its result, and the suite passes with only mechanical test changes (E.2.2).
 
 ## D.9 Check against current MicroPython, not the version this code predates
 
@@ -10177,9 +10177,9 @@ API and website design."). **Its record** is the module's owner list, each item 
 "(owner, date)" tag, in the Part section the module owns — Part M for a chip, M.1.1 the shape —
 and the commit message cites it; K.4's tags and C.5's schema implement it. A question the
 discussion leaves open goes to BACKLOG.md's owner-question list, never into a guessed design
-(CLAUDE.md's flagging rule). A record point that departs from a standing owner rule (C.4.2's staleness
+(CLAUDE.md's owner-question rule). A record point that departs from a standing owner rule (C.4.2's staleness
 rule, say: a failed read publishes nothing, the last good sample stands) is put to the owner
-before any code, never followed silently (CLAUDE.md's flagging rule).
+before any code, never followed silently (CLAUDE.md's owner-question rule).
 
 ## K.1 Before writing any code
 
