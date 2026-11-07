@@ -78,7 +78,8 @@ twin shutdown lines: 6; largest feed gap 30 of 8000 ms (0%) where the watchdog n
 ```
 
 After it names a line, read around that line only (`sed -n 'A,Bp' LOG`), never the whole log. A memory-marker hit
-can be a test's own fixture text: read the line before you call it a failure.
+can be a test's own fixture text: read the line before you call it a failure. A "none found" rests on a search with
+no `head` or other cut behind it.
 
 ## Read error logs and rerun failures: `scripts/_errcount_digest.py`, `scripts/_failed_tests.py`
 
@@ -134,6 +135,9 @@ session reads it before writing a relay or reading a hand-back. The `tree-care` 
 - Record the owner's words verbatim, with that time and the topic, wherever the session keeps its rulings.
 - Ask one question at a time, in prose: the facts, the options with their consequences, what each touches, and a
   recommendation. No multiple-choice question tool for complex topics.
+- Do not ask what a relay, the plan or a standing rule already answers: carry on and report (owner, 2026-11-05: "Why do
+  you need anything from me? Keep going"). A reflash, a wear-gated run, work outside the plan, a budget stop and a
+  genuinely open decision still go to the owner.
 - Bring only what shows in operation, in operational terms. Say when a figure is near a critical margin. Do not
   offer a technical necessity as a choice.
 - Show any message meant for another session to the owner in a copy-paste code block.
