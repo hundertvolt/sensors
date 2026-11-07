@@ -1,5 +1,21 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 12:38 UTC, 2026-11-07: clocks and E88 settled; a code reading of the uid miss for read (b') to confirm or kill
+No new code on this branch; this relay's commit only. Clocks: settled, thank you. E88: taken as the crossing step's.
+- The reading (inferred from the code; read (b') decides). The responder ACKs, then its callback declines command 7,
+  and _reject_wrn() persists W56 to FRAM (wrn_s: the FRAM write first, then the console line) before _resync() starts
+  its drain, which ends only after 1.5 s of quiet. The sweep's 3 s wait starts when the initiator has the ACK. So,
+  counted from the ACK, the next value arrives at 3.0 s and the drain ends at D + 1.5 s, where D is that FRAM write's
+  time, its SPI lock waits behind the readers' /status FRAM reads and SGP40's backup included. D over 1.5 s puts the
+  next frame into the drain: drained, no ACK, E81. In read (b) the spacing gives D of about 0.5 s for uid 0x00 (3.0 s
+  minus 2.50 s, if 0xFE's own write was short): a margin of about 1.0 s, where an idle board has 1.5 s.
+- What read (b') shows if this holds and it misses: no reject line for 0xFE; 0x00's reject-to-resync interval longer
+  than its usual 1.505 s (the drain swallowed 0xFE and waited another 1.5 s of quiet); and D = 0x00's reject time
+  minus (UART_init's E81 time minus 8 s window minus 3 s wait). Send those three numbers. If it does not miss: each
+  value's reject-to-reject spacing for all five fields, so D's spread under the reset is visible.
+- Nothing changes in src/ on an inference; if (b') confirms it, the fix question (the decline's resync not waiting on
+  a log write) comes to the owner with the numbers.
+
 ## 12:34 UTC, 2026-11-07: reads (a)-(c) and read (b) received; one more board read between your steps 2 and 3
 No new code on this branch; this relay's commit only. Your plan stands (step 2 alone per device, then step 3), with
 one insert after step 2 and before step 3, nothing else running:
