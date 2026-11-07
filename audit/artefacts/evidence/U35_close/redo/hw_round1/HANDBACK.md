@@ -42882,7 +42882,7 @@ df -h /dev/shm inside the chroot read "udev 3.6G" free: the chroot's /dev is a p
 logs/day3_20261107/chroot_evidence/noble/shm/ (test_shm.log, vmstat.txt, free_start.txt, run.log)
 status: confirmed green with the scratch in RAM; by the lead's 13:34 rule that makes the chroot failures a host setting, the microSD write-back (inferred mechanism).
 
-16:00:40 UTC 2026-11-07 lead 13:34 step 3, default parallelism: scripts/test.sh in the noble chroot (f0238c4b's clone, as built), TEST_PARALLELISM unset (test.sh chose 16: 4 usable cores x 4, speed probe 120 ms), TESTS_SCRIPTS_TIMEOUT_S=2400, TMPDIR=/dev/shm inside the chroot; vmstat -t 1 to the host's /dev/shm; nothing else running; 14:13:40-14:43:34
+16:00:02 UTC 2026-11-07 lead 13:34 step 3, default parallelism: scripts/test.sh in the noble chroot (f0238c4b's clone, as built), TEST_PARALLELISM unset (test.sh chose 16: 4 usable cores x 4, speed probe 120 ms), TESTS_SCRIPTS_TIMEOUT_S=2400, TMPDIR=/dev/shm inside the chroot; vmstat -t 1 to the host's /dev/shm; nothing else running; 14:13:40-14:43:34
 test 0, Result: PASS. L0 PASS, L1 PASS, L2 PASS; files 137 passed, 0 failed, 0 retried; tests 5,846 passed, 0 failed; tests_scripts 6,972 passed, 0 failed (28:54); all six scenario jobs PASS (dev 64, arzi 62, grkizi, klkizi, schlafzi, wozi 61 each, 0 failed).
 Feed gaps: the pytest tier's twins at most 161 of 8000 ms (2 %), the watchdog never fired.
 Host: vmstat 1,793 samples, si/so 0, wa >= 20 on 27, a blocked process on 48, no hole of 3 s or more (output in RAM, as in the 4-job run).
