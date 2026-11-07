@@ -201,11 +201,12 @@ class _Bench:
         self.log.append("kick_all_stations")
 
 
-@pytest.mark.parametrize("rig", ["flash-only", "bench"])
+@pytest.mark.parametrize("rig", ["flash-only", "bench", "no board", "twin"])
 @pytest.mark.parametrize("answer", ["answers", "refuses", "absent"])
 def test_the_session_start_saves_status_over_rest_before_any_raw_repl_call(conftest: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: str, rig: str) -> None:
+    # Through the fixture in its real order: the board fixture's reachability check is itself a raw-REPL exec.
     log: list[str] = []
-    kicked = rig == "bench"
+    kicked, boarded, twin = rig == "bench", rig in ("flash-only", "bench"), rig == "twin"
 
     def save_errcount(dut_ip: str, reason: str) -> None:
         if answer == "refuses":
@@ -217,14 +218,28 @@ def test_the_session_start_saves_status_over_rest_before_any_raw_repl_call(conft
         log.append(f"raw-REPL FRAM dump ({reason})")
         return harness.FramDump(tmp_path / "dump.txt", {"write_protected": False})
 
+    class _Asked:
+        config = _Config(**{"--twin": twin, "--dut-ip": None if answer == "absent" else _DUT_IP})
+
+        def getfixturevalue(self, name: str) -> object:
+            if name == "board":
+                if not boarded:
+                    pytest.skip("no board")
+                log.append("raw-REPL exec (the board fixture's reachability check)")
+                return _Board(log=log)
+            assert name == "bench_if_configured", name
+            return _Bench(log) if kicked else None
+
     monkeypatch.setattr(error_log_helpers, "save_errcount", save_errcount)
     monkeypatch.setattr(harness, "save_fram_raw", save_fram_raw)
-    config = _Config()
-    conftest.session_start_evidence(config, _Board(log=log), None if answer == "absent" else _DUT_IP, _Bench(log) if kicked else None)
-    rest = ["GET /status saved (session-start)"] if answer == "answers" else []
-    assert log == [*rest, "raw-REPL FRAM dump (session-start)", *(["kick_all_stations"] if kicked else []), "hard_reset"]
-    assert config.stash[conftest._REST_SAVED] is (answer == "answers")
-    assert [source for source, _ in config.notes] == ([] if answer == "answers" else ["fram_evidence_saved"]), config.notes
+    asked = _Asked()
+    conftest.fram_evidence_saved.__wrapped__(asked)
+    rest = ["GET /status saved (session-start)"] if answer == "answers" and not twin else []
+    board = ["raw-REPL exec (the board fixture's reachability check)", "raw-REPL FRAM dump (session-start)", *(["kick_all_stations"] if kicked else []), "hard_reset"]
+    assert log == [*rest, *(board if boarded else [])]
+    assert asked.config.stash.get(conftest._REST_SAVED, False) is (answer == "answers" and not twin)
+    noted = boarded and answer != "answers"  # a run with no board records nothing about a board it never touched
+    assert [source for source, _ in asked.config.notes] == (["fram_evidence_saved"] if noted else []), asked.config.notes
 
 
 @pytest.mark.parametrize("rig", ["twin", "flash-only", "bench"])

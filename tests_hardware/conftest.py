@@ -300,22 +300,18 @@ def scd30_deviations(start: "dict[str, object]", end: "dict[str, object]") -> "l
     return [Deviation(f"SCD30 {key}", repr(end.get(key)), repr(start.get(key)), _RESTORE_SCD30) for key in sorted(set(start) | set(end)) if start.get(key) != end.get(key)]
 
 
-def session_start_evidence(config: pytest.Config, board: "Board", dut_ip: "str | None", bench: "BenchBridge | None") -> "harness.FramDump":
-    # Evidence before anything clears it: /status over REST first when the DUT answers at --dut-ip (the in-RAM
-    # ResetReason a raw-REPL entry would end), then the read-only raw FRAM dump, then the reset the dump needs.
-    saved = False
-    if dut_ip:
-        try:
-            error_log_helpers.save_errcount(dut_ip, "session-start")
-            saved = True
-        except (OSError, AssertionError, http_client.HTTP_ERROR) as exc:
-            record_session_note(config, f"pre-session /status not saved: --dut-ip {dut_ip} did not answer ({exc})", source="fram_evidence_saved")
-    else:
-        record_session_note(config, "pre-session /status not saved: no reachable --dut-ip", source="fram_evidence_saved")
-    config.stash[_REST_SAVED] = saved
-    dump = harness.save_fram_raw(board, "session-start")
-    harness.reset_board(board, bench)
-    return dump
+def save_status_over_rest(config: pytest.Config, dut_ip: "str | None") -> "str | None":
+    # GET /status while main.py still serves (the FRAM-backed errcount, the in-RAM ResetReason a raw-REPL entry would
+    # end), or why it was not saved.
+    config.stash[_REST_SAVED] = False
+    if not dut_ip:
+        return "pre-session /status not saved: no reachable --dut-ip"
+    try:
+        error_log_helpers.save_errcount(dut_ip, "session-start")
+    except (OSError, AssertionError, http_client.HTTP_ERROR) as exc:
+        return f"pre-session /status not saved: --dut-ip {dut_ip} did not answer ({exc})"
+    config.stash[_REST_SAVED] = True
+    return None
 
 
 def _board_if_present(request: pytest.FixtureRequest) -> "Board | None":
@@ -331,10 +327,20 @@ def _board_if_present(request: pytest.FixtureRequest) -> "Board | None":
 
 @pytest.fixture(scope="session", autouse=True)
 def fram_evidence_saved(request: pytest.FixtureRequest) -> "harness.FramDump | None":
+    # Evidence before anything clears it: /status over REST before the board fixture, whose reachability check is a
+    # raw-REPL exec that stops main.py; then the read-only raw FRAM dump, then the reset the dump needs.
+    config = request.config
+    if config.getoption("--twin"):
+        return None
+    unsaved = save_status_over_rest(config, config.getoption("--dut-ip"))
     board = _board_if_present(request)
     if board is None:
         return None
-    return session_start_evidence(request.config, board, request.config.getoption("--dut-ip"), request.getfixturevalue("bench_if_configured"))
+    if unsaved:
+        record_session_note(config, unsaved, source="fram_evidence_saved")
+    dump = harness.save_fram_raw(board, "session-start")
+    harness.reset_board(board, request.getfixturevalue("bench_if_configured"))
+    return dump
 
 
 def _get_json(dut_ip: str, path: str) -> "dict[str, object]":
