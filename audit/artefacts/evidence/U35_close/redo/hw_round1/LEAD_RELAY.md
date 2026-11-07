@@ -1,5 +1,28 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 08:09 UTC, 2026-11-07: your 08:00 note - the skill fix is in the main line; the two facts; the image's 1,304 B
+No new code for you: the image you built from 7cd1a24a stays, and the reflash waits on the owner's OK, as you have it.
+- Skill fix 105a9fd6: right (/status carries ResetReason and SysUptime in its system group; BuildDate is only in
+  GET /system's build). Carried into the main line as 1461960b; outside audit/ it now equals your head dc3ee940.
+- Fact 1: my 20:38 line was wrong. test.sh's comment calls the mid band "the bench Pi4's class", but README's
+  TEST_PARALLELISM entry and Part N already record the Pi4 at ~139 ms, the 4x band; your 120 ms agrees. So 16 jobs is
+  what the code picks on this host. Change nothing: that comment, README's "16 jobs, green" and Part N's band rows get
+  corrected from what step 3's legs show.
+- Fact 2: the same scenario on arzi, alone on my idle host at dbe46072: PASS in 3.2 s, feed_count=10,
+  largest_feed_gap_ms=1037, would_have_triggered_count=0. The injected fault does not stall the boot by itself; your
+  15,309 ms is the same ten feeds stretched about 15x. Inferred: host load. One difference between yesterday's legs:
+  trixie had Node, so its host tier ran the browser tests beside the MicroPython tier, while noble's failed at once.
+  Not tested on its own; step 3 runs both legs with Node at TEST_PARALLELISM=4.
+- The 1,304 B: the firmware's inputs are the same at my gate build (6cc6af1a) and at 7cd1a24a. The ARM compiler is
+  the host's apt gcc-arm-none-eabi, unpinned (SPECIFICATION.md B.3, step 4): mine is 13.2.1, Ubuntu noble's,
+  as on CI's runners; Debian trixie's is a GCC 14 build. Inferred: the compiler. Not near any margin: 58,236 B stay
+  before the filesystem, and the link refuses an overlap. Two reads while you wait, seconds, no board contact:
+  `python3 -c "import json,os;print(json.load(open(os.environ.get('PICO_TOOLCHAIN_DIR',os.path.expanduser('~/pico-toolchain'))+'/toolchain-record.json'))['compilers'])"`
+  `arm-none-eabi-size -A <toolchain dir>/micropython/ports/rp2/build-RPI_PICO_W/firmware.elf | awk '$2>0' | head -10`
+  Mine: .text 494,672, .rodata 655,956, .data 18,080, .bss 51,352. If your .data and .bss match, the board's RAM
+  heap is what CI's image has and only code size differs. Both lines go in the hand-back.
+The 20:38 order for day 3 is unchanged.
+
 ## 07:49 UTC, 2026-11-07: use the three skills, and fix them where they do not fit; the chroot recipe's Node step (new head, same image)
 New code on this branch: bd11c5b9, with this relay's commit on top. No src/ change: the image stays.
 The skills are in .claude/skills/ on this branch (since 2ef970b2, the 23:15 relay): bench-routines (read it at every
