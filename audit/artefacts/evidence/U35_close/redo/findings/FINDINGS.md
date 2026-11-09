@@ -920,3 +920,59 @@ compute mul/div as exact int products with libfixmath rounding: bit-identical (0
 faster, 18.7 -> 6.4 KB per step. (3) The 21 ms bound has no consumer in the code; it is J.6's GC term; the smallest real
 consumer is the 50 ms LED frame; the floor term should be the measured silicon lag. Both fixes are D.8 necessities
 (identical results): added to the unit after bfix with the owner's five. Probes ran beside bfix's gate (ratios only).
+
+## 12.109 Snapshot 49 green; prevention in every brief; the completeness passes started (lead, 2026-11-07 18:4x)
+- Snapshot 49 (d703361f, int b412d1b3 with specfund): CI green, 34/34 (run 42400151259).
+- Prevention, process level: common_r1.md (read by every unit brief) carries the every-level rule (Part 0.1), cost
+  against need (D.8), measurement conditions and decision premises (P9), and a hand-back figure per changed operation.
+- Completeness (owner 17:57:27 "be sure you really found all such occurrences"): r5/BRIEF_COMPLETE.md, two read-only
+  passes, due 21:30. Pass 1: decision-citing statements outside LEVELS_1's 79 and CLAUDE.md's cost-keeping rules;
+  figures in Parts A-M outside F.3. Pass 2: tests and twin (doubles that hide a cost, tests pinning a cost), buildgen
+  and the five other generated modules, the build chain.
+
+## 12.110 Resumed 2026-11-09 17:16 (owner: "Go on where the session limit interrupted you"); complete2 back
+- bfix, complete1 and complete2 resumed by message (their work was saved; the worker restart killed no live run of
+  ours: heavy.lock was absent, no process left). complete2 back 17:19: S/u35r/r5/COMPLETE_2.md (43 lines; COMPLETE_2.md
+  and both ftmp_complete dirs checked by count against snapshot.sh's pattern: 0). Routing, lead's check:
+  - Twin time has no fidelity row (C): host figures x130-190 faster than silicon stand against silicon consumers
+    (loop-lag scenario, Run 3/supervisor scan, test_asy_webserver_connections.py:1074 and :1175). The missing guard of
+    12.100(c). One fidelity row + the three checks' comments -> the P9 limit-row unit (after bfix; F.3 overlap).
+  - SCD30 routine clock stretch (30 ms per frame, datasheet; 4 frames a sample, 12 a snapshot; loop held, rp2 I2C
+    synchronous) never measured at any tier (C facts, I effect) -> bench day: one successful-frame figure on dev.
+  - WLAN active()/deinit() instant in the twin, no row; stall.wlan_switch owed -> P9 unit row + bench day.
+  - Tests pinning a cost (CRC per-byte turns, COBS per-block turns, ResetErrors' gather, _shape_errcount_entry) and the
+    approved removals' pinning files -> the units that make those changes, listed first (common_r1's rule).
+  - Generated modules: production clean. Gap: wozi's SGP40+BMP3XX pairing is on no flashed board; its 100 ms stagger
+    separation has no figure at any tier -> named in the owed measurement, no code.
+  - Build chain (C): the GC-threshold job reruns the host pytest tier (579 s single-process) for an identical result;
+    every tier fans out over the three arzi-neu devices of one hardware_family (4 of 12 twin legs, 2 of 6 builds, a
+    third of each test.sh job's per-device work). Lead's check before asking: the owner ruled on this on 2026-10-23
+    (recovered rulings, "Final description": "matrix deduplication ... is a good thing as it saves time and is not
+    actually device specific"; devices "treated the same, only depending on their hardware configuration"), and
+    test_device_tomls.py pins that one family differs only in name and hostname. Applying the ruling, no question:
+    unit bchain (r5/BRIEF_BCHAIN.md), the second writing slot (no file overlap with bfix; its gate waits on the lock).
+
+## 12.111 complete1 back (S/u35r/r5/COMPLETE_1.md, 30 lines; count check 0); routing, lead's check
+- (1) A commanded reboot/resetconfig/erasefram under load can end unfed: quiesce() waits each chunk's _op_lock and
+  feeds once per chunk; a loaded SGP40 backup holds it 8.3-19.7 s against the 8,000 ms watchdog (I, ~0.5-20 % of such
+  commands at that load). A.4 :403's margin is the idle need. Closed by B(ii) only if no op lock spans the CRC's
+  yields; complete1 estimates ~5.8 s with the yield kept (2.2 s under the timeout: near-critical). -> bfix review:
+  read what quiesce() waits on after (ii) and its worst case; then the CRC yield's urgency for the bench day.
+- (2) "CPU-bound at ~2.2 req/s" (premise of max_connections = 6, owner 09-24; backlog; web.poll_interval_ms) is one
+  /status build's CPU (~455 ms), which STRETCH's fix cuts. The limit errs safe; nothing moves before a re-measure
+  after the fixes (bench) -> P9 unit names the premise; the re-measure joins the bench list.
+- (3) C.7's "1 s UART cadence through near-continuous chunk writing" (09-17) predates 09-18's per-byte yield and SPI
+  widening, false today (C) -> P9 unit, with the post-B silicon figure (bench).
+- (4) Three more locks held across an awaited FRAM entry: _status_lock (any /status source exception), _set_lock/
+  owner_lock (config GET/PUT, BMP3XX/SCD30 rungs), _threshold_lock (own module). With DESIGN_FU's _config_lock and
+  LEVELS_3's wifi_mode_lock that is one pattern at five sites -> one decision for all five once bfix's post-(ii)
+  entry cost and the _q form's final shape are known: the _q form (or the entry after release) where waiters pay far
+  beyond need, else the doc names the bound.
+- (5) A.4's "1 abrupt restart in 8" is a twin figure (FRAM without wire time) -> P9 unit, silicon figure after B.
+- (6) Wi-Fi false-positive backstop needs a person's power cycle vs P1 "no step needs a person": both texts were
+  confirmed by the owner on 2026-09-26, the backstop's stated facts hold, no premise failed -> decided, not re-asked.
+- (7) BMP3XX polls STATUS every 2 ms through a ~130 ms conversion (~65 bus reads and rounds per measurement) -> the
+  driver-side lean unit: sleep the computed conversion time, then poll; checked against the legacy driver first.
+- The 26 decision lines complete1's filter withheld: the lead read them masked (quoted, backticked and the password
+  pattern replaced; count 0 before printing). Wi-Fi fallback states, threat-model acceptances, bench capabilities,
+  LED patterns: none keeps a time, hold or heap cost under combination or load. Clean.

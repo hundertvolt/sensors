@@ -1274,3 +1274,7 @@ read wait for the next bench day.)
 "Go to all, be sure you really found all such occurrences, and it won't happen again. As we are at 99% already, push all finding first."
 (Go for the five changes as one unit after B. Make sure every occurrence of the mechanism is found and that it cannot
 recur. The weekly limit is at 99 %: push every finding now, before anything else.)
+
+## 2026-11-09 17:16:27 UTC - resume where the weekly limit stopped the session
+"Go on where the session limit interrupted you"
+(Resume R5 where the weekly limit stopped it: bfix in its gate, the two read-only completeness passes.)

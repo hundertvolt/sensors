@@ -10,6 +10,12 @@ Target low complexity (owner, 2026-11-03: "Generally target low complexity"): of
 one with fewer lines, branches and states. PLAN 0 still holds: nothing proven good goes.
 One entry per fault per level (owner, 2026-11-03: "Either it's a warning or a fault applies to the same level / the same
 module"): a downstream fault is an error at its level; the level above that handles it and degrades logs a warning.
+Every level (owner, 2026-11-07 17:21:06; SPECIFICATION.md Part 0.1): each principle and part of the specification binds
+at function, module, import, integration up- and downstream, and full system; check your work from each. Cost against
+need (Part D.8): per operation you touch or judge, its physical need against its worst-case cost (largest input, under
+load, on silicon) and who waits meanwhile; a cost far beyond its need is a defect at its source, never a fact to
+document. A measurement names its condition; a decision names actor, date and its facts, and goes back to its maker
+when one fails (P9). Your hand-back states that figure for each operation you changed.
 
 ## Environment
 - S = `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Your worktree and branch are
