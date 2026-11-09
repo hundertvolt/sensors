@@ -1344,3 +1344,7 @@ for such opportunities.)
 ## 2026-11-09 21:36:14 UTC - the LED request timeout: check its origin, generalize
 ""An internal LED request (from the warning service) gives up after 120 s and is then silently dropped. " Also somewhat interesting. I don't think anything like this timeout and give up mechanics ever existed in the original firmware, or did it? Sounds pretty much like that overkill again, have a check, and find a solution without that many magic numbers and which generalizes cleanly."
 (Check whether the original firmware had any LED request timeout and give-up; likely overkill. Replace it with a clean, general solution without magic numbers.)
+
+## 2026-11-09 21:57:36 UTC - audit-added timeouts and give-ups as a pattern
+"So the timeout and give up of the LED was just one more example of how overkill grew into the audit, although smart simplicity was the target. Yet another pattern example, be sure to find all of such occurrences."
+(The LED's 120 s give-up is one instance of a pattern: overkill the audit added although smart simplicity was the goal. Find every occurrence of it.)

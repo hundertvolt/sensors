@@ -1323,3 +1323,22 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
 - Unit B (r5/BRIEF_B.md, due 06:00) and unit fsync (r5/BRIEF_FSYNC.md, due 07:00) started from 8f04f2f1; fsync owns
   the logging form and the FRAM path, B the drivers and services; fsync's call-site conversion is a saved transform
   the lead re-applies to B's files at the merge.
+
+## 12.135 Owner (21:57:36): the LED give-up is a pattern - every bound traced to its source (lead)
+- The lens the four simpler passes missed: an audit-added bound on a wait (timeout, deadline, retry cap, drop) with a
+  magic number, on a wait that cannot fail from outside. They asked open questions; the LED's 120 s give-up passed them.
+- Prevention: common_r1 "A bound needs a source" (outside party, legacy, or owner ruling; inside waits FIFO, no
+  deadline; numbers derived or named; no silent give-up). Units B and fsync told by message (21:59).
+- Sweep: BRIEF_GIVEUP.md, three read-only passes (network and link / drivers, system, generation / apparatus), each a
+  mechanical enumeration with a per-hit ledger (rows = hits = sum by verdict), due 01:30; candidate lines in src/ alone
+  about 1,000 (name patterns, 8f04f2f1). Findings route to B/fsync merges, T, C; the rule goes to P9 as one Part D line.
+
+## 12.136 Snapshot 54 red: the NTP no-reply scenario read its chunk-write count before a written-behind write (lead)
+- unit-tests: `an_ntp_server_that_never_replies_...` failed on dev (both GC stages) and arzi (-1): storm (3, [..71], 1),
+  final count 2. Cause: weblog made the no-reply entry `err_q` (written behind); the count was read while the writer
+  still owed one write, which landed before the run ended. A test race the merge opened; product correct.
+- Reproduced locally with one extra yield per chunk write (storm 1, writer active and due, end 2: CI's exact figures);
+  without it the local host finished both writes in the attempt window. Fix 6aec784f: the scenario awaits the writer
+  task before counting (no bound, no number). Green: six devices at -1, dev and arzi at 32768; lint and mypy clean.
+- Lead slip: the weblog merge check ran five interacting files, not test_sensortask.py, whose scenarios count FRAM
+  writes after log calls. The class goes with fsync (entries written inside the call); fsync removes this await then.

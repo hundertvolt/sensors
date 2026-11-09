@@ -19,3 +19,4 @@
   figures 12.128), unused features (incl. the CRC width), timers, LED log, codes 44/45, setup's throwaway images.
   -> 12.134: weblog merged (int 8f04f2f1); units B (06:00) and fsync (07:00) writing; then T, C, P9.
 - 21:46: int 8f04f2f1 (crceng + weblog); units B (06:00) and fsync (07:00) writing; snapshot 54 next; then T, C, P9.
+- 22:01: owner 21:57 (give-ups are a pattern): rule in common_r1, B/fsync told; giveup passes 1-3 read-only, due 01:30 -> 12.135; P9 gets the Part D line.

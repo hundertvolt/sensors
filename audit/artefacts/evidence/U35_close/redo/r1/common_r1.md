@@ -28,6 +28,11 @@ functionality - it is possible, and it is the default question before any change
 Ask before removing a feature (owner, 2026-11-09 18:30:08: "Before removing any function which could be a feature
 which is just unused, ask me"): a function, method, mode, option or codec with no caller is kept and reported with its
 record (git, specification, owner rulings), never removed by a unit; internal mechanism a change replaces may go.
+A bound needs a source (owner, 2026-11-09 21:57:36: the LED's give-up "was just one more example of how overkill grew
+into the audit"): a timeout, deadline, retry cap, attempt count, expiry or drop exists only where a party outside the
+code can fail to answer (network peer, UART peer, a chip the datasheet bounds), the original firmware had it, or the
+owner ruled it; a wait on the device's own lock, task or queue gets no deadline (FIFO, never dropped); every bound's
+number is derived from its source or named with it, and a give-up is never silent.
 
 ## Environment
 - S = `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Your worktree and branch are

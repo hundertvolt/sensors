@@ -1,0 +1,5 @@
+A bound needs a source (owner, 2026-11-09 21:57:36: the LED's give-up "was just one more example of how overkill grew
+into the audit"): a timeout, deadline, retry cap, attempt count, expiry or drop exists only where a party outside the
+code can fail to answer (network peer, UART peer, a chip the datasheet bounds), the original firmware had it, or the
+owner ruled it; a wait on the device's own lock, task or queue gets no deadline (FIFO, never dropped); every bound's
+number is derived from its source or named with it, and a give-up is never silent.
