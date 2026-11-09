@@ -2587,6 +2587,9 @@ def _scenario_ntp_no_reply_storm(device: str) -> None:
             for _ in range(attempts):
                 await attempt()
                 waits.append(ntp._retry_wait_s)
+            writer = getattr(ntp.pr, "_writer", None)
+            if writer is not None:  # the entries written behind the call (C.7.1) on the chip before they are counted
+                await writer
             log = (await ntp.get_error_counter())[ntp.pr.name]
             storm.append((log["ErrCount"], list(log["ErrNum"]), writes[ntp.pr.name], (await ntp.get_data()).Synced))
             peer.reply = reply
