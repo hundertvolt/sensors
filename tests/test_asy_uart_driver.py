@@ -894,8 +894,8 @@ def test_resync_framing_is_inert_for_the_pass_through_codec() -> None:
 
 
 def test_cancel_during_a_completing_read_still_terminates() -> None:
-    # The cancel arrives while the lock is held but no ready() is in flight (here, in the post-read
-    # CRC yield), and the read completes normally: nothing acknowledged it once, a wedge in the
+    # The cancel arrives while the lock is held but no ready() is in flight (here, in work after the
+    # read), and the read completes normally: nothing acknowledged it once, a wedge in the
     # anti-wedge. Ordered by events, never sleeps, so host load cannot reorder the two tasks.
     uart = _make_uart()
     fake(uart).feed_rx(b"abcd")
@@ -906,7 +906,7 @@ def test_cancel_during_a_completing_read_still_terminates() -> None:
         async with uart:
             data = await uart.read(4)
             inside.set()
-            await release.wait()  # stands in for crc.check()'s own per-byte yields
+            await release.wait()  # stands in for any await after the read, the lock still held
             return data
 
     async def scenario() -> tuple[bytes | None, bool]:

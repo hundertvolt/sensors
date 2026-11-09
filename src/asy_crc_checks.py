@@ -1,4 +1,4 @@
-"""Generic bit-banged CRC engine (MSB-first, no reflection, no final XOR): CRC8 (Sensirion's
+"""One native CRC engine (MSB-first, no reflection, no final XOR) for widths of 1 to 4 bytes: CRC8 (Sensirion's
 documented CRC-8), CRC16 (CRC-16/CCITT-FALSE), CRC32 (CRC-32/MPEG-2), plus CRCPass (a zero-length no-op).
 """
 # CRC8 poly 0x31/init 0xFF; CRC16 0x1021/0xFFFF; CRC32 0x04C11DB7/0xFFFFFFFF. Every public method
@@ -9,67 +9,38 @@ documented CRC-8), CRC16 (CRC-16/CCITT-FALSE), CRC32 (CRC-32/MPEG-2), plus CRCPa
 # further 0x00 bytes, so check()/check_from()/check_inc() can't detect trailing zero-padding past the buffer's true end
 # - callers must supply an accurate length.
 
-import asyncio
 from struct import pack_into
 
+import micropython
 from micropython import const
 
-_WORD_BYTES = const(2)  # the widest register the one-word loop runs: its intermediates stay below 2**17
+_MAX_BYTES = const(4)  # the widest register the engine runs: its word is 32 bits on silicon
+
+
+@micropython.viper
+def _crc(buf: object, start: int, end: int, crc: uint, poly: uint, shift: int) -> uint:
+    # Native code over buf[start:end], whose bounds the caller checked (ptr8 checks none); shift is the width less 8. The
+    # word is 64-bit on the Unix port and 32-bit on silicon: masked to the width, both give the same value.
+    p = ptr8(buf)  # type: ignore[arg-type]
+    top = uint(0x80) << shift
+    for i in range(start, end):
+        crc ^= uint(p[i]) << shift
+        for _ in range(8):
+            crc = (crc << 1) ^ poly if crc & top else crc << 1
+    return crc & ((top << 1) - 1)
 
 
 class CRCBase:
     def __init__(self, num_bytes: int, poly: int | None, fmt: str) -> None:
-        # An invalid config (negative num_bytes, poly out of range for the width) silently
+        # An invalid config (num_bytes outside 0..4, poly out of range for the width) silently
         # degrades to pass-through mode rather than raising - see module docstring's contract.
-        self._num_bytes = 0 if poly is None or num_bytes < 0 else num_bytes
+        self._num_bytes = 0 if poly is None or not 0 <= num_bytes <= _MAX_BYTES else num_bytes
         self._all_set = 0 if self._num_bytes <= 0 else (1 << (self._num_bytes * 8)) - 1
-        self._msb_set = 0 if self._num_bytes <= 0 else 1 << ((self._num_bytes * 8) - 1)
         self._crc_shift = 0 if self._num_bytes <= 0 else 8 * (self._num_bytes - 1)
         self._poly = None if poly is None or self._num_bytes == 0 or not (0 <= poly <= self._all_set) else poly
         self._fmt = fmt
         self._inc_crc: int | None = None
         self._inc_count = 0
-
-    async def _crc(self, buf: bytearray | memoryview, crc: int, poly: int) -> int:
-        # Core polynomial-division loop (see the module docstring for the algorithm identity per
-        # width), over the polynomial the caller has already checked; yields after every byte so a large buffer
-        # can't stall other tasks.
-        if self._num_bytes > _WORD_BYTES:
-            return await self._crc_wide(buf, crc, poly)
-        for c in buf:
-            crc ^= c << self._crc_shift  # XOR high byte
-            for _ in range(8):
-                if crc & self._msb_set:  # Check MSB
-                    crc = (crc << 1) ^ poly
-                else:
-                    crc <<= 1
-                crc &= self._all_set  # Keep number of bits
-            await asyncio.sleep(0)  # Yield control
-        return crc
-
-    # A register wider than 16 bits runs as two words: rp2 small ints stop at 2**30 - 1, so a 32-bit
-    # register would allocate a heap int on every bit step (CLAUDE.md's memory discipline).
-    async def _crc_wide(self, buf: bytearray | memoryview, crc: int, poly: int) -> int:
-        hi_bits = self._num_bytes * 8 - 16
-        hi_mask = (1 << hi_bits) - 1
-        hi_msb = 1 << (hi_bits - 1)
-        shift = hi_bits - 8
-        poly_hi = poly >> 16
-        poly_lo = poly & 0xFFFF
-        hi = crc >> 16
-        lo = crc & 0xFFFF
-        for c in buf:
-            hi ^= c << shift
-            for _ in range(8):
-                carry = lo >> 15
-                lo = (lo << 1) & 0xFFFF
-                if hi & hi_msb:
-                    hi = (((hi << 1) | carry) & hi_mask) ^ poly_hi
-                    lo ^= poly_lo
-                else:
-                    hi = ((hi << 1) | carry) & hi_mask
-            await asyncio.sleep(0)  # Yield control
-        return (hi << 16) | lo
 
     def _validate_init(self, init: int | None) -> int | None:
         # Defaults to all-bits-1 (the standard "no data seen yet" CRC register state) if unset;
@@ -84,7 +55,7 @@ class CRCBase:
         init = self._validate_init(init)
         if init is None:
             return None
-        crc = await self._crc(bytearr, init, self._poly)
+        crc = _crc(bytearr, 0, len(bytearr), init, self._poly, self._crc_shift)
         crc_b = bytearray(self._num_bytes)
         pack_into(self._fmt, crc_b, 0, crc)
         return bytearr + crc_b
@@ -99,9 +70,7 @@ class CRCBase:
         init = self._validate_init(init)
         if init is None:
             return None
-        mv = memoryview(buffer)[start : (start + size + self._num_bytes)]
-        crc = await self._crc(mv[0:size], init, self._poly)
-        pack_into(self._fmt, mv, size, crc)
+        pack_into(self._fmt, buffer, start + size, _crc(buffer, start, start + size, init, self._poly, self._crc_shift))
         return size + self._num_bytes
 
     async def check(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
@@ -113,7 +82,7 @@ class CRCBase:
             return None
         if len(bytearr) <= self._num_bytes:
             return None
-        if await self._crc(bytearr, init, self._poly) == 0:
+        if _crc(bytearr, 0, len(bytearr), init, self._poly, self._crc_shift) == 0:
             return bytearr[0 : len(bytearr) - self._num_bytes]
         return None
 
@@ -130,8 +99,7 @@ class CRCBase:
         init = self._validate_init(init)
         if init is None:
             return None
-        mv = memoryview(buffer)[start : start + size]
-        if await self._crc(mv, init, self._poly) == 0:
+        if _crc(buffer, start, start + size, init, self._poly, self._crc_shift) == 0:
             return size - self._num_bytes
         return None
 
@@ -159,7 +127,7 @@ class CRCBase:
                 return False
 
         if self._poly is not None:  # Only process CRC if enabled
-            self._inc_crc = await self._crc(bytearr, self._inc_crc, self._poly)
+            self._inc_crc = _crc(bytearr, 0, len(bytearr), self._inc_crc, self._poly, self._crc_shift)
 
         self._inc_count += len(bytearr)
         return True

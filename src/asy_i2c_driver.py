@@ -108,16 +108,6 @@ class I2C:
     def _bitmask(num_bits: int, start_bit: int) -> int:
         return ((1 << num_bits) - 1) << start_bit
 
-    @staticmethod
-    def _bytes_to_int(mem_value: bytes | memoryview, *, lsb_first: bool) -> int:
-        # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether
-        # mem_value[0] is the least- or most-significant byte.
-        reg = 0
-        order = range(len(mem_value) - 1, -1, -1) if lsb_first else range(len(mem_value))
-        for i in order:
-            reg = (reg << 8) | mem_value[i]
-        return reg
-
     async def _clear_locked(self) -> int:
         # The runtime bus clear, under a bus-lock hold the caller owns: wait for SCL, clear, then hand
         # both pins back to the controller's I2C function with their pull-ups (no block re-init).
@@ -177,7 +167,7 @@ class I2C:
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return None
         mem_value = self._read_into_scratch(self._i2c, address, reg_addr, reg_width, addrsize)
-        reg = self._bytes_to_int(mem_value, lsb_first=lsb_first)
+        reg = int.from_bytes(mem_value, "little" if lsb_first else "big")
         return (reg & self._bitmask(num_bits, start_bit)) >> start_bit
 
     def get_register_bytes(self, address: int, reg_addr: int, length: int, addrsize: int | None = None) -> bytes | None:
@@ -228,7 +218,7 @@ class I2C:
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return
         mem_value = self._read_into_scratch(self._i2c, address, reg_addr, reg_width, addrsize)
-        reg = self._bytes_to_int(mem_value, lsb_first=lsb_first)
+        reg = int.from_bytes(mem_value, "little" if lsb_first else "big")
         reg &= ~self._bitmask(num_bits, start_bit)
         reg |= (value & self._bitmask(num_bits, 0)) << start_bit
         payload = reg.to_bytes(reg_width, "little" if lsb_first else "big")

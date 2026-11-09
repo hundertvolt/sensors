@@ -90,7 +90,7 @@ gates, traps).
   default flash tier, zero wear) and `test_flash_write_loop_gap_is_recorded` (one scratch flash
   write, `--allow-persistence-write`). Expected: the collection, VOC-step and CRC-gap figures under
   the 21 ms GC term (Part N `uart.gc_pause_worst_ms`), and the flash calls' spans recorded. The
-  figures go into SPECIFICATION.md Part F.3's `stall.gc`, `stall.voc_process`, `stall.crc_byte` and
+  figures go into SPECIFICATION.md Part F.3's `stall.gc`, `stall.voc_process`, `stall.crc` and
   `stall.flash_program` rows. Twin row: none (silicon-only figures).
 - **Loop lag under combined load on the bench** — on `dev`, the bench tier's
   `bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer`

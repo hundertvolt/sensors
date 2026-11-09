@@ -38,7 +38,7 @@ def _compile(mpy_cross: Path, stage: Path, cache: "dict[tuple[str, str], bytes]"
             continue
         key = (source.name, hashlib.sha256(source.read_bytes()).hexdigest())
         if key not in cache:
-            done = subprocess.run([str(mpy_cross), source.name], cwd=stage, capture_output=True, text=True, check=False, timeout=_COMPILE_TIMEOUT_S)
+            done = subprocess.run([str(mpy_cross), "-march=host", source.name], cwd=stage, capture_output=True, text=True, check=False, timeout=_COMPILE_TIMEOUT_S)  # native code for the Unix port's twin
             assert done.returncode == 0, f"mpy-cross refused {source.name}:\n{done.stdout}{done.stderr}"
             cache[key] = source.with_suffix(".mpy").read_bytes()
         source.with_suffix(".mpy").write_bytes(cache[key])
