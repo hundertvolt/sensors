@@ -42926,3 +42926,17 @@ wire_only_us_at_50kHz write_cmd 540 read_3B 720 read_18B 3420
 done
 errcount: 22 sources unchanged (start/end /status around both runs). ResetReason after: 21, SysUptime 13 s after the restore; flash cycles today: 0; logs/day4_20261109/ (probes_output.txt, probes_{start,end}_status.json)
 status: confirmed as measured: all three CRC forms agree with the image's value and give residue 0; no SCD30 transfer error in 90 s.
+
+17:40:27 UTC 2026-11-09 lead 17:38 (11-09): crc_chip.py at its 17:34 version (51be454b), once through Board.run_isolated(), then restore_board_to_serving(); RAM only, the kind the owner OK'd this session; HEAD 59d14df4; image 2026-11-07T16:04:12Z (trace); 17:39:55-17:40:12
+verbatim:
+tables_build_us 49011
+current_per_byte_yield_264B_us 130620 crc 0x6aa0d521
+bitwise_no_yield same 264B_best_us 36978 264B_max_us 37067
+nibble_table same 264B_best_us 10178 264B_max_us 10256
+byte_table same 264B_best_us 5120 264B_max_us 5195
+viper same 264B_best_us 3381 264B_max_us 3418
+binascii_crc32_C_other_algorithm 264B_best_us 89
+residue_with_crc_appended 0 0 0 0
+done
+errcount: 22 sources unchanged. ResetReason after: 21, SysUptime 13 s; flash cycles today: 0; logs/day4_20261109/ (crc2_output.txt, crc2_{start,end}_status.json)
+status: confirmed as measured; the 17:35 run had taken the 17:32 version (my merge at 17:34:04 preceded 51be454b).
