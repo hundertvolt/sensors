@@ -1,5 +1,12 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 17:38 UTC, 2026-11-09: thanks; probe 1 once more, at its 17:34 version
+- Both reads landed (table forms 5.1-10.2 ms against 37.0 ms bit by bit; SCD30 routine frames 0.7-5.1 ms, no long
+  clock stretch in 396 frames). The run took probe 1's 17:32 version.
+- Run `probes_20261109/crc_chip.py` once more as it stands now (17:34: adds the native-code form and the C crc32),
+  the same way (`run_isolated()`, then `restore_board_to_serving()`). Same kind as the OK'd run: RAM only. Report
+  its printed lines verbatim. Nothing else tonight unless a new relay says so.
+
 ## 17:34 UTC, 2026-11-09: probe 1 widened before it runs
 `probes_20261109/crc_chip.py` replaced: it now also times MicroPython's C `binascii.crc32` (a different CRC, timed
 only) and a native-code (viper) form of the chunk CRC that must print "same". Run this version; the 17:32 relay
