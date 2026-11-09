@@ -11,6 +11,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
+from _held_log import held_logger, until
 from _schema_cases import declared_fields, domain_cases, special_alone
 from _src_const import src_float, src_int, src_strs
 from _stack_overflow import stack_overflow
@@ -1745,6 +1746,32 @@ def test_a_failed_threshold_write_and_a_failed_range_write_each_log_chip_set() -
     assert err_count(counters) == 2  # one count per failure, one slot for the repeated code
     assert errors(counters)[-1] == code("E", "CHIP_SET")
     assert reader._active_range == _RANGE_HIGH_LUX
+
+
+def test_a_failed_switch_never_holds_the_threshold_lock_across_its_entry() -> None:
+    # A failed threshold burst, then a failed range write, each entry's chunk write held: each switch ends within rounds
+    # with its entry in RAM, so a threshold push never waits on FRAM behind it (SPECIFICATION.md C.8).
+    i2c, reader = ready_reader("switch_held")
+    reader.pr, gate = held_logger(reader.name)
+
+    async def failing_configure(**_kwargs: object) -> None:
+        raise OSError(errno_mod.EIO, "injected")
+
+    async def scenario() -> "list[tuple[bool, int]]":
+        seen = []
+        with FastAsyncSleep():
+            for fails_range in (False, True):
+                if fails_range:
+                    reader._isl.configure = failing_configure  # type: ignore[method-assign]
+                else:
+                    fail_register_writes(i2c, times=1)
+                switch = asyncio.create_task(reader._switch_range(_RANGE_LOW_LUX))
+                ended = await until(switch.done) and not reader._threshold_lock.locked()
+                seen.append((ended, reader.pr._err_count))
+        gate.set()
+        return seen
+
+    assert run(scenario()) == [(True, 1), (True, 2)]
 
 
 def test_the_periodic_path_switches_range_when_the_interrupt_never_fires() -> None:

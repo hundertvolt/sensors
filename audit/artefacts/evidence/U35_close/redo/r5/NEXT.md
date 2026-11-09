@@ -17,4 +17,5 @@
   >4-byte CRC width (unused-features question). Bench relays 20:00 (probe) and 20:32 (thanks, nothing more tonight;
   bench a383d840). Owner queue: Q1 twin fakes (open since 19:4x), then logging (option c: lean synchronous FRAM,
   figures 12.128), unused features (incl. the CRC width), timers, LED log, codes 44/45, setup's throwaway images.
-  Unit B can start now (crceng done; B's brief to write: its list + 12.125's internal items).
+  -> 12.134: weblog merged (int 8f04f2f1); units B (06:00) and fsync (07:00) writing; then T, C, P9.
+- 21:46: int 8f04f2f1 (crceng + weblog); units B (06:00) and fsync (07:00) writing; snapshot 54 next; then T, C, P9.

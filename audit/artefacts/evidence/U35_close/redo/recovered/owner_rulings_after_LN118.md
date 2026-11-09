@@ -1340,3 +1340,7 @@ for such opportunities.)
 4. Who added that hook? Surely some session - so if it wasn't there before the audit and if I didn't add it, and if nothing uses it, it can be removed.
 5. I assume that demo mode is a development remainder. I wanted to be sure the website can be called with simulated values also on the bench only - before the firmware was promoted, as a test tool. Now, if the same works with real firmware (for sure), it's obsolete."
 ((1) run_inc/check_inc go. (2) >32-bit CRC widths: check who added them; probably go. (3) the selectable constant default sources stay, as a principle of self-contained modules - unless something more is meant. (4) the post-write hook goes if added by a session after the audit start, not by the owner, and unused. (5) launch.py's demo goes if the website works for sure with the real firmware on the twin.)
+
+## 2026-11-09 21:36:14 UTC - the LED request timeout: check its origin, generalize
+""An internal LED request (from the warning service) gives up after 120 s and is then silently dropped. " Also somewhat interesting. I don't think anything like this timeout and give up mechanics ever existed in the original firmware, or did it? Sounds pretty much like that overkill again, have a check, and find a solution without that many magic numbers and which generalizes cleanly."
+(Check whether the original firmware had any LED request timeout and give-up; likely overkill. Replace it with a clean, general solution without magic numbers.)

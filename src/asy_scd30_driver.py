@@ -275,7 +275,7 @@ class SCD30_Reader(SensorReaderConfig):
         write, results = outcome  # type: ignore[misc]  # rest is a dict: compare_before_write() answers None only for a non-dict
         for key, result in results.items():
             if result == INVALID:
-                await self.pr.err_s("Invalid value for", key, errno=_ERR_BAD_ARG)
+                self.pr.err_q("Invalid value for", key, errno=_ERR_BAD_ARG)
         setters = (
             self.set_temperature_offset,
             self.set_measurement_interval,
@@ -302,7 +302,7 @@ class SCD30_Reader(SensorReaderConfig):
             is_error, flag = type_or_range_error(cont_meas, _CONT_MEAS_FIELD)
             if is_error:
                 results["ContMeas"] = INVALID
-                await self.pr.err_s("Invalid value for ContMeas", errno=_ERR_BAD_ARG)
+                self.pr.err_q("Invalid value for ContMeas", errno=_ERR_BAD_ARG)
             elif flag:
                 results["ContMeas"] = VALID
             elif await self.stop_continuous_measurement(value=False):
@@ -332,7 +332,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             snap = await self._scd.get_config_snapshot()
         except Exception as e:
-            await self.pr.err_s("Error reading the config snapshot:", e, errno=_ERR_CHIP_GET)
+            self.pr.err_q("Error reading the config snapshot:", e, errno=_ERR_CHIP_GET)
             return None
         return _snapshot_dict(snap)
 
@@ -490,7 +490,7 @@ class SCD30_Reader(SensorReaderConfig):
             try:
                 await self._scd.reset()
             except Exception as e:
-                await self.pr.err_s("Soft reset failed:", e, errno=_ERR_CHIP_SET)
+                self.pr.err_q("Soft reset failed:", e, errno=_ERR_CHIP_SET)
                 return False
         self._frc_reset()  # the soft reset restarted the measurement, as at _init_scd()
         return True
@@ -608,7 +608,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_altitude(altitude)
         except Exception as e:
-            await self.pr.err_s("Error setting altitude:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting altitude:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -617,7 +617,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_ambient_pressure(pressure_mbar)
         except Exception as e:
-            await self.pr.err_s("Error setting ambient pressure:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting ambient pressure:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -626,7 +626,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_forced_recalibration_reference(reference_value)
         except Exception as e:
-            await self.pr.err_s("Error setting forced recalibration reference:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting forced recalibration reference:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -635,7 +635,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_measurement_interval(value)
         except Exception as e:
-            await self.pr.err_s("Error setting measurement interval:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting measurement interval:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -644,7 +644,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_self_calibration_enabled(enabled)
         except Exception as e:
-            await self.pr.err_s("Error setting self calibration enabled:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting self calibration enabled:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -653,7 +653,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_temperature_offset(offset)
         except Exception as e:
-            await self.pr.err_s("Error setting temperature offset:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting temperature offset:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -668,7 +668,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.stop_continuous_measurement()
         except Exception as e:
-            await self.pr.err_s("Error stopping continuous measurement:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error stopping continuous measurement:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True

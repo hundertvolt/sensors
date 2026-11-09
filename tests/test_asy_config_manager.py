@@ -8,6 +8,7 @@ from collections import namedtuple
 
 from _async_harness import run
 from _error_codes import code
+from _held_log import held_logger, until
 from _littlefs_fake import LittlefsOpen
 from _recording_print import record_prints
 from _tmp_scratch import TmpScratch
@@ -3206,6 +3207,51 @@ def test_a_write_suspended_inside_the_lock_finishes_and_its_flush_is_awaited() -
         assert run(scenario()) == (True, {"Count": "Valid", "Ghost": "Invalid"})
         with open(path) as f:
             assert json.load(f) == {"Count": 8}
+    finally:
+        _remove(path)
+
+
+def test_a_write_that_logs_never_holds_the_config_lock_across_its_entries() -> None:
+    # Two refused keys, each entry's chunk write held: write_config() ends within rounds with both entries in RAM, so
+    # the next write never waits on FRAM behind it (SPECIFICATION.md C.8).
+    mgr, path = _make("heldwrite.cfg", cfg_vals=_VAL_INT)
+    try:
+        mgr.pr, gate = held_logger(mgr.pr.name)
+
+        async def scenario() -> "tuple[bool, int, tuple[bool, cm.WriteValidity]]":
+            writer = asyncio.create_task(mgr.write_config({"Count": 11, "Ghost": 1}))
+            ended = await until(writer.done) and not mgr._config_lock.locked()
+            count = mgr.pr._err_count
+            gate.set()
+            result = await writer
+            await mgr.flush_pending()
+            return ended, count, result
+
+        assert run(scenario()) == (True, 2, (True, {"Count": "Invalid", "Ghost": "Invalid"}))
+    finally:
+        _remove(path)
+
+
+def test_a_failed_flush_frees_the_config_lock_before_its_entry_lands() -> None:
+    # The flush's write fails while its entry's chunk write is held: the lock is free for the next write within rounds,
+    # and the flush task, which flush_pending() awaits, ends only once its entry has landed (A.8's shutdown order).
+    mgr, path = _make("heldflush.cfg", cfg_vals=_VAL_INT)
+    try:
+        mgr.pr, gate = held_logger(mgr.pr.name)
+
+        async def scenario() -> "tuple[bool, bool, bool]":
+            with WriteCountingOpen(cm, fail_writes=True):
+                assert (await mgr.write_config({"Count": 7}))[0] is True
+                flushing = mgr._pending_flush
+                assert flushing is not None
+                logged = await until(lambda: mgr.pr._err_count == 1)
+                free = logged and await until(lambda: not mgr._config_lock.locked())
+                waiting = not flushing.done()
+            gate.set()
+            await mgr.flush_pending()
+            return free, waiting, mgr.unpersisted
+
+        assert run(scenario()) == (True, True, True)
     finally:
         _remove(path)
 

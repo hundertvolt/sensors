@@ -1294,3 +1294,32 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
   --fault/--hang vocabulary moves into the runner.
 - Slip (lead): one grep of a generated module printed its Wi-Fi settings-group line unfiltered (field names only, no
   value; 0 password-pattern hits in this session's outputs written to files).
+
+## 12.133 Owner (21:36:14): the LED request timeout - origin and the general form (lead)
+- Original firmware (`legacy/firmware/python/IndividualDrivers/neopixel_signal.py:101-122`): no timeout, no give-up;
+  an internal request took `start_signal_lock` and waited until the running signal ended (by spinning on
+  `sleep(0)`, itself ~0.6 ms of loop per round on the chip, 12.128). The 120 s deadline came with U9 (2f049a00,
+  2026-10-07, audit) as "twice the REST ceiling of t (60 s)"; no owner ruling asked for it.
+- It is unreachable (C): one warning-service loop awaits each request (FlashDur 0.5-10 s, FlashInterval >= 60 s),
+  so a request waits at most one external ramp (<= 60 s) - the deadline and its drop never fire.
+- General form (unit B): one LED lock held for whatever drives the pixel - a signal ramp or an overlay write (it
+  replaces `_overlay_lock` too). An internal request waits its turn on it (FIFO, no polling, no deadline, never
+  dropped); an external command is refused while it is held or one is pending (owner 2026-10-02); every wait ends
+  because every ramp is finite (T <= 60 s, FlashDur <= 10 s). Goes: `_SIGNAL_WAIT_MS` and its tunable row, the
+  polling loop, the second lock, the drop. With 12.131's allocation-free ramp the LED has no failure path left, so
+  it gets no logger (owner 21:27:06).
+
+## 12.134 weblog merged (int 8f04f2f1); units B and fsync started
+- weblog f3886cb0 (r5/HANDBACK_WEBLOG.md): gate green at both stages (121 files, 5,504 tests; host 6,976; dev twin
+  both parts); dev imageFreeBytes 59,780 -> 60,068. ResetErrors in turn; a refused/dropped connection frees its slot,
+  closes at once, its entry written behind (the awaited-after-close form piled up tasks until the heap ran out under
+  `uart_ring_under_concurrent_load`, reproduced twice - evidence for 12.129's one non-waiting form); errcount one
+  fragment per slot (bytes identical, 5.2x faster, 4.3x less memory per 10-slot entry on 32-bit); 90 log sites under
+  the five locks on the `_q` form. Agent decisions kept: the in-flight reset mask (two concurrent ResetErrors still
+  possible). Open: a commanded reset holds `owner_lock` across a failed flush's entry (fsync removes the wait);
+  SCD30's six single-field getters stay (OR36.a (3), decided - not an owner question).
+- Merged over 2fbad553 clean. On 8f04f2f1: lint clean, mypy x3 clean; webserver_service 227, uart_comm 202,
+  config_manager 246, print_log 110, fram_manager 142, each at both stages, 0 memory markers.
+- Unit B (r5/BRIEF_B.md, due 06:00) and unit fsync (r5/BRIEF_FSYNC.md, due 07:00) started from 8f04f2f1; fsync owns
+  the logging form and the FRAM path, B the drivers and services; fsync's call-site conversion is a saved transform
+  the lead re-applies to B's files at the merge.

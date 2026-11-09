@@ -19,6 +19,7 @@ from _error_codes import code
 from _fake_time import DrivenTime, tick
 from _fake_timer_arm import RaiseOnArm
 from _fram_builders import make_fram_manager
+from _held_log import held_logger, until
 from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _ntp_responder import NtpResponder
 from _port_bands import PortAllocator
@@ -461,6 +462,31 @@ def _twice_one_slot(client: NTPClient, make_call: "Callable[[], Coroutine[object
 # ---------------------------------------------------------------------------
 # Construction: the client owns its config_NTP.cfg and schema (SensorReaderConfig).
 # ---------------------------------------------------------------------------
+
+
+def test_a_sync_attempt_that_logs_never_holds_wifi_mode_lock_across_its_entries() -> None:
+    # A raising network check, and an unreadable config store: each entry's chunk write held, the attempt ends within
+    # rounds with its entries in RAM, so the radio's other users never wait on FRAM behind it (SPECIFICATION.md C.8).
+    def raising() -> bool:
+        raise RuntimeError("injected network check")
+
+    for client in (_make_client(network_available_locked=raising), _make_invalid_cfg_client()):
+        client.pr, gate = held_logger(client.name)
+        client.cfgmgr.pr, store_gate = held_logger(client.cfgmgr.pr.name)
+        finished = _counted(client)
+
+        async def scenario(client: NTPClient = client, finished: asyncio.Event = finished) -> "tuple[bool, int]":
+            loop = asyncio.create_task(client._sync_loop())
+            client._ntp_sync_trigger_event.set()
+            ended = await until(finished.is_set) and not client.wifi_mode_lock.locked()
+            count = client.pr._err_count + client.cfgmgr.pr._err_count
+            await cancel(loop)
+            return ended, count
+
+        ended, count = run(scenario())
+        gate.set()
+        store_gate.set()
+        assert ended and count >= 1, (client.name, ended, count)
 
 
 def test_init_never_synced_before_first_task_run() -> None:

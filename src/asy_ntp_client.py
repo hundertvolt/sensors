@@ -205,7 +205,7 @@ class NTPClient(SensorReaderConfig):
         if "DNSFallback" in data and not _dns_fallback_ok(data["DNSFallback"]):
             refused["DNSFallback"] = "- not a list of up to three IPv4 addresses"
         for key, why in refused.items():
-            await self.pr.err_s("Refusing", key, why, errno=_ERR_BAD_ARG)
+            self.pr.err_q("Refusing", key, why, errno=_ERR_BAD_ARG)
         ok, results = await super()._set_mgr_cfg({k: v for k, v in data.items() if k not in refused}, cfg_vals)
         for key in refused:
             results[key] = INVALID
@@ -223,13 +223,13 @@ class NTPClient(SensorReaderConfig):
         # write()/recvfrom()/disconnect() never raise: each returns its None-shaped sentinel (asy_udp_socket.py).
         try:
             if await cli.write(b"\x1b" + bytearray(47), timeout_ms=self._ntp_fetch_timeout_ms) is None:
-                await self.pr.err_s("NTP request not sent to", addr[0], errno=_ERR_NTP_NOT_SENT)
+                self.pr.err_q("NTP request not sent to", addr[0], errno=_ERR_NTP_NOT_SENT)
                 return None
             msg, _ = await cli.recvfrom(1024, timeout_ms=self._ntp_fetch_timeout_ms)
         finally:
             await cli.disconnect()
         if msg is None:
-            await self.pr.err_s("No reply from NTP server:", addr[0], errno=_ERR_NTP_NO_REPLY)
+            self.pr.err_q("No reply from NTP server:", addr[0], errno=_ERR_NTP_NO_REPLY)
         return msg
 
     async def _handle_ntp_sync_failure(self) -> None:
@@ -250,10 +250,10 @@ class NTPClient(SensorReaderConfig):
                     self._ntp_retries += 1
                 except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM) - give up this retry cycle rather
                     # than crashing the task; _refresh_loop()'s regular check still recovers it.
-                    await self.pr.err_s("Could not arm NTP retry timer:", e, errno=_ERR_TIMER)
+                    self.pr.err_q("Could not arm NTP retry timer:", e, errno=_ERR_TIMER)
                     self._ntp_retries = 0
             else:
-                await self.pr.err_s("Maximum retries reached, cancelling sync!", errno=_ERR_NTP_RETRIES)
+                self.pr.err_q("Maximum retries reached, cancelling sync!", errno=_ERR_NTP_RETRIES)
                 self._ntp_retries = 0
 
     async def _handle_ntp_sync_success(self, tm: tuple[int, ...]) -> None:
@@ -273,11 +273,11 @@ class NTPClient(SensorReaderConfig):
             if leap_indicator == _NTP_LI_UNSYNCHRONIZED or stratum == _NTP_STRATUM_INVALID:
                 # Server says its own clock is unsynchronized, or this is a Kiss-o'-Death packet -
                 # never a genuine time source, regardless of its Transmit Timestamp.
-                await self.pr.wrn_s("NTP reply unsynchronized or Kiss-of-Death, rejecting:", leap_indicator, stratum, wrnno=_WRN_NTP_UNSYNC_REPLY)
+                self.pr.wrn_q("NTP reply unsynchronized or Kiss-of-Death, rejecting:", leap_indicator, stratum, wrnno=_WRN_NTP_UNSYNC_REPLY)
                 return None
             raw_s = struct.unpack("!I", msg[40:44])[0]
             if raw_s == 0:  # A zero timestamp is unset (RFC 5905 6); the era step below would read it as 2036.
-                await self.pr.err_s("NTP reply has no transmit timestamp, rejecting", errno=_ERR_NTP_MALFORMED)
+                self.pr.err_q("NTP reply has no transmit timestamp, rejecting", errno=_ERR_NTP_MALFORMED)
                 return None
             ntp_time = raw_s - _NTP_EPOCH_DELTA + ntp_offset_s  # assume the current NTP era first
             if ntp_time < _NTP_MIN_PLAUSIBLE_UNIX_TIME:
@@ -285,7 +285,7 @@ class NTPClient(SensorReaderConfig):
                 # and recheck - or implausible data, rejected below if still out of range.
                 ntp_time += _NTP_ERA_SECONDS
             if not (_NTP_MIN_PLAUSIBLE_UNIX_TIME <= ntp_time <= _NTP_MAX_PLAUSIBLE_UNIX_TIME):
-                await self.pr.err_s("Implausible NTP time, rejecting:", ntp_time, errno=_ERR_NTP_IMPLAUSIBLE)
+                self.pr.err_q("Implausible NTP time, rejecting:", ntp_time, errno=_ERR_NTP_IMPLAUSIBLE)
                 return None
             self.pr.all("Received NTP time:", ntp_time)
             tm = time.gmtime(ntp_time)
@@ -293,7 +293,7 @@ class NTPClient(SensorReaderConfig):
         except (IndexError, OverflowError, ValueError, OSError) as e:
             # malformed/truncated reply (MicroPython's struct raises plain ValueError, not
             # struct.error) or an out-of-range timestamp - treat like no response.
-            await self.pr.err_s("Malformed NTP reply, treating as no response:", e, errno=_ERR_NTP_MALFORMED)
+            self.pr.err_q("Malformed NTP reply, treating as no response:", e, errno=_ERR_NTP_MALFORMED)
             return None
         else:
             return tm
@@ -339,7 +339,7 @@ class NTPClient(SensorReaderConfig):
         servers = (() if dns_server is None else (dns_server,)) + tuple(s for s in fallback.split(",") if s)
         ip = await resolve_ipv4(ntp_host, servers, timeout_ms=self._dns_timeout_ms, tries=self._dns_tries, logger=self.pr)
         if ip is None:
-            await self.pr.err_s("No valid NTP server:", ntp_host, errno=_ERR_NTP_DNS)
+            self.pr.err_q("No valid NTP server:", ntp_host, errno=_ERR_NTP_DNS)
             return None
         return ip, _NTP_UDP_PORT
 
@@ -347,7 +347,7 @@ class NTPClient(SensorReaderConfig):
         try:
             network_ok = self._network_available_locked()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
-            await self.pr.err_s("network_available_locked() callback failed:", e, errno=_ERR_CALLBACK)
+            self.pr.err_q("network_available_locked() callback failed:", e, errno=_ERR_CALLBACK)
             network_ok = False
         if not network_ok:
             self.pr.all("Network not available, skipping sync attempt.")
@@ -355,7 +355,7 @@ class NTPClient(SensorReaderConfig):
         ntp_config = await self._get_ntp_config()
         if ntp_config is None:
             await self._set_synced(value=False)
-            await self.pr.err_s("Missing NTP configuration!", errno=_ERR_CFG_READ)
+            self.pr.err_q("Missing NTP configuration!", errno=_ERR_CFG_READ)
             return None, True
         ntp_host, fallback, ntp_offs = ntp_config
         addr = await self._resolve_ntp_server(ntp_host, dns_server, fallback)
