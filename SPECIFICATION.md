@@ -4016,7 +4016,7 @@ individual transaction is already serialized by lock 1. Pattern: `async with sel
 dev:` (lock 2) wrapping `async with dev.i2c_device as i2c:` (lock 1). **Lock ordering is fixed:
 always 2 before 1** — audited across every driver with no violation; reversing risks a real
 deadlock. Every per-call input a multi-step operation keeps in a shared buffer is written inside the
-device-session hold, never before it: an await before the hold (a CRC's per-byte yield included)
+device-session hold, never before it: an await before the hold
 lets another caller overwrite it (owner, 2026-09-29: 'No races allowed'), and a value derived from
 shared driver state is derived inside the same hold (the ISL29125's resolution shadow). A lock is taken with
 `async with`; an explicit `acquire()`/`release()` stays only where
@@ -5541,7 +5541,8 @@ fold): a private `const()` has its whole assignment replaced by `pass` in the pa
 public one keeps the store and therefore does register — which is why `ROLE_INITIATOR` and `CMD_GET`
 show as covered in `asy_uart_comm.py` while all 58 of its `_`-prefixed constants do not. A decorated function's traced
 event lands on the decorator line, not the `def` line, so every `@staticmethod`/`@classmethod`
-shows missed even when called throughout the suite. A bare `while True:` header never fires its own
+shows missed even when called throughout the suite. A `@micropython.viper` body runs as native code and
+fires no line event at all, so every line of it shows missed (F.1; `build-settrace`, 2026-11-09). A bare `while True:` header never fires its own
 trace event at any iteration (folds into an unconditional jump at compile time). Nor does a
 multi-line statement's continuation line, an `else:` or `finally:` header, or a `pass` that is an
 `if` body (a `pass` in a loop body does fire), each confirmed on `build-settrace` with a probe
@@ -6192,6 +6193,15 @@ holding the firmware image with the littlefs partition behind it. Pico W's littl
 (~848KB) is smaller than plain Pico's (~1.37MB) purely because the CYW43 firmware blobs make the
 image larger.
 
+**Byte and bit loops run in the native emitter** (`@micropython.viper`): the CRC engine
+(`asy_crc_checks._crc()`) and the UART ring copy (`asy_uart_driver._ring_copy()`). The rp2 build
+freezes them as Thumb code (`MICROPY_EMIT_THUMB`, `mpy-cross -march=armv6m`, `ports/rp2/CMakeLists.txt:506-508`,
+v1.29.0); a plain `mpy-cross` refuses such a module. The limits that bind: no default arguments; a
+`ptr8` has no bounds check, so its caller sizes the buffer; the word is 32 bits on silicon and 64 on
+the Unix port, so a result is masked to its width; no 64-bit product; a body runs without the
+scheduler (docs `reference/speed_python.rst`). ruff reads the viper names as builtins
+(`pyproject.toml`), and mypy wants one `arg-type` ignore per function.
+
 **Which stores wear.** The flash filesystem (W25Q16JV: at least 100K program-erase cycles per
 sector, datasheet section 2) and the SCD30's NVM (no published endurance figure, M.2) are the
 limited-endurance stores; FRAM is not (MB85RS64V 10^12 and MB85RS2MTA 10^13 read/write cycles per
@@ -6764,7 +6774,7 @@ The budget rows, one per stretch:
 | `stall.fram_command` | the longest non-yielding FRAM stretch, one 1-byte write's CS envelopes, the SPI re-init per CS session inside it | 3,395 µs, the longest of three runs (2,833-3,395 µs, dev 2026-09-25, F.5.8) | as its value | `con.routine_stall`; one UART poll floor, 80 B at 115200 baud = 6,944 µs (J.6) | `device_scripts/fram_command_hold_timing.py`, run by `tests_hardware/flash/test_fram_storage.py` | — |
 | `stall.gc` | one garbage collection | 21 ms, the worst measured pause (I.1) | I.1 | `con.uart_reply` (its floor holds it) | J.6's floor checks (`UARTComm._min_timeout()`, `buildgen/validate.py`); the re-measure by `device_scripts/loop_stretch_timing.py` on the full dev graph | `uart.gc_pause_worst_ms` |
 | `stall.voc_process` | one `vocalgorithm_process()` per SGP40 sample, no yield inside | owed | owed: `device_scripts/loop_stretch_timing.py` | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` (`tests_hardware/flash/test_memory_stress.py`) | — |
-| `stall.crc_byte` | a CRC over a buffer yields inside its per-byte loop (`asy_crc_checks.py`), so one stretch is one byte's eight steps | owed | the 256-byte VOC chunk's total and largest gap: owed, `device_scripts/loop_stretch_timing.py` | `con.routine_stall` | `tests/test_asy_crc_checks.py`'s yield tests; `test_routine_no_yield_stretches_stay_under_the_gc_term` | — |
+| `stall.crc` | a CRC over a buffer runs as native code with no yield inside (`asy_crc_checks.py`), so one stretch is the whole buffer | 0.95 ms for 264 B, the SGP40 backup chunk's CRC32 (RAM-loaded viper engine on the dev RP2040, 2026-11-09; the frozen engine's figure owed) | the 256-byte chunk's total and gap: owed, `device_scripts/loop_stretch_timing.py` | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` | — |
 | `stall.uart_call` | one UART driver call on the loop | 1,533 µs: a third (`_SPAN_FRACTION`) of one 53-byte frame's wire time at 115200 baud, 4,600 µs (`FRAME` in `device_scripts/uart_driver_read_never_blocks_the_loop.py`, F.5.8) | 126-132 µs (dev, 2026-09-25, F.5.8) | `con.uart_reply`, `con.routine_stall` | `device_scripts/uart_driver_read_never_blocks_the_loop.py`; `tests_scripts/test_timing_budget.py` | — |
 | `stall.sync_wait` | the synchronous waits `src/` makes on purpose: the SPI CS settle and the I2C bus clear's half period | 5 µs per wait, the bus clear's; 2 µs the CS settle | — | `con.routine_stall` | `tests_scripts/test_src_sleep_forms.py` | — |
 | `stall.console` | `print()` at a raised `DebugLevel` while a USB host program holds the port open and does not read (A.5); never without such a host, and the shipped level prints no client-triggered line | 2 s per printed line (about: several writes, each up to 500 ms) | — | `con.uart_reply` (crossed: an accepted debug-mode limitation (owner, 2026-09-30, asked, in paraphrase, how to treat debug logging with a connected USB host that does not read: 'a', to accept it as one; A.5)), `con.led_frame` (crossed), `con.watchdog` (a busy log can still starve it: A.5 names the exits) | `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog` (`tests_hardware/bench/test_network_resilience.py`, behind `--allow-persistence-write`) | — |
@@ -7363,8 +7373,9 @@ defaults to 50 ms idle and 2 ms in-transaction, the dev bench's measured pair; a
 either only to depart from it. An out-of-range `poll_wait_ms`, `poll_idle_ms` or `timeout_ms` —
 beyond the ticks range, where `asyncio.sleep_ms()` raises `OverflowError` for a delta of 2**29 ms
 or more (`extmod/asyncio/core.py:57`, `extmod/modtime.c:191-192`) — degrades `ready()` to `False`;
-the build bounds `poll_idle_ms` between `poll_wait_ms` and
-the tick horizon (`buildgen/validate.py`). The rates are Part N `uart.poll_wait_ms_default`,
+the build bounds `poll_idle_ms` from below by `poll_wait_ms` and by one frame's wire time at the
+link's baud (10 bits a byte, rounded up: 5 ms for 53 bytes at 115200), since an idle listener gains
+nothing looking more often than a frame can arrive, and from above by the tick horizon (`buildgen/validate.py`). The rates are Part N `uart.poll_wait_ms_default`,
 `uart.poll_idle_ms_default`; `devices/dev.toml` states the same 2 ms and 50 ms.
 
 `asy_udp_socket.ready()` follows the same shape: 20 ms inside an exchange, 100 ms for the captive
@@ -7798,10 +7809,10 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `rel_humidity()` stay in `math_helpers.py`, small and completing the functional suite (owner,
   2026-10-02: 'useful, complete the functional suite, small, lightweight').
 - **CRCs** — `asy_crc_checks.py`: CRC8 = Sensirion CRC-8 (poly 0x31, init 0xFF), CRC16 =
-  CRC-16/CCITT-FALSE, CRC32 = CRC-32/MPEG-2, fixed because the chips and the UART peer depend on them;
-  a caller passes the buffer's true length (a zero register stays zero through trailing 0x00) and
-  never a zero-length payload; one incremental sequence per instance, closed by `check_inc()`; CRC32
-  runs as two 16-bit words (rp2 small ints); `_crc()` yields after every byte (owner, 2026-09-18).
+  CRC-16/CCITT-FALSE, CRC32 = CRC-32/MPEG-2, fixed because the chips (CRC8), the UART peer (CRC16) and
+  the stored FRAM chunks (CRC32) depend on them; a caller passes the buffer's true length (a zero
+  register stays zero through trailing 0x00) and never a zero-length payload; one incremental
+  sequence per instance, closed by `check_inc()`; every width runs one native engine, `_crc()` (I.2).
 - **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
   simulates**; a `src/`-side policy change and its `js/` mirror are one change, not two. The
   mirrored pairs, each with its check: `js/mock-server.js` against the real `src/` endpoints, field
@@ -8875,19 +8886,12 @@ dict copies (`compare_before_write()`, G.2), bounded by the schema, and one tran
 `json.load()` of one small file per instance (no aggregation).
 
 **`asy_crc_checks.py`** — `add_into()`/`check_from()` (FRAM, SGP40, SCD30) work in the caller's
-buffer, a view each; `add()`/`check()` allocate the framed or stripped copy, whose only product
-callers are the UART driver, per frame, bounded by `payload_size` + the CRC width. The per-byte
-`await asyncio.sleep(0)` was kept (owner, 2026-09-18: "pure wall clock time is not such an issue,
-don't touch") on facts that did not hold: its ~5.8x wall-time cost was measured idle on the Unix
-port with nothing waiting, while the FRAM chunk layer ran it under the session and bus locks every
-FRAM user waits on, one scheduler round per byte (8-20 s per SGP40 backup under load, bench
-2026-11-07). No CRC runs under a FRAM lock since (F.3 `hold.fram_block`). The rule in force: applying
-the levels "already answers the open questions about the checksum" (owner, 2026-11-07), so the
-yield's purpose stays, no CRC stalls other tasks past `con.routine_stall`, and its per-byte
-granularity goes; until then the loop yields per byte (`stall.crc_byte`). Its allocation per call is
-flat whatever the length, 160 B for CRC8/CRC16 and 416 B for CRC32, whose two-word path adds a
-second coroutine frame (Unix port, `v1.29.0`, 2026-10-07; the rp2 figure is owed to the bench). A CRC
-wider than 16 bits runs as two 16-bit words (G.2), so its bit loop stays inside small ints on rp2 as well.
+buffer; `add()`/`check()` allocate the framed or stripped copy, whose only product callers are the
+UART driver, per frame, bounded by `payload_size` + the CRC width. The methods stay coroutines over
+one viper engine, `_crc()` (F.1), with no yield inside: a call allocates its own frame alone, 160-192 B
+whatever the width or length (Unix port, 2026-11-09), the register is a machine word, so no heap int is
+built per bit, and a 264-byte CRC32 holds the loop 0.95 ms on the RP2040 (`stall.crc`). MicroPython's C `binascii.crc32` is CRC-32/ISO-HDLC, another CRC, and 1.29 has
+none for CRC-8 or CRC-16.
 
 **`asy_dns_client.py`** — per resolution: the query (`_build_query()`, labels of at most 63 octets),
 one `UDPSocket` per server tried, the reply of at most 512 B (RFC 1035 §4.2.1; a longer one arrives
@@ -9062,7 +9066,7 @@ Part N `gc.emergency_exc_buf_bytes`, I.4(e)) and `asyncio.run()`'s task; nothing
 
 **Owner decisions from the heap-fragmentation work** (owner, 2026-09-18 and 2026-09-24; the method
 behind them is `HEAP_FRAGMENTATION_MEASUREMENTS.md`) are recorded in their modules' rows above:
-`asy_crc_checks.py`'s per-byte yield and `asy_print_log.py`'s setup placement.
+`asy_print_log.py`'s setup placement.
 
 ## I.3 Bounded response assembly: `_PieceWriter` and static reads
 
@@ -10003,19 +10007,18 @@ margins are:
 | arm | budget | floor | margin |
 | --- | --- | --- | --- |
 | real `dev` link | 1000 ms | 2·2 + 50 + 21 = 75 ms | 13.3× |
-| `tests/test_uart_comm_hazard.py` and `tests/test_uart_comm_cancel_sweep.py`, CRC16 | 240 ms (`_TIMEOUT_MS` × 8, `tests/_uart_comm_hazard_common.py`) | 2·1 + 1 + 21 = 24 ms | 10× |
-| same files, no CRC | 30 ms (`_TIMEOUT_MS`) | 24 ms | **1.25×** |
+| `tests/test_uart_comm_hazard.py` and `tests/test_uart_comm_cancel_sweep.py`, both CRC modes | 30 ms (`_TIMEOUT_MS`, `tests/_uart_comm_hazard_common.py`) | 24 ms | **1.25×** |
 
 The no-CRC arm's 1.25× is too thin for a check that a clean run completes in full: the host's
 scheduling gap is 3 ms idle, 23–26 ms at 8× CPU oversubscription and past 30 ms in a loaded
 full-file run, which ends a hammer one transaction short (`only 149/150 hammered transactions
 completed`); the listener budget is not the cause (150 transactions consume exactly 150 of the 450
 listen rounds). So the two tests that assert a *clean* run completes in full (`_hammer_clean`,
-`_measure_retention`) build their pair at `_TIMEOUT_MS * 8`, the CRC arm's 10× margin. A
+`_measure_retention`) build their pair at `_TIMEOUT_MS * 8`, a 10× margin. A
 clean run never consumes the timeout, so this costs no wall clock; the short budget stays where it
 earns its keep, in the fault-injecting tests whose recovery cycles it actually makes cheap. Neither
 test would now catch a *latency* regression below 240 ms — they assert completion and heap
-retention, not duration, as the CRC arm already did. `_check_a_clean_transaction_completes_within_its_virtual_time_bound` (both CRC modes) is
+retention, not duration. `_check_a_clean_transaction_completes_within_its_virtual_time_bound` (both CRC modes) is
 the latency check instead: a clean `uart_set(1, b"x")` with its listener must finish within
 4 ms on the driven clock. A 20 ms sleep planted before
 `_write_frame_with_ack()`'s frame write left the clean hammers green in both CRC modes and turned
@@ -10040,9 +10043,8 @@ poll rounds, never dropped (agent, 2026-10-07; owner-reviewed, 2026-11-06). The 
 `tests/_bus_hazard_catalog.py`'s own clock for `asy_i2c_driver`.
 The clock still lets host speed in through one door: a waiter's rounds are real 1 ms sleeps, so it
 takes at most one round per yield of its peer but up to one per elapsed millisecond, and a budget is
-host-independent only when it covers its peer's yields. CRC16 yields once per byte: one reply at
-this tier's 8-byte payload spends 79 virtual ms at the slow-host limit (no CRC: 20), so every CRC16
-check runs on the 240 ms arm above (agent, 2026-10-08; owner-reviewed, 2026-11-06). `PollRoundClock.pace(real=False)` reaches
+host-independent only when it covers its peer's yields: one reply at this tier's 8-byte payload
+spends 20 virtual ms at the slow-host limit, the CRC adding no yield. `PollRoundClock.pace(real=False)` reaches
 that limit on any host by turning every sleep into a bare yield; the cancellation sweeps count their
 clean run that way, so the step ceiling twice that count holds on a slow host too (agent, 2026-10-08; owner-reviewed, 2026-11-06).
 
@@ -12019,7 +12021,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `uart.poll_wait_ms_default` | 2 ms | `src/asy_uart_driver.py` — `2` | the `timeout` and `rxbuf` floors (J.6); `buildgen/validate.py` reads it from source for a bus table that states none | estimated (agent, 2026-10-07; owner-reviewed, 2026-11-06): the dev bench's in-transaction rate made the default, the single-digit rate J.6 requires — measurement owed: throughput of a stop-and-wait exchange at 2 ms on the dev bench, L3 | bound, measured by the bench's ring-peak run; unknown until measured | the driver's poll mechanism changes |
 | `uart.poll_idle_ms_default` | 50 ms | `src/asy_uart_driver.py` — `50` | the `timeout` floor (J.6, its first-byte notice term); `buildgen/validate.py` reads it from source for a bus table that states none | measured 2026-09-12, dev bench, 2 interleaved runs: an idle listener 1244/1233 poll rounds over 3 s at 2 ms against 60/60 at 50 ms (F.5.9); the dev bench's idle rate made the default (agent, 2026-10-07; owner-reviewed, 2026-11-06) | bound, measured by the bench's ring-peak run; `tests_hardware/device_scripts/uart_idle_poll_rate.py`; 1/20 of the 1000 ms reply timeout; 13.3× the timeout floor at the 2/50 pair (J.7) | the driver's poll mechanism or a link's reply timeout changes |
 | `uart.rx_ring_default` | 512 B | `src/asy_uart_driver.py` — `512` (2 tags) | the size of every link's DMA receive ring while no device TOML states one (both `dev` links); the ring floor (J.6, a construction refusal below it); `setup_rx_ring()` refuses a size that is not a power of two the DMA can wrap; the ring's allocation is twice it (I.2); `tests/test_asy_uart_driver.py`'s hammering tests size their frame counts against its 44 ms at the line rate | estimated (owner, 2026-11-05: "Option A", the 512 B ring): the smallest power of two at or above `dev`'s configured `rxbuf` (512 B) and J.6's per-interval floor (about 80 B) — measurement owed: the ring's peak fill on the dev bench under link and flash-write load, L3 | 44 ms of arrivals at 115200 baud, 9 whole 53-byte frames, 6× the per-interval floor | a link's baud, poll rate or frame size changes, or a device TOML states its own ring size |
-| `uart.gate_step_ms` | 20 ms | `src/asy_uart_comm.py` — `20` | the latency of a cancel landing in the write gate | estimated (agent, `c63ef97`) — measurement owed: cancel latency inside the write gate on the dev bench, L3 | unknown until measured | any value change is logged in `UART_C_PORT_CHANGELOG.md` (Class A by definition for an `asy_uart_comm.py` const, CLAUDE.md UART rule) |
 | `uart.gc_pause_worst_ms` | 21 ms | `src/asy_uart_comm.py` — `21`; `tests/test_digital_twin_uart_link.py` — `21` | the `timeout` floor (J.6, its GC term); `buildgen/validate.py`'s reply-timeout build check; the twin link's collection-length pauses mid-transfer (`tests/test_digital_twin_uart_link.py`, a mirror: a `_`-prefixed `const()` is no module attribute) | measured on real target hardware under hammer load, both GC stages: ~1 ms typical, up to ~15-21 ms (I.1); run count and image not recorded — re-measure owed on real hardware, with the two-image GC proof | the worst observed pause itself; none beyond it | any value change is logged in `UART_C_PORT_CHANGELOG.md` (Class A by definition for an `asy_uart_comm.py` const, CLAUDE.md UART rule) |
 | `uart.poll_jitter_ms` | 5 ms | `src/asy_uart_comm.py` — `5` | the `rxbuf` floor (J.6, its scheduling-slack term) | estimated (agent, `c63ef97`) — measurement owed: the scheduling gap of a polling task under load on the dev bench, L3 | unknown until measured | any value change is logged in `UART_C_PORT_CHANGELOG.md` (Class A by definition for an `asy_uart_comm.py` const, CLAUDE.md UART rule) |
 | `uart.diag_resync_streak` | 2 | `src/asy_uart_comm.py` — `2` | the never-valid diagnostic (J.6); `tests/test_uart_comm_hazard.py`'s 4 exchanges in a row, several past the streak | estimated (agent, `c63ef97`) — measurement owed: resync streaks on a sound link under load, L3 | unknown until measured | any value change is logged in `UART_C_PORT_CHANGELOG.md` (Class A by definition for an `asy_uart_comm.py` const, CLAUDE.md UART rule) |

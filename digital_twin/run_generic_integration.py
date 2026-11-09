@@ -182,7 +182,7 @@ _DROP_TIMER_SITES = ("reset", "sequencer")  # the product one-shots --test-drop-
 # MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0): the unit of mem_info()'s max free sz.
 _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
-_UART_CLOCK_MODULES = ("asy_crc_checks", "asy_uart_driver", "asy_uart_comm", "asy_uart_link_driver")  # the link's clock and its CRC's turns
+_UART_CLOCK_MODULES = ("asy_uart_driver", "asy_uart_comm", "asy_uart_link_driver")  # the link's clock
 _WATCHDOG_FAULT_KINDS = ("supervisor-raise", "main-exit", "block")
 _HOLD_CUT = "cut"  # --test-hold-system-entry's unreleased mode: the held entry's write cut inside its first block
 _SO_SNDBUF = 7  # Linux's (include/uapi/asm-generic/socket.h): the Unix port's socket module exports none (modsocket.c:722-727, v1.29.0)

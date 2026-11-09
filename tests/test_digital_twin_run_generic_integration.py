@@ -62,7 +62,6 @@ from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # no
 from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_config_manager  # noqa: E402 - imported after the prewarm and the UDP shim
-import asy_crc_checks  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_ntp_client  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_system_service  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_uart_comm  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -749,7 +748,7 @@ class _ExercisedLink(_CountedLink):
 def test_the_uart_driven_clock_lends_the_links_three_modules_one_clock_until_the_run_ends() -> None:
     # Each module's asyncio is the clock's while the instrumentation runs and the real one after; its ticks stay lent.
     said: list[str] = []
-    modules = (asy_crc_checks, asy_uart_driver, asy_uart_comm, asy_uart_link_driver)
+    modules = (asy_uart_driver, asy_uart_comm, asy_uart_link_driver)
     saved = [(module.asyncio, getattr(module, "time", None)) for module in modules]
 
     async def scenario() -> "list[bool]":
@@ -767,9 +766,9 @@ def test_the_uart_driven_clock_lends_the_links_three_modules_one_clock_until_the
             module.asyncio = real  # type: ignore[attr-defined]
             if own is not None:
                 module.time = own  # type: ignore[attr-defined]
-    assert lent == [True, True, True, True], f"not every link module's asyncio was lent: {lent}"
-    assert handed_back == [True, True, True, True], f"the run's end did not hand every real asyncio back: {handed_back}"
-    assert said[:1] == ["UART_CLOCK driven modules=4"] and len(said) == 2 and said[1].startswith("UART_CLOCK released virtual_ms="), said
+    assert lent == [True, True, True], f"not every link module's asyncio was lent: {lent}"
+    assert handed_back == [True, True, True], f"the run's end did not hand every real asyncio back: {handed_back}"
+    assert said[:1] == ["UART_CLOCK driven modules=3"] and len(said) == 2 and said[1].startswith("UART_CLOCK released virtual_ms="), said
 
 
 def test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_one_train_past_its_cap() -> None:

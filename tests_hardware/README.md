@@ -913,7 +913,7 @@ and checks that every route was served, `main()` kept running and the FRAM load 
 failed write.
 
 Four of Part F.3's timing rows wait on these instruments' silicon figures: the flash stretch
-(`stall.flash_program`), the on-target stretches (`stall.voc_process`, `stall.crc_byte`) and the
+(`stall.flash_program`), the on-target stretches (`stall.voc_process`, `stall.crc`) and the
 loop lag under combined load (`lag.loop`); BACKLOG.md's "Real-hardware work still owed" carries the
 runs.
 

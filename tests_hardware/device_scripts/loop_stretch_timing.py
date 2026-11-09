@@ -75,7 +75,7 @@ async def _main() -> None:
         probing = [True]
 
         async def probe() -> None:
-            # Wakes at every yield the CRC loop gives: the largest gap between two wake-ups is its longest stretch.
+            # Wakes at every yield: the largest gap between two wake-ups is the CRC's whole run, which yields none.
             last = time.ticks_us()
             while probing[0]:
                 await asyncio.sleep_ms(0)
