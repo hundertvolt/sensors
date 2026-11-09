@@ -87,8 +87,6 @@ _RESYNC_DEN = const(2)
 # The drain's own hard bound (changelog A5). A multiple of the quiet window, so it can never be
 # shorter than the peer's own drain - which is what would let this side transmit into it.
 _DRAIN_BOUND_MULT = const(4)
-# @tunable uart.gate_step_ms = 20
-_GATE_STEP_MS = const(20)  # longest single sleep inside the write gate, so a cancel lands promptly
 # @tunable uart.gc_pause_worst_ms = 21
 _GC_PAUSE_WORST_MS = const(21)  # measured worst-case collection pause, SPECIFICATION.md Part I
 # The longest one synchronous flash operation holds the loop: a config flush, whose sector erases and page
@@ -381,16 +379,15 @@ class UARTComm:
     async def _await_write_gate(self) -> None:
         # A deadline, never a one-shot Timer: MicroPython's scheduler queue can silently drop a soft
         # callback, and the flag it would have set is then never set - the legacy module's permanent
-        # hang. A deadline cannot be dropped, and needs no alarm-pool slot.
-        while self._holdoff_active:
+        # hang. A deadline cannot be dropped, and needs no alarm-pool slot; one sleep waits it out.
+        if self._holdoff_active:
             remaining = time.ticks_diff(self._holdoff_deadline, time.ticks_ms())
             # The deadline is set one window ahead, so more than a window remaining means the stored tick aged past
             # ticks_diff()'s 2**29 ms horizon (idle > 6.2 days): expired. The one aliased band left costs at most one
             # window, a normal hold-off.
-            if remaining <= 0 or remaining > self._resync_window_ms():
-                self._holdoff_active = False
-                return
-            await asyncio.sleep_ms(min(remaining, _GATE_STEP_MS))
+            if 0 < remaining <= self._resync_window_ms():
+                await asyncio.sleep_ms(remaining)
+            self._holdoff_active = False
 
     def _buffers_ready(self, payload: int) -> bool:
         # Every buffer, not only the TX frame: _allocate() guards its three scratch buffers as one

@@ -1,11 +1,9 @@
 """CRC8/16/32 and CRCPass against cited check values: bounds and refusals, pass mode, and incremental use matching one
 bulk pass."""
 
-import asyncio
-
 from _async_harness import run
 
-from asy_crc_checks import CRC8, CRC16, CRC32, CRCBase, CRCPass
+from asy_crc_checks import CRC8, CRC16, CRC32, CRCBase, CRCPass, _crc
 
 try:
     from typing import TYPE_CHECKING
@@ -13,7 +11,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from typing import NoReturn
 
 
 # ---------------------------------------------------------------------------
@@ -31,13 +29,13 @@ def test_crc8_matches_sgp40_datasheet_vectors() -> None:
         (bytearray([0xFF, 0xFF]), 0xAC),
     ]
     for data, expected in vectors:
-        assert run(crc8._crc(data, crc8._all_set, 0x31)) == expected
+        assert _crc(data, 0, len(data), crc8._all_set, 0x31, 0) == expected
 
 
 def test_crc8_matches_sensirion_example_vector() -> None:
     # SGP40 datasheet v1.2 Table 7's example, CRC(0xBE 0xEF) = 0x92; the SCD30 Interface Description §1.1.3 gives the same.
     crc8 = CRC8()
-    assert run(crc8._crc(bytearray([0xBE, 0xEF]), crc8._all_set, 0x31)) == 0x92
+    assert _crc(bytearray([0xBE, 0xEF]), 0, 2, crc8._all_set, 0x31, 0) == 0x92
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +406,13 @@ def test_num_bytes_negative_degrades_to_pass_mode() -> None:
     assert base._poly is None
 
 
+def test_a_width_beyond_the_engines_word_degrades_to_pass_mode() -> None:
+    # The engine's word is 32 bits on silicon, so a 5-byte register is refused like any other invalid config.
+    base = CRCBase(5, 0x1B, ">Q")
+    assert (base.length(), base._poly) == (0, None)
+    assert CRCBase(4, 0x1B, ">I").length() == 4
+
+
 # ---------------------------------------------------------------------------
 # CRC16 - width-specific parity with CRC8's coverage above
 # ---------------------------------------------------------------------------
@@ -636,20 +641,57 @@ def test_add_check_round_trip_single_byte_payload_all_widths() -> None:
 def test_crc16_matches_the_ccitt_false_check_value() -> None:
     # The CRC-16/CCITT-FALSE check value; the oracle is named in the CRC-32 test below.
     crc16 = CRC16()
-    assert run(crc16._crc(bytearray(b"123456789"), crc16._all_set, 0x1021)) == 0x29B1
+    assert _crc(bytearray(b"123456789"), 0, 9, crc16._all_set, 0x1021, 8) == 0x29B1
 
 
 def test_crc32_matches_the_mpeg2_check_value() -> None:
     # Independent oracles computed on the host: CPython's binascii.crc_hqx(data, 0xFFFF) for CRC16, and zlib.crc32
     # over bit-reversed bytes, reflected back and xor-ed, for CRC-32/MPEG-2 (the CRC catalogue's CRC-32/MPEG-2).
-    crc32 = CRC32()
     vectors = [
         (bytearray(b"123456789"), 0x0376E6E7),
         (bytearray(256), 0xE55E964F),
         (bytearray(range(256)), 0x494A116A),
     ]
     for data, expected in vectors:
-        assert run(crc32._crc(data, 0xFFFFFFFF, 0x04C11DB7)) == expected
+        assert _crc(data, 0, len(data), 0xFFFFFFFF, 0x04C11DB7, 24) == expected
+
+
+# Rows per width (data seed, length, init, CRC), the CRCs computed on the host by GF(2) division of the message, checked
+# against binascii.crc_hqx (CRC16) and the zlib.crc32 construction above (CRC32): seed None is the 37i + 11 pattern at
+# the default init, the 0/1/264/512-byte edges; the other rows are _lcg_bytes() data at a random init.
+_ORACLE_ROWS = {
+    CRC8: ((None, 0, 0xFF, 0xFF), (None, 1, 0xFF, 0x46), (None, 264, 0xFF, 0xAD), (None, 512, 0xFF, 0xA6), (394431668, 26, 250, 50), (623088224, 318, 70, 218), (910866977, 192, 93, 213), (17529307, 447, 238, 235)),
+    CRC16: ((None, 0, 0xFFFF, 0xFFFF), (None, 1, 0xFFFF, 20635), (None, 264, 0xFFFF, 2768), (None, 512, 0xFFFF, 50080), (1883084724, 50, 26882, 64344), (1058962288, 111, 48858, 58825), (2094959691, 431, 21146, 7155), (683917094, 335, 39649, 52022)),
+    CRC32: ((None, 0, 0xFFFFFFFF, 0xFFFFFFFF), (None, 1, 0xFFFFFFFF, 1698919637), (None, 264, 0xFFFFFFFF, 1788925217), (None, 512, 0xFFFFFFFF, 2336564053), (1724006962, 472, 693398165, 2031868003), (909990323, 206, 2652568907, 3189247331), (1848231682, 360, 372891647, 2223587924), (396852702, 358, 1087734844, 446169664)),
+}
+
+
+def _lcg_bytes(seed: int | None, n: int) -> bytearray:
+    out = bytearray(n)
+    for i in range(n):
+        if seed is None:
+            out[i] = (i * 37 + 11) & 0xFF
+        else:
+            seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF
+            out[i] = (seed >> 16) & 0xFF
+    return out
+
+
+def test_every_width_matches_the_host_oracles_and_leaves_a_zero_residue() -> None:
+    # The values are contracts: Sensirion's wire (CRC8), the UART peer's (CRC16), the stored FRAM chunks (CRC32). The CRC
+    # add() appends, run again over payload and CRC at the same init, leaves 0: what check() and check_from() test.
+    for cls, rows in _ORACLE_ROWS.items():
+        crc = cls()
+        width, poly, shift = crc.length(), crc._poly, crc._crc_shift
+        assert poly is not None
+        for seed, n, init, expected in rows:
+            data = _lcg_bytes(seed, n)
+            assert _crc(data, 0, n, init, poly, shift) == expected, (cls, seed, n)
+            framed = run(crc.add(data, init=init))
+            assert framed is not None
+            assert framed[n:] == expected.to_bytes(width, "big"), (cls, seed, n)
+            assert _crc(framed, 0, n + width, init, poly, shift) == 0, (cls, seed, n)
+            assert run(crc.check(framed, init=init)) == (data if n else None), (cls, seed, n)
 
 
 def test_crc32_round_trips_at_a_non_default_init() -> None:
@@ -778,13 +820,8 @@ def test_add_on_empty_payload_produces_buffer_check_cannot_verify() -> None:
 def test_add_lets_a_memoryerror_from_its_own_buffer_allocation_propagate() -> None:
     # add()'s new buffer is bytearray(self._num_bytes), whitebox-widened here to a size confirmed against the
     # real interpreter to raise MemoryError - the same allocation-exhaustion technique
-    # test_asy_base_classes.py's RegionBuffer tests use.
-    #
-    # The widened width would route _crc() to the two-word path, so it is swapped for a pristine CRC8's: the
-    # CRC is still computed normally and only the allocation fails - the shape a genuinely exhausted heap
-    # takes on-device.
+    # test_asy_base_classes.py's RegionBuffer tests use. The CRC itself still runs at the real width.
     crc8 = CRC8()
-    crc8._crc = CRC8()._crc  # type: ignore[method-assign]
     crc8._num_bytes = 2**62
     try:
         run(crc8.add(bytearray(b"hello world")))
@@ -793,27 +830,11 @@ def test_add_lets_a_memoryerror_from_its_own_buffer_allocation_propagate() -> No
         pass
 
 
-class _MemoryErrorOnCopyBuffer:
-    # check()'s own allocation is its payload copy, and no real bytearray can force that to fail: a buffer
-    # large enough for the copy to exhaust the heap cannot itself be allocated, unlike add(), whose size
-    # comes from _num_bytes rather than the input.
-    #
-    # Substituted instead by a minimal stand-in behaving exactly like the real buffer for len() and
-    # iteration, so _crc() computes the true CRC and check() genuinely reaches the copy, which then raises
-    # MemoryError. The same substitution technique the UART driver and asy_print_log suites use.
-    def __init__(self, real: bytearray) -> None:
-        self._real = real
-
-    # check()'s only indexing is the trailing-CRC strip, bytearr[0 : len(bytearr) - _num_bytes] -
-    # a slice, returning a bytearray on the real type this stands in for.
-    def __getitem__(self, item: "slice[int, int, None]") -> bytearray:
+class _MemoryErrorOnCopyBuffer(bytearray):
+    # check()'s own allocation is its payload copy, and no real buffer large enough for the copy to exhaust the heap can
+    # itself be allocated: this bytearray computes the true CRC, and its slice, check()'s copy, raises.
+    def __getitem__(self, item: object) -> "NoReturn":
         raise MemoryError("simulated allocation failure")
-
-    def __iter__(self) -> "Iterator[int]":
-        return iter(self._real)
-
-    def __len__(self) -> int:
-        return len(self._real)
 
 
 def test_check_lets_a_memoryerror_from_its_own_payload_copy_propagate() -> None:
@@ -821,77 +842,10 @@ def test_check_lets_a_memoryerror_from_its_own_payload_copy_propagate() -> None:
     added = run(crc8.add(bytearray(b"hello world")))
     assert added is not None
     try:
-        run(crc8.check(_MemoryErrorOnCopyBuffer(added)))  # type: ignore[arg-type]
+        run(crc8.check(_MemoryErrorOnCopyBuffer(added)))
         raise AssertionError("expected MemoryError to propagate out of check()")
     except MemoryError:
         pass
-
-
-# ---------------------------------------------------------------------------
-# Cooperative yielding - _crc()'s per-byte `await asyncio.sleep(0)` (see the module docstring: a
-# large buffer's CRC computation must not stall other tasks)
-# ---------------------------------------------------------------------------
-
-
-def test_crc_over_a_large_buffer_lets_another_task_run_while_it_computes() -> None:
-    # Deterministic, with no wall-clock timing involved: a second task counts how many times it is scheduled
-    # while the CRC is still running, and since it only ever yields via asyncio.sleep(0) itself, it can be
-    # re-scheduled at all only if _crc() genuinely hands control back between bytes.
-    #
-    # Observed under the real interpreter: exactly one tick per byte processed, asserted against half that,
-    # so this pins "the yield happens and is not a no-op" without depending on the scheduler's exact
-    # fairness. CRC32 runs the two-word loop, so both loops are pinned.
-    payload = bytearray(range(200)) + bytearray(range(100))  # a few hundred bytes, one CRC yield each
-    for crc in (CRC8(), CRC32()):
-        framed = run(crc.add(payload))
-        assert framed is not None
-
-        async def scenario(crc: CRCBase = crc, framed: bytearray = framed) -> tuple[int | None, int]:
-            ticks = [0]
-            finished = [False]
-
-            async def counter() -> None:
-                while not finished[0]:
-                    ticks[0] += 1
-                    await asyncio.sleep(0)
-
-            task = asyncio.create_task(counter())
-            checked = await crc.check(framed)
-            ticks_during_crc = ticks[0]  # sampled before the counter is stopped
-            finished[0] = True
-            await task  # let the counter observe the flag and exit, leaving nothing pending
-            return (None if checked is None else len(checked)), ticks_during_crc
-
-        payload_len, ticks_during_crc = run(scenario())
-        assert payload_len == len(payload)  # the CRC still verified correctly while interleaving
-        assert ticks_during_crc >= len(framed) // 2
-
-
-def test_crc_yielding_is_not_a_side_effect_of_check_returning_early() -> None:
-    # Control for the test above: a rejected init makes check() return before _crc() runs at all,
-    # so the same counter task never gets a single chance to be scheduled. Without this, "the
-    # counter ticked" could just as well have come from await points outside the CRC loop.
-    crc8 = CRC8()
-
-    async def scenario() -> tuple[bytearray | None, int]:
-        ticks = [0]
-        finished = [False]
-
-        async def counter() -> None:
-            while not finished[0]:
-                ticks[0] += 1
-                await asyncio.sleep(0)
-
-        task = asyncio.create_task(counter())
-        checked = await crc8.check(bytearray(b"hello world"), init=-1)  # rejected before any CRC work
-        ticks_during_call = ticks[0]
-        finished[0] = True
-        await task
-        return checked, ticks_during_call
-
-    checked, ticks_during_call = run(scenario())
-    assert checked is None
-    assert ticks_during_call == 0  # no await point reached at all - the counter never even started
 
 
 def test_add_into_refuses_an_init_outside_the_crc_width_and_leaves_the_buffer_untouched() -> None:

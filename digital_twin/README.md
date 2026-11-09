@@ -106,7 +106,7 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   timeout, while rp2 builds without `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` and polls once and
   returns (:400-412). asyncio polls with a zero timeout before every task step, so each step cost the
   twin about 1 ms while a flag waited: 1.4 s of each 2 s re-plug ladder in
-  `tests/test_digital_twin_hot_replug.py`, whose FRAM log writes yield once per CRC byte (measured;
+  `tests/test_digital_twin_hot_replug.py` (measured;
   agent, 2026-10-27). Only a zero-timeout round in which every registered stream is a clear
   `ThreadSafeFlag` is skipped, the one round whose poll can report nothing; every other round takes
   the real poll; `tests/test_digital_twin_unix_port_idle_poll.py` pins which rounds those are.

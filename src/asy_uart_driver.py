@@ -12,6 +12,7 @@ import select
 import time
 from array import array
 
+import micropython
 from machine import UART as _UART
 from machine import Pin, mem32
 from micropython import const
@@ -82,6 +83,14 @@ _DMA_CH_STRIDE = const(0x40)
 _DMA_TRANS_COUNT_TRIG = const(0x1C)
 _CTRL_CHAIN_TO_LSB = const(11)  # CTRL_TRIG.CHAIN_TO, bits 14:11 (2.5.7)
 _CTRL_CHAIN_TO_MASK = const(0x7800)
+
+
+@micropython.viper
+def _ring_copy(dest: ptr8, start: int, ring: ptr8, pos: int, n: int, mask: int) -> int:
+    # dest[start + i] = ring[(pos + i) & mask] for i below n; ptr8 checks no bounds, so every caller sizes dest first.
+    for i in range(n):
+        dest[start + i] = ring[(pos + i) & mask]
+    return n
 
 
 class UART(Lockable):
@@ -280,15 +289,14 @@ class UART(Lockable):
             self.logger.err(what, e)
 
     def _rx_copy(self, dest: bytearray | memoryview | None, start: int, n: int) -> int:
-        # Copies n buffered bytes into dest[start:] by index - no slice, no allocation - and consumes them (dest
+        # Copies n buffered bytes into dest[start:] in native code - no slice, no allocation - and consumes them (dest
         # None: consumed only). Checked again after the copy: a lap during it overwrote bytes already copied.
         ring: memoryview = self._ring  # type: ignore[assignment]  # set: every caller follows a positive _buffered(), which needs it
         data: DMA = self._rx_dma  # type: ignore[assignment]  # set, as ring
         mask = len(ring) - 1
         pos = self._rx_pos
         if dest is not None:
-            for i in range(n):
-                dest[start + i] = ring[(pos + i) & mask]
+            _ring_copy(dest, start, ring, pos, n, mask)  # type: ignore[arg-type]  # ptr8 parameters: the viper prologue takes any buffer
         if ((_RX_RELOAD - data.count - pos) & _RX_POS_MASK) > len(ring):
             self._rx_discard(data)
             return -1

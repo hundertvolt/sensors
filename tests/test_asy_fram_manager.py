@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 _STATUS_UNINIT: int = src_int("src/asy_fram_manager.py", "_STATUS_UNINIT")
 _STATUS_IDLE: int = src_int("src/asy_fram_manager.py", "_STATUS_IDLE")
 _STATUS_BUSY: int = src_int("src/asy_fram_manager.py", "_STATUS_BUSY")
-_CUT_SLOTS = 3  # the cancel sweep's ring: the entry before, the one cut short and the next; each slot adds CRC yields
+_CUT_SLOTS = 3  # the cancel sweep's ring: the entry before, the one cut short and the next
 # The states one cut write or read leaves a chunk in: both blocks IDLE, or one block BUSY (a lone byte: the order test).
 _CUT_STARTS = (None, (0, (_STATUS_BUSY, _STATUS_BUSY)), (1, (_STATUS_BUSY, _STATUS_BUSY)))
 
@@ -2810,6 +2810,12 @@ class _HeldRounds:
         self.holds.append(self.rounds - self._start)
         self._lock.release()
 
+    async def __aenter__(self) -> None:
+        await self.acquire()
+
+    async def __aexit__(self, *_exc: object) -> None:
+        self.release()
+
 
 def test_a_block_operation_holds_the_fram_lock_two_rounds_whatever_the_chunk_size() -> None:
     # Every other FRAM user waits out a hold, so a hold spans its two command yields alone: the CRC runs outside it and a
@@ -2835,6 +2841,32 @@ def test_a_block_operation_holds_the_fram_lock_two_rounds_whatever_the_chunk_siz
     small, large = holds(8), holds(264)
     assert max(large) <= 2, large
     assert small == large, (small, large)
+
+
+def test_a_chunk_operation_holds_its_op_lock_as_long_for_264_bytes_as_for_8() -> None:
+    # SGP40 sampling and quiesce() wait on a chunk's _op_lock, which spans the chunk's CRC: the CRC takes no round, so the
+    # SGP40 backup's 264 bytes hold it as long as 8 do.
+    def holds(size: int) -> "list[int]":
+        manager, _chip = _make_manager()
+        run(_setup_manager(manager))
+        chunk = manager.get_chunk(size, crc=CRC32(), verify=1, owner="T1")
+        assert chunk is not None
+        lock = _HeldRounds(chunk._op_lock)
+        chunk._op_lock = lock  # type: ignore[assignment]
+
+        async def scenario() -> None:
+            probe = asyncio.create_task(lock.probe())
+            await asyncio.sleep(0)
+            assert await chunk.write(bytes(size))  # both blocks, then the verify
+            assert await chunk.read() is not None  # block 0, then the cross-check of block 1
+            await cancel(probe)
+
+        run(scenario())
+        return lock.holds
+
+    small, large = holds(8), holds(264)
+    assert small == large, (small, large)
+    assert max(large) <= 8, large
 
 
 # Chunks as the code before 2026-11-07 stored them: a 12-byte CRC8 chunk of SYSTEM, then a 16-byte CRC32 timestamped one of
@@ -3071,7 +3103,7 @@ def _sweep_cut_write(start: "tuple[int, tuple[int, int]] | None") -> None:
     # start[1] a cut write or read left (None: both IDLE).
     states: list[tuple[list[int], int]] = []  # the state before the write, then the state it writes
     cut_blocks: list[int] = []
-    awaits: list[int] = []  # the write's own yields: one per CRC byte, once per write, and two per block
+    awaits: list[int] = []  # the write's own yields: two per block
     landed: list[int] = []  # the ring after the next write, its newest slot left out: the cut entry newest among them
 
     class Cut:
@@ -3122,7 +3154,7 @@ def _sweep_cut_write(start: "tuple[int, tuple[int, int]] | None") -> None:
         states.append((list(cut.store.history), cut.store._err_count))
         await write(cut)
         states.append((list(cut.store.history), cut.store._err_count))
-        awaits.append(cut.chunk.size + 4)
+        awaits.append(4)
         landed.extend(cut.store.history[n] for n in range(1, len(cut.store.history)))
 
     run(control())

@@ -1312,3 +1312,31 @@ the owner's decision; it is reported with its record.)
 "This way of thinking and finding solutions which are minimal and optimal at the same time through smart design was one of my primary goals of the audit."
 (A primary goal of the audit: solutions minimal and optimal at the same time, reached by design - remove the cause so
 the mitigation built around it goes, rather than tuning the mitigation.)
+
+## 2026-11-09 19:17:45 UTC - the principle is general: simpler or more efficient, gaps closed, nothing dropped, every level
+"Yes, but this is a pattern really meant general, not only CRC,  not just locks, not just timing. It's a general principle to ask on  micro, intermediate and macro level if there might be a simpler or more efficient solution, still having gaps closed (or ideally not even opened) and dropping no functionality at the same time. It sounds like potentially contradictory requirements, but it is possible, we already had multiple success stories like that. So we should have a complete closer look for such opportunities."
+(General principle at micro, intermediate and macro level, for everything: is there a simpler or more efficient
+solution that keeps every gap closed (ideally never opened) and drops no functionality? Go: a complete closer look
+for such opportunities.)
+
+## 2026-11-09 20:43:39 UTC - queued questions: settle by evidence first
+"It looks like some of the questions you prepared could already be answered better than I ever could by real evidence or further increased, yet lossless efficiency. So try to get along that way as far as you can, finding objectively optimized solutions. What remains then, come back at me."
+(Answer the queued questions by measurement and by forms that are more efficient yet lose nothing, as far as possible; bring the owner only what evidence cannot settle.)
+
+## 2026-11-09 21:20:25 UTC - NEOPIXEL's FRAM log is intended
+"Why did you move the LED log into RAM instead of making the - fully intended - FRAM logging functional? Or, why did it not work, is there some reason I don't know?"
+(The NEOPIXEL FRAM log is fully intended: make it work rather than demote it to RAM; explain why it records nothing.)
+
+## 2026-11-09 21:27:06 UTC - NEOPIXEL logger: FRAM if it has something to log, else none
+"if the LED never has anything to report, it probably also does not need RAM loging? So either it gets FRAM if it has something to log, or it should get no logger at all. Generally, the question is, if it is not logging anything yet, is that because it really can't actually fail, or was there an oversight? Decide based on that how to proceed."
+(A module with nothing to report gets no logger at all, not a RAM one; one with something to report logs to FRAM. First establish whether the LED really cannot fail or an oversight hides its faults, and decide from that.)
+
+## 2026-11-09 21:33:48 UTC - the five features with no caller
+"Questions:
+
+1. Incremental checksum was introduced especially for the FRAM. If it's obsolete now, drop it.
+2. I don't remember ever having added more than 32bit myself. If there are additions like that, check who added them, but they probably can go.
+3. The default values - you mean the little helper functions in such modules which can be selected as alternative constant sources by a config entry? They should actually stay, to be able to make any module self-contained as a principle. Or do you mean something else / more complicated?
+4. Who added that hook? Surely some session - so if it wasn't there before the audit and if I didn't add it, and if nothing uses it, it can be removed.
+5. I assume that demo mode is a development remainder. I wanted to be sure the website can be called with simulated values also on the bench only - before the firmware was promoted, as a test tool. Now, if the same works with real firmware (for sure), it's obsolete."
+((1) run_inc/check_inc go. (2) >32-bit CRC widths: check who added them; probably go. (3) the selectable constant default sources stay, as a principle of self-contained modules - unless something more is meant. (4) the post-write hook goes if added by a session after the audit start, not by the owner, and unused. (5) launch.py's demo goes if the website works for sure with the real firmware on the twin.)

@@ -21,7 +21,10 @@ does byte, bit or arithmetic work, check what MicroPython 1.29 already does in C
 hashlib, array, bytes/memoryview methods, ...) and its native emitter (viper); a Python loop doing that work is a cost
 to justify, never a default. A yield is no fix for a slow step: first ask why the step is slow. The goal (owner,
 2026-11-09 19:11:51: "solutions which are minimal and optimal at the same time through smart design"): remove the
-cause, so the mitigation built around it (a yield, a lock split, a budget row, a retry) can go with it.
+cause, so the mitigation built around it (a yield, a lock split, a budget row, a retry) can go with it. And it is
+general (owner, 2026-11-09 19:17:45): at micro, intermediate and macro level, for everything, not only CRC, locks or
+timing, ask whether a simpler or more efficient solution keeps every gap closed (ideally never opened) and drops no
+functionality - it is possible, and it is the default question before any change and in any review.
 Ask before removing a feature (owner, 2026-11-09 18:30:08: "Before removing any function which could be a feature
 which is just unused, ask me"): a function, method, mode, option or codec with no caller is kept and reported with its
 record (git, specification, owner rulings), never removed by a unit; internal mechanism a change replaces may go.
@@ -68,6 +71,11 @@ record (git, specification, owner rulings), never removed by a unit; internal me
 - Never open anything under `/root/.claude/`. Never read `arduino/` (`':!arduino'` in every git grep and git log). Never
   edit `ext/`. No real hardware, no `mpremote`, `picotool`, `nmcli`, `iw`, `iptables`; `tests_hardware` only with
   `--collect-only` or `--twin`. Never commit credentials; never write the hotspot fallback password's literal; filter every view or grep of repo text (`devices/*.toml`, generated modules, SPECIFICATION.md, `audit/`, `src/asy_wifi_service.py` included) through `grep -v -i -E "hotspot|passw|psk|ssid|wificonfig|credential"`; never view those whole.
+- The credential filter hides every line naming a Wi-Fi field: a hidden line is unread, never evidence of absence.
+  Where a claim ("unused", "no caller", "absent") depends on such a line, print only the match of a pattern for the
+  identifier (`grep -n -o 'post_fct=[A-Za-z_.]*'`), never the whole line, and say how the claim was checked.
+- Never copy source into an evidence or records folder: a scratch copy of any repo file goes only under your own
+  `S/u35r/r5/ftmp_<label>/` (the snapshot excludes ftmp_ folders and refuses a credential anywhere else).
 - Commit on your branch only, never push. Subject `U35: <summary>`; trailers `Co-Authored-By: Claude Opus 5.5
   <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8`. Text outside
   `audit/` cites no audit ID (OR/OF/SF), no lane, unit or plan name. A decision you take gets "(agent, YYYY-MM-DD)".

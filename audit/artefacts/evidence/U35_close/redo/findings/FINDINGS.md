@@ -1110,3 +1110,187 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
   18:27 with no other job created; the push run was cancelled by concurrency after 6 green jobs. Not a test result:
   the jobs never started (GitHub side). Snapshot 52 (bfix + bchain) runs the whole workflow afresh; if it shows the same
   pattern, the cause is outside the tree (Actions availability or billing) and goes to the owner.
+
+## 12.122 Snapshot 52 pushed (28371bca, next PARENT); crceng's source copy caught; weblog started
+- The first snapshot 52 attempt refused: crceng had copied src/ (asy_wifi_service.py included) to r5/crceng_probe/,
+  outside any ftmp_ folder; the snapshot's credential scan stopped it, nothing committed. crceng told to move it to
+  ftmp_crceng/; common_r1 now states the scratch-copy rule; the snapshot excluded both names; pushed 28371bca.
+- weblog (r5/BRIEF_WEBLOG.md, due 03:00) from f1a734f5: ResetErrors sequential, refusal closes before its entry,
+  STRETCH's errcount fragment, the five lock sites. Writing units: crceng + weblog. Unit B (drivers) after crceng.
+
+## 12.123 Owner (19:17:45): the principle is general, every level; a complete look started
+- common_r1's goal line now states it for everything, at micro, intermediate and macro level (not only CRC, locks,
+  timing): the default question before any change and in any review. Part 0 gets it in the P9 doc unit.
+- r5/BRIEF_SIMPLER.md, four read-only passes, due 23:30: (1) macro - structure, tiers, CI, docs, the apparatus
+  (volumes: src 15,750 lines; tests 106,667; tests_scripts 56,743; tests_hardware 26,701; SPECIFICATION.md 12,250);
+  (2) firmware; (3) tests and twin; (4) build chain, website, docs. Each finding: the simpler form, what goes, why no
+  function drops and no gap opens, feature-removal and owner-ruling flags; ranked by gain against risk.
+
+## 12.124 simpler1 (macro) in: four findings, one owner question; snapshot 52's CI runs its jobs
+- r5/SIMPLER_1.md (19:33). Lead-checked: package.json `test:unit`/`test:coverage` differ by `--coverage` only;
+  ci.yml has both jobs (:148, :224); b8791e6b (2026-08-12) records the owner's "fully independent" twin instruction.
+  (1) runner mechanisms in three languages (summary block, port lock, memory markers, twin launcher; ~800 lines of
+  copies plus agreement tests) -> one Python implementation each; OR15.a(2)'s identical block kept (output rule).
+  (2) `web-coverage` reruns `web-unit-tests`' selection; no owner ruling found -> one job (~3.4 min warm per run).
+  (3) `tests/` and `digital_twin/` fakes share 512 identical lines, held by contracts, already drifted (rp2 DMA
+  guard) -> owner question (2026-08-12 instruction); held until pass 3 is in. (4) one rule in up to five homes;
+  work-routines SKILL :29/:48 false since bchain -> P9 doc unit.
+- Triage of (1), (2) with passes 2-4 at 23:30. Snapshot 52 (28371bca) run 42681719499 is running its jobs (unlike 51).
+
+## 12.125 simpler2 (firmware) in: twelve findings; three internal, the rest owner questions or unit B
+- r5/SIMPLER_2.md (19:36). Lead-checked: `err_s()` awaits its FRAM write before printing, `err_q()` prints and
+  records at once (`asy_print_log.py` :244-274); 262 `err_s`/`wrn_s` sites in src, 208 in tests and twin; SPEC
+  :3811/:9765 accept "an entry logged just before a reset may not reach FRAM".
+- Internal, to unit B (no feature, no ruling): (3) the FRAM driver's second lock (pass the bus lock as session lock,
+  as SPIDevice/I2CDevice); (4) the five colour functions beside ISL29125 (-1,023 B per production image);
+  (5) identical overrides (7 + 4); (6) SCD30's 12 wrappers through one helper pair (-644 B, all 12 kept);
+  (12) the 22 starters as `asyncio.create_task`, BMP3XX's repeated type check.
+- Owner questions (queued, one at a time after 23:30): (2) `err_q` as the one logging form plus a drain before the
+  storage pause - removes the "waits on FRAM through its log" class at its cause and closes C.7.1's reset gap, but an
+  entry followed by a synchronous hang before the task's next await is lost where today it lands (CLAUDE.md's FRAM
+  diagnostic rule); weblog's item 4 uses `_q` at its sites, valid under either answer. (1) five timers that only
+  wake a task -> sleeps (rulings 2026-07-18, 2026-10-13; `stop_uptime_timer`/`stop_check_timer` unused). Unused
+  features (keep or remove, 18:30:08): (7) the wiring-defaults mechanism, (8) FRAM chunk `read()`/`write()`,
+  (9) `post_fct` (and NTP's hook as a push callback), (12) `get_log(name)`. (10) NEOPIXEL's never-written FRAM log
+  (RAM-only keeps `/status`; chunk layout shifts). (11) notification's runtime refusal -> a build-time check (codes
+  44/45 leave the catalog).
+
+## 12.126 simpler3 (tests, twin) and simpler4 (build, web, docs) in; the look's triage
+- r5/SIMPLER_3.md (19:38), r5/SIMPLER_4.md (19:38); 0 password-pattern hits in either or their scratch. Slips:
+  simpler3 views of tests/ and digital_twin/ unfiltered (no hit); simpler4 regenerated wt-u35int's ignored
+  `build/generated_src/` from its own inputs (no tracked change; the `build_*.out` there date from 11-02).
+- Unit B (firmware, internal, after crceng): 12.125's (3)(4)(5)(6)(12) beside its own list.
+- Unit T (tests, after weblog; internal): S3 (1) 14 per-device scenarios the unit tier pins + the boot-order merge;
+  (2) the twin's copied unretrieved report -> the product's PrintLog (one boot-contiguity run); (4) seven single
+  cases a sweep proves; (6) ~300 lines of helper copies, the dead `rx_stall_ms` knob; S4 (5) tests_scripts' twin
+  boots on `distinct_devices()` (bchain's agent decision, no ruling); S4 (10) help pins; S4 (11) the twin harness
+  helpers into `_twin_process.py`.
+- Unit C (build chain and CI; internal): S4 (1) `MICROPY_QSTR_BYTES_IN_LEN (2)` in the Unix variant header, the five
+  launch guards and 19 tests go (rig-only row; rp2 untouched); S1 (2)/S4 (2) `web-coverage` folded into
+  `web-unit-tests`; S4 (3) the port lock on flock (the takeover machinery goes) with S1 (1)/S4 (6)/S4 (12): one
+  Python implementation per runner mechanism, the markers in one data file; S4 (4) the site stages the generator's
+  definitions (~3 s per run).
+- P9 docs: S1 (4), S4 (8) CLAUDE.md's UART/memory restatements -> rule + pointer, owner quotes moved whole into
+  J.1/I.4 (actor, qualifier, scope unchanged); S4 (9) README's three stale bchain lines; S4 (13) BACKLOG :26-31.
+- Owner queue, one at a time: the twin fakes (S1 (3) + S3 (3): rp2 and neopixel one copy; ruling 2026-08-12);
+  the logging form (12.125 (2)) - prepped first by a read-only sizing (owner-prep); the timers (12.125 (1): the
+  reset timer's 07-18 ruling rests on watchdog settings, not on an arm failing - pass 2 misread it);
+  unused features (12.125 (7)(8)(9)(12), the two `stop_*`, S3 (5) launch.py's demo, S4 (4) the definitions CLI);
+  12.125 (10)(11); S4 (7) setup's two throwaway images.
+- Snapshot 52 (28371bca, int f1a734f5) CI green: run 42681719499, 19:16-19:43 (27 min; snapshot 50 took 29 min with
+  the full device fan-out). 51's never-started run stays a GitHub-side event. Next PARENT 28371bca.
+
+## 12.127 logprep in: the logging question's root is the FRAM command path; a bench probe sizes it
+- r5/LOGPREP.md (19:56). (a) two forms: couplings remain (supervisor feed, six handler sites unless weblog item 2
+  moves them, each logger's own task), no gate stops a new one. (b) `_q` + 2 drains: 253 sites lose `await`, 192 B
+  per logged error, reset gap closed, 0 known hang sites; a hang before the writer lands loses the entry. (c)
+  synchronous FRAM: 28-33 ms per entry today - over `con.routine_stall`.
+- Root (C code, I silicon): a chunk write is 51 CS envelopes (four status pairs written byte by byte, each byte
+  WREN/RDSR/WRITE/WRDI/RDSR), each envelope ~0.6 ms, ~90 % call overhead incl. `spi.init()` per CS cycle although
+  the FRAM is spi0's sole device (6/6 TOMLs). Datasheet (MB85RS2MTA): WEL stays set after WRITE (continual
+  programming), so a WRDI stays if WEL is to be cleared. Fewer, leaner commands may make (c) cheap; the question to
+  the owner waits for the figures.
+- Bench relay 20:00 (bench cd40e6dc): `fram_cmd.py`, reads only (RDSR, READ at 0; no WREN, no write, no manager),
+  times configure, CS, settle, transfer, lock + yield. Host dry run on the fakes clean (lead_framcmd_host2).
+- Finding (doc): F.3 `stall.fram_command` times one command; the chunk layer runs 10-20 envelopes between yields.
+
+## 12.128 crceng merged (int 2fbad553); the bench's FRAM command figures
+- crceng bb6e79cb (r5/HANDBACK_CRCENG.md): gate green at both stages (137 files, 5,854 tests; tests_scripts 6,970;
+  dev twin both parts); dev imageFreeBytes 59,780 -> 59,548. Lead review: viper engine masks at return (32/64-bit
+  same values); every `_ring_copy` caller sizes dest first (`_read_delimited` bound, readinto's `nbytes > len(buf)`,
+  sized allocations); the write gate's one sleep is equivalent (hold-off armed and cleared only inside the same
+  instance's `_busy` transactions). Merged over f1a734f5 clean; on 2fbad553: lint clean, mypy x3 clean, crc 76/76,
+  fram_manager 142/142, uart_comm 202/202 at both stages, test_buildgen_validate 362 passed.
+- Owner-bound: a CRC register over 4 bytes (built nowhere) now degrades to pass mode - a removal the 18:30:08 rule
+  puts to the owner; snapshot 53 waits for that answer. Also asked then: `run_inc()`/`check_inc()` (kept, no caller),
+  `_rx_line_len` (kept), plain functions vs the asy_ naming rule (kept coroutines, 160-192 B per call). Lead tooling:
+  `module_sizes.sh` line 8 takes `-march=armv6m`. Finding (c): `test_digital_twin_uart_comm_hazard.py` hangs to its
+  per-file timeout when its scenario raises (unit T).
+- Bench 20:29 (78eb0357, owner-OK'd, reads only), dev idle, per call, median minus the 20 us call floor:
+  `spi.init()` 126 us; a lean RDSR 44 us (one call 37); configure + settle + RDSR 198 us; READ 13 B 62 us, 268 B
+  373 us (wire 268); an `async with Lock` plus one `sleep(0)` around a lean RDSR 770 us (min 560). So a firmware
+  command's ~0.6 ms is ~0.15 configure + ~0.05 transfer + ~0.4-0.7 lock and yield (C); a lean synchronous command
+  is 45-80 us, 8-12x less. A log entry as today's 51 commands, lean and synchronous: ~3-4 ms; the SGP40 backup ~5 ms,
+  its hourly verify +~3 ms (I, from the figures). General (C): one yield round costs ~0.6 ms of loop on the chip.
+- The bench's FRAM log gained E46 then W63 (status byte not idle; block 0 -> block 1): its harness's stop landed in
+  an SGP40 backup write (8-20 s per write on the bench's pre-crceng image) and the next boot recovered it - the
+  two-block design working, one entry per level. Not the probe (no WREN, no write). Window after crceng: 8 rounds.
+
+## 12.129 Owner (20:43:39): settle the queue by evidence; decisions taken (lead, 2026-11-09)
+- Logging -> unit fsync (after weblog): FRAM access lean and synchronous, one logging form that writes inside the
+  call. Evidence 12.128: a firmware command is ~0.6 ms of which ~0.55 is configure + lock + yield; lean 45-80 us.
+  Configure only when the bus's last device differs (FRAM is spi0's sole device on 6/6, so once; a second device
+  stays served); no per-command lock or yield; the WEL/RDSR checks stay (datasheet: WEL survives WRITE). Goes: both
+  FRAM locks, the per-command yields, the writer tasks, `err_s`/`err_q`, drains, reset windows, generation counters.
+  Kept: every entry, now in FRAM before the call returns (CLAUDE.md's diagnostic rule in its strongest form), the
+  two-block recovery, the storage pause (entries stay in RAM), boot load and erase stepped with feeds. Acceptance on
+  the next image (bench): an entry <= 5 ms, the SGP40 backup <= 8 ms on the chip; if not met, fall back to `_q` + two
+  drains (LOGPREP (b)). The UART rule (owner 2026-09-11) forbids waiting, not a bounded active step: RX runs by DMA,
+  TX by IRQ, the reply has 925-946 ms slack (LOGPREP (c)); stated in the record. Weblog's item 4 `_q` sites fold in.
+- Timers -> unit B: the two uptime ticks and NTP's check and retry wait by deadline sleeps (start tick + k x period,
+  so nothing accumulates; the retry keeps 15 s): their arm-failure branches, flags and `arm_tick_timer()` go, and
+  the 2026-07-18 uptime-degrade and 2026-10-13 streak-feed cases lose the event they handled. The reset timer stays
+  (owner 2026-07-18's own choice of a ONE_SHOT Timer; pass 2 misread its premise).
+- Twin fakes -> unit T: `rp2.py` and `neopixel.py` one copy each in a neutral directory both MICROPYPATH layouts
+  read; the twin still imports nothing from tests/ and tests nothing from digital_twin/ (owner 2026-08-12's letter,
+  "never imported by or importing it", kept); the 10-14 drift class goes. machine/network stay per tier.
+- Notification codes 44/45 -> unit B: a build-time check on buildgen's fixed signal catalog replaces the runtime
+  refusal; the two numbers stay reserved, never reused.
+- NEOPIXEL's never-written FRAM log -> fsync evaluates: RAM-only only if buildgen can derive "this driver never logs"
+  from its source in a few lines; otherwise unchanged (`/status` unchanged either way).
+- Setup's two throwaway builds -> unit C: only a lossless form (the installer's from-scratch verification stays;
+  jobs that need only the test rig skip what they do not use, if a path exists); else unchanged.
+- CRC plain functions: fsync (synchronous FRAM needs a synchronous CRC; the asy_ naming rule's rename follows).
+- What remains for the owner: the features with no caller (one question, per item its record and cost).
+
+## 12.130 Owner (21:20:25): NEOPIXEL's FRAM log is intended - why it is empty; the RAM idea withdrawn
+- C (git, code): at promotion (da9b4abb, 2026-08-05) the driver's header said it has no `err_s()`/`wrn_s()` call
+  "because there is no failure path to report ... write() itself never fails"; the 08-06 docstring trim (4b7d4b2b)
+  removed that sentence, so the reason left the code and pass 2 read the empty log as dead. Today: `pixel.write()` is
+  a C bitstream call with no failure return; every colour is clamped (`_clamp_byte`) and the ramp floored before use;
+  a busy external command answers "LED busy - retry later" (owner 2026-10-02: refused, not a fault); a crashed LED
+  task is recorded by SYSTEM's supervisor, the level that handles it. The FRAM log stays wired as it is.
+- One place to check (unit B, evidence first): `request_signal()` gives up after `_SIGNAL_WAIT_MS` (120 s) and then
+  sets an event the running ramp clears at its end, so a request that times out is dropped without an entry (C code).
+  External ramps are capped at 60 s (`T` 0.5-60); whether queued internal signals can exceed 120 s is unknown (I). If
+  reachable, the drop is NEOPIXEL's own warning; if not, nothing changes. P9: the "no failure path" reason back as
+  one line in the spec.
+
+## 12.131 Owner (21:27:06): LED - FRAM if it can fail, else no logger; can it fail? (lead, evidence)
+- Hardware path cannot fail (C, pinned v1.29.0): `NeoPixel.write()` is `bitstream(pin, 0, timing, buf)`, whose only
+  raise is a bad encoding (`extmod/machine_bitstream.c`, fixed 0 here); `__setitem__` stores into a bytearray and
+  every value reaching it is clamped 0-255. A WS2812 gives no feedback, so no read-back fault exists either.
+- Oversight 1 (C): the ramp allocates every frame - rp2 boxes floats (no OBJ_REPR override in mpconfigport.h), so
+  `int(r_s * n)` x3 makes three heap floats plus the tuple, ~80 allocations a second at 20 Hz. Under heap pressure a
+  MemoryError ends the LED task (SYSTEM's supervisor records and restarts it). CLAUDE.md's ladder: design it away
+  first - integer steps (`c * n // steps`) into one reused list, zero allocations per frame.
+- Oversight 2 (C mechanism, I reachability): an internal request whose 120 s wait runs out is dropped without trace
+  (12.130). To be made lossless by construction (the wait shown bounded by the ramps' own caps, or the drop made
+  impossible), not logged.
+- Decision: unit B does both; then the LED has nothing it can fail at, so it gets no error logger - its FRAM chunk,
+  history, `/status` errcount entry and ResetErrors source go (owner 21:27:06 directs it). Its "command received /
+  signal started" event lines stay on the plain console printer (no history, no store). The next image's relay says
+  the FRAM chunk layout shifts (read errcount before the reflash, the standing rule). If oversight 2 cannot be made
+  lossless, the LED keeps its FRAM log with that one warning.
+
+## 12.132 Owner (21:33:48) on the five features; evidence per item (lead)
+- (1) `run_inc()`/`check_inc()`: owner - drop (introduced for the FRAM, obsolete since bfix). -> unit fsync.
+- (2) CRC over 4 bytes: no one added it. The owner's legacy module (`legacy/dev_drivers/crc_checks.py`) takes any
+  `num_bytes` (Python big ints), so wider registers ran only as a side effect of that generic loop, never configured;
+  U12 (2949ed97, 10-07) added the two-word path to speed 32-bit only. Owner: "probably can go" -> goes as merged
+  (crceng: widths 1-4). Snapshot 53 is unblocked.
+- (3) The wiring defaults are exactly what the owner describes (`[instance.wiring].<dep> = {default = true}` selects
+  a module's own constant source: SGP40's T/RH, notification's no-op LED sink): they stay, a principle (modules
+  self-contained). Pass 2's item 7 withdrawn.
+- (4) The settings hook is used: every generated module wires `post_fct=conn.reconnect_wifi` on the Wi-Fi group and
+  `post_asy_fct=ntp.ntp_force_sync` on NTP's (legacy parity: `legacy/firmware/modules/sensortask-*.py`
+  `cmd_post_check(..., post_fct=conn.reconnect_wifi)`; owner 2026-10-08 "connect to it in reasonable time"). Pass 2
+  missed it: the credential filter hides any line naming a Wi-Fi field, and that line names them. Stays; pass 2's
+  item 9 (push callback, one PUT path) withdrawn. Rule added to common_r1 (a filtered-out line is unread, never
+  evidence of absence; print only an identifier's match).
+- (5) launch.py's demo: the real firmware on simulated hardware serves the real website today
+  (`scripts/run_unix_port_integration.sh --device <d>`, README :879-885; CI's live put matrix and cross-browser smoke
+  drive it every web run); the demo serves no website ("no website, twin only", README :679). -> goes in unit T; its
+  --fault/--hang vocabulary moves into the runner.
+- Slip (lead): one grep of a generated module printed its Wi-Fi settings-group line unfiltered (field names only, no
+  value; 0 password-pattern hits in this session's outputs written to files).

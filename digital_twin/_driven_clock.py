@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from _mpy_shed.time_mp import _TicksMs
 
 # How long the driver waits before looking again at a compute still taking turns: a twin scheduler round is about 1 ms,
-# so looking at every one would double a CRC16 frame's rounds.
+# so looking at every one would double that compute's rounds.
 _BUSY_RECHECK_MS = 10
 
 

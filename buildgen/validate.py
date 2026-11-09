@@ -952,7 +952,7 @@ def _check_uart_link_roles(model: DeviceModel, src_dir: Path) -> None:
 def _check_uart_link_timing(model: DeviceModel, spec: InstanceSpec, bus_name: str, table: "TomlDoc", src_dir: Path) -> None:
     # The poll rates and the reply timeout against each other, at the values that boot (UARTComm's own bounds).
     comm = "asy_uart_comm.py"
-    gc_pause, timeout, poll_max, horizon = (module_int_const(src_dir, comm, n) for n in ("_GC_PAUSE_WORST_MS", "_DEFAULT_TIMEOUT_MS", "_POLL_WAIT_MAX_MS", "_TICKS_HORIZON_MS"))
+    gc_pause, timeout, poll_max, horizon, header, payload = (module_int_const(src_dir, comm, n) for n in ("_GC_PAUSE_WORST_MS", "_DEFAULT_TIMEOUT_MS", "_POLL_WAIT_MAX_MS", "_TICKS_HORIZON_MS", "_HEADER_LEN", "_DEFAULT_PAYLOAD_SIZE"))
     num, den, mult = (module_int_const(src_dir, comm, n) for n in ("_RESYNC_NUM", "_RESYNC_DEN", "_DRAIN_BOUND_MULT"))
     poll_wait, poll_idle = (_uart_bus_value(src_dir, table, n) for n in ("poll_wait_ms", "poll_idle_ms"))
     if not 1 <= poll_wait <= poll_max:
@@ -964,13 +964,16 @@ def _check_uart_link_timing(model: DeviceModel, spec: InstanceSpec, bus_name: st
             field="poll_wait_ms",
             instance=spec.label,
         )
-    if not poll_wait <= poll_idle <= horizon:
-        # The idle poll is the slower rate (Part F.5.9), and a delay ticks_add() takes (extmod/modtime.c:178-196).
+    # The idle poll is the slower rate (Part F.5.9): no faster than one frame's wire time at 10 bits a byte, rounded up,
+    # nor than the transaction poll; and a delay ticks_add() takes (extmod/modtime.c:178-196).
+    wire_ms = -(-(header + payload + _uart_crc_width(spec)) * 1000 // max(_checked_int(table["baudrate"]) // 10, 1))
+    floor = max(poll_wait, wire_ms)
+    if not floor <= poll_idle <= horizon:
         raise BuildError(
             model.device,
-            f"bus.{bus_name}: poll_idle_ms {poll_idle} is outside {poll_wait} … {horizon} - the idle poll is never faster than the transaction poll and stays a valid ticks delay",
+            f"bus.{bus_name}: poll_idle_ms {poll_idle} is outside {floor} … {horizon} - the idle poll is never faster than one frame's {wire_ms} ms on the wire or the transaction poll, and stays a valid ticks delay",
             rule="bus.uart-poll-idle-range",
-            fix=f"set poll_idle_ms within {poll_wait}..{horizon}",
+            fix=f"set poll_idle_ms within {floor}..{horizon}",
             field="poll_idle_ms",
             instance=spec.label,
         )
