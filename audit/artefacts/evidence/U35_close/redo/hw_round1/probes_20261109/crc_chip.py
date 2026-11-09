@@ -1,10 +1,13 @@
 """Bench probe (lead, 2026-11-09): the FRAM chunk CRC (CRC-32/MPEG-2) on the chip, the image's per-byte form against a
-nibble-table and a byte-table form that must give the same value, each timed. RAM only: no bus, no file, no flash."""
+nibble table, a byte table and native (viper) code, which must give the same value, each timed; binascii's C crc32
+(another CRC: ISO-HDLC) timed alongside. RAM only: no bus, no file, no flash."""
 import asyncio
+import binascii
 import gc
 import time
 
 import machine
+import micropython
 from asy_crc_checks import CRC32
 
 wdt = machine.WDT(timeout=8000)
@@ -70,6 +73,27 @@ def bytetab(buf, hi=0xFFFF, lo=0xFFFF):
     return (hi << 16) | lo
 
 
+@micropython.viper
+def viper_crc(buf, n: int) -> uint:
+    p = ptr8(buf)
+    crc = uint(0xFFFFFFFF)
+    i = 0
+    while i < n:
+        crc ^= uint(p[i]) << 24
+        for _ in range(8):
+            if crc & uint(0x80000000):
+                crc = (crc << 1) ^ uint(0x04C11DB7)
+            else:
+                crc = crc << 1
+        crc &= uint(0xFFFFFFFF)
+        i += 1
+    return crc
+
+
+def viper(buf):
+    return viper_crc(buf, len(buf))
+
+
 buf = bytearray((i * 37 + 11) & 0xFF for i in range(264))
 
 
@@ -82,7 +106,7 @@ async def current():
 ref, cur_us = asyncio.run(current())
 print("current_per_byte_yield_264B_us", cur_us, "crc", hex(ref))
 gc.collect()
-for name, f in (("bitwise_no_yield", bitwise), ("nibble_table", nibble), ("byte_table", bytetab)):
+for name, f in (("bitwise_no_yield", bitwise), ("nibble_table", nibble), ("byte_table", bytetab), ("viper", viper)):
     wdt.feed()
     same = f(buf) == ref
     best, worst = 10**9, 0
@@ -92,6 +116,12 @@ for name, f in (("bitwise_no_yield", bitwise), ("nibble_table", nibble), ("byte_
         d = time.ticks_diff(time.ticks_us(), t0)
         best, worst = min(best, d), max(worst, d)
     print(name, "same" if same else "DIFFERENT", "264B_best_us", best, "264B_max_us", worst)
+best = 10**9
+for _ in range(10):
+    t0 = time.ticks_us()
+    binascii.crc32(buf)
+    best = min(best, time.ticks_diff(time.ticks_us(), t0))
+print("binascii_crc32_C_other_algorithm", "264B_best_us", best)
 full = buf + bytes(((ref >> 24) & 0xFF, (ref >> 16) & 0xFF, (ref >> 8) & 0xFF, ref & 0xFF))
-print("residue_with_crc_appended", bitwise(full), nibble(full), bytetab(full))
+print("residue_with_crc_appended", bitwise(full), nibble(full), bytetab(full), viper(full))
 print("done")
