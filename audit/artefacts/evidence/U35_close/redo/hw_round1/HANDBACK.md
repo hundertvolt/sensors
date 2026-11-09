@@ -42940,3 +42940,18 @@ residue_with_crc_appended 0 0 0 0
 done
 errcount: 22 sources unchanged. ResetReason after: 21, SysUptime 13 s; flash cycles today: 0; logs/day4_20261109/ (crc2_output.txt, crc2_{start,end}_status.json)
 status: confirmed as measured; the 17:35 run had taken the 17:32 version (my merge at 17:34:04 preceded 51be454b).
+
+17:42:54 UTC 2026-11-09 lead 17:40 (11-09): crc_chip.py at its 17:40 version (ed207fcb), once through Board.run_isolated(), then restore_board_to_serving(); RAM only, the kind the owner OK'd this session; HEAD ed207fcb; image 2026-11-07T16:04:12Z (trace); 17:42:23-17:42:40
+verbatim:
+tables_build_us 47695
+current_per_byte_yield_264B_us 132021 crc 0x6aa0d521
+bitwise_no_yield same 264B_best_us 36970 264B_max_us 37024
+nibble_table same 264B_best_us 10166 264B_max_us 10219
+byte_table same 264B_best_us 5113 264B_max_us 5190
+viper same 264B_best_us 3377 264B_max_us 3413
+viper_hoisted same 264B_best_us 946 264B_max_us 956
+binascii_crc32_C_other_algorithm 264B_best_us 89
+residue_with_crc_appended 0 0 0 0 0
+done
+errcount: 22 sources unchanged. ResetReason after: 21, SysUptime 13 s; flash cycles today: 0; logs/day4_20261109/ (crc3_output.txt, crc3_{start,end}_status.json)
+status: confirmed as measured.
