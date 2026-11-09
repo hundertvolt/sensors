@@ -673,7 +673,7 @@ class UART(Lockable):
                 break
             timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
         if line is None:
-            await log.err_s("UART line over the cap, discarded:", size, errno=_ERR_UART_TRANSFER_CAP)
+            log.err_q("UART line over the cap, discarded:", size, errno=_ERR_UART_TRANSFER_CAP)
             return None
         return line if line.trim(size) else None
 

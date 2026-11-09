@@ -95,7 +95,7 @@ class _RaisingFramManager:
     # _FramChunk/_FramManager Protocols, which mypy matches structurally by parameter name, and asy_print_log.py
     # calls get_chunk(size, crc=CRC8(), owner=name) by keyword on top of that.
     def get_chunk(
-        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
+        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, *, owner: str,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise MemoryError("simulated allocation failure")

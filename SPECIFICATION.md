@@ -3793,6 +3793,16 @@ alternating codes and reboots are outside the rule.
 **The FRAM manager's chunks log into the manager's RAM-only history**: the FRAM module never has
 FRAM logging of its own, since a FRAM fault logged into that same FRAM is lost with it.
 
+**Two logging forms.** `err_s()`/`wrn_s()` record the entry, await its FRAM write and then print;
+`err_q()`/`wrn_q()` print and record at once and leave the write to one writer task per store, which
+packs every entry logged meanwhile into its next write. The UART's faults (`UARTComm._err()`, the
+driver's capped readline) and its declined-command and drain-bound warnings take the `_q` form, so
+no exchange or resync waits on another FRAM user's hold (J.5; owner, 2026-11-07: "what would any
+setting of FRAM or UART ever have cross dependencies?"); every other entry, the UART's setup ones
+included, takes the `_s` form. A heap too full to start the writer prints its text from level 1 up
+and leaves the entry in RAM for the next entry's write; an entry logged just before a reset may not
+reach FRAM, since the storage pause refuses its late write.
+
 **The drain-bound warning (`wrnno` 54, `UART_DRAIN_BOUND`) outranks the resync warning** (owner,
 2026-09-18): a resync prints; the drain bound persists 54, so 'the peer never stopped sending' is
 what a field log carries.
@@ -4047,7 +4057,8 @@ what makes the path affordable: it took a blank FRAM-backed logger `setup()` fro
 13,696 board-equivalent bytes (measured 2026-09-18; `tests/test_asy_fram_allocation_budget.py`
 holds today's figures per build). Ordering is unchanged (2 before 1), a second SPI device still
 interleaves — between block operations rather than between commands — and the event loop still gets
-a scheduling point after every status-byte pair, after each payload command and per read slice.
+a scheduling point after a block's opening status-byte pair and after its payload command; no CRC
+runs inside the hold (F.3 `hold.fram_block`).
 `setup()` and `set_write_protected()` take the bus lock alone, their bodies running synchronously
 under it, and the whole-chip erase holds both per 256-byte unit, never across an await of another lock. Nothing logged under the FRAM driver lock
 reaches FRAM: the chunk layer and `FRAM_SPI` log only into the manager's RAM history (a FRAM-backed
@@ -4291,6 +4302,7 @@ logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM 
 | Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | `_shutdown_sequence()`: a step's own failure is logged where it happens (a flush's `CALLBACK` entry), any other persists `UNEXPECTED`; past the quiesce FRAM is paused, so an entry from there on reaches the console and the RAM log only; no reset is armed and nothing feeds, so the watchdog resets with the record the sequence left, and the next boot's `ResetReason` carries the outcome |
 | Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush logs a failing store's `CALLBACK` entry, any other failure `UNEXPECTED`; FRAM is paused by then, so either reaches the console and the RAM log only; nothing feeds after it, so the watchdog resets |
 | Hazard initiations | `UARTLinkDriver._two_initiations()` (`asy_uart_link_driver.py`), in each hazard run of dev's initiator | two initiations at once on one instance are the hazard under test (J.2), so each runs as its own task beside the other; on demand from `PUT /uart`'s `UartHazards`, never at boot (agent, 2026-10-22) | two per hazard run, each one `UARTComm.uart_set()`; the run awaits both, and its `finally` cancels one not yet done when the run itself is cancelled | `UARTLinkDriver._initiate()`: `except Exception` → `err_s` with `UNEXPECTED`, and that initiation's verdict reads None |
+| History writer | `PrintLogHistoryStore._write_later()` (`asy_print_log.py`), at most one per FRAM-backed store | an `err_q()`/`wrn_q()` entry's FRAM write runs apart from its caller, so the UART never waits on FRAM (C.7.1, J.5) | from a burst's first entry until no entry is due; never cancelled; a full heap creating it leaves the entry for the next call's writer | `_write_behind()`: persists `UNEXPECTED` through its own store |
 <!-- tasks:end -->
 
 A task that ends raising with nobody awaiting it, a row's or a starter's that dies between two
@@ -6740,7 +6752,7 @@ The budget rows, one per stretch:
 | `hold.scd30_command` | one SCD30 bus session per command or register read: write, wait, read (`asy_scd30_driver.py`) | 50 ms per session: `_CMD_RESPONSE_WAIT_MS` (owner, 2026-07-13, `144873f`: owner-tested), plus its transfers | — | the bus siblings (dev `i2c1`: SGP40, ISL29125), none of whose reads carries a deadline that a wait for the bus can expire | `tests_scripts/test_timing_budget.py` | `scd30.cmd_response_wait_ms` |
 | `hold.scd30_snapshot` | `get_config_snapshot()` holds one bus session for every config register read | 300 ms: six reads of 50 ms each, plus their transfers | — | as `hold.scd30_command` | `tests_scripts/test_timing_budget.py` | `scd30.cmd_response_wait_ms` (its six waits) |
 | `hold.i2c_probe` | `_probe_for_device()`'s settles around its zero-byte write, at each `I2CDevice.setup()`, inside the driver's bus session | 200 ms: 2 × 100 ms (`_PROBE_SETTLE_MS`) | — | the bus siblings, as above | `tests_scripts/test_timing_budget.py` | `i2c.probe_settle_ms` |
-| `hold.fram_block` | one bus-lock hold per FRAM block operation, yielding between its commands; kept (owner, 2026-09-26: 'Probably better to keep') | 23,148 µs, the longest of three runs (18,089-23,148 µs, dev 2026-09-25; 21,269 µs earlier, F.5.8) | as its value | a second SPI device: none wired on any device, a contract statement; budget 25,000 µs | `device_scripts/fram_command_hold_timing.py`'s `_BLOCK_HOLD_BUDGET_US`, run by `tests_hardware/flash/test_fram_storage.py` | `l3.fram_command_hold_block_budget_us` |
+| `hold.fram_block` | the FRAM driver's session and bus locks over one block operation: its status-byte pair, a yield, its payload command, a yield, its closing pair; no CRC runs inside it (a write's before its first block, a read's after its session, a cross-check's only on a mismatch beside a whole-block `==`, A.4), so it spans two scheduler rounds whatever the chunk size. The per-block hold was kept (owner, 2026-09-26: 'Probably better to keep') on a 1-byte write and an 8-byte read measured idle, with a second SPI device named its only waiter; that did not hold: every FRAM user waits on it, and it then held one round per CRC byte and per 8-byte compare slice (8-20 s per SGP40 backup under load, bench 2026-11-07). In force since (owner, 2026-11-07): a cost is judged at every level, "function, module, import, integration and upstream and downstream, and full system", at its worst case under load against every party that waits on it, and two unrelated devices never wait on each other ("It's two completely different devices.") | 23,148 µs idle, the longest of three runs (18,089-23,148 µs, dev 2026-09-25; 21,269 µs earlier, F.5.8); under load each of its two yields adds one scheduler round (16-22 ms with three `/status` readers, bench 2026-11-07) | as its value | every other FRAM user, one block each: each FRAM-backed logger's entry, the SGP40 backup, the supervisor through SYSTEM, whose pass awaits its entry before its feed (`con.watchdog`); a second SPI device (none wired on any device, a contract statement); budget 25,000 µs | `test_a_block_operation_holds_the_fram_lock_two_rounds_whatever_the_chunk_size` (`tests/test_asy_fram_manager.py`); a log entry beside a backup write, mock and twin (C.8); `device_scripts/fram_command_hold_timing.py`'s `_BLOCK_HOLD_BUDGET_US`, run by `tests_hardware/flash/test_fram_storage.py` | `l3.fram_command_hold_block_budget_us` |
 | `hold.scd30_coincide` | SCD30's data-ready-driven read may coincide with sibling reads on its bus: the chip's own timing, outside the stagger (owner, 2026-09-26, asked, in paraphrase, whether that read may coincide with other reads on its bus, the chip's own timing: 'a'; A.4) | one SCD30 bus session at most, to a sibling | — | the bus siblings | the cross-device bus-hazard tests at all four levels (C.8) | — |
 | `hold.recovery_rung` | the I2C bus clear (F.2's ladder) | up to 9 SCL pulses and a STOP, each SCL wait bounded by the bus timeout | — | the bus siblings | `tests/test_asy_i2c_driver.py` | — |
 | `hold.wifi_lock` | `wifi_mode_lock`'s holds (C.8's table) | 10 s, the longest hold, the STA disconnect wait (20 × 500 ms); a connect up to 5 s (10 × 500 ms), a mode switch 4 s (2 + 1 + 1 s), an NTP attempt up to 9.1 s (C.8's derivation, not recomputed) | — | the waiters C.8 lists, none hard | C.8's tests; `tests_scripts/test_timing_budget.py` (the three WiFi holds) | — |
@@ -7271,16 +7283,14 @@ order as the 4.4 ms UART frame above, so it is stated rather than hidden. **Abou
 MicroPython interpreter and `machine.SPI` call overhead, not wire time** (six short transactions
 were ~300 us of it at the 1 MHz these figures were measured at, ~40 us at today's 8 MHz), which is why
 the faster clock barely shortens it and why per-command yielding is already the finest granularity
-the chip allows; a 1 KB transfer holds the loop ~8 ms at 1 MHz, ~1.5 ms at 8 MHz (bench, 2026-10-29). No device TOML wires a second SPI device, so the
-21 ms figure is a contract statement rather than an observed contention. **That is structurally
-untestable rather than merely untested**: with no second device on the bus in any variant, nothing
-can observe FRAM's whole-block hold from the outside, so 21,269 us is the closest evidence
-obtainable — and it is what a second device *would* wait. **Per command (T.4, three runs,
+the chip allows; a 1 KB transfer holds the loop ~8 ms at 1 MHz, ~1.5 ms at 8 MHz (bench, 2026-10-29). No device TOML wires a second SPI device, so for
+one the 21 ms figure is a contract statement; every other FRAM user waits it out on every device,
+one block at a time (F.3 `hold.fram_block`), pinned in scheduler rounds by the mock and twin tiers (C.8). **Per command (T.4, three runs,
 2026-09-25)**: the 1-byte write took 2,833-3,395 us (~0.6-0.7 ms per CS envelope), one 8-byte
 read envelope 783-881 us, and the whole block operation held the bus 18,089-23,148 us. A single
 command is therefore under ~1 ms; the per-block hold stays (owner, 2026-09-26: 'Probably better to
-keep'): yielding per command would bring back the coroutine churn the synchronous restructure
-removed (A.4). Pinned on the bench by `tests_hardware/device_scripts/fram_command_hold_timing.py`
+keep'; the premise that did not hold and the rule since: F.3 `hold.fram_block`): yielding per command
+would bring back the coroutine churn the synchronous restructure removed (A.4). Pinned on the bench by `tests_hardware/device_scripts/fram_command_hold_timing.py`
 (run by `flash/test_fram_storage.py`): it fails when the longest non-yielding stretch passes one
 UART poll
 floor (80 B of 8N1 at 115200 baud, 6,944 us, J.6) and reports the block hold beside it.
@@ -7612,7 +7622,9 @@ backend-only or frontend-only validation/coercion policy change in this project.
   awaits, so it needs no lock. Its first user is `HTTPDropped` (A.8; owner, 2026-10-01).
 - **Per-module logging/error-history** — `asy_print_log.py`'s `make_logger()` with one `LogConfig`
   (`DEFAULT_LOG` for a module with no store of its own; one per FRAM store), `PrintLog`/
-  `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter. `PrintLog`'s
+  `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter. An entry awaits its
+  FRAM write (`err_s()`/`wrn_s()`) or, the UART's form, records and prints at once with the write
+  behind it in one writer task per store (`err_q()`/`wrn_q()`, C.7.1). `PrintLog`'s
   `report_unretrieved()` is asyncio's exception handler (F.1); the PC tiers' counterpart is
   `digital_twin/unix_port_unretrieved_report.py`.
 - **A caught `MemoryError`'s line** — a plain `err()`, from level 1 up, so the memory gates see it
@@ -8844,12 +8856,17 @@ dict copies (`compare_before_write()`, G.2), bounded by the schema, and one tran
 **`asy_crc_checks.py`** — `add_into()`/`check_from()` (FRAM, SGP40, SCD30) work in the caller's
 buffer, a view each; `add()`/`check()` allocate the framed or stripped copy, whose only product
 callers are the UART driver, per frame, bounded by `payload_size` + the CRC width. The per-byte
-`await asyncio.sleep(0)` stays (owner, 2026-09-18: "pure wall clock time is not such an issue, don't
-touch"): its allocation per call is flat whatever the length, 160 B for CRC8/CRC16 and 416 B for
-CRC32, whose two-word path adds a second coroutine frame (Unix port, `v1.29.0`, 2026-10-07; the rp2
-figure is owed to the bench); the ~5.8x wall-time cost is accepted, and the yield's original reason
-(a 256 B CRC must not stall other tasks) stands. A CRC wider than 16 bits runs as two 16-bit words
-(G.2), so its bit loop stays inside small ints on rp2 as well.
+`await asyncio.sleep(0)` was kept (owner, 2026-09-18: "pure wall clock time is not such an issue,
+don't touch") on facts that did not hold: its ~5.8x wall-time cost was measured idle on the Unix
+port with nothing waiting, while the FRAM chunk layer ran it under the session and bus locks every
+FRAM user waits on, one scheduler round per byte (8-20 s per SGP40 backup under load, bench
+2026-11-07). No CRC runs under a FRAM lock since (F.3 `hold.fram_block`). The rule in force: applying
+the levels "already answers the open questions about the checksum" (owner, 2026-11-07), so the
+yield's purpose stays, no CRC stalls other tasks past `con.routine_stall`, and its per-byte
+granularity goes; until then the loop yields per byte (`stall.crc_byte`). Its allocation per call is
+flat whatever the length, 160 B for CRC8/CRC16 and 416 B for CRC32, whose two-word path adds a
+second coroutine frame (Unix port, `v1.29.0`, 2026-10-07; the rp2 figure is owed to the bench). A CRC
+wider than 16 bits runs as two 16-bit words (G.2), so its bit loop stays inside small ints on rp2 as well.
 
 **`asy_dns_client.py`** — per resolution: the query (`_build_query()`, labels of at most 63 octets),
 one `UDPSocket` per server tried, the reply of at most 512 B (RFC 1035 §4.2.1; a longer one arrives
@@ -8860,13 +8877,14 @@ server and bounded before allocation. A heap failure building the query prints i
 buffers (`_id_buf`/`_status_buf`/`_addr_buf`); per operation nothing (every
 transfer uses them), `verify_present()`'s `wait_for_ms()` per presence check.
 
-**`asy_fram_manager.py`** — construction, long-lived, fixed: per chunk its status-byte buffer and
-check buffer (`check_length`, with one held view), and `FRAMManager._chunks` grows once per
-allocation at construction, never at run time; `_allocated_size` tracks FRAM address space, not RAM. A check buffer whose allocation failed prints its
-text through the FRAM logger; a read then takes block 1 as invalid and rewrites it from block 0's
-valid data, and a verified write fails with its own entry.
+**`asy_fram_manager.py`** — construction, long-lived, fixed: per chunk its status-byte buffers, and
+`FRAMManager._chunks` grows once per allocation at construction, never at run time;
+`_allocated_size` tracks FRAM address space, not RAM.
 Per chunk operation: its `FRAMChunkBuffer`/`FRAMChunkTimestampedBuffer` (a `RegionBuffer`), transient,
-fixed; `_compare_with()`'s view of the caller's buffer, cleared in `finally`. Their concurrent peak
+fixed; per compare (a read's cross-check and a verify, never a log entry's write) one block-size
+buffer, transient. A compare buffer whose allocation failed prints its text through the FRAM logger;
+a read then takes block 1 as unreadable and rewrites it from block 0's valid data, and a verified
+write fails with its own entry. Their concurrent peak
 under `ResetErrors` is bounded by the device's FRAM-backed logger count, at most one buffer each: on
 the `dev` twin the live heap rose 50,464-58,816 B above idle during one `PUT /status
 {"ResetErrors": true}` (1.87 s; 5 ms `MEM_SAMPLE`s, the reset's whole concurrent fan-out included;
@@ -8918,7 +8936,8 @@ after the batch (owner, 2026-09-21): deferring it would open a window in which a
 its own `setup()` holds that error only in RAM, losing exactly the evidence CLAUDE.md's
 read-the-FRAM-logs rule depends on; its measured layout gain predates measures A and B and was never
 shown to add anything on top of them. Per history write: the chunk buffer and the `*history`
-argument tuple, transient, fixed; per `get_log()` (an `errcount` read): its dict and lists, bounded
+argument tuple, transient, fixed; per `err_q()`/`wrn_q()` burst one writer coroutine and task, transient
+(a heap failure creating them prints its text and leaves the entry for the next write, C.7.1); per `get_log()` (an `errcount` read): its dict and lists, bounded
 by `history_length`. Its own caught allocation failures print their text from level 1 up (C.7).
 
 **`asy_scd30_driver.py`** — construction, long-lived, fixed: the 18-byte read buffer. Per read:
@@ -9707,7 +9726,13 @@ receive buffer, and recovering from those reactively would log a fault on every 
 probe, so a healthy link pays nothing for it; once a byte does turn up, every later round uses the
 full quiet window exactly as a resync does. **Hitting the bound is reported by flagging the caller,
 never by logging in place**: the boot drain is not a fault and so persists nothing, while a resync
-prints; only a drain that hits its bound persists its warning (`wrnno` 54, C.7.1).
+prints, with the bytes it drained; only a drain that hits its bound persists its warning (`wrnno` 54, C.7.1).
+
+**The receiver resyncs without waiting on its log write.** A fault or a declined command records and
+prints its entry at once and its FRAM write runs behind (`err_q()`/`wrn_q()`, C.7.1), so the drain
+starts at once whatever another FRAM user holds: the link's timing never depends on the FRAM chip's
+(owner, 2026-11-07: "It's two completely different devices."). An entry logged just before a reset
+may not reach FRAM.
 
 **Recovery ladder** (owner, 2026-09-30: the smallest blast radius first). A fault abandons the
 transaction at its bounded read and is never retransmitted — a retry is the caller's (J.9). The

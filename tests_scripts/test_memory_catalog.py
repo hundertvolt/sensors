@@ -25,7 +25,6 @@ _RUN_PHASE_ALLOWED: "dict[tuple[str, str, str], str]" = {
         ("asy_bmp3xx_driver.py", "BMP3XX_I2C._read_coefficients", attr): "setup only: the calibration coefficients, replaced at each read-task start"
         for attr in ("_pressure_calib", "_temp_calib")
     },
-    ("asy_fram_manager.py", "_FRAMBaseChunk._compare_with", "_compare_against"): "a view of the caller's buffer, cleared in finally",
     ("asy_i2c_driver.py", "I2C.init", "_args"): "per controller recovery: the stored arguments, replacing the last",
     ("asy_i2c_driver.py", "I2C.init", "_i2c"): "machine.I2C() returns a static object (ports/rp2/machine_i2c.c)",
     **{
@@ -37,6 +36,7 @@ _RUN_PHASE_ALLOWED: "dict[tuple[str, str, str], str]" = {
         ("asy_neopixel_driver.py", f"NeopixelDriver.{method}", "_rgbt"): "the signal's four values, replaced by the next request stored"
         for method in ("led_signal", "request_signal")
     },
+    ("asy_print_log.py", "PrintLogHistoryStore._write_later", "_writer"): "the history's one writer task per burst, dropped as it ends",
     ("asy_scd30_driver.py", "SCD30_Reader._store_scd", "_datastruct"): "the latest reading, replaced at every read",
     ("asy_spi_driver.py", "SPI.init", "_spi"): "construction: init() runs from __init__ only, and machine.SPI() returns a static object (ports/rp2/machine_spi.c)",
     ("asy_system_service.py", "SystemService._reboot", "_reset_task"): "the one reset task of a reboot",

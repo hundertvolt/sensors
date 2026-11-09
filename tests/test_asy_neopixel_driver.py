@@ -765,7 +765,7 @@ class _FakeFramManager:
     def __init__(self, chunk: "_FakeFramChunk") -> None:
         self.chunk = chunk
 
-    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "_FakeFramChunk":
+    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, *, owner: str) -> "_FakeFramChunk":
         return self.chunk
 
     def get_pause(self) -> bool:

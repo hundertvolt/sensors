@@ -2,6 +2,7 @@
 window and persistence across a reboot."""
 
 import asyncio
+import struct
 from collections import deque
 from time import ticks_add, ticks_ms
 
@@ -66,7 +67,7 @@ class _RaisingFramManager:
     # Fails only by allocation, the one failure the real chunk documents (SPECIFICATION.md C.7); parameter names
     # stay exact so mypy checks the fake against asy_print_log's Protocols.
     def get_chunk(
-        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
+        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, *, owner: str,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise self.error
@@ -83,7 +84,7 @@ class _CountingFramManager:
 
     # Parameter names kept exact for the structural _FramManager Protocol match (see _RaisingFramManager).
     def get_chunk(
-        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
+        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, *, owner: str,
     ) -> "_CountingFramChunk":
         return self._chunk
 
@@ -1588,10 +1589,261 @@ def test_report_if_fatal_allocates_and_prints_nothing() -> None:
 
 
 # ---------------------------------------------------------------------------
+# err_q()/wrn_q(): the entry, its count and its line at once; the FRAM write in one background writer per store
+# ---------------------------------------------------------------------------
+
+
+class _WriterStore(PrintLogHistoryStore):
+    # Counts the background writer's starts and records the internal-failure prints instead of gating them.
+    def __init__(self, fram: "_CountingFramManager", history_length: int = 3) -> None:
+        super().__init__(fram, history_length=history_length)
+        self.starts = 0
+        self.diags: list[tuple[object, ...]] = []
+
+    async def _write_behind(self) -> None:
+        self.starts += 1
+        await PrintLogHistoryStore._write_behind(self)
+
+    def _diag(self, *args: object) -> None:
+        self.diags.append(args)
+
+
+def _set_up_writer_store(chunk: "_GatedFramChunk") -> "_WriterStore":
+    # A store set up over a blank gated chunk, the gate closed again and its setup write forgotten.
+    store = _WriterStore(_CountingFramManager(chunk))
+    chunk.gate.set()
+    run(store.setup())
+    assert store.initialized is True
+    chunk.gate.clear()
+    chunk.payloads.clear()
+    chunk.writes = 0
+    return store
+
+
+async def _writer_ended(store: "PrintLogHistoryStore") -> None:
+    while store._writer is not None:  # bounded by run()'s own limit
+        await asyncio.sleep(0)
+
+
+def _image(store: "PrintLogHistoryStore") -> bytes:  # the RAM state as the store packs it: the "<H" count, then the ring
+    return struct.pack("<H", store._err_count) + bytes(store.history)
+
+
+def test_err_q_and_wrn_q_record_count_and_print_before_any_await() -> None:
+    chunk = _GatedFramChunk(2 + 3)
+    store = _set_up_writer_store(chunk)
+    store.set_level(2)
+    store.name = "Q"
+
+    async def scenario() -> "tuple[object, list[tuple[object, ...]], int]":
+        with record_prints() as rec:
+            store.err_q("e", 1, errno=3)
+            store.wrn_q("w", wrnno=2)
+        log = await store.get_log()  # reads without yielding: the writer has not run
+        writes = chunk.writes
+        chunk.gate.set()
+        await _writer_ended(store)
+        return log, rec.lines, writes
+
+    log, lines, writes = run(scenario())
+    assert log == {"Q": {"ErrCount": 2, "ErrNum": [0, 3, 2], "ErrType": ["N", "E", "W"]}}, log
+    assert lines == [("Q", "e", 1), ("Q", "w")], lines
+    assert writes == 0
+    assert chunk.payloads == [b"\x02\x00\x00\x03\x82"], chunk.payloads  # once the writer has run
+
+
+def test_an_err_q_entry_survives_a_simulated_reboot_once_its_writer_has_run() -> None:
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
+    run(store.setup())
+
+    async def scenario() -> None:
+        store.err_q("boom", errno=3)
+        await _writer_ended(store)
+
+    run(scenario())
+    manager2, _chip2 = make_fram_manager(chip=chip)
+    run(manager2.setup())
+    rebooted = PrintLogHistoryStore(manager2, history_length=4)
+    run(rebooted.setup())
+    assert rebooted._err_count == 1
+    assert list(rebooted.history) == [0, 0, 0, 3]
+
+
+def test_a_burst_starts_one_writer_and_an_entry_logged_during_its_write_lands_too() -> None:
+    chunk = _GatedFramChunk(2 + 3)
+    store = _set_up_writer_store(chunk)
+
+    async def scenario() -> None:
+        store.err_q("e", errno=1)
+        store.err_q("e", errno=2)
+        for _ in range(3):  # the writer starts; its write packs both entries and waits at the gate
+            await asyncio.sleep(0)
+        store.wrn_q("w", wrnno=3)  # during that write
+        chunk.gate.set()
+        await _writer_ended(store)
+
+    run(scenario())
+    assert store.starts == 1
+    assert chunk.payloads == [b"\x02\x00\x00\x01\x02", b"\x03\x00\x01\x02\x83"], chunk.payloads
+    assert chunk.payloads[-1] == _image(store)
+
+
+def test_an_uninitialised_store_records_a_q_entry_but_starts_no_writer() -> None:
+    chunk = _GatedFramChunk(2 + 3)
+    chunk.gate.set()
+    store = _WriterStore(_CountingFramManager(chunk))
+
+    async def scenario() -> None:
+        store.err_q("e", errno=3)
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+    run(scenario())
+    assert (store._err_count, store.starts, chunk.writes) == (1, 0, 0)
+    assert list(store.history) == [0, 0, 3]
+    assert ("PrintLog: Uninitialized, call setup first!",) in store.diags
+
+
+def test_a_failed_background_write_is_diagnosed() -> None:
+    chunk = _GatedFramChunk(2 + 3)
+    store = _set_up_writer_store(chunk)
+    chunk.failing_writes = (1,)
+    chunk.gate.set()
+
+    async def scenario() -> None:
+        store.wrn_q("w", wrnno=2)
+        await _writer_ended(store)
+
+    run(scenario())
+    assert store.diags == [("PrintLog: History write failed!",)], store.diags
+    assert list(store.history) == [0, 0, 0x82]  # the entry stays in RAM for the next write
+
+
+def test_a_reset_racing_a_pending_background_write_leaves_fram_and_ram_agreeing() -> None:
+    # Before the writer runs: the reset writes and clears first, then the writer writes the cleared state.
+    chunk = _GatedFramChunk(2 + 3)
+    store = _set_up_writer_store(chunk)
+    chunk.gate.set()
+
+    async def before() -> bool:
+        store.err_q("e", errno=3)
+        ok = await store.reset()
+        await _writer_ended(store)
+        return ok
+
+    assert run(before()) is True
+    assert (store._err_count, list(store.history)) == (0, [0, 0, 0])
+    assert chunk.payloads[-1] == _image(store), chunk.payloads
+    # During the writer's write: the reset queues behind it, and an entry logged meanwhile is kept by both.
+    chunk.gate.clear()
+
+    async def during() -> bool:
+        store.err_q("e", errno=3)
+        for _ in range(3):  # the writer's write waits at the gate
+            await asyncio.sleep(0)
+        reset = asyncio.create_task(store.reset())
+        for _ in range(3):
+            await asyncio.sleep(0)
+        store.err_q("e", errno=4)
+        chunk.gate.set()
+        ok = await reset
+        await _writer_ended(store)
+        return ok
+
+    assert run(during()) is True
+    assert store._err_count == 1
+    assert list(store.history) == [0, 0, 4]
+    assert chunk.payloads[-1] == _image(store), chunk.payloads
+
+
+class _NoTasks:
+    # Stands in for asy_print_log's asyncio: any task start fails the test.
+    @staticmethod
+    def create_task(_coro: object) -> None:
+        raise AssertionError("a RAM-only history started a task")
+
+
+def test_a_ram_only_history_starts_no_writer() -> None:
+    hist = PrintLogHistory(history_length=2)
+    run(hist.setup())
+    real = print_log_module.asyncio
+    print_log_module.asyncio = _NoTasks()  # type: ignore[assignment]
+    try:
+        hist.err_q("e", errno=3)
+        hist.wrn_q("w", wrnno=2)
+    finally:
+        print_log_module.asyncio = real
+    assert (hist._err_count, list(hist.history)) == (2, [3, 0x82])
+
+
+class _FullHeapTasks:
+    # Stands in for asy_print_log's asyncio: a task start meets a full heap; every other name is the real module's.
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+    @staticmethod
+    def create_task(_coro: object) -> None:
+        raise MemoryError("injected for the writer task")  # worded clear of the memory gates' markers
+
+
+def test_an_err_q_whose_writer_cannot_start_returns_and_the_next_entry_writes_it() -> None:
+    # A full heap at the writer's start never reaches the caller: the entry stays in RAM, its failure prints from level 1
+    # up, and the next entry's writer packs both into one write.
+    chunk = _GatedFramChunk(2 + 3)
+    store = _set_up_writer_store(chunk)
+    chunk.gate.set()
+    store.set_level(1)
+    print_log_module.asyncio = _FullHeapTasks()  # type: ignore[assignment]
+    try:
+        with record_prints() as rec:  # recorded, never printed: the injected text stays off this file's output
+            store.err_q("e", errno=3)
+    finally:
+        print_log_module.asyncio = asyncio
+    heads = [line[:2] for line in rec.lines]
+    assert heads == [("", "e"), ("", "PrintLog: FRAM history writer failed:")], rec.lines
+    assert (chunk.writes, store._writer, list(store.history)) == (0, None, [0, 0, 3])
+
+    async def scenario() -> None:
+        store.err_q("e", errno=4)
+        await _writer_ended(store)
+
+    with record_prints():
+        run(scenario())
+    assert chunk.payloads == [b"\x02\x00\x00\x03\x04"], chunk.payloads
+
+
+class _RaisingOnceChunk(_CountingFramChunk):
+    # Its first write raises a non-allocation error (a defect the chunk's contract rules out); later writes land.
+    async def write_into(self, buf: "RegionBuffer") -> bool:
+        if self.writes == 0:
+            self.writes += 1
+            raise ValueError("injected chunk defect")
+        return await _CountingFramChunk.write_into(self, buf)
+
+
+def test_a_writer_whose_write_raises_logs_it_and_the_next_entry_starts_a_writer() -> None:
+    chunk = _RaisingOnceChunk(2 + 3)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+    store.initialized = True  # whitebox: set up, with no setup write to spend the chunk's one raise
+
+    async def scenario() -> None:
+        store.err_q("e", errno=3)
+        await _writer_ended(store)
+        store.err_q("e", errno=4)
+        await _writer_ended(store)
+
+    run(scenario())
+    assert list(store.history) == [3, code("E", "UNEXPECTED"), 4], list(store.history)
+    assert chunk.last_payload == _image(store)
+
+
+# ---------------------------------------------------------------------------
 # DebugLevel 0 prints nothing, ever; a C-stack overflow handed to any entry point is recorded at every level
 # ---------------------------------------------------------------------------
 
-_ENTRIES = ("err", "wrn", "one", "evt", "all", "err_s", "wrn_s")  # every logging entry point
+_ENTRIES = ("err", "wrn", "one", "evt", "all", "err_s", "wrn_s", "err_q", "wrn_q")  # every logging entry point
 
 
 def _call(pr: PrintLogHistory, method: str, *args: object) -> None:
