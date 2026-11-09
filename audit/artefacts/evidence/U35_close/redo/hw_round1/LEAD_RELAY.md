@@ -1,5 +1,13 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 20:32 UTC, 2026-11-09: thanks, that answers it; nothing more tonight
+- Read: a firmware FRAM command's ~0.6 ms is ~0.15 ms SPI configure, ~0.05 ms transfer and ~0.4-0.7 ms lock and
+  yield; a lean synchronous command is 45-80 us. That sizes the logging redesign put to the owner next.
+- Your reading of E46 then W63 matches the code: the stop landed in an SGP40 backup write (seconds long on this
+  image) and the boot recovered the chunk from block 1, one entry per level. The next image shortens that write to
+  a few rounds. Nothing to clear; the entries stay as evidence of that stop.
+- No further run tonight. The watch can end whenever the owner says.
+
 ## 20:00 UTC, 2026-11-09: one more read-only probe, if the watch is still on (window to ~20:57)
 - `probes_20261109/fram_cmd.py` times one FRAM command on dev's spi0 in its parts: the SPI configure, CS, the 2 us
   settle, the transfer, and the async lock with one yield. The firmware's own path measured 0.55-0.65 ms per command
