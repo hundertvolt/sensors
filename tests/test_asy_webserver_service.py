@@ -25,6 +25,7 @@ from _async_harness import cancel, run, run_timed, track_starts
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
+from _held_log import held_logger, until
 from _recording_print import record_prints
 from _shared_rest_roundtrip import drain_json_response_body
 from _src_const import src_int
@@ -46,7 +47,7 @@ from asy_fram_manager import FRAMManager
 from asy_print_log import LogConfig, fatal_reported
 from asy_spi_driver import SPI
 from asy_system_service import SystemService
-from asy_webserver_service import ROUTES, RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
+from asy_webserver_service import ROUTES, RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _stream_dict_response, _TimeoutStreamProxy
 
 # The FRAM a system command quiesces and erases sits on the chip fake: the same one-process-per-test-file swap as
 # test_asy_fram_manager.py's.
@@ -192,7 +193,6 @@ _MAKE_SERVICE_OUTER_CAP_S = 0.5  # _make_service()'s outer cap, for a case that 
 _WIRE_PER_CALL_MS = 2000  # _get_on_the_wire()'s per-call timeout: a loaded host never cuts a body short
 _WIRE_OUTER_CAP_MS = 4000  # _get_on_the_wire()'s outer cap, under _RUN_BOUND_S
 _SLOWLORIS_TRICKLE_RATIO = 0.5  # the slowloris trickle's byte interval, as a share of its per-call timeout
-_RESET_RELEASE_BOUND_S = 0.5  # how long a suspended reset waits for every other one to start
 _SOAK_WARMUP_CYCLES = 20  # the lifecycle soak's warm-up
 _SOAK_RATE_FROM_CYCLE = 80  # the soak's retention rate runs from this cycle to its last
 _SOAK_CYCLES = 200  # the lifecycle soak's cycles
@@ -501,6 +501,11 @@ def _const_source(value: "JsonDict") -> "StatusSourceFct":
 
 def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") -> "ErrorLog":
     return {name: {"ErrCount": count, "ErrNum": nums, "ErrType": types}}
+
+
+def _errcount_shape(count: int, nums: "list[int]", types: "list[str]") -> "JsonDict":
+    # One /status errcount entry's value as a dict: json.dumps() of it is the entry's bytes on the wire.
+    return {"counter": count, "history": [{"num": n, "type": t} for n, t in zip(nums, types)]}
 
 
 def _file_or_none(path: str) -> object:
@@ -1252,7 +1257,7 @@ class _RaisingResetModule(_FakeModule):
 
 
 def test_a_raising_source_reset_answers_500_through_the_catch_all() -> None:
-    # A reset raises only on a defect's path: the raise leaves the concurrent reset and reaches the catch-all (500).
+    # A reset raises only on a defect's path: the raise ends the resets and reaches the catch-all (500).
     _service, app = _make_service(error_sources=[_RaisingResetModule("B")])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert (res.status_code, _at(_json(res.body), "code")) == (500, 500)
@@ -1270,35 +1275,29 @@ def test_a_raising_reset_of_this_services_own_log_answers_500_through_the_catch_
     assert (res.status_code, _at(_json(res.body), "code")) == (500, 500)
 
 
-class _SuspendingModule(_FakeModule):
-    # Its reset waits until every module's reset has started (or a bound passes), then records how many had.
-    def __init__(self, name: str, started: "list[str]", everyone: int, release: asyncio.Event) -> None:
+class _OrderedResetModule(_FakeModule):
+    # Its reset notes its start, yields, then notes its end: resets that overlap interleave in the shared list.
+    def __init__(self, name: str, events: "list[str]") -> None:
         super().__init__(name)
-        self._started = started
-        self._everyone = everyone
-        self._release = release
-        self.started_before_finish = 0
+        self._events = events
 
     async def reset_error_counter(self) -> bool:
-        self._started.append(self.name)
-        if len(self._started) == self._everyone:
-            self._release.set()
-        try:
-            await asyncio.wait_for(self._release.wait(), _RESET_RELEASE_BOUND_S)
-        except asyncio.TimeoutError:
-            pass  # a sequential reset never releases: the bound ends the wait, the count below shows it
-        self.started_before_finish = len(self._started)
+        self._events.append("start " + self.name)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        self._events.append("end " + self.name)
         return await self.pr.reset()
 
 
-def test_reset_errors_runs_every_source_at_once() -> None:
-    started: list[str] = []
-    release = asyncio.Event()
-    mods = [_SuspendingModule(n, started, 3, release) for n in ("A", "B", "C")]
+def test_reset_errors_runs_its_sources_one_after_another() -> None:
+    # One source after another, no task per source (owner, 2026-11-07): each reset ends before the next begins.
+    events: list[str] = []
+    mods = [_OrderedResetModule(n, events) for n in ("A", "B", "C")]
     _service, app = _make_service(error_sources=mods)
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert _at(_json(res.body), "result") == {"ResetErrors": "Valid"}
-    assert [m.started_before_finish for m in mods] == [3, 3, 3]
+    assert sorted(events[::2]) == ["start A", "start B", "start C"], events
+    assert [e.replace("start", "end") for e in events[::2]] == events[1::2], events  # each ends before the next starts
 
 
 async def _hammer_status(app: "Microdot", n: int) -> None:
@@ -3554,6 +3553,23 @@ def test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_str
     assert log["WEBSERVER"]["ErrType"][log["WEBSERVER"]["ErrNum"].index(code("E", "CALLBACK"))] == "E"
 
 
+def test_a_failing_status_source_and_error_log_never_hold_the_status_lock_across_their_entries() -> None:
+    # Their entries' chunk writes held: each build ends with its entries in RAM, the lock free for the next
+    # /status reader within rounds (SPECIFICATION.md C.8).
+    service, app = _make_service(status_sources={"networking": _raising_source}, error_sources=[_RaisingErrorCounterModule("BMP3XX")])
+    service.pr, gate = held_logger("WEBSERVER")
+
+    async def scenario() -> "tuple[bool, int]":
+        build = asyncio.create_task(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+        ended = await until(build.done)
+        count = service.pr._err_count
+        gate.set()
+        await build
+        return ended and not service._status_lock.locked(), count
+
+    assert run(scenario()) == (True, 2)
+
+
 def test_h2_stream_both_marker_sites_send_the_one_spelling() -> None:
     # Guard: a failed status source and a failed error log send the same compact text, built from asy_base_classes.UNAVAILABLE.
     _service, app = _make_service(status_sources={"networking": _raising_source}, error_sources=[_RaisingErrorCounterModule("BMP3XX")], history_length=0)
@@ -3716,7 +3732,7 @@ def test_h2_add_value_is_byte_identical_to_json_dumps() -> None:
         {True: 1, None: 2, 1.5: 3, -3: 4, (1, 2): 5, 'a"b': 6},  # json.dumps()'s own non-str key rule
     ]
     values.extend(
-        _shape_errcount_entry(_errcount_log("M", count, [(i * 37) % 991 - 3 for i in range(length)], [kinds[i % len(kinds)] for i in range(length)]), "M")
+        _errcount_shape(count, [(i * 37) % 991 - 3 for i in range(length)], [kinds[i % len(kinds)] for i in range(length)])
         for count in (0, 1, 12345)
         for length in (0, 1, 10, 17)
         for kinds in (("N",), ("E", "W"), ('q"x', "\\", "E"))
@@ -3735,13 +3751,26 @@ def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
     assert len(pieces) > len(json.dumps(big)) // 128
 
 
-def test_h2_errcount_entry_is_never_one_string() -> None:
-    # The allocation this bounds on silicon: a whole 10-element entry is ~290 B, above the holes a
-    # loaded heap keeps at gc.threshold(-1) (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.3).
-    entry = _shape_errcount_entry(_errcount_log("M", 10, list(range(90, 100)), ["E"] * 10), "M")
-    pieces = _written(entry, max_bytes=64)
-    assert b"".join(pieces) == json.dumps(entry).encode()
-    assert max(len(p) for p in pieces) <= 64
+def test_h2_errcount_entries_are_the_bytes_json_dumps_gives_their_shape_in_small_pieces() -> None:
+    # Every shape a logger's get_log() gives - none logged, an empty ring, N/E/W slots, counts up to the cap - written
+    # as json.dumps() writes {"counter", "history"} (/status's bytes), no piece a whole entry (~290 B for ten slots).
+    service, _app = _make_service()
+    logs: list[ErrorLog] = [{}]
+    for count in (0, 1, 65535):
+        for length in (0, 1, 10):
+            logs.append(_errcount_log("M", count, [(i * 37) % 128 for i in range(length)], [("N", "E", "W")[i % 3] for i in range(length)]))
+    for raw in logs:
+        async def get_log(raw: "ErrorLog" = raw) -> "ErrorLog":
+            return raw
+
+        pieces: list[bytes] = []
+        writer = _PieceWriter(pieces, max_bytes=64)
+        run(service._write_errcount_entry(writer, get_log, "M"))
+        writer.flush()
+        entry = raw.get("M")
+        shape = _errcount_shape(0, [], []) if entry is None else _errcount_shape(entry["ErrCount"], entry["ErrNum"], entry["ErrType"])
+        assert b"".join(pieces) == json.dumps(shape).encode(), (raw, pieces)
+        assert max(len(p) for p in pieces) <= 64, pieces
 
 
 def test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment() -> None:

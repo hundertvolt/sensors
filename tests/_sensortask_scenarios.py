@@ -991,8 +991,9 @@ def _count_chunk_writes(logger: "PrintLogHistoryStore", counts: "dict[str, int]"
 
 
 def _record_codes(logger: "PrintLogHistory", got: "list[tuple[str, int]]") -> None:
-    # Each persisting call's kind and code appended to got in call order; the stand-ins go with the build.
-    real_err, real_wrn = logger.err_s, logger.wrn_s
+    # Each persisting call's kind and code appended to got in call order, awaited or written behind; the stand-ins go
+    # with the build.
+    real_err, real_wrn, real_err_q, real_wrn_q = logger.err_s, logger.wrn_s, logger.err_q, logger.wrn_q
 
     async def err_s(*args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         got.append(("E", errno))
@@ -1002,8 +1003,18 @@ def _record_codes(logger: "PrintLogHistory", got: "list[tuple[str, int]]") -> No
         got.append(("W", wrnno))
         await real_wrn(*args, wrnno=wrnno, sep=sep, end=end)
 
+    def err_q(*args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
+        got.append(("E", errno))
+        real_err_q(*args, errno=errno, sep=sep, end=end)
+
+    def wrn_q(*args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
+        got.append(("W", wrnno))
+        real_wrn_q(*args, wrnno=wrnno, sep=sep, end=end)
+
     logger.err_s = err_s  # type: ignore[method-assign]
     logger.wrn_s = wrn_s  # type: ignore[method-assign]
+    logger.err_q = err_q  # type: ignore[method-assign]
+    logger.wrn_q = wrn_q  # type: ignore[method-assign]
 
 
 def _device_of(module: "ModuleType") -> str:

@@ -17,6 +17,7 @@ from _error_codes import code
 from _fake_time import DrivenTime
 from _fake_timer_arm import RaiseOnArm
 from _fram_builders import make_fram_manager
+from _held_log import held_logger, until, written
 from _recording_print import record_prints
 from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD
@@ -2183,7 +2184,12 @@ def test_sensorreaderconfig_cfgmgr_write_failure_errno_persists_across_a_simulat
         # A first boot's absent file is written with its defaults and persists its one "not found" warning.
         baseline_err_count = reader.cfgmgr.pr._err_count
         assert baseline_err_count == 1
-        ok, results = run(reader.cfgmgr.write_config({"NotARealKey": 1}))
+        async def refused() -> "tuple[bool, cm.WriteValidity]":
+            result = await reader.cfgmgr.write_config({"NotARealKey": 1})
+            assert await written(reader.cfgmgr.pr)  # written behind (C.7.1), before the reboot below
+            return result
+
+        ok, results = run(refused())
         # An unrecognized key alone never sets changed=True, so write_config's own "nothing to
         # write" path returns (True, ...) - "ok" means "no exception", not "every field valid";
         # the per-field "Invalid" result plus the persisted errno are what this test is really about.
@@ -3361,8 +3367,8 @@ class _RaisingStoreReader(SensorReader):
         return True, dict.fromkeys(data, "Valid")
 
 
-def _logged_by_a_put(raise_at: str, *, push: str = "ok", getter: bool = False) -> "list[int]":
-    # The E codes one PUT of SampleInterval leaves; push "ok", "fails" (False) or "raises", and a raising getter.
+def _put_reader(raise_at: str, push: str, getter: bool) -> _RaisingStoreReader:
+    # A store raising at raise_at; its SampleInterval push "ok", "fails" (False) or "raises", and a raising getter.
     reader = _RaisingStoreReader(raise_at)
 
     async def pushed(_value: "int | float | str | bool | None") -> bool:
@@ -3376,9 +3382,35 @@ def _logged_by_a_put(raise_at: str, *, push: str = "ok", getter: bool = False) -
     reader._push_callbacks["SampleInterval"] = pushed
     if getter:
         reader._get_callbacks["SampleInterval"] = read_back
+    return reader
+
+
+def _logged_by_a_put(raise_at: str, *, push: str = "ok", getter: bool = False) -> "list[int]":
+    # The E codes one PUT of SampleInterval leaves.
+    reader = _put_reader(raise_at, push, getter)
     run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
     log = run(reader.pr.get_log())[reader.pr.name]
     return [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "E"]
+
+
+def test_a_put_or_get_that_logs_never_holds_the_set_lock_across_its_entry() -> None:
+    # Each entry's chunk write held: every PUT and GET path that logs ends within rounds with its entries in RAM, so the
+    # module's next config caller never waits on FRAM (SPECIFICATION.md C.8).
+    cases = (("snapshot", "ok", False, True), ("snapshot", "ok", False, False), ("write", "ok", False, False), ("", "raises", False, False), ("", "fails", True, False), ("recovery_write", "fails", False, False))
+    for raise_at, push, getter, is_get in cases:
+        reader = _put_reader(raise_at, push, getter)
+        reader.pr, gate = held_logger(reader.name)
+
+        async def scenario(reader: _RaisingStoreReader = reader, gate: asyncio.Event = gate, is_get: bool = is_get) -> "tuple[bool, int]":
+            call = asyncio.create_task(reader._get_dict_cfg(reader.name, _TEST_SCHEMA_SI) if is_get else reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
+            ended = await until(call.done) and not reader._set_lock.locked()
+            count = reader.pr._err_count
+            gate.set()
+            await call
+            return ended, count
+
+        ended, count = run(scenario())
+        assert ended and count >= 1, (raise_at, push, getter, is_get, ended, count)
 
 
 def test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised() -> None:

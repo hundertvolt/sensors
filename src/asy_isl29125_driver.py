@@ -335,11 +335,11 @@ class ISL29125_Reader(SensorReaderConfig):
     async def _check_divergence(self, raw: bytes | bytearray) -> None:
         if self._isl.matches_shadow(raw):
             return
-        await self.pr.wrn_s("Chip configuration diverged from the shadow - re-applying.", wrnno=_WRN_ISL_DIVERGED)
+        self.pr.wrn_q("Chip configuration diverged from the shadow - re-applying.", wrnno=_WRN_ISL_DIVERGED)
         try:
             await self._isl.configure(force=True)
         except Exception as e:
-            await self.pr.err_s("Error re-applying the diverged configuration:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error re-applying the diverged configuration:", e, errno=_ERR_CHIP_SET)
             return
         if self._range_auto:
             await self._switch_range(self._active_range)
@@ -350,7 +350,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # int<->float coercion is the identical policy (a fractional 12.5 is rejected, not cut).
         checked = checked_numeric(value, schema[0])
         if checked is None:
-            await self.pr.err_s("Error setting", schema[0][0], "- out of range:", value, errno=_ERR_BAD_ARG)
+            self.pr.err_q("Error setting", schema[0][0], "- out of range:", value, errno=_ERR_BAD_ARG)
             return None
         return checked
 
@@ -740,7 +740,7 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             raw = await self._isl.get_config_snapshot()
         except Exception as e:
-            await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CHIP_GET)
+            self.pr.err_q("Error reading config from sensor:", e, errno=_ERR_CHIP_GET)
             return None
         decoded = self._isl.decode_config(raw)
         await self._check_divergence(raw)
@@ -777,7 +777,7 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(persist=self._isl.persist_for_interval(trigger_s))
         except Exception as e:
-            await self.pr.err_s("Error applying the derived transient rejection:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error applying the derived transient rejection:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -806,7 +806,7 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             decoded = self._isl.decode_config(await self._isl.get_config_snapshot())
         except Exception as e:
-            await self.pr.err_s("Error reading", what, ":", e, errno=_ERR_CHIP_GET)
+            self.pr.err_q("Error reading", what, ":", e, errno=_ERR_CHIP_GET)
             return None
         if decoded is None:
             return None
@@ -868,7 +868,7 @@ class ISL29125_Reader(SensorReaderConfig):
             except Exception as e:
                 # _active_range is deliberately NOT updated, so the next cycle re-evaluates and
                 # retries the whole switch - idempotent, since both writes are absolute values.
-                await self.pr.err_s("Error writing the range bit:", e, errno=_ERR_CHIP_SET)
+                self.pr.err_q("Error writing the range bit:", e, errno=_ERR_CHIP_SET)
                 return False
             self._last_switch_ms = time.ticks_ms()
             self._active_range = target_range
@@ -909,7 +909,7 @@ class ISL29125_Reader(SensorReaderConfig):
             else:
                 await self._isl.set_thresholds(self._isl.fraction_to_counts(self._down_thresh(ar_thresh)))
         except Exception as e:
-            await self.pr.err_s("Error writing auto-range thresholds:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error writing auto-range thresholds:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -1041,7 +1041,7 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(ir_adjust=value)
         except Exception as e:
-            await self.pr.err_s("Error setting IR compensation adjust:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting IR compensation adjust:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -1049,7 +1049,7 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(ir_offset=value)
         except Exception as e:
-            await self.pr.err_s("Error setting IR compensation offset:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting IR compensation offset:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -1061,7 +1061,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self._isl.configure(range_fs=value)
                 self._active_range = value
         except Exception as e:
-            await self.pr.err_s("Error setting range:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting range:", e, errno=_ERR_CHIP_SET)
             return False
         self._fixed_range = value
         return True
@@ -1080,7 +1080,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self._isl.configure(range_fs=self._fixed_range, threshold_interrupt=False)
                 self._active_range = self._fixed_range
         except Exception as e:
-            await self.pr.err_s("Error applying the auto-range mode:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error applying the auto-range mode:", e, errno=_ERR_CHIP_SET)
             return False
         self._range_auto = flag
         if flag:
@@ -1091,7 +1091,7 @@ class ISL29125_Reader(SensorReaderConfig):
         try:
             await self._isl.configure(resolution=value)
         except Exception as e:
-            await self.pr.err_s("Error setting resolution:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_q("Error setting resolution:", e, errno=_ERR_CHIP_SET)
             return False
         # A resolution change changes the cycle length, so the derived persistence changes with it.
         period = await self._trigger_period.get_value()
