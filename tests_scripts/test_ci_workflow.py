@@ -2,9 +2,14 @@
 filter, pins, composite actions, derived device matrices, values reaching `run:` only via `env:`, executable scripts,
 bounded installs, the Playwright cache's runner identity, the apt cache around each install (B.10.1)."""
 
+import json
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
+from _devices import distinct_devices
 from _repo_scan import git_lines
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -226,27 +231,53 @@ def test_the_toolchain_action_syncs_first_and_builds_through_the_one_probe() -> 
     assert not web, f"these web jobs boot a twin no step of theirs builds - pass `build-unix-port: 'true'`: {web}"
 
 
+def _needs_the_environment(line: str) -> bool:
+    # uv or a repo script; a sourced shell library only when its own code starts uv or Python (_devices.sh does not).
+    library = re.fullmatch(r"source (scripts/[\w.-]+\.sh)", line)
+    if library:
+        code = [text for text in (_REPO / library.group(1)).read_text(encoding="utf-8").splitlines() if not text.lstrip().startswith("#")]
+        return any(re.search(r"\buv\b|\bpython", text) for text in code)
+    return bool(re.search(r"\buv\b|\bscripts/", line))
+
+
 def test_every_job_running_uv_or_a_script_syncs_first_through_an_action() -> None:
     late = []
     for name, job in _jobs().items():
         synced = False
         for step in _steps(job, 6):
             synced = synced or _UV_SYNC_USES in step or _TOOLCHAIN_USES in step
-            if not synced and any(re.search(r"\buv\b|\bscripts/", line) for line in _run_lines(step)):
+            if not synced and any(_needs_the_environment(line) for line in _run_lines(step)):
                 late.append(f"{name}: {_run_lines(step)[0]}")
                 break
     assert not late, f"run the uv-sync action (or the toolchain action) before these steps: {late}"
     assert "pip install uv" not in _ci(), "ci.yml installs uv itself - the uv-sync action installs the pinned one"
 
 
-def test_both_device_matrices_are_derived_from_the_devices_job() -> None:
-    # A literal list would let a new device generate, build and pass locally while CI kept the old set.
+def test_a_sourced_library_needs_the_environment_only_when_its_code_starts_uv_or_python() -> None:
+    assert [_needs_the_environment(line) for line in ("source scripts/_devices.sh", "source scripts/_require_python.sh", "scripts/test.sh", "uv run pytest")] == [False, True, True, True]
+
+
+def _devices_job(root: Path, output: Path) -> "subprocess.CompletedProcess[str]":
+    # The devices job's own `run:` lines in a checkout at root, as the runner's default `bash -e` runs them.
+    run = "\n".join(line for step in _steps(_jobs()["devices"], 6) for line in _run_lines(step))
+    return subprocess.run(["/bin/bash", "-e", "-c", run], cwd=root, env={"PATH": os.environ["PATH"], "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False, timeout=30)
+
+
+def test_both_device_matrices_are_derived_from_the_devices_job(tmp_path: Path) -> None:
+    # A literal list would let a new device generate, build and pass locally while CI kept the old set. The job runs the
+    # runners' own set, one device per hardware_family (scripts/_devices.sh, owner 2026-10-23), and fails on none.
     text = _ci()
     matrices = re.findall(r"^\s+device: (.*)$", text, re.MULTILINE)
     assert matrices == [_DEVICE_MATRIX, _DEVICE_MATRIX], f"digital-twin-e2e and firmware-build-verify read `device: {_DEVICE_MATRIX}`, found {matrices}"
-    run = "\n".join(line for step in _steps(_jobs()["devices"], 6) for line in _run_lines(step))
-    assert "devices/*.toml" in run and "zz_test_" in run, "the devices job globs devices/*.toml and skips the zz_test_ fixtures, as tests_scripts/_devices.py"
-    assert "exit 1" in run, "the devices job fails on an empty set rather than run no device"
+    done = _devices_job(_REPO, tmp_path / "listed")
+    assert (done.returncode, (tmp_path / "listed").read_text(encoding="utf-8")) == (0, f"list={json.dumps(distinct_devices(), separators=(',', ':'))}\n"), done
+    empty = tmp_path / "empty"
+    (empty / "devices").mkdir(parents=True)
+    (empty / "scripts").mkdir()
+    shutil.copy2(_REPO / "scripts" / "_devices.sh", empty / "scripts" / "_devices.sh")
+    (empty / "devices" / "zz_test_only.toml").write_text("# fixture\n", encoding="utf-8")
+    done = _devices_job(empty, tmp_path / "none")
+    assert done.returncode != 0 and not (tmp_path / "none").exists(), "the devices job fails on an empty set rather than run no device"
 
 
 def test_the_cross_browser_smoke_requires_every_engine() -> None:

@@ -1072,3 +1072,41 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
   it; on a fault 542-808 rounds cross the 8 s shutdown-step bound. Near-critical: 4.4-6.0 s of 8 s on the normal path.
   The native CRC engine (unit C, 0.95 ms per chunk on the chip) removes it: unit C goes first after this merge.
 - Not yet run on the merged tree: lint, mypy, tests_scripts (bchain holds the host); CI on snapshot 51 runs them all.
+
+## 12.118 Owner (18:25:25): native CRC engine welcomed; COBS has its record
+- Evidence: owner 2026-11-02 20:58 ("why is nothing using COBS? I assumed it being run on the UART crossover test
+  module!") and 21:01 ("Option 1, add the cobs mode in B6"): the flash-tier crossover test runs a `cobs` mode on
+  silicon through the frozen FramingCOBS (tests_hardware/device_scripts/uart_crossover_exchange.py:13,60-64;
+  tests_hardware/flash/test_uart_crossover.py:81; tests_hardware/README.md:1149). cprim's "wired on no device" meant
+  the generated production wiring only, and the lead passed it on as a removal candidate without checking the record: a
+  miss of the lead's. COBS stays; crceng told (item 3: same-result form if small, else its figure).
+
+## 12.119 Owner standing rule (18:30:08): ask before removing a possibly unused feature
+- Into common_r1.md (every unit). crceng told: run_inc()/check_inc() stay (ported to the engine), reported as an owner
+  question; any other no-caller function likewise. _rx_line_len is already report-only.
+- Check of what is already decided: 12.107 (5)'s removals were put to the owner and approved ("Go to all", 11-07
+  17:57:27). The removals since then: bfix's check_length and slice machinery (internal mechanism, replaced) - none a
+  feature. The P9 doc unit carries the rule into CLAUDE.md's working agreements.
+
+## 12.120 Owner (18:31:40): yield inside the SGP40 backup, or was the CRC the issue? Lead's answer
+- Three costs stacked: (1) the CRC itself, 130 ms per 264 B on the chip (~1,450x the C need) - the root; (2) the
+  per-byte yield added because of (1): each yield costs one full scheduler round under load (16-22 ms with three
+  /status readers), so 264 yields per copy became seconds; (3) the CRC ran inside the FRAM session/bus lock, so every
+  FRAM user waited them (fixed by bfix). A finer or "smarter" yield cannot help: under load every yield is a round,
+  more yields mean more wall time; a yield is harmless only where no shared lock is held across it. With the native
+  engine (0.95 ms) the CRC needs no yield at all, and the backup's own _op_lock span drops from ~272 rounds to ~1 ms
+  plus its two I/O rounds per block.
+
+## 12.121 bchain merged (int f1a734f5); snapshot 51's CI run never started its jobs
+- bchain 75eb43dd (HANDBACK_BCHAIN.md): distinct_devices in scripts/_devices.sh (one per hardware_family, the family's
+  first in byte order; owner 2026-10-23 dedup), used by test.sh, _run_lower_levels.sh and CI's devices job (its own loop
+  gone): CI twin legs 12 -> 8, firmware builds 6 -> 4; the GC stage skips the host tier (no host test reads the
+  threshold) and drops its Node setup. Gate green both stages. Lead's review: lean (distinct_devices 14 lines; the CI
+  loop removed; the devices-job test now runs the job's own lines, stronger than the string check it replaced). Size
+  passed the brief's 60-line stop (84 changed outside tests and docs, net +16): reported after the fact, accepted on
+  review. Findings carried: cross_browser_smoke.mjs could take the same dedup; .claude/skills/work-routines/SKILL.md:29
+  still says the GC run includes tests_scripts (P9 doc unit).
+- Snapshot 51 (790b8cad): the pull_request run 42673749242 created one job (zizmor, green) and ended "failure" at
+  18:27 with no other job created; the push run was cancelled by concurrency after 6 green jobs. Not a test result:
+  the jobs never started (GitHub side). Snapshot 52 (bfix + bchain) runs the whole workflow afresh; if it shows the same
+  pattern, the cause is outside the tree (Actions availability or billing) and goes to the owner.

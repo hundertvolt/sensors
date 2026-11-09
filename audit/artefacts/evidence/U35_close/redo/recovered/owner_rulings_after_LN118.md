@@ -1291,3 +1291,24 @@ when the owner asked many times to use such optimizations explicitly?)
 ## 2026-11-09 17:35:55 UTC - the BMP3XX polling: where and why; not "small"; all such places
 ""the pressure sensor polls about 65 times during each 130 ms reading where one read would do. " where and why did that come in? Also, finding and fixing such occurrences is the goal, but I actually would not even call that "small" - that is major overkill, as it sounds to me. Hopefully you get all such places?"
 (Where and why the 2 ms STATUS polling came in; it is major overkill, not small; make sure every such place is found.)
+
+## 2026-11-09 18:25:25 UTC - the native CRC engine; COBS was agreed for the tests
+"So you will use the native code engine for CRC? Sounds good!
+
+About the COBS Codec: we discussed not long ago to include it in the tests, there should be evidence!"
+(The native CRC engine is welcome. COBS: the owner recalls a recent agreement to include it in the tests; find the
+evidence.)
+
+## 2026-11-09 18:30:08 UTC - standing rule: ask before removing a possibly unused feature
+"Before removing any function which could be a feature which is just unused, ask me"
+(Standing: a function, method, mode or option that could be a feature and is merely unused is never removed without
+the owner's decision; it is reported with its record.)
+
+## 2026-11-09 18:31:40 UTC - the SGP40 backup: yield inside it, or was the CRC the issue?
+"Concerning the SGP40 backup, is there an elegant way to relax / yield inside the process, independent from the CRC timing, or *was* CRC actually the issue?"
+(Question: a better yield structure inside the backup, independent of the CRC, or was the CRC the cause?)
+
+## 2026-11-09 19:11:51 UTC - the audit's primary goal: minimal and optimal at once, through smart design
+"This way of thinking and finding solutions which are minimal and optimal at the same time through smart design was one of my primary goals of the audit."
+(A primary goal of the audit: solutions minimal and optimal at the same time, reached by design - remove the cause so
+the mitigation built around it goes, rather than tuning the mitigation.)

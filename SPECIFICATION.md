@@ -1016,7 +1016,7 @@ module still constructs its own `ConfigManager`/`PrintLog` internally — no cro
 sharing, and every *instance*-level dependency stays constructor-injected, so the object graph is
 still a clean DAG at that level.
 
-Full coverage: `tests/_sensortask_scenarios.py` (run by `tests/test_sensortask.py` once per device of `devices/*.toml`, E.2.1).
+Full coverage: `tests/_sensortask_scenarios.py` (run by `tests/test_sensortask.py` once per device E.2.1 lists).
 
 ## A.8 REST API endpoint reference (`src/asy_webserver_service.py`)
 
@@ -1387,7 +1387,7 @@ with no hardware surface. A module that can't yet complete the chain stays out u
 piece exists (flagged per CLAUDE.md).
 
 **Automated CI suite** (`scripts/run_digital_twin_ci.sh <device>`, `digital-twin-e2e` job — a
-`strategy.matrix` over every device of `devices/*.toml`, each GC stage and each part, the suite or
+`strategy.matrix` over the devices E.2.1 lists, each GC stage and each part, the suite or
 the host-side scenario harness (E.9)): archives the device's previous logs (E.1's evidence
 archive), then builds the Unix port and the real production website for that
 device (`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
@@ -1901,8 +1901,9 @@ and its test result does (E.5.3), so it gets its own budget either way.
   ones take no longer. The minutes are
   `ci.unit_tests_timeout_min` (Part N, with the measured runs behind them). The retried sync is the
   toolchain action's first step, ahead of `scripts/test.sh`.
-- **`unit-tests-gc-threshold`** is CLAUDE.md's (f) stage — the same suite at the boot entry's
-  `gc.threshold(32768)`, on a design already passing at `-1` — in its own job so a second full run
+- **`unit-tests-gc-threshold`** is CLAUDE.md's (f) stage — the same MicroPython suite at the boot
+  entry's `gc.threshold(32768)`, on a design already passing at `-1`, without the host tier (E.1) and
+  so without Node — in its own job so a second full run
   never sits on the critical path; like `unit-tests` it follows `lint-and-typecheck` with
   `!cancelled()`, and its minutes carry the same scenario retry budget.
 - **`unit-tests-coverage`** `needs: unit-tests` to reuse its toolchain cache rather than rebuild it
@@ -5032,7 +5033,9 @@ toolchain directory), and cross-file invariants that can only be checked by
 reading real source text (`scripts/test.sh`'s own step ordering; the `outer_cap_s` ceiling's
 mirrors, Part H.4). A host test whose build or toolchain input is missing fails, never skips.
 
-`scripts/test.sh` runs both suites. **It launches pytest first but does not wait for it** — the
+`scripts/test.sh` runs both suites, the pytest tier at the reactive default only: no host test reads
+`GC_THRESHOLD`, so a set one lists the tier as skipped and the plain run's verdict stands for both
+stages (agent, 2026-11-09). **It launches pytest first but does not wait for it** — the
 pytest tier is backgrounded so its single-process runtime overlaps the whole MicroPython loop
 instead of serializing in front of it, and reports its counts through a run record that
 `scripts/test.sh` reads into its summary block (E.10); both are reaped by one `wait` at the end (it
@@ -5203,8 +5206,15 @@ probe would disturb the property under test, named, measured and a Part N row (a
 
 ### E.2.1 Per-device scenario libraries: one process per device
 
-Every device of `devices/*.toml` runs the per-device tiers, each split the same way: a file whose
-own line reads `PER_DEVICE = True` is run by `scripts/test.sh` once per derived device (`TEST_DEVICE`),
+One device per `[device] hardware_family` of `devices/*.toml`, a device naming none its own, runs the
+per-device tiers: `scripts/_devices.sh`'s `distinct_devices`, the list `scripts/test.sh`, the twin legs
+(`scripts/_run_lower_levels.sh`, CI's `devices` job) and CI's firmware builds share. A family's devices
+differ only in `name` and `hostname` (`tests_scripts/test_device_tomls.py`), which no result of those
+runs reads, so its first stands for it, the one `distinct_wirings()` below picks for a wiring the family
+shares (owner, 2026-10-23: "matrix deduplication is something different! [...] it is a good thing as it
+saves time and is not actually device specific"); `tests_scripts/` and the web tier take every device.
+Each tier is split the same way: a file whose own line reads `PER_DEVICE = True` is run by
+`scripts/test.sh` once per listed device (`TEST_DEVICE`),
 each its own Unix-port process, tagged `<file>[<device>]` — no per-device wrapper files. Two of them
 call a shared `tests/_*_scenarios.py` library (leading underscore — not a test file) through its
 `register_for_device(<device>)` factory; `tests/_twin_devices.py` derives the device set from the
@@ -5715,7 +5725,7 @@ every option, checked at L0 (`tests_scripts/test_tests_hardware_collect_matrix.p
 |---|---|---|---|---|---|---|
 | **L0 host** | `tests_scripts/` (pytest, CPython) and `tests_js/` (vitest, `npm test`) | everywhere | — | the host build chain, `buildgen/`, the website, cross-file invariants (E.1, H.8) | `scripts/test.sh` (its pytest tier), `npm test` | — |
 | **L1 unit** | `tests/test_*.py` except `tests/test_digital_twin_*.py`, and `tests/lwip_host/test_*.py` on `build-lwip` (not under `--coverage`) | everywhere: Unix port, `tests/machine.py` fakes; the lwIP host files over loopback lwIP (B.14.4) | synthetic, in-process | raw bus byte/frame correctness, schema boundaries, NAK/CRC error paths | `scripts/test.sh` | `-1`, then `GC_THRESHOLD=32768` on a second `scripts/test.sh` run |
-| **L2 twin** | `tests/test_digital_twin_*.py` (run by `scripts/test.sh`) and `scripts/run_digital_twin_ci.sh <device>` for every device of `devices/*.toml` | sandbox and CI: Unix port, `digital_twin/` fakes (real asyncio graph) | synthetic, higher-fidelity, same interface shape | realistic stateful/concurrent/timing/persistence behavior of the whole system | `scripts/test.sh`, `scripts/run_digital_twin_ci.sh <device>` | the `tests/test_digital_twin_*.py` part as L1; `run_digital_twin_ci.sh` runs both stages itself |
+| **L2 twin** | `tests/test_digital_twin_*.py` (run by `scripts/test.sh`) and `scripts/run_digital_twin_ci.sh <device>` for each device E.2.1 lists | sandbox and CI: Unix port, `digital_twin/` fakes (real asyncio graph) | synthetic, higher-fidelity, same interface shape | realistic stateful/concurrent/timing/persistence behavior of the whole system | `scripts/test.sh`, `scripts/run_digital_twin_ci.sh <device>` | the `tests/test_digital_twin_*.py` part as L1; `run_digital_twin_ci.sh` runs both stages itself |
 | **L3 flash** | `tests_hardware/flash/` (+ `device_scripts/`) | L2 plus a real RP2040 on USB serial | none | real timing, WDT reset, Timer/IRQ, flash/littlefs persistence, BOOTSEL | `scripts/run_flash_hardware_suite.sh` | the two-image release proof (below) |
 | **L4 bench** | `tests_hardware/bench/` | L3 plus the host's real WiFi bridge | real (bridge host: AP down/up, `iptables`, station kick) | real lwIP/WiFi transport, real fault-injected scenarios | `scripts/run_bench_hardware_suite.sh` | the two-image release proof (below) |
 
@@ -6051,7 +6061,7 @@ fresh hotspot-mode boot never syncs NTP, so each SGP40 writes its backup untimes
 is that W35 as the boot's own, never the scenario's.
 Both runners drive it, each scenario once per device and GC stage: `scripts/run_digital_twin_ci.sh`
 runs, holding port 53 (`--exclusive-port-53`), only the scenarios that need an exclusive port 53;
-`scripts/test.sh` runs one `scenarios[<device>]` job per derived device at the run's GC stage on a
+`scripts/test.sh` runs one `scenarios[<device>]` job per device E.2.1 lists at the run's GC stage on a
 shared port 53 (`--shared-port-53`), those scenarios deselected and listed, and counts each job's run
 record into its summary block (none under `--coverage`). Run alone, the harness takes port 53 itself
 through `scripts/_port_lock.py`; a live holder fails the run naming it, with no twin booted. Every
@@ -10844,7 +10854,7 @@ when the key is absent.
 | `[device]` | `hotspot_time_min` | yes | int 1..35791 (the hotspot `Timer` period, 60000 × minutes, is a signed machine int) | `WifiService`: the hotspot window, and the silent mode's connect-attempt period (A.4) |
 | `[device]` | `max_connections` | no | int ≥ 1 that the firmware's lwIP pools serve: `toolchain/versions.toml`'s `[lwip]` table, checked by `toolchain/micropython_overrides.py`'s ensemble check (H.7); default `_DEFAULT_MAX_CONNECTIONS` (6) | `ServingLimits.max_connections` |
 | `[device]` | `backlog` | no | int from `max_connections` to `max_connections` + 1; default `max_connections` + 1 | `ServingLimits.backlog` (H.7) |
-| `[device]` | `hardware_family` | no | non-empty string | the test suite only: devices of one family differ only in `name` and `hostname`; hardware divergence removes it from one file; kept in `[device]`, checked by the build, never emitted into the image (owner, 2026-10-05) |
+| `[device]` | `hardware_family` | no | non-empty string | the test suite only: devices of one family differ only in `name` and `hostname`, so the per-device runs take its first alone (E.2.1; owner, 2026-10-23); hardware divergence removes it from one file; kept in `[device]`, checked by the build, never emitted into the image (owner, 2026-10-05) |
 | `[device]` | `bench` | no | bool; default `false`; set in exactly one device TOML (`tests_scripts/test_bench_device.py`) | `tests_hardware/`: the board it flashes and tests (`harness.bench_device()`; `$BENCH_DEVICE` overrides); kept in `[device]`, checked by the build, never emitted into the image (owner, 2026-10-05) |
 | `[device.wiring]` | `led_target` | no | a `neopixel` instance | `WifiService(ext_led=)`: the WiFi status LED |
 | `[device.wiring]` | `fram_target` | no | a `fram` instance | the `log=` FRAM store of `SystemService`, `WifiService`, `NTPClient` and `WebserverService` |
@@ -11042,7 +11052,7 @@ needs CPython 3.11 (`tomllib`, `datetime.UTC`).
   Persistence row) states the limit and the change that lifts it.
 
 `.github/workflows/ci.yml`'s `firmware-build-verify` and `digital-twin-e2e` both run a real
-`strategy.matrix` over every device of `devices/*.toml` with `fail-fast: false`.
+`strategy.matrix` over the devices E.2.1 lists with `fail-fast: false`.
 
 ## L.5 Build/generator script quality bar
 
@@ -12214,7 +12224,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` and `ci.unit_tests_gc_threshold_timeout_min`, and the largest one inside `ci.unit_tests_coverage_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | about 2.9× the slowest job alone (`tests/test_sensortask.py`'s `dev` job: 56 s at -1, 82 s at 32768, 2026-10-13) | a file's elapsed approaches it |
 | `runner.per_file_attempts` | 3 | `scripts/test.sh` — `3` | every per-file job, every `scenarios[<device>]` job and the backgrounded `tests_scripts/` tier, retried on a timeout only; a pass after a retry reports `RETRIED-PASS` | owner decision (owner, 2026-09-26: the per-file timeout with two retries is a standing backstop; owner, 2026-10-20: 'Simply put, do the consistent rule adaptation to tests only and only for those running into timeout.') | two transient timeouts absorbed | the backstop rule changes |
 | `runner.port_lock_attempts` | 10 | `scripts/_port_lock.sh` — `10`; `scripts/_port_lock.py` — `10`; `tests_js/_port_lock.js` — `10` | the takes of one product-fixed port's lock: a take lost to another taker of a dead holder's lock is one, after which the runner stops naming the lock directory; the three libraries agree | estimated (agent, `aa3530f`) — measurement owed: the takes a lock needs when runners overlap on the slowest host, L0 | against that measurement, once taken | the lock library or the runners sharing a port change |
-| `runner.scenarios_timeout_s` | 2555 s | `scripts/test.sh` — `2555` | each `scenarios[<device>]` job's per-attempt bound in place of `runner.per_file_timeout_s`, one job per derived device, the six at once on CI; × `runner.per_file_attempts` (7,665 s, about 128 min) is the largest retry budget `ci.unit_tests_timeout_min` and `ci.unit_tests_gc_threshold_timeout_min` take in full, so a hung job ends `FAIL` with the summary block printed | measured 2026-10-15, the Unix-port twin, single observation: a standalone `dev` scenario-harness run took 396 s at gc -1, one device, nothing beside it; on GitHub's ubuntu-latest runners (2026-10-20, runs `39335426899`, `39344544377`) `dev` is the slowest device: its in-suite job at most 439 s at -1 and 511 s at 32768 (the pytest tier's start to the job's last line, beside the whole suite), its `digital-twin-e2e` harness-leg step 486-511 s | attention; 2.5× on the bench Pi4, the slowest local host (N.1): the 65 `dev` scenarios sum to 1,003 s at 32768 (2026-11-05); 4.5× on CI (563 s, run `39647170466`); 6.5× the standalone local run | a scenario or a device is added, a scenario's boot changes, or the host class changes |
+| `runner.scenarios_timeout_s` | 2555 s | `scripts/test.sh` — `2555` | each `scenarios[<device>]` job's per-attempt bound in place of `runner.per_file_timeout_s`, one job per device E.2.1 lists, all at once on CI; × `runner.per_file_attempts` (7,665 s, about 128 min) is the largest retry budget `ci.unit_tests_timeout_min` and `ci.unit_tests_gc_threshold_timeout_min` take in full, so a hung job ends `FAIL` with the summary block printed | measured 2026-10-15, the Unix-port twin, single observation: a standalone `dev` scenario-harness run took 396 s at gc -1, one device, nothing beside it; on GitHub's ubuntu-latest runners (2026-10-20, runs `39335426899`, `39344544377`) `dev` is the slowest device: its in-suite job at most 439 s at -1 and 511 s at 32768 (the pytest tier's start to the job's last line, beside the whole suite), its `digital-twin-e2e` harness-leg step 486-511 s | attention; 2.5× on the bench Pi4, the slowest local host (N.1): the 65 `dev` scenarios sum to 1,003 s at 32768 (2026-11-05); 4.5× on CI (563 s, run `39647170466`); 6.5× the standalone local run | a scenario or a device is added, a scenario's boot changes, or the host class changes |
 | `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound per attempt; × `runner.per_file_attempts` (3,600 s, 60 min) is its retry budget, the largest one inside `ci.unit_tests_coverage_timeout_min` | estimated (agent, `a092800`); the tier measured 698 s at either GC stage beside the MicroPython tier (2026-10-15) and 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | 1.7× the 698 s tier, a hang backstop | the pytest tier grows |
 | `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` (4 tags) | every `timeout` in the runner, the per-file one sending SIGINT first (microtest's `ABORT` line, E.3.1); the EXIT trap's stop of the background jobs sends SIGKILL to what is left after twice it | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after the timeout's first signal (SIGINT for a test file, SIGTERM for the pytest tier) | unknown until measured | the interpreter's signal handling changes |
 | `runner.probe_iterations` | 500000 | `scripts/test.sh` — `500000` | the speed bands' calibration | measured: the bench Pi4 probes 120-139 ms (2026-11-07), the project's x86 sandbox 131-141 ms | both inside `runner.band_fast_ms`, the slowest at 56 % of it | the interpreter build changes |

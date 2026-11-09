@@ -128,16 +128,17 @@ def _cleanup_body(repo_root: Path) -> str:
     return body.group(0)
 
 
-def _device_step(repo_root: Path, tmp_path: Path, stems: "tuple[str, ...]") -> "subprocess.CompletedProcess[str]":
-    # scripts/test.sh's own device step in a fixture tree beside scripts/_devices.sh, printing the list and the site.
+def _device_step(repo_root: Path, tmp_path: Path, stems: "tuple[str, ...]", family: "tuple[str, ...]" = ()) -> "subprocess.CompletedProcess[str]":
+    # scripts/test.sh's own device step in a fixture tree beside scripts/_devices.sh, printing the list and the site; the
+    # stems in `family` share one [device] hardware_family.
     text = _test_sh_text(repo_root)
-    start = text.index('devices_text="$(derived_devices)"')
+    start = text.index('devices_text="$(distinct_devices)"')
     end = text.index("\n", text.index('site_device="${devices[0]}"', start)) + 1
     (tmp_path / "scripts").mkdir()
     shutil.copy2(repo_root / "scripts" / "_devices.sh", tmp_path / "scripts" / "_devices.sh")
     (tmp_path / "devices").mkdir()
     for stem in stems:
-        (tmp_path / "devices" / f"{stem}.toml").write_text("# fixture\n", encoding="utf-8")
+        (tmp_path / "devices" / f"{stem}.toml").write_text('[device]\nhardware_family = "f"\n' if stem in family else "# fixture\n", encoding="utf-8")
     script = f'set -euo pipefail\nsource scripts/_devices.sh\n{text[start:end]}echo "${{devices[*]}} | $site_device"\n'
     return subprocess.run(["/bin/bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
 
@@ -236,7 +237,7 @@ def _flavour_of(repo_root: Path, binary: Path) -> str:
     return subprocess.run(["/bin/bash", "-c", probe], capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S).stdout.strip()
 
 
-def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subprocess.CompletedProcess[str]":
+def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str, *, coverage: int = 0, after: str = "") -> "subprocess.CompletedProcess[str]":
     # Runs scripts/test.sh's GC_THRESHOLD validation block alone, extracted from the real source -
     # not the whole script, since an ACCEPTED value carries on into the live-tree sweeps while this
     # file's tests run concurrently with 85 test files holding scratch dirs under tests/_tmp.
@@ -246,7 +247,7 @@ def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subproc
     assert start is not None, "scripts/test.sh no longer validates GC_THRESHOLD - update this test with it"
     end = next(i for i in range(start, len(lines)) if lines[i] == "fi")
     script = tmp_path / "check.sh"
-    script.write_text("#!/usr/bin/env bash\nset -euo pipefail\ncoverage=0\n" + "\n".join(lines[start : end + 1]) + "\n", encoding="utf-8")
+    script.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\ncoverage={coverage}\n" + "\n".join(lines[start : end + 1]) + f"\n{after}\n", encoding="utf-8")
     return subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "GC_THRESHOLD": value}, check=False)
 
 
@@ -746,7 +747,7 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
     return done.returncode, done.stdout, root
 
 
-def _run_tier(repo_root: Path, tmp_path: Path, *, coverage: bool = False, first_attempt: str = "", later_attempts: str = "", timeout_s: float = 30) -> tuple[str, int, str]:
+def _run_tier(repo_root: Path, tmp_path: Path, *, coverage: bool = False, first_attempt: str = "", later_attempts: str = "", timeout_s: float = 30, gc_threshold: str = "") -> tuple[str, int, str]:
     # scripts/test.sh's own tier launch block, its hard stop 1 s, over a stub uv that records its arguments, then runs
     # `first_attempt` on its first call and `later_attempts` on every later one (bash); returns the status, calls, stderr.
     text = _test_sh_text(repo_root).replace("--kill-after=10 ", "--kill-after=1 ")
@@ -769,9 +770,9 @@ def _run_tier(repo_root: Path, tmp_path: Path, *, coverage: bool = False, first_
         + text[start:end]
         + 'wait "$tests_scripts_pid"\n', encoding="utf-8",
     )
-    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
+    env = {**{k: v for k, v in os.environ.items() if k != "GC_THRESHOLD"}, "PATH": f"{stub_bin}:{os.environ['PATH']}", **({"GC_THRESHOLD": gc_threshold} if gc_threshold else {})}
     done = subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
-    return (tmp_path / "status").read_text(encoding="utf-8"), len(calls.read_text(encoding="utf-8").splitlines()), done.stderr
+    return (tmp_path / "status").read_text(encoding="utf-8"), len(calls.read_text(encoding="utf-8").splitlines()) if calls.exists() else 0, done.stderr
 
 
 def _scenario_log(tag: str) -> str:
@@ -1130,6 +1131,24 @@ def test_a_tier_that_fails_is_not_retried(repo_root: Path, tmp_path: Path) -> No
     status, calls, stderr = _run_tier(repo_root, tmp_path, first_attempt="exit 1", later_attempts="exit 0")
     assert (status, calls) == ("FAIL\n", 1), stderr
     assert "exceeded" not in stderr, stderr
+
+
+def test_the_gc_stage_skips_the_tier_and_its_block_says_so_in_one_line(repo_root: Path, tmp_path: Path) -> None:
+    # No tests_scripts/ test reads GC_THRESHOLD, so the plain run's verdict is the GC stage's: pytest never starts.
+    status, calls, stderr = _run_tier(repo_root, tmp_path / "tier", gc_threshold="32768")
+    assert (status, calls) == ("SKIPPED\n", 0), stderr
+    code, out, _ = _run_tail(repo_root, tmp_path / "tail", {"tests/test_ok.py": _passing("test_ok")}, pytest_status=status.strip(), record=None)
+    block = _block(out)
+    assert code == 0, out
+    assert "Levels: L0 skipped · L1 PASS · L2 PASS" in block, block
+    assert "\nSkipped:\n  - tests_scripts/ (pytest): not run at a set GC_THRESHOLD - no host test reads it, the plain run's verdict stands\nDeselected:" in block, block
+    assert "Counts (tests_scripts tests)" not in block and "no verdict" not in out, out
+
+
+def test_a_coverage_run_ignores_the_gc_threshold_and_so_runs_the_tier(repo_root: Path, tmp_path: Path) -> None:
+    # --coverage has its own runner and renders the host report from the tier: the threshold is dropped, not half-honoured.
+    done = _gc_threshold_check(repo_root, tmp_path, "32768", coverage=1, after='echo "GC_THRESHOLD=${GC_THRESHOLD-unset}"')
+    assert (done.returncode, done.stdout) == (0, "GC_THRESHOLD=unset\n"), done
 
 
 # ---------------------------------------------------------------------------
@@ -2302,8 +2321,9 @@ def test_a_per_device_file_runs_once_per_derived_device_and_any_other_file_once(
     ]
 
 
-def test_the_device_list_is_the_derived_set_and_the_site_is_its_first_device(repo_root: Path, tmp_path: Path) -> None:
-    done = _device_step(repo_root, tmp_path, ("fixture_b", "fixture_a", "zz_test_x"))
+def test_the_device_list_is_one_device_per_hardware_family_and_the_site_is_its_first_device(repo_root: Path, tmp_path: Path) -> None:
+    # Owner, 2026-10-23: a family's devices differ only in name and hostname, which no per-device job's result reads.
+    done = _device_step(repo_root, tmp_path, ("fixture_c", "fixture_b", "fixture_a", "zz_test_x"), family=("fixture_b", "fixture_c"))
     assert (done.returncode, done.stdout) == (0, "fixture_a fixture_b | fixture_a\n"), done
 
 
@@ -2315,9 +2335,9 @@ def test_a_tree_with_no_device_stops_before_anything_is_generated(repo_root: Pat
 def test_the_device_list_is_read_once_before_generation_and_before_the_tier(repo_root: Path) -> None:
     # The tier plants zz_test_ device fixtures while it runs; the list every later step takes is read before it.
     code = _without_comments(_test_sh_text(repo_root))
-    read_at, generate_at, tier_at = code.find('devices_text="$(derived_devices)"'), code.find(_GENERATE_LINE), code.find(_PYTEST_LINE)
+    read_at, generate_at, tier_at = code.find('devices_text="$(distinct_devices)"'), code.find(_GENERATE_LINE), code.find(_PYTEST_LINE)
     assert -1 < read_at < generate_at < tier_at, (read_at, generate_at, tier_at)
-    assert code.count("derived_devices") == 1, "the device list is read more than once"
+    assert code.count("_devices)") == 1, "the device list is read more than once"
     assert "wiring_plan.json" not in code, "the jobs take the derived devices, not a glob of the generated tree"
 
 

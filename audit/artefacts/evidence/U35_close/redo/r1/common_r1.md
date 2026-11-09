@@ -19,7 +19,12 @@ when one fails (P9). Your hand-back states that figure for each operation you ch
 The platform first (owner, 2026-09-26 "perfectly suited for the target hardware"; 2026-11-09): before a Python loop
 does byte, bit or arithmetic work, check what MicroPython 1.29 already does in C (binascii, struct, json, deflate,
 hashlib, array, bytes/memoryview methods, ...) and its native emitter (viper); a Python loop doing that work is a cost
-to justify, never a default. A yield is no fix for a slow step: first ask why the step is slow.
+to justify, never a default. A yield is no fix for a slow step: first ask why the step is slow. The goal (owner,
+2026-11-09 19:11:51: "solutions which are minimal and optimal at the same time through smart design"): remove the
+cause, so the mitigation built around it (a yield, a lock split, a budget row, a retry) can go with it.
+Ask before removing a feature (owner, 2026-11-09 18:30:08: "Before removing any function which could be a feature
+which is just unused, ask me"): a function, method, mode, option or codec with no caller is kept and reported with its
+record (git, specification, owner rulings), never removed by a unit; internal mechanism a change replaces may go.
 
 ## Environment
 - S = `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Your worktree and branch are

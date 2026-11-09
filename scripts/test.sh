@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs tests/ under the real MicroPython Unix port (one process per test file, per derived device for PER_DEVICE files),
-# the lwIP host files, the host-side twin scenario harness per derived device, and the backgrounded tests_scripts/
-# pytest tier; ends with the SPECIFICATION.md E.10 summary block.
+# Runs tests/ under the real MicroPython Unix port (one process per test file, per distinct device for PER_DEVICE
+# files), the lwIP host files, the host-side twin scenario harness per distinct device, and the backgrounded
+# tests_scripts/ pytest tier; ends with the SPECIFICATION.md E.10 summary block.
 #
 # --coverage runs the same files under build-settrace, the only build flavour compiled with MICROPY_PY_SYS_SETTRACE,
 # and renders src/, digital_twin/, the generated modules and the host build chain (E.5, E.5.2).
@@ -82,6 +82,7 @@ if [ -n "${GC_THRESHOLD:-}" ]; then
         # Said out loud rather than silently dropped: --coverage has its own runner, and a run that
         # ignores an explicitly set threshold must not look like one that honored it.
         echo "== note: --coverage uses its own runner, so GC_THRESHOLD=$GC_THRESHOLD is ignored for this run" >&2
+        unset GC_THRESHOLD
     fi
 fi
 
@@ -178,9 +179,9 @@ _cleanup() {
 }
 trap _cleanup EXIT
 
-# The derived devices (scripts/_devices.sh), read once, before the tests_scripts/ tier can plant its zz_test_ fixtures:
-# the intern check, the PER_DEVICE jobs, the scenario harness jobs and the site build all take this one list.
-devices_text="$(derived_devices)"
+# The devices, one per hardware_family (scripts/_devices.sh), read once, before the tests_scripts/ tier can plant its
+# zz_test_ fixtures: the intern check, the PER_DEVICE jobs, the scenario harness jobs and the site build take this list.
+devices_text="$(distinct_devices)"
 mapfile -t devices <<<"$devices_text"
 site_device="${devices[0]}"
 unit_micropypath="$(micropypath unit)"
@@ -482,6 +483,8 @@ results_dir="$(mktemp -d)"
 tests_scripts_status_file="$results_dir/tests_scripts.status"
 tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"
 (
+    # Not at a set GC_THRESHOLD: no tests_scripts/ test reads it, so the plain run's verdict is this stage's too (E.1).
+    [ -z "${GC_THRESHOLD:-}" ] || { echo "SKIPPED" >"$tests_scripts_status_file"; exit 0; }
     # _run_with_retries' attempts without its memory gate: this tier is CPython, and a failing check whose own text names
     # a marker, as test_summary_block.py's do, prints it in its traceback. Each attempt's timeout pid is the one the EXIT
     # trap kills; the record is removed first, so the summary reads the last attempt's.
@@ -736,8 +739,8 @@ done
 if [ "$coverage" = "0" ]; then
     test_files+=("${lwip_host_files[@]}")
 fi
-# One scenario harness job per derived device, dispatched first (each is the longest job of the run); --coverage runs
-# none and lists them as skipped. A file whose own line reads `PER_DEVICE = True` runs once per derived device.
+# One scenario harness job per distinct device, dispatched first (each is the longest job of the run); --coverage runs
+# none and lists them as skipped. A file whose own line reads `PER_DEVICE = True` runs once per distinct device.
 job_list=()
 if [ "$coverage" = "0" ]; then
     for device in "${devices[@]}"; do
@@ -1006,13 +1009,20 @@ fi
 tests_scripts_record="$results_dir/tests_scripts.json"
 tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null || true)"
 l0_reasons=()
+l0_verdict=""
 case "$tests_scripts_result" in
     PASS | "RETRIED-PASS "*) ;;
+    SKIPPED)
+        l0_verdict="skipped"
+        summary_add skipped "tests_scripts/ (pytest)" "not run at a set GC_THRESHOLD - no host test reads it, the plain run's verdict stands"
+        ;;
     *) l0_reasons+=("pytest exited nonzero or timed out") ;;
 esac
 # One helper start reads the record for every listing below (a uv start costs about 0.3 s of environment lookup),
-# each listing opened by a "<RS><name>" line; an unreadable record leaves them all empty, which is no verdict.
-l0_listings="$(uv run python - "$tests_scripts_record" 2>/dev/null <<'PYEOF'
+# each listing opened by a "<RS><name>" line; an unreadable record leaves them all empty, which is no verdict, and a
+# skipped tier has no record to read.
+l0_listings=""
+[ -n "$l0_verdict" ] || l0_listings="$(uv run python - "$tests_scripts_record" 2>/dev/null <<'PYEOF'
 import sys
 sys.path.insert(0, "scripts")
 import _summary_block
@@ -1041,7 +1051,7 @@ if [[ "$l0_counts" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)$ ]]; then
     if [ "${BASH_REMATCH[2]}" -ne 0 ]; then
         l0_reasons+=("${BASH_REMATCH[2]} failed (listed above)")
     fi
-else
+elif [ -z "$l0_verdict" ]; then
     l0_reasons+=("no verdict (run record missing or unreadable)")
 fi
 # Its result and session notes go into the block's Notes: list.
@@ -1056,7 +1066,7 @@ if [ "${#l0_reasons[@]}" -gt 0 ]; then
     failed=1
     evidence_files+=("$tests_scripts_record")
     summary_add failed "tests_scripts/ (pytest)" "$(_join_reasons "${l0_reasons[@]}")"
-elif [ "$tests_scripts_result" != "PASS" ]; then
+elif [[ "$tests_scripts_result" == "RETRIED-PASS "* ]]; then
     l0_retried=1
     evidence_files+=("$tests_scripts_record")
     summary_add retried "tests_scripts/ (pytest)" "${tests_scripts_result#RETRIED-PASS }"
@@ -1084,7 +1094,7 @@ fi
 summary_counts_line tests "$tests_passed" "$tests_failed" "$tests_skipped" "$tests_deselected" 0 0 0
 l2_scope="tests/test_digital_twin_*.py and the scenario harness"
 [ "$coverage" = "0" ] || l2_scope="tests/test_digital_twin_*.py only"
-summary_levels "L0 $(_level_verdict "$([ "$tests_scripts_result" = "FAIL" ] && printf 1 || printf 0)" "$l0_retried") · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") ($l2_scope; run_digital_twin_ci.sh not run)"
+summary_levels "L0 ${l0_verdict:-$(_level_verdict "$([ "$tests_scripts_result" = "FAIL" ] && printf 1 || printf 0)" "$l0_retried")} · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") ($l2_scope; run_digital_twin_ci.sh not run)"
 if [ "$coverage" = "1" ]; then
     summary_gc_stage "coverage run (settrace)"
 elif [ -n "${GC_THRESHOLD:-}" ]; then
