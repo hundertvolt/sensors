@@ -881,7 +881,7 @@ class _FakeFramManager:
         self._chunk = chunk if chunk is not None else _FakeFramChunk()
         self._fail = fail
 
-    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "_FakeFramChunk | None":
+    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, *, owner: str) -> "_FakeFramChunk | None":
         if self._fail:
             return None  # the real allocator's refusal: no room left on the chip
         return self._chunk

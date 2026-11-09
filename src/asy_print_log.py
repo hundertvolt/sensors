@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
     class _FramManager(Protocol):
         def get_chunk(
-            self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
+            self, size: int, crc: "CRCBase | None" = None, verify: int = 0, *, owner: str,
         ) -> "_FramChunk | None": ...
 
         def get_pause(self) -> bool: ...
@@ -71,7 +71,8 @@ _MAX_CNT = const(0xFFFF)
 _WRAP_MAX = const(0x3FFFFFFF)  # the wrapping counters' top, inside the small-int range: compared for equality or by masked difference
 _RESETS_ALL = const(0x1FFFFFFF)  # one bit per store reset() in flight at once, its lowest-free-bit step inside the small-int range
 
-# Code from the global catalog (buildgen/error_catalog.json): a shared one, logged only for a store unreadable at setup.
+# Codes from the global catalog (buildgen/error_catalog.json), shared ones: a store unreadable at setup, a writer task's end.
+_ERR_UNEXPECTED = const(23)
 _ERR_LOG_RAM_ONLY = const(28)
 
 # A C-stack overflow is a design defect, never a routine failure: a logger call or an explicit record notes it here, and
@@ -186,19 +187,12 @@ class PrintLogHistory(PrintLog):
     async def _read(self) -> tuple[int, tuple[int, ...]] | bool | None:
         return True
 
-    def _since_counted(self, counted: int) -> int:  # the count a reset begun at `counted` leaves: its calls since, less once a later reset cleared
-        return min((self._counted - counted) & _WRAP_MAX, self._err_count)
-
-    def _since_kept(self, kept: int, bit: int) -> int:  # how many of the newest slots the reset begun at `kept` on `bit` keeps
-        repeat = 1 if self._resets_repeat & bit else 0
-        return min((self._kept - kept) & _WRAP_MAX, len(self.history) - repeat) + repeat
-
-    async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
-        # errno == _NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike; a
+    def _record(self, min_e: int, max_e: int, errno: int) -> bool:  # True when the state is due for a FRAM write
+        # errno == _NO_ERR (0) is the shared "nothing to record" sentinel for every entry point; a
         # negative or over-range code is a defect the catalog check prevents: counted, diagnosed, no slot.
         self._count()
         if errno == _NO_ERR:
-            return
+            return False
         code = errno + min_e
         if errno < 0 or code > max_e:
             self._diag("PrintLog: Error number", errno, "is invalid!")
@@ -207,15 +201,28 @@ class PrintLogHistory(PrintLog):
         if not self.initialized:
             # Return regardless of logging level - don't write stale state to FRAM before setup().
             self._diag("PrintLog: Uninitialized, call setup first!")
-            return
-        if not await self._write():
+            return False
+        return True
+
+    def _since_counted(self, counted: int) -> int:  # the count a reset begun at `counted` leaves: its calls since, less once a later reset cleared
+        return min((self._counted - counted) & _WRAP_MAX, self._err_count)
+
+    def _since_kept(self, kept: int, bit: int) -> int:  # how many of the newest slots the reset begun at `kept` on `bit` keeps
+        repeat = 1 if self._resets_repeat & bit else 0
+        return min((self._kept - kept) & _WRAP_MAX, len(self.history) - repeat) + repeat
+
+    async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
+        if self._record(min_e, max_e, errno) and not await self._write():
             self._diag("PrintLog: History write failed!")
 
     async def _write(self) -> bool:
         return True
 
+    def _write_later(self) -> None:  # RAM only: nothing to write, so no writer task
+        return
+
     async def get_log(self, name: str | None = None) -> "ErrorLog":
-        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded" and report 0, never the
+        # Reverses _record()'s encoding: 0x00/0x80 are "nothing recorded" and report 0, never the
         # raw byte; else shift back by _NO_ERR/_NO_WRN to recover the code. name=None falls back to
         # self.name (every real src/ call site relies on this); tests still pass an explicit override.
         if name is None:
@@ -234,6 +241,13 @@ class PrintLogHistory(PrintLog):
                 err_type.append("W")
         return {name: {"ErrCount": self._err_count, "ErrNum": err_num, "ErrType": err_type}}
 
+    def err_q(self, *args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
+        # err_s() for a caller that must not wait on FRAM: printed (the C-stack record first) and recorded now, written by
+        # the store's one writer task (C.7.1).
+        self._line(_LOG_ERR, args, sep, end)
+        if self._record(_NO_ERR, _MAX_ERR, errno):
+            self._write_later()
+
     async def err_s(self, *args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         for arg in args:  # the C-stack record ahead of the FRAM write; _line() repeats it as a no-op
             report_if_fatal(arg)
@@ -247,6 +261,11 @@ class PrintLogHistory(PrintLog):
 
     async def setup(self) -> None:  # no persistence to load in the pure in-memory case
         self.initialized = True
+
+    def wrn_q(self, *args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:  # as err_q()
+        self._line(_LOG_WARN, args, sep, end)
+        if self._record(_NO_WRN, _MAX_WRN, wrnno):
+            self._write_later()
 
     async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         for arg in args:  # as err_s()
@@ -277,6 +296,8 @@ class PrintLogHistoryStore(PrintLogHistory):
         self._write_lock = asyncio.Lock()
         self._write_gen = 0  # one step per _write() call and per reset() write
         self._written_gen = 0  # the _write_gen whose state the last successful write packed
+        self._write_due = False  # an err_q()/wrn_q() entry the background writer has not yet packed
+        self._writer: asyncio.Task[None] | None = None  # that writer's task while it exists: at most one per store
 
     def _pack_reset(self, dbuf: memoryview, kept: int, counted: int, bit: int) -> None:
         # The image reset() writes, byte by byte into the chunk's buffer (no tuple, no list): the entries since it began
@@ -335,6 +356,26 @@ class PrintLogHistoryStore(PrintLogHistory):
             if ok:
                 self._written_gen = gen
             return ok
+
+    async def _write_behind(self) -> None:
+        try:  # cleanup only: a writer that ends any way leaves the next entry to start one
+            try:
+                while self._write_due:  # an entry logged during a write is packed by the next one
+                    self._write_due = False
+                    if not await self._write():
+                        self._diag("PrintLog: History write failed!")
+            except Exception as e:  # an unsupervised task's top (G.2): only a chunk raising against its contract reaches it
+                await self.err_s("PrintLog: History writer failed:", e, errno=_ERR_UNEXPECTED)
+        finally:
+            self._writer = None
+
+    def _write_later(self) -> None:
+        self._write_due = True
+        if self._writer is None:
+            try:  # a full heap here leaves the entry in RAM for the next call's writer
+                self._writer = asyncio.create_task(self._write_behind())
+            except MemoryError as e:
+                self.err("PrintLog: FRAM history writer failed:", e)
 
     async def reset(self) -> bool:  # False when the cleared state could not be written (ResetErrors then answers "Failed")
         # The state it leaves is written before RAM clears: a pause refusing that write, up front or at the chunk, clears

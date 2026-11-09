@@ -29,7 +29,7 @@ _CATALOG_PATH = _REPO / "buildgen" / "error_catalog.json"
 _MOCK_SAMPLES = "mockdata/samples.json"
 _TEST_SCOPES = ("tests", "tests_hardware", "tests_scripts", "digital_twin", "scripts")
 
-_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}
+_METHOD_KIND = {"err_s": "E", "wrn_s": "W", "err_q": "E", "wrn_q": "W"}  # each persisting entry point, awaited or not
 _KEYWORD = {"E": "errno", "W": "wrnno"}
 _PREFIX = {"E": "_ERR_", "W": "_WRN_"}
 _CODE_PARAMS = frozenset(_KEYWORD.values())
