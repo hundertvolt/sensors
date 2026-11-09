@@ -1,5 +1,10 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 17:34 UTC, 2026-11-09: probe 1 widened before it runs
+`probes_20261109/crc_chip.py` replaced: it now also times MicroPython's C `binascii.crc32` (a different CRC, timed
+only) and a native-code (viper) form of the chunk CRC that must print "same". Run this version; the 17:32 relay
+otherwise stands. If the owner already OK'd the runs, that OK covers this file (same kind: RAM only).
+
 ## 17:32 UTC, 2026-11-09: two read-only probes on the current image; no reflash tonight
 New on this branch: two probe scripts in `probes_20261109/` next to this file; nothing else.
 - Day 4 start read. The hotspot at power-on reads as the board's STA streak running out before the Pi's access point
