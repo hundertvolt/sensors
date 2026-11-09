@@ -1,5 +1,11 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 17:40 UTC, 2026-11-09: probe 1 once more with one added form
+- Thanks: native code 3.4 ms, C crc32 89 us. The native form converts its 32-bit constants at every bit step;
+  `crc_chip.py` now also carries `viper_hoisted`, the same loop with the constants converted once.
+- Run `probes_20261109/crc_chip.py` as it stands now, the same way (`run_isolated()`, then
+  `restore_board_to_serving()`). Same kind as the OK'd runs: RAM only. Report its printed lines verbatim.
+
 ## 17:38 UTC, 2026-11-09: thanks; probe 1 once more, at its 17:34 version
 - Both reads landed (table forms 5.1-10.2 ms against 37.0 ms bit by bit; SCD30 routine frames 0.7-5.1 ms, no long
   clock stretch in 396 frames). The run took probe 1's 17:32 version.

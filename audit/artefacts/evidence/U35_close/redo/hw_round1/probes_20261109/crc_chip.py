@@ -94,6 +94,34 @@ def viper(buf):
     return viper_crc(buf, len(buf))
 
 
+@micropython.viper
+def viper_hoisted_crc(buf, n: int) -> uint:
+    # The same loop with every 32-bit constant converted once, before it: a constant beyond the small-int range is
+    # an object that uint() converts at each use.
+    p = ptr8(buf)
+    poly = uint(0x04C11DB7)
+    top = uint(0x80000000)
+    mask = uint(0xFFFFFFFF)
+    crc = mask
+    i = 0
+    while i < n:
+        crc ^= uint(p[i]) << 24
+        j = 0
+        while j < 8:
+            if crc & top:
+                crc = (crc << 1) ^ poly
+            else:
+                crc = crc << 1
+            j += 1
+        crc &= mask
+        i += 1
+    return crc
+
+
+def viper_hoisted(buf):
+    return viper_hoisted_crc(buf, len(buf))
+
+
 buf = bytearray((i * 37 + 11) & 0xFF for i in range(264))
 
 
@@ -106,7 +134,7 @@ async def current():
 ref, cur_us = asyncio.run(current())
 print("current_per_byte_yield_264B_us", cur_us, "crc", hex(ref))
 gc.collect()
-for name, f in (("bitwise_no_yield", bitwise), ("nibble_table", nibble), ("byte_table", bytetab), ("viper", viper)):
+for name, f in (("bitwise_no_yield", bitwise), ("nibble_table", nibble), ("byte_table", bytetab), ("viper", viper), ("viper_hoisted", viper_hoisted)):
     wdt.feed()
     same = f(buf) == ref
     best, worst = 10**9, 0
@@ -123,5 +151,5 @@ for _ in range(10):
     best = min(best, time.ticks_diff(time.ticks_us(), t0))
 print("binascii_crc32_C_other_algorithm", "264B_best_us", best)
 full = buf + bytes(((ref >> 24) & 0xFF, (ref >> 16) & 0xFF, (ref >> 8) & 0xFF, ref & 0xFF))
-print("residue_with_crc_appended", bitwise(full), nibble(full), bytetab(full), viper(full))
+print("residue_with_crc_appended", bitwise(full), nibble(full), bytetab(full), viper(full), viper_hoisted(full))
 print("done")
