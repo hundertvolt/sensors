@@ -23,7 +23,7 @@ from microdot import Microdot, Request
 
 import asy_print_log
 import asy_webserver_service
-from asy_print_log import LogConfig
+from asy_print_log import LogConfig, PrintLogHistoryStore
 from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
 
 try:
@@ -424,19 +424,19 @@ def _check_refused(served: "tuple[list[tuple[bytes, int, int, int]], list[tuple[
     assert used == [(_W_BAD_HEAD, "W")], used
 
 
-def _closed_while_its_trace_waits(reader: _OneStream, writer: _Writer, *, full: bool) -> "tuple[tuple[list[int], int, bool, bool, int], tuple[int, tuple[int, list[tuple[int, str]]]], object, tuple[tuple[int, list[tuple[int, str]]], object, object]]":
-    # One connection served on a driven clock while another chunk write holds the FRAM its logger writes to (`full`: at the
-    # ceiling): when it closed after its start, the per-call timeout, its close, the FRAM still held, its writes; the count
-    # and log it left; the chunk as the cut left it; then the log, chunk and RAM after the logger's next write.
+def _closed_while_its_entry_waits(reader: _OneStream, writer: _Writer, *, full: bool) -> "tuple[tuple[int, int, bool, int, bool, bool, int], tuple[int, tuple[int, list[tuple[int, str]]]], tuple[tuple[int, list[tuple[int, str]]], object, object]]":
+    # One connection served on a driven clock while another chunk write holds the FRAM its logger writes to (`full`: at
+    # the ceiling): when it closed, the per-call timeout, its close, the open slots, the FRAM still held, its task ended,
+    # its writes; the count and log it left; and the log, chunk and RAM once the FRAM frees and the entry is written.
     manager, _chip = make_fram_manager()
     serving = ServingLimits(_MAX_CONTENT_LENGTH, _CHUNK_BYTES, 1, None, 0.3, 2.0, "127.0.0.1", 80)
     routes = RouteSources((), None, None, None, None, None, None, None, (), ())
     service = WebserverService(Microdot(), routes, serving, _Uptime().read, None, LogConfig(manager, 10, None))  # its logger on FRAM
-    per_call_ms = service._per_call_timeout_ms
+    store = service.pr
+    assert isinstance(store, PrintLogHistoryStore)
     clock = DrivenTime(asy_webserver_service, sleeps=True)
-    closed_at: list[int] = []
 
-    async def scenario() -> "tuple[tuple[list[int], int, bool, bool, int], tuple[int, tuple[int, list[tuple[int, str]]]], object, tuple[tuple[int, list[tuple[int, str]]], object, object]]":
+    async def scenario() -> "tuple[tuple[int, int, bool, int, bool, bool, int], tuple[int, tuple[int, list[tuple[int, str]]]], tuple[tuple[int, list[tuple[int, str]]], object, object]]":
         await manager.setup()
         await service.setup()
         fram_free, holding = asyncio.Event(), asyncio.Event()
@@ -448,30 +448,22 @@ def _closed_while_its_trace_waits(reader: _OneStream, writer: _Writer, *, full: 
                 holding.set()
                 await fram_free.wait()
 
-        async def serve(start: int) -> None:
-            await service._serve(reader, writer)
-            closed_at.append(clock.now - start)
-
         holder = asyncio.create_task(other_write())
         await holding.wait()
-        served = asyncio.create_task(serve(clock.now))
-        for _ in range(4):  # a close held until the FRAM frees shows as none within four timeouts
-            if served.done():
-                break
-            await _driven_sleep(per_call_ms / 1000)
-        closing = (list(closed_at), per_call_ms, writer.closed, manager.fram.session_lock.locked(), len(writer.writes))
+        served = asyncio.create_task(service._serve(reader, writer))
+        took = await clock.run_until(lambda: writer.closed, _VIRTUAL_LIMIT_MS)
+        closing = (took, service._per_call_timeout_ms, writer.closed, await _slots(service), manager.fram.session_lock.locked(), served.done(), len(writer.writes))
         kept = (await service.get_dropped_count(), await _log(service))
         fram_free.set()
         await holder
         await served
-        stored = await service.pr._read()  # the chunk as the cut trace left it
+        await clock.run_until(lambda: store._writer is None, _VIRTUAL_LIMIT_MS)  # a written-behind entry lands too
         if full:
             await service._open_conns.decrement()
-        await service.pr.wrn_s("next", wrnno=_W_CALL_TIMEOUT)  # the logger's next write, by any caller
-        return closing, kept, stored, (await _log(service), await service.pr._read(), (service.pr._err_count, tuple(service.pr.history)))
+        return closing, kept, (await _log(service), await service.pr._read(), (service.pr._err_count, tuple(service.pr.history)))
 
     with clock:
-        return run(_driven(clock, scenario()), _RUN_LIMIT_S)
+        return run(scenario(), _RUN_LIMIT_S)  # the scenario drives the clock itself
 
 
 async def _driven(clock: DrivenTime, coro: "Coroutine[object, object, T]") -> "T":
@@ -640,21 +632,21 @@ def test_seven_refusals_count_seven_and_spend_one_slot() -> None:
     assert len(console.lines) == loud_lines  # DebugLevel 0 prints none of its seven
 
 
-def test_a_connection_whose_trace_waits_closes_at_one_per_call_timeout_and_keeps_its_entry() -> None:
-    # Another chunk write holds the FRAM, so the connection's one trace cannot land: a refusal, a drop arm and a reclaim
-    # arm each close at one per-call timeout, not sooner (the hold paces a client) and not with the FRAM; the count and
-    # the RAM entry stay, and the logger's next write lands the entry (SPECIFICATION.md A.8).
-    refused = _closed_while_its_trace_waits(_Reader([(0, _GET_STATUS)]), _Writer(), full=True)
-    bad_head = _closed_while_its_trace_waits(_Reader([(0, _head("PUT /status HTTP/1.1", "Content-Length: -1"))]), _Writer(), full=False)
-    unreachable = _closed_while_its_trace_waits(_Reader([(0, _GET_STATUS)]), _Writer(fail_at=1, fail_with=OSError(errno.EHOSTUNREACH)), full=False)
-    for arm, dropped, wrnno in ((refused, 1, _W_REFUSED), (bad_head, 1, _W_BAD_HEAD), (unreachable, 0, _W_SOCKET_ERROR)):
-        (closed_at, per_call_ms, closed, fram_held, _writes), kept, stored, (after, stored_after, ram_after) = arm
-        assert closed_at == [per_call_ms] and closed and fram_held, (wrnno, closed_at, closed, fram_held)  # its trace still waited
-        assert kept == (dropped, (1, [(wrnno, "W")])), (wrnno, kept)  # counted at once, its entry in RAM
-        assert isinstance(stored, tuple) and stored[0] == 0, (wrnno, stored)  # not on the chip yet
-        assert after == (2, [(wrnno, "W"), (_W_CALL_TIMEOUT, "W")]), (wrnno, after)
-        assert stored_after == ram_after, (wrnno, stored_after, ram_after)  # the next write landed both
-    assert refused[0][4] == 0, refused[0]  # a refusal writes no response
+def test_a_dropped_connection_closes_and_frees_its_slot_before_its_entry_lands() -> None:
+    # Another chunk write holds the FRAM, so the connection's one entry cannot land: a refusal, a drop arm and a reclaim
+    # arm close, release the count and end their task at once, a silent client at its per-call timeout - no task waits
+    # per dropped connection; each entry is in RAM and lands once the FRAM frees (owner, 2026-11-07; SPEC A.8).
+    refused = _closed_while_its_entry_waits(_Reader([(0, _GET_STATUS)]), _Writer(), full=True)
+    bad_head = _closed_while_its_entry_waits(_Reader([(0, _head("PUT /status HTTP/1.1", "Content-Length: -1"))]), _Writer(), full=False)
+    unreachable = _closed_while_its_entry_waits(_Reader([(0, _GET_STATUS)]), _Writer(fail_at=1, fail_with=OSError(errno.EHOSTUNREACH)), full=False)
+    silent = _closed_while_its_entry_waits(_Reader([], eof=False, sleep=_driven_sleep), _Writer(), full=False)
+    for arm, slots, dropped, wrnno in ((refused, 1, 1, _W_REFUSED), (bad_head, 0, 1, _W_BAD_HEAD), (unreachable, 0, 0, _W_SOCKET_ERROR), (silent, 0, 0, _W_CALL_TIMEOUT)):
+        (took, per_call_ms, closed, open_slots, fram_held, ended, _writes), kept, (after, stored_after, ram_after) = arm
+        assert (took, closed, open_slots, fram_held, ended) == (per_call_ms if arm is silent else 0, True, slots, True, True), (wrnno, took, closed, open_slots, fram_held, ended)
+        assert kept == (dropped, (1, [(wrnno, "W")])), (wrnno, kept)  # counted, its entry in RAM, not on the chip yet
+        assert after == (1, [(wrnno, "W")]), (wrnno, after)
+        assert stored_after == ram_after, (wrnno, stored_after, ram_after)  # the entry landed
+    assert refused[0][6] == 0, refused[0]  # a refusal writes no response
 
 
 def test_dropped_connections_leave_the_count_after_a_day() -> None:

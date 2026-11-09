@@ -351,21 +351,21 @@ class ConfigManager:
         for i, value in enumerate(values):
             checked = coerce(value)
             if checked is None:
-                await self.pr.err_s(self._config_file, "- stored value has the wrong type:", names[i], errno=_ERR_CONTRACT)
+                self.pr.err_q(self._config_file, "- stored value has the wrong type:", names[i], errno=_ERR_CONTRACT)
                 return None
             typed.append(checked)
         return typed
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[CfgValue] | None":
         if not self.valid:
-            await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
+            self.pr.err_q(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
             return None
         self.pr.all(self._config_file, "- Reading config data into list.")
         try:
             current = self._current()
             return [current[key] for key in schema_names(keys)]
         except KeyError as e:  # unknown key
-            await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
+            self.pr.err_q(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
             return None
 
     def _closed_for_reset(self) -> bool:
@@ -384,33 +384,38 @@ class ConfigManager:
         # The still-synchronous, uninterruptible flash write, decoupled from whatever request triggered it;
         # a deferred snapshot first waits for its commit(). It re-acquires write_config()'s own lock, so at
         # most one write is in flight per ConfigManager.
-        try:
-            await self._commit_ready.wait()
-            async with self._config_lock:
-                if self._staged is not staged:
-                    # A newer snapshot was staged while this one waited for its commit or the lock: writing this one
-                    # would regress a replaced value (PrintLogHistoryStore._write() applies the same rule).
-                    return
-                try:
-                    if staged != self._cache:  # equal: the file already holds it, nothing to write
-                        text = json.dumps(staged)  # serialised before the open: a failure leaves the file intact
-                        self._write_file(text)
-                        self.pr.evt(self._config_file, "- Config data was written.")
-                except (MemoryError, OSError, ValueError) as e:  # file errors, or the serialisation
-                    # exhausting the heap: logged, never re-raised, and never retried here.
-                    self.unpersisted = True
-                    await self.pr.err_s(self._config_file, "- Error writing config data, running unpersisted:", e, errno=_ERR_CFG_FILE_WRITE)
-                finally:
-                    # The validated value stays in effect whether or not the write landed: its push
-                    # already reached the module, and only persistence failed (SPECIFICATION.md C.7.3).
-                    self._cache = staged
-                    if self._staged is staged:  # nothing newer staged while this flush was running
-                        self._staged = None
-                    if self._pending_flush is asyncio.current_task():
-                        self._pending_flush = None
-        except Exception as e:  # an unsupervised task's top: its end is persisted, never left unretrieved
-            self.unpersisted = True  # the finally above already made the unwritten snapshot the cache
-            await self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)
+        try:  # cleanup only: the task drops its pending mark once it ends, its entry landed first (A.8's flush_pending())
+            try:
+                await self._commit_ready.wait()
+                async with self._config_lock:
+                    if self._staged is not staged:
+                        # A newer snapshot was staged while this one waited for its commit or the lock: writing this one
+                        # would regress a replaced value (PrintLogHistoryStore._write() applies the same rule).
+                        return
+                    failure: Exception | None = None
+                    try:
+                        if staged != self._cache:  # equal: the file already holds it, nothing to write
+                            text = json.dumps(staged)  # serialised before the open: a failure leaves the file intact
+                            self._write_file(text)
+                            self.pr.evt(self._config_file, "- Config data was written.")
+                    except (MemoryError, OSError, ValueError) as e:  # file errors, or the serialisation
+                        # exhausting the heap: logged, never re-raised, and never retried here.
+                        self.unpersisted = True
+                        failure = e
+                    finally:
+                        # The validated value stays in effect whether or not the write landed: its push
+                        # already reached the module, and only persistence failed (SPECIFICATION.md C.7.3).
+                        self._cache = staged
+                        if self._staged is staged:  # nothing newer staged while this flush was running
+                            self._staged = None
+                if failure is not None:  # logged once the lock is free, so the next write never waits on FRAM
+                    await self.pr.err_s(self._config_file, "- Error writing config data, running unpersisted:", failure, errno=_ERR_CFG_FILE_WRITE)
+            except Exception as e:  # an unsupervised task's top: its end is persisted, never left unretrieved
+                self.unpersisted = True  # the finally above already made the unwritten snapshot the cache
+                await self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)
+        finally:
+            if self._pending_flush is asyncio.current_task():
+                self._pending_flush = None
 
     def _write_file(self, text: str) -> None:
         # The one flash write, setup()'s and _flush_staged()'s: opened for writing, written and closed with no yield, so
@@ -427,14 +432,14 @@ class ConfigManager:
         # (read-your-write). No lock needed: neither write_config() nor _flush_staged() awaits
         # mid-mutation of the field this reads, so no partial state is observable.
         if not self.valid:
-            await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
+            self.pr.err_q(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
             return None
         self.pr.all(self._config_file, "- Reading config data into dict.")
         try:
             current = self._current()
             return {key: current[key] for key in keys}
         except KeyError as e:  # unknown key
-            await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
+            self.pr.err_q(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
             return None
 
     async def get_error_counter(self) -> "ErrorLog":
@@ -584,7 +589,7 @@ class ConfigManager:
         if self._closed_for_reset():
             return False, {}
         if not self.valid:
-            await self.pr.err_s(self._config_file, "- Config is not valid, cannot write!", errno=_ERR_CFG_NOT_VALID)
+            self.pr.err_q(self._config_file, "- Config is not valid, cannot write!", errno=_ERR_CFG_NOT_VALID)
             return False, {}
         if not self.writable:
             self.pr.evt(self._config_file, "- unreadable at boot, writes refused until the next boot")
@@ -599,10 +604,10 @@ class ConfigManager:
                 resolution: dict[str, Callable[[CfgValue], CfgValue]] = {key: _stored_float for key, field in fields.items() if field[1] == "float"}
                 outcome = compare_before_write(data, self._cfg_vals, self._current(), always=always, resolution=resolution)
             except MemoryError as e:  # the compare exhausting the heap - no file I/O happens in this method
-                await self.pr.err_s(self._config_file, "- Error validating config data:", e, errno=_ERR_ALLOC)
+                self.pr.err_q(self._config_file, "- Error validating config data:", e, errno=_ERR_ALLOC)
                 return False, {}
             if outcome is None:
-                await self.pr.err_s(self._config_file, "- write data is not an object", errno=_ERR_BAD_ARG)
+                self.pr.err_q(self._config_file, "- write data is not an object", errno=_ERR_BAD_ARG)
                 return False, {}
             write, dict_results = outcome
             # No bad-default check: the manager's own schema passed setup()'s self-check, and a malformed
@@ -610,11 +615,11 @@ class ConfigManager:
             for key, result in dict_results.items():
                 if result == INVALID:
                     if key not in fields:
-                        await self.pr.err_s(self._config_file, "- Key", key, "not found, skipping!", errno=_ERR_BAD_ARG)
+                        self.pr.err_q(self._config_file, "- Key", key, "not found, skipping!", errno=_ERR_BAD_ARG)
                     else:
-                        await self.pr.err_s(self._config_file, "- Type / range error in", key, "- skipping!", errno=_ERR_BAD_ARG)
+                        self.pr.err_q(self._config_file, "- Type / range error in", key, "- skipping!", errno=_ERR_BAD_ARG)
                 elif result == FAILED:
-                    await self.pr.err_s(self._config_file, "- Key", key, "not found in config file, ignoring!", errno=_ERR_CONTRACT)
+                    self.pr.err_q(self._config_file, "- Key", key, "not found in config file, ignoring!", errno=_ERR_CONTRACT)
                 elif key in always:
                     del write[key]  # "Valid", nothing staged: the push stage dispatches it
                     self.pr.evt(self._config_file, "- Key", key, "is valid but not in storage, skipping.")
@@ -630,7 +635,7 @@ class ConfigManager:
                     new_cache[key] = _stored_float(value) if type(value) is float else value
                 task = asyncio.create_task(self._flush_staged(new_cache))
             except MemoryError as e:  # nothing staged: the answer matches what is served
-                await self.pr.err_s(self._config_file, "- Error staging config data:", e, errno=_ERR_ALLOC)
+                self.pr.err_q(self._config_file, "- Error staging config data:", e, errno=_ERR_ALLOC)
                 return False, {}
             # No await from here to the return: the task cannot run before it is staged, and a deferred one
             # then waits for commit(); _cache stays "what the file holds" until _flush_staged() commits it.

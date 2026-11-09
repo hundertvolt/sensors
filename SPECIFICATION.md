@@ -1172,7 +1172,7 @@ settings.
   its exact word, matched as
   a whole string — no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
   300 s lives in the command callback. `/status` — `{"ResetErrors": true}`: every registered
-  error source and the webserver's own log reset concurrently, `HTTPDropped`'s window included;
+  error source, then the webserver's own log, reset one after another (owner, 2026-11-07), `HTTPDropped`'s window included;
   `result.ResetErrors` answers `"Failed"` when any reset returned false, else `"Valid"`; a reset that
   raises (a defect's path) reaches the catch-all, which answers 500 and persists it (errno 23);
   any other value, and every other key, answers `"Invalid"`; a body without the key resets nothing.
@@ -1316,21 +1316,16 @@ covers the webserver task (owner, 2026-08-12); duplicate registration is last-wi
 (owner, 2026-08-12: 'do whatever is in accordance with the official protocol spec'); a connection
 reclaimed by a timeout logs a warning, not an error (owner, 2026-08-12: 'would be good to see when a
 connection ran into a timeout even without a full restart, warning in that case, no error').
-A refused connection is counted at once and closes, with no response written, once its trace lands
-or one per-call timeout has passed; the trace stays before the close because it paces a refused
-client's retries. Every trace `_serve()` awaits before its close — the refusal, a refused head, a
-peer reset and the three reclaim arms (a timeout, a socket error, an unexpected error) — goes
-through `_trace_before_close()` and is held at most one per-call timeout; one cut short is not lost,
-since `wrn_s()`/`err_s()` keep the entry in RAM before their first await, and it stays there until
-the logger's next write persists it. Both are the agent's decision (agent, 2026-10-22), accepted by
-the owner on their report with the chunk write order's (A.4): "Solutions you proposed agreed." The
-task's last-resort catch keeps a direct, unbounded `err_s()` ("Connection task failed:") (owner,
-2026-10-22: "Fine, keep it.", asked whether that last-resort trace stays unbounded while the six
-other traces before the close are held at most one per-call timeout): it is reached in practice only
-on an exhausted heap, when the count, a proxy, a release or a trace itself raised, where the bound's
-wrapper would be one more allocation; the connection then stays open a little longer and keeps its
-slot, and the `finally` closes it whatever the trace's outcome. `tests_scripts/test_task_tops.py`
-pins a direct `err_s()` at every task top.
+A refused connection frees its slot at once and closes with no response written. A connection's one
+entry — the refusal, a refused head, a peer reset or one of the three reclaim arms (a timeout, a
+socket error, an unexpected error) — and a read-phase timeout or a failed close are recorded and
+printed at once and written behind (`wrn_q()`/`err_q()`, C.7.1), so the connection closes and its
+task ends without waiting on FRAM (owner, 2026-11-07: "a refused or dropped connection closing before
+its FRAM entry"), never awaited after the close, which keeps a task per dropped connection that a
+ceiling hammer piles up until the heap runs out (agent, 2026-11-09). The task's last-resort catch
+keeps a direct `err_s()` ("Connection task failed:") (owner, 2026-10-22: "Fine, keep it."), reached
+in practice only on an exhausted heap.
+`tests_scripts/test_task_tops.py` pins a direct `err_s()` at every task top.
 Implementation: `WebserverService`/`_TimeoutStreamProxy` and `tests/test_asy_webserver_service.py`;
 the bounds in `tests/test_asy_webserver_connections.py`.
 
@@ -3632,7 +3627,7 @@ stored the value.** `reset()` clears the in-RAM ring once that write returns, so
 0 either way, and a chip-level failure surfaces at the next boot — `setup()` restores the old history
 — rather than at the call. The narrower case where `_write()` itself returns False (a *detected*
 failure) answers `"Failed"` for `ResetErrors` (owner, 2026-09-26), while every other source still
-resets: `reset()` returns whether its write succeeded, and the sources reset concurrently (A.8).
+resets: `reset()` returns whether its write succeeded, and the sources reset one after another (A.8).
 
 **On the real FM25xx** (dev bench, `dev` firmware, 2026-09-17, sources reset one after another):
 an abrupt `hard_reset()` leaves a FRAM-backed log byte-identical (WIFI's `counter=3`, `W37, W36,
@@ -3641,7 +3636,7 @@ all 21 of `dev`'s chunks while a concurrent `GET /status` answers in 0.56-0.76 s
 never holds the loop, at a fixed cost per chunk (about 305 ms), not per entry, for which the twin is
 no floor (6.32 s real against the twin's 8.15 s); and the UART pair keeps its 1 s cadence with zero failures through near-continuous chunk
 writing (CLAUDE.md's `asy_uart_comm.py` rule). The bench `ResetErrors` budget, from a 0-4 reader
-sweep of the concurrent reset, is owed (BACKLOG.md's "Real-hardware work still owed").
+sweep of the sequential reset, is owed (BACKLOG.md's "Real-hardware work still owed").
 
 Log-level methods, two tiers: `pr.one`/`pr.evt`/`pr.all` (sync, print-only, no history) for
 info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything counting against
@@ -3806,8 +3801,9 @@ FRAM logging of its own, since a FRAM fault logged into that same FRAM is lost w
 packs every entry logged meanwhile into its next write. The UART's faults (`UARTComm._err()`, the
 driver's capped readline) and its declined-command and drain-bound warnings take the `_q` form, so
 no exchange or resync waits on another FRAM user's hold (J.5; owner, 2026-11-07: "what would any
-setting of FRAM or UART ever have cross dependencies?"); every other entry, the UART's setup ones
-included, takes the `_s` form. A heap too full to start the writer prints its text from level 1 up
+setting of FRAM or UART ever have cross dependencies?"); so does every entry logged while its caller
+holds a lock (C.8) and an HTTP connection's entry before its close (A.8). Every other entry, the
+UART's setup ones included, takes the `_s` form. A heap too full to start the writer prints its text from level 1 up
 and leaves the entry in RAM for the next entry's write; an entry logged just before a reset may not
 reach FRAM, since the storage pause refuses its late write.
 
@@ -4030,7 +4026,9 @@ this table in the same change, and `tests_scripts/test_lock_order.py` resolves e
 `.acquire()` in `src/` against it (`self._i2c_<chip>`/`self._spi_<chip>` resolve to the session
 level). A higher level is taken before a lower one; a row without a level is never nested with
 another row inside one function. A FRAM-backed log write takes the chunk's `_op_lock`, then the
-FRAM driver's session and bus locks (levels 3, 2, 1).
+FRAM driver's session and bus locks (levels 3, 2, 1). No other lock is held across one: an entry
+logged under a lock takes the `_q` form (C.7.1), or comes after the release where the order of events
+needs its write awaited (a failed config flush's, which `flush_pending()` awaits; owner, 2026-11-07).
 
 <!-- locks:begin -->
 | Lock | Level | Serialises | May be held while taking |
@@ -4039,15 +4037,15 @@ FRAM driver's session and bus locks (levels 3, 2, 1).
 | `Lockable.session_lock` | 2 | one device session's multi-transaction sequence and its shared scratch; a bus device's (`I2CDevice`/`SPIDevice`) session lock is its bus lock | the bus lock (1) |
 | `I2C.bus_lock`, `SPI.bus_lock` | 1 | the peripheral: one bus transaction | nothing |
 | `FRAM_SPI._bus_lock` | 1 | the FRAM's SPI bus (an alias of its `SPIDevice`'s bus lock) | nothing |
-| `ConfigManager._config_lock` | — | the config file and its staged snapshot | a FRAM-backed log write |
+| `ConfigManager._config_lock` | — | the config file and its staged snapshot | nothing |
 | `PrintLogHistoryStore._write_lock` | — | one FRAM-backed log store's pack and write, so the newest state lands last (F.1) | a FRAM-backed log write |
-| `SensorReader._set_lock`, `ConfigManager.owner_lock` | — | one module's config PUT end to end (stage, push, recovery, commit) and its config GET, so one PUT's recovery never overwrites another's accepted value and a GET reads the module before or after a PUT, never between; also held by BMP3XX `_read_bmp()`'s chip-reset re-apply and the BMP3XX and SCD30 `_recover_device()` rungs. `SensorReaderConfig.__init__` lends it to its store as `owner_lock` (SYSTEM's store has none), and a commanded reset's flush of that store takes it (`SystemService._flush_config_stores()`), so a PUT in flight ends its pushes and commit before the flush. Every await under it is bounded (bus calls, F.2; fixed sleeps, the longest the SCD30 soft reset's 2.5 s; locks whose holders are bounded alike), so a GET waits behind at most one of them, inside the webserver's `outer_cap_s` | `ConfigManager._config_lock`, `ISL29125_Reader._threshold_lock`, a device session and bus lock (2, 1), a FRAM-backed log write |
-| `ISL29125_Reader._threshold_lock` | — | the chip's threshold registers with the active range and auto-range threshold they derive from, so a range switch and a threshold rewrite never interleave | a device session and bus lock (2, 1), a FRAM-backed log write |
-| `WifiService.wifi_mode_lock` | — | the CYW43 radio mode (`NTPClient` holds the same lock for its sync attempt) | `UDPSocket._connect_lock` (the NTP attempt's DNS and NTP exchanges), a FRAM-backed log write |
+| `SensorReader._set_lock`, `ConfigManager.owner_lock` | — | one module's config PUT end to end (stage, push, recovery, commit) and its config GET, so one PUT's recovery never overwrites another's accepted value and a GET reads the module before or after a PUT, never between; also held by BMP3XX `_read_bmp()`'s chip-reset re-apply and the BMP3XX and SCD30 `_recover_device()` rungs. `SensorReaderConfig.__init__` lends it to its store as `owner_lock` (SYSTEM's store has none), and a commanded reset's flush of that store takes it (`SystemService._flush_config_stores()`), so a PUT in flight ends its pushes and commit before the flush. Every await under it is bounded (bus calls, F.2; fixed sleeps, the longest the SCD30 soft reset's 2.5 s; locks whose holders are bounded alike), so a GET waits behind at most one of them, inside the webserver's `outer_cap_s` | `ConfigManager._config_lock`, `ISL29125_Reader._threshold_lock`, a device session and bus lock (2, 1) |
+| `ISL29125_Reader._threshold_lock` | — | the chip's threshold registers with the active range and auto-range threshold they derive from, so a range switch and a threshold rewrite never interleave | a device session and bus lock (2, 1) |
+| `WifiService.wifi_mode_lock` | — | the CYW43 radio mode (`NTPClient` holds the same lock for its sync attempt) | `UDPSocket._connect_lock` (the NTP attempt's DNS and NTP exchanges) |
 | `UDPSocket._connect_lock` | — | the socket object, its connect against its disconnect | nothing (the class has no logger) |
 | `NeopixelDriver._overlay_lock` | — | the pixel and its `write()` | nothing |
 | `SystemService._command_lock` | — | the system-command gate: one command's acceptance, preflight or refusal at a time, so two commands at once see each other's outcome (A.8); held only up to the shutdown sequence's `create_task()`, so never while the sequence takes a store's `owner_lock` | nothing |
-| `WebserverService._status_lock` | — | one `GET /status` build, so concurrent requests hold one response's pieces at a time (I.3) | what the status sources and error-count readers take, a FRAM-backed log write included |
+| `WebserverService._status_lock` | — | one `GET /status` build, so concurrent requests hold one response's pieces at a time (I.3) | what the status sources and error-count readers take |
 | `SensorReader._data_lock` | leaf | the last sample | nothing |
 <!-- locks:end -->
 
@@ -4310,7 +4308,7 @@ logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM 
 | Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | `_shutdown_sequence()`: a step's own failure is logged where it happens (a flush's `CALLBACK` entry), any other persists `UNEXPECTED`; past the quiesce FRAM is paused, so an entry from there on reaches the console and the RAM log only; no reset is armed and nothing feeds, so the watchdog resets with the record the sequence left, and the next boot's `ResetReason` carries the outcome |
 | Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush logs a failing store's `CALLBACK` entry, any other failure `UNEXPECTED`; FRAM is paused by then, so either reaches the console and the RAM log only; nothing feeds after it, so the watchdog resets |
 | Hazard initiations | `UARTLinkDriver._two_initiations()` (`asy_uart_link_driver.py`), in each hazard run of dev's initiator | two initiations at once on one instance are the hazard under test (J.2), so each runs as its own task beside the other; on demand from `PUT /uart`'s `UartHazards`, never at boot (agent, 2026-10-22) | two per hazard run, each one `UARTComm.uart_set()`; the run awaits both, and its `finally` cancels one not yet done when the run itself is cancelled | `UARTLinkDriver._initiate()`: `except Exception` → `err_s` with `UNEXPECTED`, and that initiation's verdict reads None |
-| History writer | `PrintLogHistoryStore._write_later()` (`asy_print_log.py`), at most one per FRAM-backed store | an `err_q()`/`wrn_q()` entry's FRAM write runs apart from its caller, so the UART never waits on FRAM (C.7.1, J.5) | from a burst's first entry until no entry is due; never cancelled; a full heap creating it leaves the entry for the next call's writer | `_write_behind()`: persists `UNEXPECTED` through its own store |
+| History writer | `PrintLogHistoryStore._write_later()` (`asy_print_log.py`), at most one per FRAM-backed store | an `err_q()`/`wrn_q()` entry's FRAM write runs apart from its caller, so neither the UART nor a lock's holder waits on FRAM (C.7.1, C.8, J.5) | from a burst's first entry until no entry is due; never cancelled; a full heap creating it leaves the entry for the next call's writer | `_write_behind()`: persists `UNEXPECTED` through its own store |
 <!-- tasks:end -->
 
 A task that ends raising with nobody awaiting it, a row's or a starter's that dies between two
@@ -6753,7 +6751,7 @@ loop lag):
 | `con.uart_rx_ring` (a device with a `uart_link`) | the receive ring's capacity at the line rate, sized to hold what the stop-and-wait peer sends while one config flush holds the loop (J.6) | the ring floor (J.6), `devices/dev.toml` | hard past the bound only: a lap is detected and handled as the receive overrun (J.7) |
 | `con.uart_tx` (a device with a `uart_link`) | a frame longer than the 32-byte TX FIFO pauses on the wire while a flash erase holds interrupts off (up to tSE 400 ms, W25Q16JV), so the peer's receive and the initiator's reply deadline (`con.uart_reply`) can pass mid-frame | the frame length, `devices/dev.toml` | soft: a crossing is a failed, retried and counted transaction, never a silent loss |
 | `con.dns_query` | 500 ms per server and attempt | `_DNS_TIMEOUT_MS` in `buildgen/codegen.py`, which the generated module passes as the NTP client's `dns_timeout_ms` (`asy_dns_client.py`'s own is the standalone default) | soft: the next server, then NTP's retry |
-| `con.http_call` | 5 s per stream call and per trace awaited before a close (a refused connection's included), 15 s the request's outer cap | `_DEFAULT_PER_CALL_TIMEOUT_S` and `_DEFAULT_OUTER_CAP_S` (`asy_webserver_service.py`), which the generated module passes in `ServingLimits`; `_trace_before_close()` holds each trace at the per-call timeout (A.8) | soft: the connection is reclaimed; a trace held past it is cut short, its entry kept in RAM for the logger's next write |
+| `con.http_call` | 5 s per stream call, 15 s the request's outer cap | `_DEFAULT_PER_CALL_TIMEOUT_S` and `_DEFAULT_OUTER_CAP_S` (`asy_webserver_service.py`), which the generated module passes in `ServingLimits` | soft: the connection is reclaimed |
 | `con.softirq_queue` | 8 pending soft callbacks | F.1 (depth 8 on rp2) | soft: a dropped PERIODIC tick self-heals |
 | `con.led_frame` | 50 ms (20 Hz) | `1000 // _NEOPIXEL_FREQ_HZ` (`asy_neopixel_driver.py`) | cosmetic: a visible stutter |
 | `con.routine_stall` | 21 ms (`uart.gc_pause_worst_ms`) | J.6 budgets the worst collection pause into every UART reply floor; a routine product stretch no longer than it is covered by the same term | bound for routine product stretches, measured by `tests_hardware/device_scripts/loop_stretch_timing.py` (agent, 2026-09-30; owner-reviewed, 2026-11-06) |
@@ -7654,8 +7652,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Per-module logging/error-history** — `asy_print_log.py`'s `make_logger()` with one `LogConfig`
   (`DEFAULT_LOG` for a module with no store of its own; one per FRAM store), `PrintLog`/
   `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter. An entry awaits its
-  FRAM write (`err_s()`/`wrn_s()`) or, the UART's form, records and prints at once with the write
-  behind it in one writer task per store (`err_q()`/`wrn_q()`, C.7.1). `PrintLog`'s
+  FRAM write (`err_s()`/`wrn_s()`) or, under a lock and in the UART, records and prints at once with
+  the write behind it in one writer task per store (`err_q()`/`wrn_q()`, C.7.1). `PrintLog`'s
   `report_unretrieved()` is asyncio's exception handler (F.1); the PC tiers' counterpart is
   `digital_twin/unix_port_unretrieved_report.py`.
 - **A caught `MemoryError`'s line** — a plain `err()`, from level 1 up, so the memory gates see it
@@ -8465,8 +8463,7 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
   probe, no pool surfaced, and the GC heap bound first — while a raised ceiling turns a clean
   refusal into an admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST
   if the client's request bytes had already arrived (`modlwip.c` frees them unread, and lwIP's
-  `tcp_close()` resets a connection with unread data); either follows the refusal's trace, which
-  waits at most one per-call timeout (A.8).
+  `tcp_close()` resets a connection with unread data); the refusal's entry is written behind (A.8).
 - **Refusals are expected, not failures** (owner, 2026-09-23, `84f3d57`): a connection counts until
   it has closed (H.7.1), so back-to-back clients see ~70 % refused at every limit; the device's own
   rejection count matches the host's exactly. It stays that way (owner, 2026-09-26: a connection
@@ -8915,11 +8912,8 @@ Per chunk operation: its `FRAMChunkBuffer`/`FRAMChunkTimestampedBuffer` (a `Regi
 fixed; per compare (a read's cross-check and a verify, never a log entry's write) one block-size
 buffer, transient. A compare buffer whose allocation failed prints its text through the FRAM logger;
 a read then takes block 1 as unreadable and rewrites it from block 0's valid data, and a verified
-write fails with its own entry. Their concurrent peak
-under `ResetErrors` is bounded by the device's FRAM-backed logger count, at most one buffer each: on
-the `dev` twin the live heap rose 50,464-58,816 B above idle during one `PUT /status
-{"ResetErrors": true}` (1.87 s; 5 ms `MEM_SAMPLE`s, the reset's whole concurrent fan-out included;
-64-bit Unix port, `gc.threshold(-1)`, 2026-10-20, single observation). The erase's 256 B unit
+write fails with its own entry. `ResetErrors` resets its stores one after another (A.8), so it holds
+one chunk operation's buffer at a time and starts no task. The erase's 256 B unit
 buffer, per `erasefram`; a failed one prints its text and the chunks are blanked only. A synchronous
 `_set_check_sb()`/`_handle_status_bytes()` pair would save about 1,700 B per chunk operation
 (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive at `12640c2`, lines 2491-2498) and was declined: the
@@ -9126,7 +9120,7 @@ need per path on that twin (`tests_hardware/device_scripts/allocation_need_per_s
 **The one fragment the cap cannot bound, and why it is still bounded.** "Never splitting a fragment"
 means a single scalar longer than `chunk_bytes` becomes one over-cap piece; the writer's guarantee is
 "the largest allocation is the largest *fragment*", not "≤ `chunk_bytes`". Only a string config value
-can be that scalar — `errcount` holds ints alone (`_shape_errcount_entry()`), and `history_length`
+can be that scalar — `errcount` holds ints alone (`_write_errcount_entry()`, one fragment per slot), and `history_length`
 bounds its list — so the ceiling is the longest string any schema permits, which is `NTPHost`'s
 253 characters (RFC 1035, `asy_ntp_client.py`'s `_VAL_NTP_HOST`), giving a ~255 B piece on
 `/networking`, inside the cap — `/status`'s networking section carries live link state, not the
@@ -12013,7 +12007,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
 | `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6); `tests/test_asy_webserver_service.py` reads it from the source (`src_const()`) | host computation over the real schemas at `NTPHost`'s 253-character bound (2026-10-07): the largest legitimate body is 1,080 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.9× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
-| `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | every trace `_serve()` awaits before its close, a refused connection's included, is held at most this long (`_trace_before_close()`, A.8; `tests/test_asy_webserver_connections.py`); the twin UART load's client timeout, `_UART_LOAD_REQUEST_S` (`scripts/_digital_twin_scenarios.py`), includes it once; `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; the bench resilience test's admitted silence plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
+| `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | each stream call of a connection (A.5; `tests/test_asy_webserver_connections.py`); the twin UART load's client timeout, `_UART_LOAD_REQUEST_S` (`scripts/_digital_twin_scenarios.py`), includes it once; `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; the bench resilience test's admitted silence plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` and `_RESET_ERRORS_BUDGET_S`; the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; the slowloris test's 30 s socket timeout sits above it and its 6 header lines × 3 s (18 s) run past it; the twin UART load's client timeout, `_UART_LOAD_REQUEST_S` (`scripts/_digital_twin_scenarios.py`), is it plus `web.per_call_timeout_s` and two 2,129 ms flash holds | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.poll_backoff_max_ms` | 60000 ms | `js/poll-manager.js` — `60000` | after the k-th consecutive failure of a section's GET the next attempt comes min(interval × 2^(k−1), this cap) later, back to the interval after one success (`tests_js/poll-manager.test.js` reads it with `readIntConst()`) | chosen (agent, 2026-09-30; owner-reviewed, 2026-11-06), no measurement owed | choice; one request per minute per failing section against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
 | `web.device_watch_interval_ms` | 60000 ms | `js/shell.js` — `60000` | the shell's device watch: `GET /status` for the device clock, `GET /system` for the build compare, a changed build reloading the page once no Apply is pending; one extra watch runs when a section's failure episode ends, none while the tab is hidden (`tests_js/shell.test.js` reads it with `readIntConst()`) | chosen (agent, 2026-09-30; owner-reviewed, 2026-11-06), no measurement owed | choice; two requests per minute per tab against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |

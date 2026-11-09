@@ -138,6 +138,8 @@ _LIGHT_CMD_FIELDS: "tuple[cm.FieldSchema, ...]" = (
 )
 _LED_BUSY_DESCR = const("LED busy - retry later")  # the envelope's descr when a running signal refused LightCmdLED
 _UNAVAILABLE_TEXT = '{"error":"' + UNAVAILABLE + '"}'  # a failed /status source's piece, built once at import
+_ERRCOUNT_FIRST = const('{"type": "%s", "num": %d}')  # one errcount history slot, as json.dumps() writes {"num", "type"}
+_ERRCOUNT_NEXT = const(', {"type": "%s", "num": %d}')
 
 # @tunable web.max_pending_fragments = 16
 _MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
@@ -338,7 +340,7 @@ class _TimeoutStreamProxy:
         try:
             return await asyncio.wait_for_ms(coro, self._timeout_ms)
         except asyncio.TimeoutError as e:
-            await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
+            self._pr.wrn_q("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
             raise
         except OSError:
             # A read that saw a reset leaves the socket in STATE_PEER_RST_HANDLED with its pcb freed
@@ -697,11 +699,11 @@ class WebserverService:
         except Exception as e:  # best-effort cleanup, never load-bearing - still logged (Part C.7's
             # silent-failure-masking convention) since a repeatedly-failing close() could leak TCP
             # PCBs under this platform's tiny connection ceiling with no other trace.
-            await self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
+            self.pr.wrn_q("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
         try:
             await asyncio.wait_for_ms(writer.wait_closed(), self._per_call_timeout_ms)
         except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
-            await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
+            self.pr.wrn_q("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
 
     async def _dispatch_notification_led(self, payload: object) -> tuple[str, bool]:
         # The word, and whether a running signal refused the command: told apart from a raising callback, both "Failed".
@@ -758,7 +760,7 @@ class WebserverService:
     async def _note_drop(self, wrnno: int, what: str) -> None:
         # One entry per event; a run of identical codes spends one history slot (print_log's newest-entry rule).
         self._dropped.add(await self._uptime_s())
-        await self._trace_before_close(self.pr.wrn_s(what, wrnno=wrnno))
+        self.pr.wrn_q(what, wrnno=wrnno)
 
     def _print_exception(self, exc: BaseException) -> None:
         # Microdot's own exception print (rebound in __init__), all its request-read catch does: one level-gated line,
@@ -813,11 +815,12 @@ class WebserverService:
                 # asked "Clear nothing when ResetErrors answers Failed in mempause?": '1 b').
                 result[key] = FAILED
                 continue
-            # Every source at once, this service's own entry included (_build_status_pieces()): "`ResetErrors`
-            # resets the FRAM-backed logs concurrently rather than one after another" (owner, 2026-09-26).
-            # One store whose write failed answers the whole key "Failed"; a raise reaches the catch-all (500).
-            outcomes = await asyncio.gather(*(m.reset_error_counter() for m in self._error_sources.values()), self.reset_error_counter())
-            result[key] = VALID if all(outcomes) else FAILED
+            # One source after another, no task per source, this service's own entry last (owner, 2026-11-07: the
+            # error-log reset sequential). One store whose write failed answers "Failed"; a raise reaches the catch-all (500).
+            ok = True
+            for module in self._error_sources.values():
+                ok = await module.reset_error_counter() and ok
+            result[key] = VALID if await self.reset_error_counter() and ok else FAILED
         return ar.make_response(0, result=result)
 
     async def _put_system(self, request: "_RequestLike") -> "ResponseEnvelope":
@@ -848,8 +851,8 @@ class WebserverService:
                 current = await self._open_conns.increment()
                 counted = True
                 if current > self._max_connections:
-                    # Reject-when-full (owner, 2026-08-12; SPEC A.8): counted at once, then closed with no response written once
-                    # its trace lands or one per-call timeout has passed; the trace before the close paces a refused client.
+                    # Reject-when-full (owner, 2026-08-12; SPEC A.8): its slot freed, closed with no response written. Every
+                    # entry before the close is written behind, so no connection or task waits on FRAM (owner, 2026-11-07).
                     await self._open_conns.decrement()
                     counted = False
                     await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")
@@ -868,12 +871,12 @@ class WebserverService:
                     # Either the outer wait_for_ms() above (bounds a Slowloris-paced client no per-call
                     # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
                     # read-phase one logged inside the proxy, and microdot swallowed it.
-                    await self._trace_before_close(self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT))
+                    self.pr.wrn_q("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
                 except OSError as e:  # a socket error Microdot does not mute (e.g. EHOSTUNREACH on a response
                     # write); the resets it mutes end in peer_gone instead, traced below.
-                    await self._trace_before_close(self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR))
+                    self.pr.wrn_q("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR)
                 except Exception as e:  # a fault the request raised (SPECIFICATION.md A.5)
-                    await self._trace_before_close(self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED))
+                    self.pr.err_q("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)
                 else:  # no arm traced this connection's one entry, so a drop trace may (C.7)
                     if head_refused[0]:
                         await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")
@@ -899,29 +902,32 @@ class WebserverService:
         server = await asyncio.start_server(self._serve, self._host, self._port, backlog=self._backlog)  # type: ignore[arg-type]
         await server.wait_closed()
 
-    async def _trace_before_close(self, trace: "Awaitable[None]") -> None:
-        # A trace _serve() awaits before its close, held at most one per-call timeout (SPECIFICATION.md A.8). One cut short is
-        # not lost: wrn_s()/err_s() kept its entry in RAM before their first await, and the logger's next write persists it.
-        try:
-            await asyncio.wait_for_ms(trace, self._per_call_timeout_ms)
-        except asyncio.TimeoutError:
-            pass  # the entry kept in RAM is this cut's evidence
-
     async def _write_errcount_entry(self, writer: _PieceWriter, get_log_fct: "Callable[[], Awaitable[ErrorLog]]", name: str) -> None:
         try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
-            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
+            self.pr.err_q("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return
-        await writer.add_value_yielding(_shape_errcount_entry(raw, name))
+        # One fragment per history slot, the bytes json.dumps() gives the {"counter", "history"} entry, in MicroPython's own
+        # key order on every port (Part I.3).
+        entry = raw.get(name)
+        if entry is None:  # a module that never logged reads as an empty ring
+            writer.add('{"history": [], "counter": 0}')
+        else:
+            nums, kinds, count = entry["ErrNum"], entry["ErrType"], entry["ErrCount"]
+            writer.add('{"history": [')
+            for i in range(len(nums)):
+                writer.add((_ERRCOUNT_NEXT if i else _ERRCOUNT_FIRST) % (kinds[i], nums[i]))
+            writer.add(f'], "counter": {count}}}')
+        await asyncio.sleep(0)
 
     async def _write_guarded(self, writer: _PieceWriter, fct: "StatusSourceFct", name: str) -> None:
         try:  # caller-supplied callback, could misbehave - degrades this one key instead of letting
             # one failing source discard every other section's already-fetched data.
             value = await fct()
         except Exception as e:
-            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
+            self.pr.err_q("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return
         await writer.add_value_yielding(value)
@@ -983,19 +989,6 @@ def _pieces_response(pieces: list[bytes]) -> Response:
         _drained(pieces),  # type: ignore[arg-type]
         headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in pieces))},
     )
-
-
-def _shape_errcount_entry(raw: "ErrorLog", name: str) -> "JsonDict":
-    entry = raw.get(name)
-    if entry is None:  # module never logged anything - the same empty shape the old {} default produced
-        return {"counter": 0, "history": []}
-    err_num = entry.get("ErrNum", [])
-    err_type = entry.get("ErrType", [])
-    return {
-        "counter": entry.get("ErrCount", 0),
-        # No strict= (ruff B905): MicroPython's zip() rejects it; ErrEntry keeps both lists in step.
-        "history": [{"num": n, "type": t} for n, t in zip(err_num, err_type)],
-    }
 
 
 def _shaped_error_handler(status_code: int) -> "Callable[[object], tuple[ResponseEnvelope, int]]":

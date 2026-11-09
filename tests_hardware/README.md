@@ -1463,7 +1463,7 @@ specific expected entry on the right module's log afterwards, and resets again**
 live history never keeps a test's own provoked faults. `error_log_helpers.py` is the primitive, and
 its re-exported `code("E"|"W", NAME)` (`tests/_error_codes.py`, from `buildgen/error_catalog.json`)
 names the expected entry. `/status`'s `errcount` shape (`asy_webserver_service.py`'s
-`_shape_errcount_entry()`: `{"counter": int, "history": [{"num": int, "type": "E"|"W"}, ...]}`) is
+`_write_errcount_entry()`: `{"counter": int, "history": [{"num": int, "type": "E"|"W"}, ...]}`) is
 not `asy_print_log.py`'s raw `get_log()` shape that `device_scripts/` files read. Where no entry is
 due the test asserts the log stays empty: a 404 or 405 from `_shaped_error_handler()` and the
 `_body_as_dict() is None` path log nothing, while `_serve()`'s drops log one `HTTP_REFUSED` warning
