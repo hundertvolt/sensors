@@ -1,6 +1,6 @@
 """scripts/_devices.sh, the shell runners' derived device set: derived_devices lists tests_scripts/_devices.py's
-DEVICE_NAMES, drops the zz_test_ fixtures and fails on an empty devices/, and require_device refuses every name outside
-that set with exit 2, listing the valid ones. Every case but the first runs on a copy beside its own devices/."""
+DEVICE_NAMES without the zz_test_ fixtures, distinct_devices one per hardware_family, both fail on an empty
+devices/, and require_device refuses every other name with exit 2, listing them; off the real tree, on a copy."""
 
 import shlex
 import shutil
@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _devices import DEVICE_NAMES
+from _devices import DEVICE_NAMES, distinct_devices
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _LIB = REPO_ROOT / "scripts" / "_devices.sh"
@@ -21,13 +21,15 @@ def _call(lib: Path, *lines: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["/bin/bash", "-c", script], capture_output=True, text=True, check=False, timeout=_TIMEOUT_S)
 
 
-def _tree(tmp_path: Path, *stems: str) -> Path:
-    # A throwaway checkout holding the library and a devices/ with one fixture TOML per stem.
+def _tree(tmp_path: Path, *stems: str, families: "dict[str, str] | None" = None) -> Path:
+    # A throwaway checkout holding the library and a devices/ with one fixture TOML per stem, naming its family if given.
     (tmp_path / "scripts").mkdir()
     shutil.copy2(_LIB, tmp_path / "scripts" / "_devices.sh")
     (tmp_path / "devices").mkdir()
     for stem in stems:
-        (tmp_path / "devices" / f"{stem}.toml").write_text("# fixture\n", encoding="utf-8")
+        family = (families or {}).get(stem)
+        text = "# fixture\n" if family is None else f'[device]\nname = "{stem}"\nhardware_family = "{family}"\n\n[device.wiring]\n'
+        (tmp_path / "devices" / f"{stem}.toml").write_text(text, encoding="utf-8")
     return tmp_path / "scripts" / "_devices.sh"
 
 
@@ -43,11 +45,28 @@ def test_a_fixture_toml_is_never_a_device_and_the_order_is_the_byte_order(tmp_pa
     assert (done.returncode, done.stdout.splitlines()) == (0, ["Fixture_c", "fixture_a", "fixture_b"]), done
 
 
-def test_an_empty_devices_directory_fails_naming_it(tmp_path: Path) -> None:
+@pytest.mark.parametrize("function", ["derived_devices", "distinct_devices"])
+def test_an_empty_devices_directory_fails_naming_it(tmp_path: Path, function: str) -> None:
     lib = _tree(tmp_path, "zz_test_only")
-    done = _call(lib, 'devices="$(derived_devices)"', "echo proceeded")
+    done = _call(lib, f'devices="$({function})"', "echo proceeded")
     assert (done.returncode, done.stdout) == (1, ""), done
     assert done.stderr.strip() == "error: no devices/*.toml found"
+
+
+def test_the_distinct_set_is_one_device_per_hardware_family_over_the_real_devices() -> None:
+    done = _call(_LIB, "distinct_devices")
+    assert (done.returncode, done.stderr) == (0, ""), done
+    assert done.stdout.splitlines() == distinct_devices()
+
+
+def test_two_devices_of_one_family_yield_one_entry_and_a_familyless_device_stays(tmp_path: Path) -> None:
+    # The first of a family in byte order stands for it, the device tests/_twin_devices.py's distinct_wirings() picks.
+    lib = _tree(tmp_path, "fixture_c", "fixture_b", "fixture_a", "fixture_d", families={"fixture_c": "f", "fixture_b": "f", "fixture_d": "g"})
+    done = _call(lib, "distinct_devices")
+    assert (done.returncode, done.stdout.splitlines(), done.stderr) == (0, ["fixture_a", "fixture_b", "fixture_d"], ""), done
+    assert done.stdout.splitlines() == distinct_devices(tmp_path / "devices")
+    done = _call(lib, "require_device fixture_c", "echo proceeded")
+    assert (done.returncode, done.stdout, done.stderr) == (0, "proceeded\n", ""), "every member of a family stays a device"
 
 
 def test_a_derived_device_is_accepted_silently(tmp_path: Path) -> None:

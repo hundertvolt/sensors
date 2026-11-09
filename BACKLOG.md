@@ -408,6 +408,9 @@ gates, traps).
   - **A reused chroot**: a changed `toolchain/micropython_overrides.py` makes `scripts/_unix_port.sh
     ensure` rebuild the three Unix binaries once; a binary from before the settrace split is detected
     and rebuilt; a toolchain without its `toolchain-record.json` counts as unbuilt.
+  - **Fewer jobs, nothing installed** (2026-11-09): `scripts/test.sh` and the twin legs take one device
+    per `hardware_family` (`scripts/_devices.sh`'s `distinct_devices`: bash and `sed`), and
+    `GC_THRESHOLD=32768 scripts/test.sh` runs no pytest tier, its summary listing it as skipped.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
   fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
   `sensortask-*.py` built as part of the real rewrite needs a full Unix-port equivalent, runnable on

@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _devices import distinct_devices
 from _script_loader import load_script_module
 
 _COPIED = (
@@ -102,7 +103,8 @@ def _calls_written(tree: Path) -> "list[tuple[str, list[str], str]]":
 
 
 def _devices(tree: Path) -> "list[str]":
-    return sorted(p.stem for p in (tree / "devices").glob("*.toml") if not p.stem.startswith("zz_test_"))
+    # The twin legs' devices: one per hardware_family (owner, 2026-10-23), the leaked zz_test_ fixture never one.
+    return distinct_devices(tree / "devices")
 
 
 def _lower(calls: "list[tuple[str, list[str], str]]") -> "list[str]":
