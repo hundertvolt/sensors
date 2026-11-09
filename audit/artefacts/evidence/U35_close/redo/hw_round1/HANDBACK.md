@@ -42955,3 +42955,22 @@ residue_with_crc_appended 0 0 0 0 0
 done
 errcount: 22 sources unchanged. ResetReason after: 21, SysUptime 13 s; flash cycles today: 0; logs/day4_20261109/ (crc3_output.txt, crc3_{start,end}_status.json)
 status: confirmed as measured.
+
+20:30:24 UTC 2026-11-09 lead 20:00 (11-09): fram_cmd.py (cd40e6dc), once through Board.run_isolated(), then restore_board_to_serving(); reads only (RDSR, READ at 0); owner OK'd at 20:2x; HEAD cd40e6dc; image 2026-11-07T16:04:12Z (trace); 20:29:36-20:29:53
+verbatim:
+FRAMCMD status_register 0x0
+FRAMCMD empty_call n 300 min 19 med 20 p95 21 max 43 us
+FRAMCMD spi_init_only n 300 min 143 med 146 p95 148 max 288 us
+FRAMCMD rdsr_lean n 300 min 61 med 64 p95 66 max 127 us
+FRAMCMD rdsr_one_call n 300 min 54 med 57 p95 60 max 101 us
+FRAMCMD rdsr_init_settle n 300 min 211 med 218 p95 222 max 303 us
+FRAMCMD read13_lean n 300 min 79 med 82 p95 85 max 120 us
+FRAMCMD read268_lean n 300 min 389 med 393 p95 396 max 471 us
+FRAMCMD read268_init_settle n 300 min 539 med 548 p95 553 max 681 us
+FRAMCMD rdsr_lean_async_lock_yield n 300 min 624 med 832 p95 997 max 2129 us
+FRAMCMD rdsr_init_settle_async_lock_yield n 300 min 867 med 1040 p95 1215 max 2724 us
+FRAMCMD done
+errcount: 21 sources unchanged; FRAM counter 0 -> 2, history gained E46 (_ERR_FRAM_STATUS_BYTE, "Read status byte is not IDLE") then W63 (_WRN_FRAM_BLOCK_INVALID, block-0 fallback to block 1). Not cleared.
+reading: the probe sends no WREN and no write, so these come from the firmware's boot after the soft reset finding one chunk's block-0 status byte left busy, i.e. the harness's Ctrl-C stopped the serving firmware mid block write (the SGP40 backup holds FRAM for 8-20 s, so a stop landing inside one is likely); the two-block scheme then recovered from block 1. Which chunk is not logged.
+ResetReason after: 21, SysUptime 16 s, Mode STA; flash cycles today: 0; logs/day4_20261109/ (fram_output.txt, fram_{start,end}_status.json)
+status: timings confirmed as measured; the E46/W63 cause inferred, not traced.
