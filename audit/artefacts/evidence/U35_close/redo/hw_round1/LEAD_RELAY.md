@@ -1,5 +1,14 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 20:00 UTC, 2026-11-09: one more read-only probe, if the watch is still on (window to ~20:57)
+- `probes_20261109/fram_cmd.py` times one FRAM command on dev's spi0 in its parts: the SPI configure, CS, the 2 us
+  settle, the transfer, and the async lock with one yield. The firmware's own path measured 0.55-0.65 ms per command
+  on 11-05, and a log entry is 51 commands; this says where that time goes.
+- Reads only: RDSR and READ at address 0; no WREN, no write, no FRAM manager built, so the board's FRAM error logs
+  stay as they are. About 10 s. Run it the same way (`run_isolated()`, then `restore_board_to_serving()`) and report
+  its printed `FRAMCMD` lines verbatim.
+- If the watch has ended, nothing is owed; the owner decides whether it runs.
+
 ## 17:56 UTC, 2026-11-09: nothing more from the lead tonight
 - Thanks: the hoisted native form, 0.95 ms, is the figure that was needed. The fixes these reads size are built in
   units over the next days; the next image carries them, with its own relay and the owner's reflash OK.
