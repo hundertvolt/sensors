@@ -1,5 +1,19 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 17:32 UTC, 2026-11-09: two read-only probes on the current image; no reflash tonight
+New on this branch: two probe scripts in `probes_20261109/` next to this file; nothing else.
+- Day 4 start read. The hotspot at power-on reads as the board's STA streak running out before the Pi's access point
+  was up (inferred, not chased); no action.
+- The 11-07 CRC read is not needed: round 1's three runs of that test already carry it (crc_total_us 182,519-200,261
+  for 256 B, crc_gap_max_us 1,971-2,087). The cost is the bit-by-bit loop, about 0.7 ms a byte, not the yield.
+- Probe 1, `crc_chip.py`: the chunk CRC by the image's code and by two table forms that must print "same", each timed
+  for a 264-byte chunk. RAM only: no bus, no file, no flash.
+- Probe 2, `scd30_frames.py`: 90 s of the SCD30's routine reads on i2c1 at its bus settings (data-ready and
+  read-measurement only; no command that writes its NVM), every transfer timed.
+- Run each once through the harness's isolated path (`run_isolated()`: watchdog re-armed, from RAM, soft reset
+  after), then `restore_board_to_serving()`. Ask the owner's OK for the runs as usual. Report the printed lines
+  verbatim. The fix image is not tonight (it waits for its gate and the owner's look). Logs stay in /dev/shm.
+
 ## 17:32 UTC, 2026-11-07: one timing read on the chip, no writes; the fix image comes after its gate
 No new code on this branch; this relay's commit only.
 - The owner (17:31): both fixes go ahead, and the CRC's per-byte yield is settled by a measurement, not a ruling. The
