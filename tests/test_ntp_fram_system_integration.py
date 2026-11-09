@@ -26,13 +26,13 @@ import asy_base_classes
 import asy_ntp_client as ntpmod
 from asy_base_classes import ValueRef
 from asy_bmp3xx_driver import BMP3XX_Reader
-from asy_crc_checks import CRC32
 from asy_i2c_driver import I2C
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_system_service import SystemService
 from asy_wifi_service import WifiConfig, WifiService
+from crc_checks import CRC32
 
 try:
     from typing import TYPE_CHECKING

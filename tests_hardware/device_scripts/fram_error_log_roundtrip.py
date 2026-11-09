@@ -47,7 +47,7 @@ async def _main() -> None:
     pr2 = make_logger(LogConfig(fram_b, _HISTORY_LENGTH, None), _LOG_NAME)
     try:
         fact("cleared_first", await pr1.reset())
-        await pr1.err_s("test error for fram_error_log_roundtrip.py", errno=E_TEST_SEED_A)
+        pr1.err_s("test error for fram_error_log_roundtrip.py", errno=E_TEST_SEED_A)
         await fram_b.setup()
         fact("rebooted_setup", fram_b.initialized)
         await pr2.setup()

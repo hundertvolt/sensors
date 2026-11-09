@@ -822,9 +822,11 @@ def _escalation_entry_cut(ctx: Context) -> None:
     state = ctx.logs_dir / "state_escalation_cut"
     errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
     busy, repaired = _src_int("asy_fram_manager.py", "_ERR_FRAM_STATUS_BYTE"), _src_int("asy_fram_manager.py", "_WRN_FRAM_BLOCK_INVALID")
-    with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
+    # Armed once serving: the cut write freezes the whole loop, so a boot that met it first would never serve.
+    with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-defer-faults", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
         twin.starves_watchdog = True
         since = twin.mark()
+        twin.trigger("FAULT_ARM")
         _expect(twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S) is not None, "the escalation's entry write never reached its first block's busy mark")
         engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, _WATCHDOG_WINDOW_S + _COMMANDED_RESET_MARGIN_S)
         _expect(twin.run.proc.poll() is None and engaged is not None, "the watchdog did not engage behind the held entry write")
@@ -2057,7 +2059,7 @@ def _statuses(results: "Sequence[object]") -> "list[object]":
     return [r if isinstance(r, (int, str, tuple, list)) else repr(r) for r in results]
 
 
-_HANG_STEPS = (("S1", "reboot"), ("S2", "reboot"), ("S3", "reboot"), ("S4", "reboot"), ("S6", "reboot"), ("S6", "bootloader"), ("S5reset", "resetconfig"), ("S5erase", "erasefram"))
+_HANG_STEPS = (("S1", "reboot"), ("S2", "reboot"), ("S4", "reboot"), ("S6", "reboot"), ("S6", "bootloader"), ("S5reset", "resetconfig"), ("S5erase", "erasefram"))
 
 
 def _still_serving(port: int, timeout_s: float = _STILL_SERVING_S) -> None:

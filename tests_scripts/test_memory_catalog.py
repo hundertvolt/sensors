@@ -36,7 +36,6 @@ _RUN_PHASE_ALLOWED: "dict[tuple[str, str, str], str]" = {
         ("asy_neopixel_driver.py", f"NeopixelDriver.{method}", "_rgbt"): "the signal's four values, replaced by the next request stored"
         for method in ("led_signal", "request_signal")
     },
-    ("asy_print_log.py", "PrintLogHistoryStore._write_later", "_writer"): "the history's one writer task per burst, dropped as it ends",
     ("asy_scd30_driver.py", "SCD30_Reader._store_scd", "_datastruct"): "the latest reading, replaced at every read",
     ("asy_spi_driver.py", "SPI.init", "_spi"): "construction: init() runs from __init__ only, and machine.SPI() returns a static object (ports/rp2/machine_spi.c)",
     ("asy_system_service.py", "SystemService._reboot", "_reset_task"): "the one reset task of a reboot",

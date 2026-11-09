@@ -62,8 +62,7 @@ async def _fram_writes(counts: "list[int]") -> None:
     block = bytearray(length)
     while running[0]:
         if fram.fram.initialized:
-            async with fram.fram as driver:
-                ok = await driver.set_values(block, start)
+            ok = fram.fram.set_values(block, start)
             counts[0 if ok else 1] += 1
         await asyncio.sleep_ms(_FRAM_WRITE_MS)
 

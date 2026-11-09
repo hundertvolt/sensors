@@ -11,7 +11,7 @@ import time
 import _bench_device as device  # rendered: the bench device's generated module
 import machine
 
-from asy_crc_checks import CRC32
+from crc_checks import CRC32
 from voc_algorithm import VOCAlgorithm
 
 # @include _shared/facts.py
@@ -86,7 +86,7 @@ async def _main() -> None:
         waker = asyncio.create_task(probe())
         await asyncio.sleep_ms(0)
         t0 = time.ticks_us()
-        await CRC32().check_from(bytearray(_CRC_BYTES))  # the verdict is irrelevant here: the bytes are all walked either way
+        CRC32().check_from(bytearray(_CRC_BYTES))  # the verdict is irrelevant here: the bytes are all walked either way
         fact("crc_total_us", time.ticks_diff(time.ticks_us(), t0))
         probing[0] = False
         await waker

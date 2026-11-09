@@ -14,7 +14,6 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
-from _held_log import held_logger, until
 from _schema_cases import declared_fields, domain_cases
 from _src_const import src_const, src_int
 from _tmp_scratch import TmpScratch
@@ -26,10 +25,10 @@ from machine import Timer as FakeTimer
 import asy_config_manager as cm
 import asy_print_log
 import asy_scd30_driver
-from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
 from asy_print_log import LogConfig, PrintLogHistory
 from asy_scd30_driver import SCD30, SCD30_I2C, SCD30_Reader
+from crc_checks import CRC8
 
 try:
     from typing import TYPE_CHECKING
@@ -249,7 +248,7 @@ def _stored_file(reader: SCD30_Reader) -> "dict[str, object]":
 
 
 def crc8_byte(data: bytes) -> int:
-    added = run(CRC8().add(bytearray(data)))
+    added = CRC8().add(bytearray(data))
     assert added is not None
     return added[-1]
 
@@ -2042,28 +2041,6 @@ def test_a_put_during_the_recovery_completes_after_it() -> None:
     assert _arg_words(i2c) == [0x5102]
 
 
-def test_a_failed_recovery_rung_never_holds_the_setter_lock_across_its_entry() -> None:
-    # A soft reset that raises, its entry's chunk write held: the rung ends within rounds with the entry in RAM, so a
-    # PUT never waits on FRAM behind it (SPECIFICATION.md C.8).
-    reader = _make_reader()
-
-    async def refused() -> None:
-        raise OSError(5)
-
-    reader._scd.reset = refused  # type: ignore[method-assign]
-    reader.pr, gate = held_logger(reader.name)
-
-    async def scenario() -> "tuple[bool, int]":
-        rung = asyncio.create_task(reader._recover_device())
-        ended = await until(rung.done) and not reader._set_lock.locked()
-        count = reader.pr._err_count
-        gate.set()
-        assert await rung is False
-        return ended, count
-
-    assert run(scenario()) == (True, 1)
-
-
 def test_a_not_ready_cycle_republishes_the_cached_reading_with_a_fresh_ts_and_no_error() -> None:
     # The owner's named exception to the staleness rule (owner, 2026-07-22, `110f3db`; SPECIFICATION.md A.4).
     reader = _make_reader()
@@ -2283,7 +2260,7 @@ def test_reader_setters_return_true_on_success() -> None:
 
 
 class _WrongLengthCRC:
-    async def add_into(self, _buffer: bytearray, _size: int, start: int = 0, _init: "int | None" = None) -> int:  # start stays named: SCD30_I2C passes start=2
+    def add_into(self, _buffer: bytearray, _size: int, start: int = 0, _init: "int | None" = None) -> int:  # start stays named: SCD30_I2C passes start=2
         return 0  # never matches the expected size+crc_length total
 
     def length(self) -> int:

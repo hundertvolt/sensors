@@ -101,7 +101,6 @@ scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- del
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
 src/asy_bmp3xx_driver.py	PresOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not conti
 src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
-src/asy_fram_driver.py	get_values()' own numbers and messages, in the one place that has them, whicheve
 src/asy_isl29125_driver.py	Calibrate is deliberately absent from this schema argument: ConfigManager.get_di
 src/asy_isl29125_driver.py	Only the four hardware-backed fields have one: the software knobs have nothing t
 src/asy_isl29125_driver.py	The shadow must never claim a value the part did not take: normalise() scales ev
@@ -153,13 +152,10 @@ tests/test_asy_config_manager.py	lower boundary accepted
 tests/test_asy_config_manager.py	type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8): a JSON i
 tests/test_asy_config_manager.py	upper boundary accepted
 tests/test_asy_config_manager.py	write_config()'s one deferred flush per accepted change
-tests/test_asy_crc_checks.py	Fewer total bytes fed than the CRC width itself must never report a valid (let a
-tests/test_asy_crc_checks.py	a later call passing a (deliberately invalid) init must not retroactively invali
 tests/test_asy_dns_client.py	Both are unused by design - it raises before reading them.
 tests/test_asy_dns_client.py	The target offset is never followed, so any 0xC1-0xFF leading byte must be accep
 tests/test_asy_fram_driver.py	0xF0..0xFF - deliberately distinct from the seed
 tests/test_asy_fram_driver.py	Detection boundary - what this layer cannot catch, by design (not a bug)
-tests/test_asy_fram_driver.py	Without it the double release would raise out of __aexit__ and the driver's own
 tests/test_asy_fram_manager.py	...and is refused anyway, deliberately
 tests/test_asy_fram_manager.py	A READ fault deliberately - machine.SPI's fake makes write() non-injectable on p
 tests/test_asy_fram_manager.py	Asserting on ErrType rather than ErrCount is deliberate: ErrCount counts "W" ent
@@ -201,7 +197,6 @@ tests/test_asy_scd30_driver.py	the three getters are pure cache reads (see src/a
 tests/test_asy_sgp40_driver.py	get_dict_cfg() deliberately passes its own BackupPeriod/BackupMaxAge/WaitTimeNTP
 tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_spi_driver.py	Deliberately NOT swallowed: a transfer that overran left garbage in the buffer,
-tests/test_asy_spi_driver.py	The synchronous session deliberately does not take the lock, so the caller-holds
 tests/test_asy_spi_driver.py	tests/machine.py deliberately diverges here (see its own note) so a test can tel
 tests/test_asy_system_service.py	exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
 tests/test_asy_uart_comm.py	A caller must never believe a failed transfer succeeded.

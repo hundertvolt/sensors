@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     import neopixel
 
-    from asy_crc_checks import CRCBase
+    from crc_checks import CRCBase
 
 _SIGNAL_WAIT_MS: int = src_int("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
 
@@ -121,14 +121,14 @@ def test_get_error_counter_forwards_to_the_real_print_log() -> None:
 
 def test_get_error_counter_reflects_a_real_logged_error() -> None:
     driver = _make_driver()
-    run(driver.pr.err_s("boom", errno=1))
+    driver.pr.err_s("boom", errno=1)
     log = run(driver.get_error_counter())
     assert log["NEOPIXEL"]["ErrCount"] == 1
 
 
 def test_reset_error_counter_returns_true_and_clears() -> None:
     driver = _make_driver()
-    run(driver.pr.err_s("boom", errno=1))
+    driver.pr.err_s("boom", errno=1)
     assert run(driver.reset_error_counter()) is True
     assert run(driver.get_error_counter())["NEOPIXEL"]["ErrCount"] == 0
 
@@ -746,14 +746,14 @@ class _FakeFramChunk:
     def get_buffer(self) -> RegionBuffer:
         return self._buffer
 
-    async def read_into(self, buf: RegionBuffer) -> bool:
+    def read_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
         data[:] = self.buf
         return True
 
-    async def write_into(self, buf: RegionBuffer) -> bool:
+    def write_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
@@ -779,7 +779,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
 
     async def scenario1() -> None:
         await driver1.setup()
-        await driver1.pr.err_s("boom", errno=1)
+        driver1.pr.err_s("boom", errno=1)
 
     run(scenario1())
 

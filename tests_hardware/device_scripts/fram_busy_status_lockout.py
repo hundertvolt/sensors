@@ -5,8 +5,8 @@ rewritten, intended on a destructive-readout part (Part A.4). The chunk is rewri
 import asyncio
 
 import asy_spi_driver
-from asy_crc_checks import CRC8
 from asy_fram_manager import FRAMManager
+from crc_checks import CRC8
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -36,12 +36,11 @@ failures: list[str] = []
 async def _force_both_blocks_busy(fram: FRAMManager, chunk_size: int, crc_len: int, block_addr: "tuple[int, int]") -> bool:
     # Writes _STATUS_BUSY into both status bytes of both blocks, through the real driver - the
     # state a read interrupted mid-transfer genuinely leaves behind.
-    async with fram.fram as dev:
-        for base in block_addr:
-            st_addr = base + chunk_size + crc_len
-            for offset in range(_STATUS_LEN):
-                if not await dev.set_values(bytearray([_STATUS_BUSY]), st_addr + offset):
-                    return False
+    for base in block_addr:
+        st_addr = base + chunk_size + crc_len
+        for offset in range(_STATUS_LEN):
+            if not fram.fram.set_values(bytearray([_STATUS_BUSY]), st_addr + offset):
+                return False
     return True
 
 
@@ -60,19 +59,19 @@ async def _main() -> None:
         done()
         return
     try:
-        fact("cleared_first", await chunk.clear())
-        fact("baseline_ok", check("baseline write or read did not round-trip", condition=await chunk.write(PATTERN_A) is True and bytes(await chunk.read() or b"") == PATTERN_A))
+        fact("cleared_first", chunk.clear())
+        fact("baseline_ok", check("baseline write or read did not round-trip", condition=chunk.write(PATTERN_A) is True and bytes(chunk.read() or b"") == PATTERN_A))
         forced = await _force_both_blocks_busy(fram, CHUNK_SIZE, crc.length(), chunk._block_addr)
         fact("forced_busy", check("could not write the BUSY status bytes through the real driver", condition=forced))
         if forced:
             # Both copies busy: the read must refuse rather than hand back bytes it cannot vouch for.
-            fact("locked_read_none", check("a chunk with both blocks BUSY still returned data", condition=await chunk.read() is None))
+            fact("locked_read_none", check("a chunk with both blocks BUSY still returned data", condition=chunk.read() is None))
             fact("error_logged", check("the refused read logged no error", condition="E" in (await fram.get_error_counter())["FRAM"]["ErrType"]))
             # A write is what clears it: the lockout is recoverable, not a permanently dead chunk.
-            recovered = await chunk.write(PATTERN_B) is True and bytes(await chunk.read() or b"") == PATTERN_B
+            recovered = chunk.write(PATTERN_B) is True and bytes(chunk.read() or b"") == PATTERN_B
             fact("recovered", check("a rewrite did not clear the stuck BUSY status", condition=recovered))
     finally:
-        fact("cleared_last", await chunk.write(bytes(CHUNK_SIZE)))
+        fact("cleared_last", chunk.write(bytes(CHUNK_SIZE)))
     errors("failures", len(failures), failures)
     done()
 

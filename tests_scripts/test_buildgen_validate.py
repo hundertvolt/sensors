@@ -1866,10 +1866,10 @@ def _crc_widths(crc_source: str) -> "dict[str, int]":
 
 
 def test_uart_crc_modes_match_crc_checks(tmp_path: Path, src_dir: Path) -> None:
-    # Guard: buildspec's hand-kept CRC table names real asy_crc_checks classes with their real widths.
-    widths = _crc_widths((src_dir / "asy_crc_checks.py").read_text(encoding="utf-8"))
+    # Guard: buildspec's hand-kept CRC table names real crc_checks classes with their real widths.
+    widths = _crc_widths((src_dir / "crc_checks.py").read_text(encoding="utf-8"))
     assert {mode: (cls, widths.get(cls)) for mode, (cls, _width) in UART_CRC_MODES.items()} == UART_CRC_MODES
-    renamed = (src_dir / "asy_crc_checks.py").read_text(encoding="utf-8").replace("class CRC16(", "class CRC16Renamed(")
+    renamed = (src_dir / "crc_checks.py").read_text(encoding="utf-8").replace("class CRC16(", "class CRC16Renamed(")
     assert "CRC16" not in _crc_widths(renamed), "the bite: a table naming a class the module lacks must not match"
 
 

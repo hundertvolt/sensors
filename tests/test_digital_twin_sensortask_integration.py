@@ -472,7 +472,7 @@ async def _ring_in_fram(clock: DrivenTime, conn: "WifiService") -> None:
     # WIFI's ring as its FRAM chunk holds it, read back through the store's own chunk read as the next boot's setup()
     # restores it: a write that never landed leaves the chip's older image, a RAM-only logger holds no chunk at all.
     ring = tuple(conn.pr.history)
-    stored = await _driven(clock, "the WIFI chunk's read", conn.pr._read())
+    stored = conn.pr._read()
     assert isinstance(stored, tuple) and stored[1] == ring, f"WIFI's FRAM copy {stored} is not its RAM ring {ring}"
 
 

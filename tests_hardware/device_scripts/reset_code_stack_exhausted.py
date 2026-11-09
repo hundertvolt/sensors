@@ -1,6 +1,6 @@
 """Isolated-driver device script: one supervised reader's read coroutine rebound, over the bench build's scratch config,
 to recurse until MicroPython's stack check raises; the recorded overflow makes the supervisor reboot with its code, or,
-modes "entry_held" and "escape" (no handler records it), SYSTEM's FRAM lock held leaves that code to the watchdog."""
+modes "entry_held" and "escape" (no handler records it), SYSTEM's FRAM write hung leaves that code to the watchdog."""
 
 import asyncio
 import errno
@@ -83,7 +83,7 @@ async def _main() -> None:
             chunk = getattr(sysfunct.pr, "fram", None)
             if chunk is None:
                 raise RuntimeError("SYSTEM's logger has no FRAM chunk, so no entry write of its can be held")
-            await chunk._op_lock.acquire()  # never released: the escalation's or dead-task entry write waits on it for good
+            chunk.write_into = _never_returns  # the escalation's or dead-task entry write never ends, the loop with it
             fact("held", True)
         label = next(name for name in BENCH["instances"] if hasattr(getattr(device, name, None), "_read_loop"))
         fact("reader", label)
@@ -111,6 +111,11 @@ async def _main() -> None:
         for i in range(len(phase)):
             phase[i] = 0
         done()
+
+
+def _never_returns(_buf: object) -> bool:
+    while True:
+        pass
 
 
 def _wrap_reboot(sysfunct: "SystemService", deaths: "list[int]") -> None:

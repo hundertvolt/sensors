@@ -54,7 +54,7 @@ async def _main() -> None:
         fact("warnings", len([t for t in entry["ErrType"] if t == "W"]))
         fact("err_count", entry["ErrCount"])
         # The chunk takes a fresh entry afterwards: a reset-wedged chunk unreadable for good would be a defect.
-        await store.err_s("post-recovery", errno=E_TEST_SEED_C)
+        store.err_s("post-recovery", errno=E_TEST_SEED_C)
         fact("tail", _errors((await store.get_log())[_LOG_NAME]))
     finally:
         fact("cleared_last", await store.reset())

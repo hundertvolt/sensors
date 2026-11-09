@@ -1,5 +1,5 @@
-"""Async wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device, lock-scoped
-CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
+"""Wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device CS-pin wrapper, with an async lock-scoped
+session and a synchronous one). Sole consumer: asy_fram_driver.py's FRAM_SPI, through the synchronous session.
 """
 # RP2040 SPI has no ACK/NAK, so write() cannot raise; a 32+ byte READ can raise OSError(EIO) on an
 # RX overrun since 1.29. write_readinto() turns machine.SPI's mismatched-length ValueError into
@@ -33,7 +33,8 @@ if TYPE_CHECKING:
 class SPI:
     def __init__(self, port_id: int, sck_pin: int, mosi_pin: int, miso_pin: int) -> None:
         self._spi: _SPI | None = None
-        self.bus_lock = asyncio.Lock()  # serialises the SPI peripheral: every CS session holds it
+        self.configured_for: object | None = None  # the device the bus was last configured for; None: not yet
+        self.bus_lock = asyncio.Lock()  # held by every async session; a synchronous session runs only while it is free
         self.init(port_id, sck_pin, mosi_pin, miso_pin)
 
     def configure(
@@ -44,18 +45,16 @@ class SPI:
         bits: int = 8,
         firstbit: int = _SPI.MSB,
     ) -> None:
-        # Programmer-error guards: only ever called from SPIDevice.session_begin() (which __aenter__
-        # also uses), on an initialized, lock-held bus.
+        # Programmer-error guard: only ever called from SPIDevice's session start, on an initialized bus.
         if self._spi is None:
             raise RuntimeError("SPI bus not initialized - call init() first")
-        if not self.bus_lock.locked():
-            raise RuntimeError("acquire the bus lock first")
         self._spi.init(baudrate=baudrate, polarity=polarity, phase=phase, bits=bits, firstbit=firstbit)
 
     def deinit(self) -> None:
         # machine.SPI.deinit() does NOT deactivate the rp2 hardware bus - it is forwarded for
         # portability only, and dropping self._spi is what actually puts this wrapper into its
         # documented "bus unavailable" state. See SPECIFICATION.md Part F.5.
+        self.configured_for = None
         if self._spi is not None:
             self._spi.deinit()
             self._spi = None
@@ -129,7 +128,7 @@ class SPIDevice(Lockable):
         await super().__aenter__()
         # __aenter__ raising means `async with` never calls __aexit__, so clean up here too.
         try:
-            self.session_begin()
+            self._begin()
         except BaseException:
             self.session_lock.release()
             raise
@@ -149,6 +148,29 @@ class SPIDevice(Lockable):
         await asyncio.sleep(0)
         return released
 
+    def _begin(self) -> None:
+        # Configures the bus only when another device (or none) configured it last, then asserts CS. The settle blocks
+        # on purpose: an awaited one would hand the loop to another task with CS asserted.
+        if not self.initialized:
+            raise RuntimeError("SPIDevice not set up - call setup() first")
+        spi = self.spi
+        try:
+            if spi.configured_for is not self:
+                spi.configured_for = None  # until configure() returns: a half-applied init is no device's
+                spi.configure(
+                    baudrate=self._baudrate,
+                    polarity=self._polarity,
+                    phase=self._phase,
+                    bits=self._bits,
+                    firstbit=self._firstbit,
+                )
+                spi.configured_for = self
+            self._cs_pin.value(self._cs_active_value)
+            time.sleep_us(_CS_SETTLE_US)
+        except BaseException:
+            self._cs_pin.value(not self._cs_active_value)  # deassert if asserted
+            raise
+
     async def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
         self.readinto_sync(buf, write_value=write_value)
 
@@ -156,24 +178,11 @@ class SPIDevice(Lockable):
         self.spi.readinto(buf, write_value=write_value)
 
     def session_begin(self) -> None:
-        # What __aenter__ does between the lock operations, for a caller that already holds the bus
-        # lock - configure()'s own guard enforces that. The settle blocks on purpose: an awaited one
-        # would hand the loop to another task with CS asserted and the bus locked.
-        if not self.initialized:
-            raise RuntimeError("SPIDevice not set up - call setup() first")
-        try:
-            self.spi.configure(
-                baudrate=self._baudrate,
-                polarity=self._polarity,
-                phase=self._phase,
-                bits=self._bits,
-                firstbit=self._firstbit,
-            )
-            self._cs_pin.value(self._cs_active_value)
-            time.sleep_us(_CS_SETTLE_US)
-        except BaseException:
-            self._cs_pin.value(not self._cs_active_value)  # deassert if asserted
-            raise
+        # The synchronous session, for a caller that runs it whole without suspending (C.8). Refused while an async
+        # session holds the bus, whose CS may stay asserted across a suspension.
+        if self.session_lock.locked():
+            raise RuntimeError("SPI bus held by an async session")
+        self._begin()
 
     def session_end(self) -> None:
         # The caller's own try/finally is what guarantees this runs; __aexit__() is that caller for

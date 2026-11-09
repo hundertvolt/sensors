@@ -19,9 +19,9 @@ from micropython import const
 
 from asy_base_classes import DeviceSession, SensorReaderConfig, utc_now
 from asy_config_manager import checked_float, make_dict, name_cfg
-from asy_crc_checks import CRC8, CRC32
 from asy_i2c_driver import I2CDevice
 from asy_print_log import DEFAULT_LOG, LogConfig
+from crc_checks import CRC8, CRC32
 from voc_algorithm import VOCAlgorithm
 
 try:
@@ -252,7 +252,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BACKUP_PERIOD + _VAL_BACKUP_MAX_AGE + _VAL_WAIT_TIME_NTP)
         if cfg_values is None or len(cfg_values) != _N_STORAGE_CFG:
-            await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
+            self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
             return None, False, False, None
 
         serialize = False
@@ -298,7 +298,7 @@ class SGP40_Reader(SensorReaderConfig):
             temp_data = await self._temperature.source.get_data()
             hum_data = await self._humidity.source.get_data()
         except Exception as e:
-            await self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE)
+            self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE)
             return None, None
         return getattr(temp_data, self._temperature.field, None), getattr(hum_data, self._humidity.field, None)
 
@@ -310,7 +310,7 @@ class SGP40_Reader(SensorReaderConfig):
         try:
             await self._sgp.setup()
         except Exception as e:
-            await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
+            self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             return False  # error
 
         if self._ts_storage is None:
@@ -320,7 +320,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BACKUP_PERIOD + _VAL_WAIT_TIME_NTP)
         if cfg_values is None or len(cfg_values) != _N_SETUP_CFG:
-            await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
+            self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
             return False  # error
 
         if cfg_values[0] > 0:  # backup verification period setting
@@ -371,9 +371,9 @@ class SGP40_Reader(SensorReaderConfig):
             if self._ts_storage is None:
                 self._reset_fram_cleared = True  # nothing to clear - vacuously satisfied
             elif not self._reset_fram_cleared:
-                self._reset_fram_cleared = await self._ts_storage.clear()
+                self._reset_fram_cleared = self._ts_storage.clear()
                 if not self._reset_fram_cleared:
-                    await self.pr.err_s("Error clearing FRAM!", errno=_ERR_SGP_BACKUP_CLEAR)
+                    self.pr.err_s("Error clearing FRAM!", errno=_ERR_SGP_BACKUP_CLEAR)
 
         timestamp = utc_now()  # None until the NTP client has set the clock this boot
         temp_val, hum_val = await self._compensation()
@@ -418,13 +418,13 @@ class SGP40_Reader(SensorReaderConfig):
                 if deserialized:
                     self.pr.one("Restore applied successfully")
                 else:
-                    await self.pr.err_s("Error deserializing!", errno=_ERR_SGP_ALGO_STATE)
+                    self.pr.err_s("Error deserializing!", errno=_ERR_SGP_ALGO_STATE)
 
             if serialize:
                 if serialized:
                     self.pr.evt("Backup data created successfully")
                 else:
-                    await self.pr.err_s("Error serializing!", errno=_ERR_SGP_ALGO_STATE)
+                    self.pr.err_s("Error serializing!", errno=_ERR_SGP_ALGO_STATE)
 
             voc_state = self._voc_state(voc_index, fresh=reset_for_measure, restored=deserialized)  # type: ignore[arg-type]  # None only for a CRC add_into() cannot compute
 
@@ -437,7 +437,7 @@ class SGP40_Reader(SensorReaderConfig):
             if deserialize:  # the backup was read but never applied: keep it for the next cycle
                 self._voc_init = 1
                 self._backup_counter = 0  # no backup may overwrite it meanwhile
-            await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
+            self.pr.err_s("Read failed:", e, errno=_ERR_READ)
         return SGP40(voc_index, raw, voc_state, timestamp), True, serialized
 
     async def _recover_device(self) -> bool:
@@ -446,7 +446,7 @@ class SGP40_Reader(SensorReaderConfig):
         try:
             await self._sgp.turn_heater_off()
         except Exception as e:
-            await self.pr.err_s("Heater-off failed:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_s("Heater-off failed:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -481,7 +481,7 @@ class SGP40_Reader(SensorReaderConfig):
             return  # no write error
 
         if not res:  # no data was written for other reason
-            await self.pr.err_s("Write error during backup!", errno=_ERR_SGP_BACKUP_WRITE)
+            self.pr.err_s("Write error during backup!", errno=_ERR_SGP_BACKUP_WRITE)
             return  # don't continue due to error
 
         if require_ntp:  # (ntp_synced and require_ntp) and res must have been True here
@@ -494,7 +494,7 @@ class SGP40_Reader(SensorReaderConfig):
             self._voc_write = cfg_values[2]  # SGPWaitTimeNTP
             self.pr.evt("Backup written with timestamp again.")
         else:  # every untimestamped backup warns; the newest-entry rule spends one slot per run
-            await self.pr.wrn_s("Backup written without timestamp.", wrnno=_WRN_SGP_WRITTEN_NO_TS)
+            self.pr.wrn_s("Backup written without timestamp.", wrnno=_WRN_SGP_WRITTEN_NO_TS)
         self._last_backup = ts
         return
 
@@ -510,13 +510,13 @@ class SGP40_Reader(SensorReaderConfig):
 
         res, ts, age = await self._ts_storage.read_into(buf)
         if not res:  # not valid / no backup
-            await self.pr.wrn_s("No backup found!", wrnno=_WRN_SGP_NO_BACKUP)
+            self.pr.wrn_s("No backup found!", wrnno=_WRN_SGP_NO_BACKUP)
             self._voc_init = 0
             return False
 
         # One chain, as legacy: the age bound is tested only once an age is known.
         if ts is None:  # undated: restored at once, no age to test
-            await self.pr.wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)
+            self.pr.wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)
             ts = _NO_TIMESTAMP
         elif age is None:
             if self._voc_init > 0:
@@ -524,7 +524,7 @@ class SGP40_Reader(SensorReaderConfig):
                 return False
         elif cfg_values[1] > 0 and (age < 0 or age > 60 * cfg_values[1]):  # BackupMaxAge; 0 accepts any age
             self._voc_init = 0
-            await self.pr.wrn_s("Backup age out of range (too old, or dated in the future)", wrnno=_WRN_SGP_BACKUP_AGE)
+            self.pr.wrn_s("Backup age out of range (too old, or dated in the future)", wrnno=_WRN_SGP_BACKUP_AGE)
             return False
         else:
             self.pr.one("Backup with timestamp loaded")
@@ -652,7 +652,7 @@ class SGP40_I2C:
         async with sgp40.i2c_device as i2c:
             await i2c.readinto(self._reply_buffer, end=replylen)
         for i in range(0, replylen, 3):
-            if await self.crc.check_from(self._reply_buffer, 3, start=i) is None:
+            if self.crc.check_from(self._reply_buffer, 3, start=i) is None:
                 raise RuntimeError("CRC check failed while reading data")
         return [unpack_from(">H", self._reply_buffer, i)[0] for i in range(0, replylen, 3)]
 
@@ -735,10 +735,10 @@ class SGP40_I2C:
             mv[0] = 0x26
             mv[1] = 0x0F  # compensated read command
             self._relative_humidity_to_ticks(relative_humidity, mv[2:4])
-            if await self.crc.add_into(self._measure_command, 2, start=2) is None:
+            if self.crc.add_into(self._measure_command, 2, start=2) is None:
                 return None
             self._celsius_to_ticks(temperature, mv[5:7])
-            if await self.crc.add_into(self._measure_command, 2, start=5) is None:
+            if self.crc.add_into(self._measure_command, 2, start=5) is None:
                 return None
             return await self._measure_in_session(sgp40)
 

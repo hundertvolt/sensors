@@ -18,7 +18,6 @@ from _error_codes import code
 from _fake_time import DrivenTime, tick
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
-from _held_log import held_logger, until
 from _port_bands import PortAllocator
 from _recording_print import record_prints
 from _src_const import src_int
@@ -745,7 +744,7 @@ def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
     run(client.pr.setup())
     counter = run(client.get_error_counter())
     assert counter["WIFI"]["ErrCount"] == 0
-    run(client.pr.err_s("boom", errno=11))
+    client.pr.err_s("boom", errno=11)
     counter = run(client.get_error_counter())
     assert counter["WIFI"]["ErrCount"] == 1
 
@@ -2224,24 +2223,6 @@ def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
 # status, the disconnect-wait: each persists a real errno via pr.err_s() and sets
 # self._hw_op_failed on a genuine exception, independent of the AP-reachability-driven fallback.
 # ---------------------------------------------------------------------------
-
-
-def test_a_failed_mode_switch_never_holds_wifi_mode_lock_across_its_entry() -> None:
-    # Its entry's chunk write held: the switch ends within rounds with the entry in RAM, so NTP and the uptime
-    # snapshot never wait on FRAM behind the radio's lock (SPECIFICATION.md C.8).
-    client = _make_client()
-    client.pr, gate = held_logger(client.name)
-    _wlan(client).raise_on["disconnect"] = RuntimeError("simulated hardware fault")
-
-    async def scenario() -> "tuple[bool, int]":
-        switch = asyncio.create_task(client._select_wifi_mode(network.AP_IF))
-        ended = await until(switch.done) and not client.wifi_mode_lock.locked()
-        count = client.pr._err_count
-        gate.set()
-        assert await switch is False
-        return ended, count
-
-    assert run(scenario()) == (True, 1)
 
 
 def test_switch_wlan_mode_exception_sets_hw_op_failed_and_persists_wlan_mode_switch() -> None:

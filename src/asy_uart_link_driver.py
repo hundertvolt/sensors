@@ -154,7 +154,7 @@ class UARTLinkDriver:
         try:
             return await self._comm.uart_set(_CMD_ECHO, payload)
         except Exception as e:  # an unsupervised task's top: never raises, so the run goes on to its next hazard
-            await self.pr.err_s("Hazard initiation failed:", e, errno=_ERR_UNEXPECTED)
+            self.pr.err_s("Hazard initiation failed:", e, errno=_ERR_UNEXPECTED)
             return None
 
     def _message_callback(self, cmd_id: int, cmd: int, payload: "PieceBuffer | None") -> None:

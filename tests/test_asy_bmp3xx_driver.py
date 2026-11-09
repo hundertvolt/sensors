@@ -11,7 +11,6 @@ from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
-from _held_log import held_logger, until, written
 from _recording_print import record_prints
 from _schema_cases import declared_fields, domain_cases
 from _src_const import src_int
@@ -1712,30 +1711,6 @@ def test_a_put_racing_the_recovery_ends_with_the_puts_value_in_the_chip() -> Non
     assert run(reader.cfgmgr.get_dict(["PresOvers"])) == {"PresOvers": 8}
 
 
-def test_a_recovery_rung_that_logs_never_holds_the_setter_lock_across_its_entries() -> None:
-    # A failed soft reset, and a re-apply whose chip write fails: each entry's chunk write held, the rung ends within
-    # rounds with its entry in RAM, so a PUT never waits on FRAM behind it (SPECIFICATION.md C.8).
-    for failing in ("reset", "set_filter_coefficient"):
-        _i2c, reader = _healthy_reader("rung_held_" + failing)
-
-        async def refused(*_args: object) -> None:
-            raise OSError(5)
-
-        setattr(reader._bmp, failing, refused)
-        reader.pr, gate = held_logger(reader.name)
-
-        async def scenario(reader: BMP3XX_Reader = reader, gate: asyncio.Event = gate) -> "tuple[bool, int]":
-            with FastAsyncSleep():  # the chip's reset and settle sleeps take no rounds
-                rung = asyncio.create_task(reader._recover_device())
-                ended = await until(rung.done) and not reader._set_lock.locked()
-            count = reader.pr._err_count
-            gate.set()
-            await rung
-            return ended, count
-
-        assert run(scenario()) == (True, 1), failing
-
-
 def test_a_pres_offset_put_during_a_conversion_does_not_change_the_stored_sample() -> None:
     _i2c, reader = _healthy_reader("capture_rule")
     real = reader._bmp.get_pressure_and_temperature
@@ -1806,7 +1781,6 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     async def scenario() -> "ErrorLog":
         await reader.setup()  # the boot batch's setup(): the FRAM-backed logger first
         await reader.get_pressure_oversampling()  # bus failure -> logs via self.pr (FRAM-backed)
-        assert await written(reader.pr)  # written behind (C.7.1), before the reboot below
         return await reader.get_error_counter()
 
     counters = run(scenario())

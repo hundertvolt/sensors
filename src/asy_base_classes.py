@@ -445,10 +445,10 @@ class SensorReader:
                 sensor_conf = await self._get_mgr_cfg(cfg)
                 if sensor_conf is not None:
                     if not all(k in values for k in sensor_conf):
-                        self.pr.wrn_q("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=_WRN_CFG_KEYS)
+                        self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=_WRN_CFG_KEYS)
                     values.update(sensor_conf)
             except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
-                self.pr.err_q("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
+                self.pr.err_s("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
                 return {name: {"error": UNAVAILABLE}}
             if sensor_conf is None:
                 return {name: {"error": UNAVAILABLE}}  # the store persisted its own entry; the callback is not read
@@ -459,10 +459,10 @@ class SensorReader:
                     if sensor_callback is None:
                         return {name: {"error": UNAVAILABLE}}  # the driver persisted its own entry
                     if not all(k in values for k in sensor_callback):
-                        self.pr.wrn_q("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
+                        self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
                     values.update(sensor_callback)
                 except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
-                    self.pr.err_q("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
+                    self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
                     return {name: {"error": UNAVAILABLE}}
 
             return {name: values}
@@ -492,7 +492,7 @@ class SensorReader:
             try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
                 old_values = await self._get_mgr_cfg(persisted_keys) if persisted_keys else {}
             except Exception as e:
-                self.pr.err_q("Error reading previous config for fallback:", e, errno=_ERR_CFG_SNAPSHOT_RAISED)
+                self.pr.err_s("Error reading previous config for fallback:", e, errno=_ERR_CFG_SNAPSHOT_RAISED)
                 old_values = None
             if old_values is None:
                 old_values = {}
@@ -501,7 +501,7 @@ class SensorReader:
                 # override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); its return shape is mypy's (D.2).
                 persisted, results = await self._set_mgr_cfg(data, cfg_vals)
             except Exception as e:
-                self.pr.err_q("Error writing config dict:", e, errno=_ERR_CFG_SET_RAISED)
+                self.pr.err_s("Error writing config dict:", e, errno=_ERR_CFG_SET_RAISED)
                 persisted, results = False, {}
 
             if not persisted:
@@ -528,7 +528,7 @@ class SensorReader:
                     try:
                         pushed = await callback(push_value)
                     except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
-                        self.pr.err_q("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
+                        self.pr.err_s("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
                         pushed = False
                     if not pushed:
                         results[key] = FAILED
@@ -553,10 +553,10 @@ class SensorReader:
             try:
                 ok = await self._recover_device()
             except Exception as e:  # an overridable extension point, guarded like this file's others
-                await self.pr.err_s("Device recovery raised:", e, errno=_ERR_CALLBACK)
+                self.pr.err_s("Device recovery raised:", e, errno=_ERR_CALLBACK)
                 return  # a failed rung: its one entry is this error
             if ok is True:  # a failed hook has logged its own error; None means no participant rung
-                await self.pr.wrn_s("Device recovery after", n, "failed cycles: done", wrnno=_WRN_DEVICE_RECOVERY)
+                self.pr.wrn_s("Device recovery after", n, "failed cycles: done", wrnno=_WRN_DEVICE_RECOVERY)
         elif n >= _RECOVER_BUS_AT and not self._rungs & _RUNG_BUS:
             await self._recover_bus(_RUNG_BUS)
         elif n >= _RECOVER_CONTROLLER_AT:
@@ -574,9 +574,9 @@ class SensorReader:
                 self._bus_mark = self._recovery_bus.recoveries  # a new episode: no reader has recovered the bus yet
                 self._rebuild_mark = self._recovery_bus.rebuilds
             self._err_cnt_internal += 1
-            await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
+            self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
             if self._err_cnt_internal > self._max_module_error:
-                await self.pr.err_s("Maximum error count reached!", errno=_ERR_GIVE_UP)
+                self.pr.err_s("Maximum error count reached!", errno=_ERR_GIVE_UP)
                 return False  # breaking the loop triggers a task reset
             await self._climb_ladder()
             return True
@@ -596,7 +596,7 @@ class SensorReader:
             return
         status = bus.take_boot_clear_status()
         if status:
-            await self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
+            self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
 
     async def _recover_bus(self, rung: int) -> None:
         # One bus rung per bus per episode: since its episode began, a reader skips the clear if any rung was entered on
@@ -609,12 +609,12 @@ class SensorReader:
             if bus.recoveries != self._bus_mark:
                 return
             status = await bus.clear()
-            await self.pr.wrn_s("I2C bus cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
+            self.pr.wrn_s("I2C bus cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
         else:
             if bus.rebuilds != self._rebuild_mark:
                 return
             status = await bus.recover()
-            await self.pr.wrn_s("I2C controller re-initialised, status", status, wrnno=_WRN_BUS_RECOVERY)
+            self.pr.wrn_s("I2C controller re-initialised, status", status, wrnno=_WRN_BUS_RECOVERY)
 
     async def _recover_device(self) -> bool | None:
         # The participant rung a driver overrides: True done, False failed (it has persisted its own error),
@@ -646,7 +646,7 @@ class SensorReader:
             try:
                 recovered = await getter()
             except Exception as e:  # getter is caller-supplied; its runtime behavior isn't statically known
-                self.pr.err_q("Error reading", key, "back from sensor:", e, errno=_ERR_RECOVERY_READ_RAISED)
+                self.pr.err_s("Error reading", key, "back from sensor:", e, errno=_ERR_RECOVERY_READ_RAISED)
                 recovered = None
             # A getter reads live, possibly-adversarial hardware state - a value outside this
             # field's own schema is treated the same as a raised exception (fall through), so
@@ -660,7 +660,7 @@ class SensorReader:
         try:
             persisted, res = await self._set_mgr_cfg({key: recovered}, cfg_vals)
         except Exception as e:
-            self.pr.err_q("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)
+            self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)
             return
         if not persisted or res.get(key) not in (VALID, UNCHANGED):
             # Console only: the store that refused the recovery persisted its own entry.

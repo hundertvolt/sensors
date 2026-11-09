@@ -6,8 +6,8 @@ import asyncio
 import binascii
 
 import asy_spi_driver
-from asy_crc_checks import CRC8
 from asy_fram_manager import FRAMManager
+from crc_checks import CRC8
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -41,13 +41,13 @@ async def _main() -> None:
     fact("allocated", chunk is not None)
     if chunk is not None:
         try:
-            fact("cleared_first", await chunk.clear())
-            fact("written", await chunk.write(PATTERN))
-            read_back = await chunk.read()
+            fact("cleared_first", chunk.clear())
+            fact("written", chunk.write(PATTERN))
+            read_back = chunk.read()
             fact("read_ok", read_back is not None)
             fact("matches", read_back is not None and bytes(read_back) == PATTERN)
         finally:
-            fact("cleared_last", await chunk.clear())
+            fact("cleared_last", chunk.clear())
     done()
 
 

@@ -78,7 +78,7 @@ class CaptiveDNS:
         if netmask_int is None or server_int is None:
             # server_ip/netmask come from the OS's own wlan.ifconfig() - a startup misconfiguration,
             # not expected in normal operation, so it's worth a persisted errno.
-            await self.pr.err_s("Invalid server_ip/netmask, not starting:", server_ip, netmask, errno=_ERR_BAD_ARG)
+            self.pr.err_s("Invalid server_ip/netmask, not starting:", server_ip, netmask, errno=_ERR_BAD_ARG)
             return
         network = server_int & netmask_int
         recv_fail_backoff_ms = _RECV_FAIL_BACKOFF_INITIAL_MS
@@ -107,11 +107,11 @@ class CaptiveDNS:
                         else:
                             sent = await self._udps.sendto(packet, addr)
                             if sent is None:
-                                await self.pr.wrn_s("Reply dropped by sendto() to", addr[0], addr[1], wrnno=_WRN_DNS_REPLY_DROPPED)
+                                self.pr.wrn_s("Reply dropped by sendto() to", addr[0], addr[1], wrnno=_WRN_DNS_REPLY_DROPPED)
                             else:
                                 self.pr.evt("Replying to", addr[0], addr[1], dns.domain, "->", server_ip)
                     else:  # (None, None) is local: the socket never bound, or the receive raised - never a client's datagram
-                        await self.pr.wrn_s("Receiving a DNS request failed.", wrnno=_WRN_DNS_RECV_FAILED)
+                        self.pr.wrn_s("Receiving a DNS request failed.", wrnno=_WRN_DNS_RECV_FAILED)
                         await asyncio.sleep_ms(recv_fail_backoff_ms)
                         recv_fail_backoff_ms = min(
                             recv_fail_backoff_ms * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_MS,
@@ -119,7 +119,7 @@ class CaptiveDNS:
 
                 except Exception as e:
                     # nothing supervises this task - never let an unexpected exception here kill it.
-                    await self.pr.err_s("DNS Server error:", e, errno=_ERR_UNEXPECTED)
+                    self.pr.err_s("DNS Server error:", e, errno=_ERR_UNEXPECTED)
                     await asyncio.sleep(_ERROR_RETRY_WAIT_S)
 
         finally:
@@ -129,13 +129,13 @@ class CaptiveDNS:
             except Exception as e:
                 # disconnect() is documented as never raising, but nothing supervises this task -
                 # never let cleanup itself become the uncaught exception.
-                await self.pr.err_s("DNS Server error during disconnect:", e, errno=_ERR_UNEXPECTED)
+                self.pr.err_s("DNS Server error during disconnect:", e, errno=_ERR_UNEXPECTED)
                 disconnect_ok = True  # already logged above via the except-Exception branch
             if not disconnect_ok:
                 # Part C.7's silent-failure-masking convention: disconnect() never raises (UDPSocket
                 # owns no logger), but its bool says whether unregister()/close() succeeded - logged here
                 # so a real socket or poll-slot leak over a long uptime leaves a trail.
-                await self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
+                self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
             self.pr.evt("DNS Server disconnected.")
 
 

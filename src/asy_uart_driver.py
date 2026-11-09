@@ -1,6 +1,6 @@
 """Async wrapper around machine.UART: receives through a DMA ring off the UART FIFO and writes through its
 TX ring, lock-scoped via asy_base_classes.Lockable so an exchange runs atomically under `async with`.
-Optional per-instance CRC framing (asy_crc_checks.py) plus a pluggable frame codec (asy_framing_codecs.py)."""
+Optional per-instance CRC framing (crc_checks.py) plus a pluggable frame codec (asy_framing_codecs.py)."""
 # Whoever wires it in: GPIO24/25 (UART1) and GPIO28/29 (UART0) are valid pin-mux pairs, but the Pico
 # W datasheet (p.8) hands GPIO23/24/25/29 to the wireless chip, so each pair has a taken half.
 #
@@ -20,8 +20,8 @@ from rp2 import DMA
 from uctypes import addressof
 
 from asy_base_classes import COUNTER_CAP, Lockable, PieceBuffer
-from asy_crc_checks import CRCBase, CRCPass
 from asy_framing_codecs import FramingBase, FramingPass
+from crc_checks import CRCBase, CRCPass
 
 try:
     from typing import TYPE_CHECKING
@@ -278,7 +278,7 @@ class UART(Lockable):
         if decoded is None:
             self._count_discarded(consumed)
             return None
-        checked = await self.crc.check_from(buf, size=decoded)
+        checked = self.crc.check_from(buf, size=decoded)
         if checked is None:
             self._count_discarded(consumed)
         self._frame_consumed = consumed
@@ -562,7 +562,7 @@ class UART(Lockable):
             size += want
             timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
         try:
-            checked = await self.crc.check(msg)
+            checked = self.crc.check(msg)
         except MemoryError as e:  # check()'s own bytearr[0:n] slice allocates a fresh copy
             self._report("CRC check allocation failed:", e)
             checked = None
@@ -615,7 +615,7 @@ class UART(Lockable):
                 return None
             size += want
             timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
-        checked = await self.crc.check_from(buf, size=size)
+        checked = self.crc.check_from(buf, size=size)
         if checked is None:
             self._count_discarded(size)
         return checked
@@ -681,7 +681,7 @@ class UART(Lockable):
                 break
             timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
         if line is None:
-            log.err_q("UART line over the cap, discarded:", size, errno=_ERR_UART_TRANSFER_CAP)
+            log.err_s("UART line over the cap, discarded:", size, errno=_ERR_UART_TRANSFER_CAP)
             return None
         return line if line.trim(size) else None
 
@@ -774,7 +774,7 @@ class UART(Lockable):
         if uart is None:
             return False
         try:
-            framed = await self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy
+            framed = self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy
         except MemoryError as e:
             self._report("CRC frame allocation failed:", e)
             return False
@@ -793,7 +793,7 @@ class UART(Lockable):
             return False
         if size < 0 or size + self.crc.length() > len(buf):
             return False  # a short buffer is never a partial transfer reported as success
-        crcsize = await self.crc.add_into(buf, size)
+        crcsize = self.crc.add_into(buf, size)
         if crcsize is None:
             return False
         encoded = await self.framing.encode_into(buf, crcsize)

@@ -7,8 +7,8 @@ import asyncio
 import machine
 
 import asy_spi_driver
-from asy_crc_checks import CRC8
 from asy_fram_manager import FRAMManager
+from crc_checks import CRC8
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -51,8 +51,8 @@ async def _spi_claims(wdt: machine.WDT) -> None:
         fact("chunk", None)
         return
     try:
-        fact("chunk_cleared_after_setup", await chunk.clear())
-        fact("baseline_write", await chunk.write(_PATTERN))
+        fact("chunk_cleared_after_setup", chunk.clear())
+        fact("baseline_write", chunk.write(_PATTERN))
         raw_spi = spi_wrapper._spi  # the underlying machine.SPI, not the project wrapper's own deinit()
         fact("raw_spi_present", raw_spi is not None)
         if raw_spi is not None:
@@ -60,9 +60,9 @@ async def _spi_claims(wdt: machine.WDT) -> None:
             fact("spi_singleton", again is raw_spi)
             raw_spi.deinit()
             wdt.feed()
-            fact("spi_read_after_deinit", bytes(await chunk.read() or b"") == _PATTERN)
+            fact("spi_read_after_deinit", bytes(chunk.read() or b"") == _PATTERN)
     finally:
-        fact("chunk_cleared", await chunk.clear())
+        fact("chunk_cleared", chunk.clear())
 
 
 async def _main() -> None:

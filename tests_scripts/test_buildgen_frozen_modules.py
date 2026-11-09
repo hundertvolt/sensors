@@ -85,13 +85,13 @@ def test_every_frozen_module_is_imported_by_the_generated_module_or_another_memb
 
 
 def test_frozen_modules_include_transitive_dependency(generated: "dict[str, GeneratedDevice]") -> None:
-    # asy_sgp40_driver.py imports voc_algorithm.py and asy_crc_checks.py directly - the generated
+    # asy_sgp40_driver.py imports voc_algorithm.py and crc_checks.py directly - the generated
     # module of a device declaring an sgp40 imports neither, so this only passes if the transitive
     # closure actually walks imports, not just the seed set.
     result = generated[devices_with("sgp40")[0]]
     assert "voc_algorithm" not in _runtime_imports(result.module_source)
     assert "voc_algorithm" in result.frozen_modules
-    assert "asy_crc_checks" in result.frozen_modules
+    assert "crc_checks" in result.frozen_modules
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

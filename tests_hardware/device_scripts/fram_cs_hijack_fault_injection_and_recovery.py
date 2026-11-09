@@ -86,27 +86,23 @@ class _CsHijack:
 
 async def _readback(fram: FRAM_SPI, offset: int, size: int) -> "bytes | None":
     buf = bytearray(size)
-    async with fram:
-        ok = await fram.get_values(buf, addr_start=_BASE + offset)
+    ok = fram.get_values(buf, addr_start=_BASE + offset)
     return bytes(buf) if ok else None
 
 
 async def _recovered(fram: FRAM_SPI, offset: int, wdt: "machine.WDT") -> bool:
-    # verify_present() takes the outer lock itself (asyncio.Lock is not reentrant), then a clean write reads back.
-    present = await fram.verify_present()
+    # The chip identifies again (RDID), then a clean write reads back.
+    present = fram._check_device_id()
     wdt.feed()
     readback = bytearray(len(_POST_RECOVERY_PATTERN))
-    async with fram:
-        wrote = await fram.set_values(_POST_RECOVERY_PATTERN, addr_start=_BASE + offset)
-    async with fram:
-        read = await fram.get_values(readback, addr_start=_BASE + offset)
+    wrote = fram.set_values(_POST_RECOVERY_PATTERN, addr_start=_BASE + offset)
+    read = fram.get_values(readback, addr_start=_BASE + offset)
     return present and wrote and read and readback == _POST_RECOVERY_PATTERN
 
 
 async def _victim_read(fram: FRAM_SPI, buf: bytearray, offset: int) -> "str | None":
     try:
-        async with fram:
-            await fram.get_values(buf, addr_start=_BASE + offset)
+        fram.get_values(buf, addr_start=_BASE + offset)
     except Exception as e:  # recorded as the scenario's fact; the host decides
         return repr(e)
     return None
@@ -114,8 +110,7 @@ async def _victim_read(fram: FRAM_SPI, buf: bytearray, offset: int) -> "str | No
 
 async def _victim_write(fram: FRAM_SPI, buf: bytes, offset: int) -> "str | None":
     try:
-        async with fram:
-            await fram.set_values(buf, addr_start=_BASE + offset)
+        fram.set_values(buf, addr_start=_BASE + offset)
     except Exception as e:  # recorded as the scenario's fact; the host decides
         return repr(e)
     return None
@@ -137,8 +132,7 @@ async def _main() -> None:
         return
 
     # 1: the payload of a write deselected, which the chip never takes (owner, 2026-09-04, below).
-    async with fram:
-        seeded = await fram.set_values(_ORIGINAL_PATTERN, addr_start=_BASE + _WRITE_RACE_AT)
+    seeded = fram.set_values(_ORIGINAL_PATTERN, addr_start=_BASE + _WRITE_RACE_AT)
     hijack = _CsHijack(fram, len(_HIJACKED_WRITE_PATTERN))
     hijack.install_for_write()
     try:
@@ -150,8 +144,7 @@ async def _main() -> None:
     fact("write_hijack", {"seeded": seeded, "injected": hijack.injected_with_cs_asserted, "raised": raised, "readback_ok": readback == _ORIGINAL_PATTERN, "recovered": await _recovered(fram, _POST_RECOVERY_WRITE_HIJACK_AT, wdt)})
 
     # 2: the payload of a read deselected, which returns no real data (owner, 2026-09-04, below).
-    async with fram:
-        seeded = await fram.set_values(_READ_SEED_PATTERN, addr_start=_BASE + _READ_RACE_AT)
+    seeded = fram.set_values(_READ_SEED_PATTERN, addr_start=_BASE + _READ_RACE_AT)
     victim_buf = bytearray(len(_READ_SEED_PATTERN))
     hijack = _CsHijack(fram, len(victim_buf))
     hijack.install_for_read()

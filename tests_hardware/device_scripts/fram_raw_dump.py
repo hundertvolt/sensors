@@ -37,26 +37,25 @@ async def _main() -> None:
     await fram.setup()  # identifies the chip (RDID) and reads its status register; no write
     piece = bytearray(_PIECE_BYTES)
     skipped, failed_at = 0, None
-    async with fram:  # the driver and bus locks the synchronous read requires, held for the whole dump
-        for start, length in _EVIDENCE_REGIONS:
-            for address in range(start, start + length, _PIECE_BYTES):
-                view = memoryview(piece)[: min(_PIECE_BYTES, start + length - address)]
-                if fram.get_values_sync(view, address) != 0:
-                    failed_at = address
-                    break
-                if any(view):
-                    print(f"FRAM {address:06x} {binascii.hexlify(bytes(view)).decode()}")
-                else:
-                    skipped += 1
-                wdt.feed()
-            if failed_at is not None:
+    for start, length in _EVIDENCE_REGIONS:
+        for address in range(start, start + length, _PIECE_BYTES):
+            view = memoryview(piece)[: min(_PIECE_BYTES, start + length - address)]
+            if not fram.get_values(view, address):
+                failed_at = address
                 break
-        status = fram._read_status()
+            if any(view):
+                print(f"FRAM {address:06x} {binascii.hexlify(bytes(view)).decode()}")
+            else:
+                skipped += 1
+            wdt.feed()
+        if failed_at is not None:
+            break
+    status = fram._read_status()
     fact("dump_size", sum(length for _start, length in _EVIDENCE_REGIONS))
     fact("zero_pieces", skipped)
     fact("read_failed_at", failed_at)
     fact("status_register", status)
-    fact("write_protected", await fram.get_write_protected())
+    fact("write_protected", fram.get_write_protected())
     fact("rdid", binascii.hexlify(bytes(fram._id_buf)).decode())
     done()
 

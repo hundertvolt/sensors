@@ -25,10 +25,10 @@ _COBS_RUN_LEN = const(254)
 
 class FramingBase:
     # Pass-through by construction: every method below is the identity, and a subclass overrides
-    # only what it actually changes. Mirrors asy_crc_checks.py's CRCBase/CRCPass split, so a caller
+    # only what it actually changes. Mirrors crc_checks.py's CRCBase/CRCPass split, so a caller
     # can hold either family behind one dispatch table.
     def __init__(self, max_frame: int = 0, run_length: int = 0, trailer: int = 0) -> None:
-        # Parameterized like asy_crc_checks.py's CRCBase, so a subclass supplies constants rather than
+        # Parameterized like crc_checks.py's CRCBase, so a subclass supplies constants rather than
         # arithmetic: run_length is the longest span one code byte can describe (0 = no code bytes
         # at all) and trailer the delimiter bytes appended after it.
         self.max_frame = max(max_frame, 0)
@@ -74,7 +74,7 @@ class FramingBase:
 
 class FramingPass(FramingBase):
     # The explicit no-op, named so a construction site states the choice rather than relying on a
-    # default - the same reason asy_crc_checks.py spells out CRCPass.
+    # default - the same reason crc_checks.py spells out CRCPass.
     def __init__(self) -> None:
         super().__init__(0, run_length=0, trailer=0)  # no code bytes, no delimiter, no overhead
 

@@ -40,12 +40,12 @@ import asy_fram_manager
 import asy_print_log
 import asy_system_service
 from asy_base_classes import UNAVAILABLE, SensorReaderConfig
-from asy_crc_checks import CRC8, CRC32
-from asy_fram_manager import FRAMChunk, FRAMManager
+from asy_fram_manager import FRAMManager
 from asy_i2c_driver import I2C, I2CDevice
 from asy_print_log import DEFAULT_LOG, LogConfig, PrintLogHistory, PrintLogHistoryStore
 from asy_system_service import BOOT_CONSTRUCTION, BOOT_DONE, BOOT_NTP, SystemService, begin_boot, write_reset_record
 from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, WebserverService
+from crc_checks import CRC8, CRC32
 
 try:
     from typing import TYPE_CHECKING
@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 
     class _ErrS(Protocol):
         # PrintLogHistory.err_s()'s own signature, for a stand-in that forwards to the real one.
-        async def __call__(self, *args: object, errno: int = ..., sep: str = ..., end: str = ...) -> None: ...
+        def __call__(self, *args: object, errno: int = ..., sep: str = ..., end: str = ...) -> None: ...
 
 _RUN_BOUND_S = 5
 _SRC = "src/asy_system_service.py"
@@ -235,7 +235,7 @@ def test_init_zero_history_length_is_accepted_in_memory() -> None:
     svc = _make_service(log=LogConfig(None, 0, None))
     assert len(svc.pr.history) == 0
     run(svc.pr.setup())
-    run(svc.pr.err_s("boom", errno=1))  # must not raise despite there being nowhere to store it
+    svc.pr.err_s("boom", errno=1)  # must not raise despite there being nowhere to store it
     assert svc.pr._err_count == 1
 
 
@@ -1128,7 +1128,7 @@ class _Rig:
         return "sup=none" if task is None else "sup=done" if task.done() else "sup=running"
 
     def _record_quiesce(self, manager: FRAMManager) -> None:
-        # The sequence's step 3, recorded: the pause quiesce() sets, then each chunk's wait for its operation in flight.
+        # The sequence's step 3, recorded: the storage pause; no chunk operation is ever in flight to wait out.
         events, set_pause = self.events, manager.set_pause
 
         def pause(*, value: bool) -> None:
@@ -1136,13 +1136,6 @@ class _Rig:
             set_pause(value=value)
 
         manager.set_pause = pause  # type: ignore[method-assign]
-        for chunk in manager._chunks:
-
-            async def idle(wait: "Callable[[], Coroutine[object, object, None]]" = chunk.wait_idle) -> None:
-                events.append("wait_idle")
-                await wait()
-
-            chunk.wait_idle = idle  # type: ignore[method-assign]
 
     def steps(self) -> "list[str]":
         return [e.split(" ")[0] for e in self.events]
@@ -1204,22 +1197,21 @@ def _drive(rig: _Rig, purpose: str, *, fire: bool = True, snapshot: bool = True)
 
 
 def _expected_steps(rig: _Rig, purpose: str) -> "list[str]":
-    # Acceptance closes the stores; the supervisor parks; S2 closes and flushes; S3 pauses and waits out each chunk;
+    # Acceptance closes the stores; the supervisor parks; S2 closes and flushes; S3 pauses the storage;
     # S4 stops the tasks; S5 deletes for a config reset; S6's _reboot() and the fired reset each flush once more.
     stores = [s.name for s in rig.stores]
-    chunks = 0 if rig.manager is None else len(rig.manager._chunks)
     steps = [n + ".close" for n in stores] + ["park"] + [n + ".close" for n in stores] + [n + ".flush" for n in stores]
-    steps += (["pause=True"] + ["wait_idle"] * chunks) if rig.manager is not None else []
+    steps += ["pause=True"] if rig.manager is not None else []
     steps += ["t" + str(n) + ".cancelled" for n in range(len(rig.starters))]
     steps += [n + ".delete" for n in stores] if purpose == "_RR_CONFIG_RESET" else []
     return steps + [n + ".flush" for n in stores] + [n + ".close" for n in stores] + [n + ".flush" for n in stores]
 
 
 def _planned_feeds(rig: _Rig, purpose: str) -> int:
-    # S1's two, one per store flush, per chunk quiesced and per task stopped, then S5's own, then S6's one at the arm.
+    # S1's two, one per store flush and per task stopped, then S5's own, then S6's one at the arm.
     chunks = 0 if rig.manager is None else len(rig.manager._chunks)
     s5 = {"_RR_CONFIG_RESET": len(rig.stores), "_RR_FRAM_ERASED": chunks + rig.chip.size // _ERASE_UNIT}.get(purpose, 0)
-    return 2 + len(rig.stores) + chunks + len(rig.starters) + s5 + 1
+    return 2 + len(rig.stores) + len(rig.starters) + s5 + 1
 
 
 def _takes_over(purpose: str, counter: str) -> None:
@@ -1278,7 +1270,7 @@ def _seeded_erase(chip: "type[_CutChip]") -> None:
     # Valid log chunks, 0xA5 everywhere else, seeded unit by unit (a whole-chip pattern would allocate the chip's size).
     rig = _Rig(chip=chip)
     assert rig.manager is not None
-    run(rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK")))
+    rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK"))
     spans = sorted((addr, addr + c.size + c.crc.length() + 2) for c in rig.manager._chunks for addr in c._block_addr)
     pattern = b"\xa5" * _ERASE_UNIT
     image = [(lo, bytes(rig.chip.memory[lo:hi])) for lo, hi in spans]  # the chunks, taken before the pattern
@@ -1304,7 +1296,7 @@ def test_erase_fram_zeroes_every_byte_and_reboots_with_code_8() -> None:
 
 def test_an_erased_chip_boots_like_a_new_one() -> None:
     rig = _Rig()
-    run(rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK")))
+    rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK"))
     _drive(rig, "_RR_FRAM_ERASED")
     manager = _same_chip_manager(rig.chip)
     svc = _make_service(storage=manager, log=LogConfig(manager, 10, None), cfg_path=_tmp_cfg_dir())
@@ -1324,7 +1316,7 @@ def test_an_all_zero_block_never_validates_even_with_an_idle_status() -> None:
             end = addr + chunk.size + chunk.crc.length()
             chip.memory[addr:end] = bytearray(end - addr)
             chip.memory[end : end + 2] = b"\x01\x01"  # both status bytes idle over all-zero data and CRC
-        assert run(chunk.read()) is None, crc
+        assert chunk.read() is None, crc
 
 
 def _refused(rig: _Rig, purpose: str, *, before: "Callable[[], Coroutine[object, object, None]] | None" = None, failing_create: bool = False) -> None:
@@ -1598,7 +1590,7 @@ def test_a_chunk_that_cannot_be_blanked_stops_the_erase_before_any_overwrite() -
     rig = _Rig()
     assert rig.manager is not None
 
-    async def refuse() -> bool:
+    def refuse() -> bool:
         return False
 
     rig.manager._chunks[0].invalidate = refuse  # type: ignore[method-assign]
@@ -1633,9 +1625,9 @@ def _logged_chip() -> "tuple[_CutChip, list[list[int]]]":
     assert rig.manager is not None
     other = PrintLogHistoryStore(rig.manager, 4, None, name="OTHER")
     run(other.setup())
-    run(rig.svc.pr.err_s("first", errno=code("E", "CALLBACK")))
-    run(rig.svc.pr.wrn_s("second", wrnno=code("W", "STORED_DEFAULT")))
-    run(other.err_s("third", errno=code("E", "TIMER")))
+    rig.svc.pr.err_s("first", errno=code("E", "CALLBACK"))
+    rig.svc.pr.wrn_s("second", wrnno=code("W", "STORED_DEFAULT"))
+    other.err_s("third", errno=code("E", "TIMER"))
     return rig.chip, [_persisted(rig.svc), _persisted(other)]
 
 
@@ -1651,7 +1643,7 @@ def _rings_after(chip: _CutChip, *, write: int = 0) -> "tuple[list[list[int]], l
     run(other.setup())
     rings, logged = [_persisted(svc), _persisted(other)], _persisted(manager.pr)
     if write:
-        run(svc.pr.err_s("the first entry after the reboot", errno=write))
+        svc.pr.err_s("the first entry after the reboot", errno=write)
     return rings, logged
 
 
@@ -1666,7 +1658,7 @@ def _cut_erase(chip: _CutChip, cut: int) -> bool:
     chip.cut_after_bytes = cut
 
     async def erase() -> None:
-        await manager.quiesce(lambda: None)
+        manager.set_pause(value=True)
         await manager.erase_chip(lambda: None)
 
     try:
@@ -1839,51 +1831,6 @@ def test_a_write_staged_before_the_command_is_on_flash_at_the_arm_and_a_later_on
     assert (opens.writes, store._pending_flush) == (at_arm[0], None)  # the final pass opens nothing and starts no flush
 
 
-def test_a_fram_write_in_flight_completes_both_blocks_and_a_later_one_is_refused() -> None:
-    for purpose in ("_RR_REBOOT", "_RR_FRAM_ERASED"):
-        rig = _Rig()
-        assert rig.manager is not None
-        log = rig.svc.pr
-        assert isinstance(log, PrintLogHistoryStore)
-        chunk = log.fram
-        assert isinstance(chunk, FRAMChunk)
-        gate, between = asyncio.Event(), asyncio.Event()
-        real_write = chunk._write_chunk
-        calls = [0]
-
-        async def gated(
-            buf: bytearray, addr: int, real: "Callable[[bytearray, int], Coroutine[object, object, bool]]" = real_write, gate: asyncio.Event = gate,
-            calls: "list[int]" = calls, between: asyncio.Event = between,
-        ) -> bool:
-            calls[0] += 1
-            if calls[0] == 2:
-                between.set()
-                await gate.wait()  # between block 0 and block 1
-            return await real(buf, addr)
-
-        chunk._write_chunk = gated  # type: ignore[method-assign]
-
-        async def scenario(purpose: str = purpose, rig: _Rig = rig, gate: asyncio.Event = gate, between: asyncio.Event = between) -> None:
-            sup = await rig.start()
-            writer = asyncio.create_task(rig.svc.pr.err_s("in flight", errno=code("E", "CALLBACK")))
-            await between.wait()
-            assert await _word(rig.svc, purpose)() is True
-            await _real_time(_HELD_WINDOW_MS)
-            assert not _sequence(rig.svc).done()  # type: ignore[union-attr]  # S3 waits out the write
-            gate.set()
-            await rig.settle()
-            await _retire(writer)
-            image = bytes(rig.chip.memory)
-            await rig.svc.pr.err_s("after the quiesce", errno=code("E", "TIMER"))
-            assert rig.chip.memory == image  # refused while paused: the chip is unchanged
-            await rig.stop(sup)
-
-        with FastAsyncSleep():
-            run(scenario())
-        after, _logged = _rings_after(rig.chip)
-        assert after[0] == ([code("E", "CALLBACK")] if purpose == "_RR_REBOOT" else []), (purpose, after)
-
-
 def test_a_task_cancelled_inside_a_bus_session_frees_the_bus() -> None:
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
     held, sibling = I2CDevice(i2c, 0x10), I2CDevice(i2c, 0x11)
@@ -1989,17 +1936,23 @@ def test_the_task_budget_steps_once_past_its_max_and_stops() -> None:
 
 
 def _gate_entry_write(rig: _Rig, entry: str) -> "tuple[asyncio.Event, asyncio.Event]":
-    # The escalation's entry write held at its start until release is set; reached marks the hold.
+    # The escalation held right after its entry landed, before its reset arms, until release is set; reached marks the hold.
     release, reached = asyncio.Event(), asyncio.Event()
-    real_err_s = rig.svc.pr.err_s
+    real_err_s, real_reboot = rig.svc.pr.err_s, rig.svc._reboot
+    logged = [False]
 
-    async def gated_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
-        if errno == code("E", entry):
+    def noting_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        real(*args, errno=errno, sep=sep, end=end)
+        logged[0] = logged[0] or errno == code("E", entry)
+
+    async def gated_reboot(code: int, message: str, action: "Callable[[], None]", *, fed: bool = False) -> None:
+        if logged[0]:
             reached.set()
             await release.wait()
-        await real(*args, errno=errno, sep=sep, end=end)
+        await real_reboot(code, message, action, fed=fed)
 
-    rig.svc.pr.err_s = gated_err_s  # type: ignore[method-assign]
+    rig.svc.pr.err_s = noting_err_s  # type: ignore[method-assign]
+    rig.svc._reboot = gated_reboot  # type: ignore[method-assign]
     return release, reached
 
 
@@ -2021,7 +1974,7 @@ async def _until_reached(reached: asyncio.Event) -> None:
 
 def test_a_command_during_the_escalations_entry_write_is_refused_and_the_escalation_resets() -> None:
     # Once the escalation commits to the reset, the gate refuses every command: the record keeps code 5, nothing is
-    # erased, and the escalation's own reset arms once the entry is written.
+    # erased, and the escalation's own reset arms after its entry.
     for purpose in ("_RR_REBOOT", "_RR_FRAM_ERASED"):
         rig = _Rig(tasks=0)
         calls = [0]
@@ -2046,7 +1999,7 @@ def test_a_command_during_the_escalations_entry_write_is_refused_and_the_escalat
 
 
 def test_a_command_during_an_entry_write_that_never_ends_leaves_the_escalations_code_to_the_watchdog() -> None:
-    # The write hangs (a lock an overflow left held): the command is refused, nothing feeds after the hold, and the
+    # The escalation stops after its entry and never arms: the command is refused, nothing feeds after the hold, and the
     # record still reads 5 when the watchdog resets.
     rig = _Rig(tasks=0)
     calls = [0]
@@ -2099,10 +2052,10 @@ def test_the_escalation_decides_and_records_the_reset_before_its_entry_write() -
     records: list[int] = []
     real_err_s = rig.svc.pr.err_s
 
-    async def recording_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+    def recording_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
         seen.append((errno, rig.svc.is_reset_decided()))
         records.append(machine.mem_backup(0)[1])
-        await real(*args, errno=errno, sep=sep, end=end)
+        real(*args, errno=errno, sep=sep, end=end)
 
     rig.svc.pr.err_s = recording_err_s  # type: ignore[method-assign]
 
@@ -2129,16 +2082,21 @@ def test_the_systems_own_log_reset_is_refused_from_the_reset_decision_on() -> No
     # entry that explains the reboot survives; before the decision the same reset clears the log.
     rig = _Rig(tasks=0)
     rig.starters = [_dead_starter([0])]
-    run(rig.svc.pr.err_s("seeded", errno=code("E", "CALLBACK")))
+    rig.svc.pr.err_s("seeded", errno=code("E", "CALLBACK"))
     assert run(rig.svc.reset_error_counter()) is True
     assert run(rig.svc.get_error_counter())["SYSTEM"]["ErrCount"] == 0
     answers: list[bool] = []
     real_err_s = rig.svc.pr.err_s
 
-    async def err_s_then_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
-        await real(*args, errno=errno, sep=sep, end=end)
+    spawned: list[asyncio.Task[None]] = []
+
+    async def reset() -> None:
+        answers.append(await rig.svc.reset_error_counter())
+
+    def err_s_then_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        real(*args, errno=errno, sep=sep, end=end)
         if errno == code("E", "TASK_BUDGET_REBOOT"):
-            answers.append(await rig.svc.reset_error_counter())
+            spawned.append(asyncio.create_task(reset()))  # a ResetErrors arriving right after the entry: at the escalation's next await
 
     rig.svc.pr.err_s = err_s_then_reset  # type: ignore[method-assign]
 
@@ -2290,15 +2248,6 @@ def test_a_hang_in_any_step_is_never_fed() -> None:
     assert isinstance(store, _Store)
     store.gate = never
     _hang(rig, "_RR_REBOOT", nothing)
-    # S3: a chunk whose operation lock a task holds for good.
-    rig = _Rig()
-    assert rig.manager is not None
-    lock = rig.manager._chunks[0]._op_lock
-
-    async def held_lock(lock: asyncio.Lock = lock) -> None:
-        await lock.acquire()
-
-    _hang(rig, "_RR_REBOOT", held_lock)
     # S4: a supervised task that swallows its cancel.
     rig = _Rig()
     unstick = asyncio.Event()
@@ -2313,19 +2262,18 @@ def test_a_hang_in_any_step_is_never_fed() -> None:
         await store._config_lock.acquire()
 
     _hang(rig, "_RR_CONFIG_RESET", held_file)
-    # S5, erase: the chip refuses an erase unit and its report never returns.
+    # S5, erase: an erase that never returns.
     rig = _Rig()
-    rig.chip.drop_wren_at_unit = True
 
-    async def stuck_report(status: int) -> bool:
+    async def stuck_erase(step_done: "Callable[[], None]") -> bool:  # the erase never steps
         await never.wait()
         return False
 
-    async def plant_report(rig: _Rig = rig) -> None:
+    async def plant_erase(rig: _Rig = rig) -> None:
         assert rig.manager is not None
-        rig.manager.fram.report_set_values = stuck_report  # type: ignore[method-assign]
+        rig.manager.erase_chip = stuck_erase  # type: ignore[method-assign]
 
-    _hang(rig, "_RR_FRAM_ERASED", plant_report)
+    _hang(rig, "_RR_FRAM_ERASED", plant_erase)
     # S6: the reset timer's one-shot never fires.
     _hang(_Rig(), "_RR_REBOOT", nothing, armed=True)
 
@@ -2663,7 +2611,7 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
     # history_length=1: one err_s() fills the one slot, so the log reads exactly that entry.
     svc = _make_service(log=LogConfig(None, 1, None))
     run(svc.pr.setup())
-    run(svc.pr.err_s("boom", errno=code("E", "CALLBACK")))
+    svc.pr.err_s("boom", errno=code("E", "CALLBACK"))
     result = run(svc.get_error_counter())
     assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [code("E", "CALLBACK")], "ErrType": ["E"]}}
     assert run(svc.reset_error_counter()) is True
@@ -2675,7 +2623,7 @@ def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
     run(manager.setup())
     svc = _make_service(storage=manager, log=LogConfig(manager, 1, None))
     run(svc.pr.setup())
-    run(svc.pr.err_s("boom", errno=code("E", "CALLBACK")))
+    svc.pr.err_s("boom", errno=code("E", "CALLBACK"))
     result = run(svc.get_error_counter())
     assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [code("E", "CALLBACK")], "ErrType": ["E"]}}
     assert run(svc.reset_error_counter()) is True
@@ -3549,18 +3497,20 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
 
 
 def test_a_task_ended_by_an_unrecorded_overflow_records_20_before_its_entry_write_that_never_ends() -> None:
-    # An overflow no handler recorded ends a task: code 20 is written before the dead-task entry, so a write held for good
-    # (a lock the overflow left held) still lets the watchdog's reset read 20 (owner, 2026-11-06: "Option A").
+    # An overflow no handler recorded ends a task: code 20 is written before the dead-task entry, so a write that never
+    # ended would still let the watchdog's reset read 20 (owner, 2026-11-06: "Option A"); the record at the entry's start.
     machine.power_on()
     begin_boot()
     svc = _make_service(watchdog=machine.WDT())
     reached = asyncio.Event()
+    at_entry: list[int] = []
 
-    async def held_err_s(*_args: object, **_kwargs: object) -> None:
+    def noting_err_s(*_args: object, **_kwargs: object) -> None:
+        if not reached.is_set():
+            at_entry.append(machine.mem_backup(0)[1])
         reached.set()
-        await asyncio.Event().wait()  # the logger blocked: never released
 
-    svc.pr.err_s = held_err_s  # type: ignore[method-assign]
+    svc.pr.err_s = noting_err_s  # type: ignore[method-assign]
 
     async def overflows() -> None:
         raise _stack_error()
@@ -3569,9 +3519,8 @@ def test_a_task_ended_by_an_unrecorded_overflow_records_20_before_its_entry_writ
         await svc.start_tasks([lambda: asyncio.create_task(overflows())], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         await _until_reached(reached)
-        record = machine.mem_backup(0)[1]
         await cancel(sup)
-        return asy_print_log.fatal_reported(), record
+        return asy_print_log.fatal_reported(), at_entry[0]
 
     with FastAsyncSleep():
         seen = run(scenario())
@@ -3649,10 +3598,10 @@ def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, s
     entries = (code("E", "STACK_EXHAUSTED"), code("E", "TASK_BUDGET_REBOOT"))
     seen: list[object] = []
 
-    def full_heap_entry(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> "Coroutine[object, object, None]":
+    def full_heap_entry(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
         if errno in entries:
-            raise no_room  # the entry's generator and its argument tuple
-        return real_err_s(*args, errno=errno, sep=sep, end=end)
+            raise no_room  # the entry's argument tuple
+        real_err_s(*args, errno=errno, sep=sep, end=end)
 
     def full_heap_line(*_args: object, **_kwargs: object) -> None:
         raise no_room  # a star-call's argument tuple
@@ -3686,7 +3635,7 @@ def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, s
 
 
 def test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reboots_with_its_code() -> None:
-    # Building the entry allocates its generator and argument tuple, and the arm's line its tuple: on a full heap the
+    # Building the entry allocates its argument tuple, and the arm's line its tuple: on a full heap the
     # supervisor ends with nothing feeding, and the watchdog's reset reads the code recorded first. One line names it.
     stack = _escalate_into_a_full_heap(_long_lived_starter, stack=True)
     budget = _escalate_into_a_full_heap(_always_raising_starter, stack=False)

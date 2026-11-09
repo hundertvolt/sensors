@@ -46,16 +46,14 @@ async def _main() -> None:
         done()
         return
     baseline = bytearray(_READ_REGION[1])
-    async with fram:
-        fact("baseline_read", await fram.get_values(baseline, addr_start=_READ_REGION[0]))
+    fact("baseline_read", fram.get_values(baseline, addr_start=_READ_REGION[0]))
     failures: list[str] = []
     counts = {"reads_ok": 0, "reads_torn": 0}
 
     async def reader() -> None:
         buf = bytearray(_READ_REGION[1])
         for i in range(_READ_ITERATIONS):
-            async with fram:
-                ok = await fram.get_values(buf, addr_start=_READ_REGION[0])
+            ok = fram.get_values(buf, addr_start=_READ_REGION[0])
             if ok and buf == baseline:
                 counts["reads_ok"] += 1
             else:
@@ -67,13 +65,11 @@ async def _main() -> None:
 
     async def writer() -> None:
         await asyncio.sleep(0)  # the reader takes the first turn
-        async with fram:
-            fact("write_ok", await fram.set_values(_WRITE_PATTERN, addr_start=_WRITE_REGION[0]))
+        fact("write_ok", fram.set_values(_WRITE_PATTERN, addr_start=_WRITE_REGION[0]))
 
     await asyncio.wait_for(asyncio.gather(reader(), writer()), _RUN_BOUND_S)
     readback = bytearray(_WRITE_REGION[1])
-    async with fram:
-        ok = await fram.get_values(readback, addr_start=_WRITE_REGION[0])
+    ok = fram.get_values(readback, addr_start=_WRITE_REGION[0])
     fact("write_readback_ok", ok and readback == _WRITE_PATTERN)
     fact("reads_ok", counts["reads_ok"])
     fact("reads_torn", counts["reads_torn"])

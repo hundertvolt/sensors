@@ -98,10 +98,10 @@ def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
         # NeopixelDriver structurally can't fail on any of its own real code paths (see its own
         # module docstring) - this directly exercises the FRAM-backed history machinery itself,
         # not a real failure this driver would ever hit.
-        await pixel.pr.err_s("driver-side", errno=_PLANTED)
-        await notify.pr.err_s("notify-side", errno=_PLANTED)
-        pixel_log = await pixel.pr.get_log("NEOPIXEL")
-        notify_log = await notify.pr.get_log("NOTIFY")
+        pixel.pr.err_s("driver-side", errno=_PLANTED)
+        notify.pr.err_s("notify-side", errno=_PLANTED)
+        pixel_log = await pixel.pr.get_log()
+        notify_log = await notify.pr.get_log()
         return pixel_log, notify_log
 
     pixel_log, notify_log = run(scenario())
@@ -121,8 +121,8 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
     async def before_reboot() -> None:
         await pixel1.setup()
         await notify1.setup()
-        await pixel1.pr.err_s("driver before reboot", errno=_PLANTED)
-        await notify1.pr.err_s("notify before reboot", errno=_PLANTED)
+        pixel1.pr.err_s("driver before reboot", errno=_PLANTED)
+        notify1.pr.err_s("notify before reboot", errno=_PLANTED)
 
     run(before_reboot())
 
@@ -134,8 +134,8 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
     async def after_reboot() -> "tuple[ErrorLog, ErrorLog]":
         await pixel2.setup()
         await notify2.setup()
-        pixel_log = await pixel2.pr.get_log("NEOPIXEL")
-        notify_log = await notify2.pr.get_log("NOTIFY")
+        pixel_log = await pixel2.pr.get_log()
+        notify_log = await notify2.pr.get_log()
         return pixel_log, notify_log
 
     pixel_log, notify_log = run(after_reboot())

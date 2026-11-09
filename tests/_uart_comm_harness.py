@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from typing_extensions import Unpack
 
     from asy_base_classes import PieceBuffer
-    from asy_crc_checks import CRCBase
+    from crc_checks import CRCBase
 
     T = TypeVar("T")
 

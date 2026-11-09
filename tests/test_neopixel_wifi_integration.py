@@ -350,7 +350,7 @@ def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
         history: list[dict[str, object]] = entry["history"]
         return counter, history
 
-    run(pixel.pr.err_s("boom", errno=1))
+    pixel.pr.err_s("boom", errno=1)
     counter, history = neopixel_entry()
     assert counter == 1
     assert history[-1] == {"num": 1, "type": "E"}  # the newest slot holds the logged entry
