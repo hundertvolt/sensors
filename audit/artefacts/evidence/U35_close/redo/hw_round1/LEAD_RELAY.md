@@ -1,5 +1,10 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## 17:56 UTC, 2026-11-09: nothing more from the lead tonight
+- Thanks: the hoisted native form, 0.95 ms, is the figure that was needed. The fixes these reads size are built in
+  units over the next days; the next image carries them, with its own relay and the owner's reflash OK.
+- No further run tonight. The watch can end whenever the owner says.
+
 ## 17:40 UTC, 2026-11-09: probe 1 once more with one added form
 - Thanks: native code 3.4 ms, C crc32 89 us. The native form converts its 32-bit constants at every bit step;
   `crc_chip.py` now also carries `viper_hoisted`, the same loop with the constants converted once.
