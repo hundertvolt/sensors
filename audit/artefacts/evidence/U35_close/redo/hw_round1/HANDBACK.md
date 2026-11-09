@@ -42906,3 +42906,23 @@ The board came up with the Pi (USB power) but in its hotspot: /status refused (c
 harness.restore_board_to_serving() (kick, then reset) 17:28:32-17:28:47: serving, Mode STA, ResetReason 21, SysUptime 12.
 errcount at start: SGP40 10 (W35,W33), UART_init 2 (E85,E81), UART_resp 24 (the trace runs' W56/E80), WIFI 6 (above); flash cycles today: 0; logs/day4_20261109/ (hotspot_console_172746.txt, 20261109T172847Z_start_status.json)
 status: inferred: the power-on boot missed the AP (the skill's missed-kick case); not traced, since the boot's own lines and reset reason were gone by the time the console was read.
+
+17:37:50 UTC 2026-11-09 lead 17:32 (11-09) probes: crc_chip.py then scd30_frames.py, each once through Board.run_isolated() (watchdog re-armed, from RAM, soft reset after), then restore_board_to_serving(); owner's OK this session ("Yes, run both"); HEAD 6ebd0644; image 2026-11-07T16:04:12Z (trace); 17:35:45-17:37:32
+crc_chip.py, verbatim:
+tables_build_us 47637
+current_per_byte_yield_264B_us 129756 crc 0x6aa0d521
+bitwise_no_yield same 264B_best_us 36985 264B_max_us 37579
+nibble_table same 264B_best_us 10179 264B_max_us 10261
+byte_table same 264B_best_us 5125 264B_max_us 5139
+residue_with_crc_appended 0 0 0
+done
+scd30_frames.py, verbatim:
+write_meas_cmd n 43 min_us 663 median_us 878 max_us 892
+write_ready_cmd n 353 min_us 658 median_us 794 max_us 1608
+read_ready_3B n 353 min_us 817 median_us 824 max_us 1953
+read_meas_18B n 43 min_us 3656 median_us 3660 max_us 5127
+errors 0 []
+wire_only_us_at_50kHz write_cmd 540 read_3B 720 read_18B 3420
+done
+errcount: 22 sources unchanged (start/end /status around both runs). ResetReason after: 21, SysUptime 13 s after the restore; flash cycles today: 0; logs/day4_20261109/ (probes_output.txt, probes_{start,end}_status.json)
+status: confirmed as measured: all three CRC forms agree with the image's value and give residue 0; no SCD30 transfer error in 90 s.
