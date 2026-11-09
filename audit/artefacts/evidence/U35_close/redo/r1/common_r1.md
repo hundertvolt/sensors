@@ -16,6 +16,10 @@ need (Part D.8): per operation you touch or judge, its physical need against its
 load, on silicon) and who waits meanwhile; a cost far beyond its need is a defect at its source, never a fact to
 document. A measurement names its condition; a decision names actor, date and its facts, and goes back to its maker
 when one fails (P9). Your hand-back states that figure for each operation you changed.
+The platform first (owner, 2026-09-26 "perfectly suited for the target hardware"; 2026-11-09): before a Python loop
+does byte, bit or arithmetic work, check what MicroPython 1.29 already does in C (binascii, struct, json, deflate,
+hashlib, array, bytes/memoryview methods, ...) and its native emitter (viper); a Python loop doing that work is a cost
+to justify, never a default. A yield is no fix for a slow step: first ask why the step is slow.
 
 ## Environment
 - S = `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Your worktree and branch are

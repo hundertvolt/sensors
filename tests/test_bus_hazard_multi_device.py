@@ -32,9 +32,10 @@ from _tmp_scratch import TmpScratch
 
 from asy_bmp3xx_driver import BMP3XX_I2C
 from asy_config_manager import ConfigManager
-from asy_crc_checks import CRC8, CRC16
+from asy_crc_checks import CRC8, CRC16, CRC32
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader
+from asy_print_log import PrintLogHistoryStore
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 from asy_spi_driver import SPIDevice
@@ -65,6 +66,8 @@ _ISOLATION_BOUND_S = 5
 # The BMP3XX pressure the catalog's planted calibration and ADC bytes give, by hand: BMP388 datasheet §9.1 and §9.3
 # (its temperature is the catalog's BMP_EXPECTED_TEMPERATURE).
 _BMP_EXPECTED_PRESSURE_HPA = 713.765147356092
+# A 12-byte FRAM log entry's rounds: its CRC's per-byte yields, two per own block, two per block operation queued ahead.
+_ENTRY_ROUNDS = 24
 
 
 # ---------------------------------------------------------------------------
@@ -647,6 +650,38 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
     assert not fram.session_lock.locked()
 
 
+def test_a_log_entry_beside_a_backup_write_and_verify_waits_for_no_crc() -> None:
+    # Two FRAM users on one chip: an entry started while a 264-byte CRC32 chunk (the SGP40 backup's shape) writes and
+    # verifies waits for at most one of its block operations per own block, never for its CRC, so it lands within its rounds.
+    manager, _chip = make_fram_manager()
+    run(manager.setup())
+    backup = manager.get_chunk(264, crc=CRC32(), verify=1, owner="SGP40_VOC")
+    assert backup is not None
+    store = PrintLogHistoryStore(manager, 10, None, name="SYSTEM")
+    run(store.setup())
+    rounds = [0]
+
+    async def probe() -> None:
+        while True:
+            rounds[0] += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> int:
+        counter = asyncio.create_task(probe())
+        backing_up = asyncio.create_task(backup.write(bytes(264)))
+        while not manager.fram.session_lock.locked():
+            await asyncio.sleep(0)
+        start = rounds[0]
+        await store.err_s("beside the backup", errno=code("E", "TEST_SEED_A"))
+        taken = rounds[0] - start
+        assert await backing_up is True
+        await cancel(counter)
+        return taken
+
+    taken = run(scenario())
+    assert taken <= _ENTRY_ROUNDS, f"the entry took {taken} rounds beside the backup"
+
+
 # ---------------------------------------------------------------------------
 # 6. A commanded shutdown's hazards: the whole-chip FRAM erase against chunk operations in flight and other callers
 #    of its bus, a sensor task cancelled inside its session, and a config file under a concurrent reader.
@@ -654,7 +689,7 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
 
 _CHUNKS = ((24, CRC16), (12, CRC8), (40, CRC16))  # payload size and CRC of each chunk the erase rigs allocate
 _CHUNK_OWNERS = ("SYSTEM", "WIFI", "NTP")
-_ERASE_OFFSETS = range(0, 100, 10)  # turns the write and the read get before the erase starts: both end by turn 87
+_ERASE_OFFSETS = range(100)  # turns the write and the read get before the erase starts: both end by turn 30
 _NEIGHBOUR_BYTE = b"\xa5"  # another device's traffic on the FRAM's bus: no MB85RS opcode, so the chip fake ignores it
 _CANCEL_OFFSETS = 40  # scheduler turns into the SGP40's setup and measurement; the cycle ends at 26
 _COUNT_SCHEMA: "ConfigSchema" = (("Count", "int", 7, 0, 100, None),)

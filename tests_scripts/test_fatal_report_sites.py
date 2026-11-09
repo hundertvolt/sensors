@@ -20,8 +20,8 @@ _BROAD = frozenset({"Exception", "BaseException", "RuntimeError"})
 # shutdown's unbound `pass` handler awaits a stopped task once the supervisor, the record's one reader, has stopped.
 _EXEMPT = frozenset({("src/asy_print_log.py", "PrintLog.report_unretrieved")})
 _EXEMPT_PASS = frozenset({("src/asy_system_service.py", "SystemService._shutdown_sequence")})
-# Each logger entry point, whose first step records an overflow among its arguments; `_err` is UARTComm's err_s() forwarder.
-_LOGGER_METHODS = frozenset({"err", "err_s", "wrn", "wrn_s", "one", "evt", "all", "_err"})
+# Each logger entry point, whose first step records an overflow among its arguments; `_err` is UARTComm's err_q() forwarder.
+_LOGGER_METHODS = frozenset({"err", "err_s", "err_q", "wrn", "wrn_s", "wrn_q", "one", "evt", "all", "_err"})
 
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 

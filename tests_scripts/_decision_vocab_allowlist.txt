@@ -63,7 +63,6 @@ SPECIFICATION.md	it spends a real flash cycle, which is why `tests_hardware/`'s 
 SPECIFICATION.md	no retained state unless deliberately stateful (prefer pure functions);
 SPECIFICATION.md	the exact boundary values *accepted*;
 SPECIFICATION.md	the hotspot password is a per-device TOML field defaulting to the existing hardc
-SPECIFICATION.md	the ~5.8x wall-time cost is accepted, and the yield's original reason (a 256 B C
 SPECIFICATION.md	| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberat
 UART_C_PORT_CHANGELOG.md	- **Class A — protocol-level, must be mirrored in C.** It alters the bytes emitt
 UART_C_PORT_CHANGELOG.md	A change that alters emitted bytes is a coordinated flag-day, and **the project

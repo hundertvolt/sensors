@@ -870,6 +870,54 @@ def test_a_declined_get_does_not_back_off_the_next_answer() -> None:
     assert [d for d in recorder.delays if d >= initial] == [], recorder.delays
 
 
+def _second_set_while_the_fram_bus_is_held(set_cb: "CommCallback") -> "tuple[bool, bool]":
+    # Two SETs, ids 1 and 2, while another FRAM user holds the bus the responder's log writes need (an SGP40 backup held
+    # it up to 5.8 s on the bench, 2026-11-07); the hold ends only once the second SET has its answer.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=set_cb), RUN_LIMIT_S)
+    manager, _chip = make_fram_manager()
+    run(manager.setup(), RUN_LIMIT_S)
+    pair.responder.pr = make_logger(LogConfig(manager, 10, None), pair.responder.name)
+    run(pair.responder.pr.setup(), RUN_LIMIT_S)
+
+    async def scenario() -> "tuple[bool, bool]":
+        held, released = asyncio.Event(), asyncio.Event()
+
+        async def hold_the_bus() -> None:
+            async with manager.fram:
+                held.set()
+                await released.wait()
+
+        holder = asyncio.create_task(hold_the_bus())
+        await held.wait()
+        listener = pair.responder.start_asy_listen()
+        try:
+            return await pair.initiator.uart_set(1, b"x"), await pair.initiator.uart_set(2, b"y")
+        finally:
+            released.set()
+            await holder
+            listener.cancel()
+
+    return run(scenario(), _LISTENER_RUN_BOUND_S)
+
+
+def test_a_declined_set_resyncs_without_waiting_on_its_fram_log_write() -> None:
+    # The resync runs at once, so the initiator's next SET, one quiet window after its own recovery, is received, not drained.
+    def set_cb(cmd_id: int) -> "tuple[bool, None]":
+        return cmd_id == 2, None
+
+    outcome = _second_set_while_the_fram_bus_is_held(set_cb)
+    assert outcome == (False, True), outcome
+
+
+def test_a_fault_resyncs_without_waiting_on_its_fram_log_write() -> None:
+    # The same through _fault(): an unusable callback result is a CALLBACK fault.
+    def set_cb(cmd_id: int) -> "tuple[bool, None] | None":
+        return (True, None) if cmd_id == 2 else None
+
+    outcome = _second_set_while_the_fram_bus_is_held(set_cb)
+    assert outcome == (False, True), outcome
+
+
 @_on_poll_rounds
 def test_a_dead_link_still_doubles_its_backoff() -> None:
     # A listen that returns no command kind - noise that never validates - backs off, doubling to its cap.
@@ -1434,6 +1482,20 @@ def test_a_quiet_resync_persists_nothing() -> None:
     run(scenario(), _STEP_BOUND_S)
     assert persisted(pair.initiator) == [], persisted(pair.initiator)
     assert pair.initiator._holdoff_active is True  # the resync itself still ran
+
+
+def test_a_routine_resync_prints_the_bytes_it_drained() -> None:
+    # A frame the drain swallowed shows on the console without a trace image.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
+    pair.fake_a.feed_rx(b"xyz")
+
+    async def scenario() -> None:
+        async with pair.driver_a as device:
+            await pair.initiator._resync(device)
+
+    with record_prints(pair.initiator.pr) as rec:
+        run(scenario(), _STEP_BOUND_S)
+    assert rec.lines == [("UART_A", "Resyncing the link, drained", 3, "bytes")], rec.lines
 
 
 def test_one_fault_on_a_quiet_line_adds_one_entry() -> None:

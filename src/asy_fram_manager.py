@@ -79,20 +79,16 @@ def _owner_seed(owner: str, crc: CRCBase) -> int:
 class _FRAMBaseChunk:
     # data chunk layout:
     # [...Data 0...][Status 0-1][Status 0-2][...Data 1...][Status 1-1][Status 1-2]
-    def __init__(
-        self, manager: "FRAMManager", base_addr: int, size: int, crc: CRCBase, crc_seed: int, verify: int = 0, check_length: int = 8,
-    ) -> None:
+    def __init__(self, manager: "FRAMManager", base_addr: int, size: int, crc: CRCBase, crc_seed: int, verify: int = 0) -> None:
         self.pr = manager.pr
         self._mempause = manager.get_pause
         self.fram = manager.fram
         self.size = size
         self._verify = verify
         self._verify_counter = 0
-        # asy_crc_checks.py needs one instance per concurrent sequence - safe since fram's lock limits
-        # this manager to one _read_chunk/_write_chunk/_clear_chunk body running at a time.
+        # Only add_into()/check_from() run on it, which keep no state: outside the FRAM locks, under this chunk's _op_lock.
         self.crc = crc
         self._crc_seed = crc_seed
-        self._check_length = check_length
         self._block_addr = (base_addr, base_addr + self.size + self.crc.length() + _NUM_STATUS_BYTES)
         # fram's lock only serializes one block at a time (released between block 0 and block 1).
         self._op_lock = asyncio.Lock()  # serialises this chunk's own write/read/clear end to end, across both blocks and the scratch buffers
@@ -102,20 +98,7 @@ class _FRAMBaseChunk:
         self._sb_buf = bytearray(1)  # one status byte, read back and written through
         self._pair_buf = bytearray(_NUM_STATUS_BYTES)  # block 1's status pair, read in one command before each write
         self._first = 1  # the block the write in progress took first (_write_chunk(buf, -1) picks it)
-        try:  # check_length is a caller-supplied int (get_chunk's own param), not hardware-bounded
-            self._check_buf: bytearray | None = bytearray(self._check_length)
-        except (MemoryError, OverflowError) as e:
-            # Degrades exactly as the per-call allocation did: _compare_with() then reports the
-            # block as "not verifiably valid", and a read falls back to rewriting it.
-            self.pr.err("check buffer allocation failed:", e)
-            self._check_buf = None
-        self._check_mv = None if self._check_buf is None else memoryview(self._check_buf)
-        # What _read_into()'s and _compare_with()'s per-iteration closures used to hold in cells.
-        self._read_valid = True
-        self._read_match = True
-        self._read_iters = 0
         self._read_fault = False  # the block read met a fault (bus, guard, status-byte transfer), not just bad content
-        self._compare_against: memoryview | None = None
 
     async def _set_check_sb(self, fram: FRAM_SPI, st_addr: int, val: int, *, check_idle: bool) -> bool | None:
         stat = self._sb_buf  # one buffer per chunk, not one per call - _op_lock serializes its use
@@ -162,19 +145,15 @@ class _FRAMBaseChunk:
         return True
 
     async def _compare_with(self, buf: bytearray, addr: int) -> tuple[bool, bool, bool, bool]:
-        if self._check_buf is None:  # the scratch allocation failed at construction
-            return False, False, False, False
-        self._read_valid = True
-        self._read_match = True
-        self._read_iters = 0
-        self._read_fault = False
-        self._compare_against = memoryview(buf)
+        # The block at addr against buf, a valid copy, read into one buffer per compare: a read's cross-check and a verify,
+        # never a log entry's write. Returns valid, uninit, match, fault.
         try:
-            uninit, valid_bytes = await self._read_chunk(self._check_buf, addr)
-        finally:
-            self._compare_against = None
-        valid = self._read_valid and valid_bytes == self.size and self._read_iters > 0
-        return valid, uninit, self._read_match, self._read_fault
+            other = bytearray(len(buf))
+        except MemoryError as e:
+            self.pr.err("compare buffer allocation failed:", e)
+            return False, False, False, True
+        valid, uninit, match = await self._read_chunk(other, addr, buf)
+        return valid, uninit, match, self._read_fault
 
     async def _handle_status_bytes(
         self, fram: FRAM_SPI, addr: int, val: int, *, check_idle: bool,
@@ -248,102 +227,41 @@ class _FRAMBaseChunk:
             self.pr.all("Both blocks valid and data verified")
             return True
 
-    async def _read_chunk(self, buf: bytearray, addr: int) -> tuple[bool, int]:
-        # Progress is reported to _read_progress() (chunk state, set up by _read_into()/
-        # _compare_with()); returns: uninitialized, crc_valid_bytes.
+    async def _read_chunk(self, buf: bytearray, addr: int, against: bytearray | None = None) -> tuple[bool, bool, bool]:
+        # The block whole into buf in one session; its CRC runs once the session has ended, and beside a valid copy
+        # (against) only on a mismatch, equal bytes being valid. Returns valid, uninit, match; _read_fault tells a fault.
+        self._read_fault = False
         async with self.fram as fram:
             try:
                 uninit = await self._handle_status_bytes(fram, addr, _STATUS_BUSY, check_idle=True)
                 # Before the two early returns, not after: an uninitialized block is the blank
                 # chip's whole read, so this is its only scheduling point.
                 await asyncio.sleep(0)  # after the status-byte pair; the bus lock is held, CS is not asserted
-                if uninit is None:  # error
-                    self._read_progress(0, -1, 0)
-                    return False, 0
-                if uninit:  # no error but unitialized
-                    self._read_progress(0, -1, 0)
-                    return True, 0
-
-                num_iterations = 0
-                last_position = last_span = 0
-                total_size = self.size + self.crc.length()
-                position = 0
-                mv = memoryview(buf)
-                await self.crc.check_inc()  # Reset CRC
-
-                while position < total_size:
-                    chunk_size = min(len(buf), total_size - position)
-                    if chunk_size <= 0:  # a zero-length buf (e.g. check_length=0) would never advance
-                        await self.pr.err_s("Zero-length read buffer in _read_chunk!", errno=_ERR_BAD_ARG)
-                        self._read_fault = True
-                        self._read_progress(0, -1, num_iterations)
-                        return False, 0
-                    slice_mv = mv[0:chunk_size]  # always filled from the start of the buffer
-                    read_status = fram.get_values_sync(slice_mv, addr + position)
-                    if read_status:
-                        await fram.report_get_values(read_status)
-                        await self.pr.err_s("FRAM read error in _read_chunk!", errno=_ERR_FRAM_READ)
-                        self._read_fault = True
-                        self._read_progress(0, -1, num_iterations)
-                        return False, 0
-                    if not await self.crc.run_inc(slice_mv, init=self._crc_seed):
-                        await self.pr.err_s("Incremental CRC failed in _read_chunk!", errno=_ERR_FRAM_CRC_FAILED)
-                        self._read_fault = True
-                        self._read_progress(0, -1, num_iterations)
-                        return False, 0
-                    last_position = position
-                    last_span = chunk_size
-                    position += chunk_size
-                    num_iterations += 1
-                    if position < total_size:
-                        self._read_progress(last_position, last_span, num_iterations)
-                    await asyncio.sleep(0)
-
+                if uninit is not False:  # an error (None), or no error but uninitialized (True)
+                    return False, uninit is True, False
+                read_status = fram.get_values_sync(buf, addr)
+                if read_status:
+                    await fram.report_get_values(read_status)
+                    await self.pr.err_s("FRAM read error in _read_chunk!", errno=_ERR_FRAM_READ)
+                    self._read_fault = True
+                    return False, False, False
+                await asyncio.sleep(0)  # after the payload command
                 if await self._handle_status_bytes(fram, addr, _STATUS_IDLE, check_idle=False) is None:
-                    self._read_progress(0, -1, num_iterations)
-                    return False, 0
-
-                length = await self.crc.check_inc()
-                if length is None:
-                    await self.pr.err_s("CRC error in _read_chunk!", errno=_ERR_FRAM_DATA_CRC)
-                    self._read_progress(0, -1, num_iterations)
-                    return False, 0
-                self._read_progress(last_position, last_span, num_iterations)
+                    return False, False, False
             except Exception as e:
                 await self.pr.err_s("General read error in _read_chunk:", e, errno=_ERR_UNEXPECTED)
                 self._read_fault = True
-                self._read_progress(0, -1, 0)
-                return False, 0
-            else:
-                return False, length
+                return False, False, False
+        if against is not None and buf == against:
+            return True, False, True
+        if await self.crc.check_from(buf, init=self._crc_seed) != self.size:
+            await self.pr.err_s("CRC error in _read_chunk!", errno=_ERR_FRAM_DATA_CRC)
+            return False, False, False
+        return True, False, against is None
 
     async def _read_into(self, buf: bytearray, addr: int) -> tuple[bool, bool, bool]:
-        self._read_valid = True
-        self._read_match = True
-        self._read_iters = 0
-        self._read_fault = False
-        self._compare_against = None
-        uninit, valid_bytes = await self._read_chunk(buf, addr)
-        valid = self._read_valid and valid_bytes == self.size and self._read_iters == 1
+        valid, uninit, _match = await self._read_chunk(buf, addr)
         return valid, uninit, self._read_fault
-
-    def _read_progress(self, global_start: int, span: int, n_iter: int) -> None:
-        # One _read_chunk() iteration reported back; span < 0 means this read failed. With
-        # _compare_against set, each slice is compared as it arrives, since the next iteration
-        # refills the scratch buffer - which is why this cannot be a returned value.
-        self._read_iters = n_iter
-        if span < 0:
-            self._read_valid = False
-            self._read_match = False
-            return
-        target = self._compare_against
-        if target is None or self._check_mv is None:
-            return
-        source = self._check_mv
-        match = self._read_match
-        for offset in range(span):
-            match = match and (source[offset] == target[global_start + offset])
-        self._read_match = match
 
     async def _write(self, buf: bytearray) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
@@ -352,6 +270,9 @@ class _FRAMBaseChunk:
                 return False
             if len(buf) != self.size + self.crc.length():
                 await self.pr.err_s("Data size", len(buf), "does not match chunk size", self.size, "!", errno=_ERR_BAD_ARG)
+                return False
+            if await self.crc.add_into(buf, self.size, init=self._crc_seed) is None:  # once for both blocks, before either session
+                await self.pr.err_s("CRC computation failed!", errno=_ERR_FRAM_CRC_FAILED)
                 return False
             self.pr.all("Writing both blocks, one not IDLE first")
             if not await self._write_chunk(buf, -1):
@@ -391,9 +312,6 @@ class _FRAMBaseChunk:
                 if await self._handle_status_bytes(fram, addr, _STATUS_BUSY, check_idle=False) is None:
                     return False
                 await asyncio.sleep(0)  # after the status-byte pair; the bus lock is held, CS is not asserted
-                if await self.crc.add_into(buf, self.size, init=self._crc_seed) is None:
-                    await self.pr.err_s("CRC computation failed!", errno=_ERR_FRAM_CRC_FAILED)
-                    return False
                 payload_status = fram.set_values_sync(buf, addr)
                 if payload_status and not await fram.report_set_values(payload_status):
                     await self.pr.err_s("_write_chunk failed!", errno=_ERR_FRAM_PAYLOAD_WRITE)
@@ -506,9 +424,8 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
         crc: CRCBase,
         crc_seed: int,
         verify: int = 0,
-        check_length: int = 8,
     ) -> None:
-        super().__init__(manager, base_addr, struct.calcsize(_TS_FMT) + size, crc, crc_seed, verify=verify, check_length=check_length)
+        super().__init__(manager, base_addr, struct.calcsize(_TS_FMT) + size, crc, crc_seed, verify=verify)
         self._ntp_sync_callback = ntp_sync_callback
 
     def get_buffer(self) -> FRAMChunkTimestampedBuffer:
@@ -634,9 +551,7 @@ class FRAMManager:
         evtloop = asyncio.get_event_loop()
         return evtloop.create_task(self._watch_chip_loop())
 
-    def get_chunk(
-        self, size: int, crc: CRCBase | None = None, verify: int = 0, check_length: int = 8, *, owner: str,
-    ) -> FRAMChunk | None:
+    def get_chunk(self, size: int, crc: CRCBase | None = None, verify: int = 0, *, owner: str) -> FRAMChunk | None:
         if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc (owner, 2026-07-18: reject generally at the top)
             self.pr.err("Zero-size chunk requested, rejected!")
             return None
@@ -653,7 +568,7 @@ class FRAMManager:
         if (self._allocated_size + full_size) > self.size:
             self.pr.err("FRAM out of memory!")
             return None  # out of memory
-        chunk = FRAMChunk(self, self._allocated_size, size, crc, _owner_seed(owner, crc), verify=verify, check_length=check_length)
+        chunk = FRAMChunk(self, self._allocated_size, size, crc, _owner_seed(owner, crc), verify=verify)
         self._chunks.append(chunk)
         self._allocated_size += full_size
         self.pr.one(
@@ -684,7 +599,6 @@ class FRAMManager:
         ntp_sync_callback: "NtpSyncFct",
         crc: CRCBase | None = None,
         verify: int = 0,
-        check_length: int = 8,
         *,
         owner: str,
     ) -> FRAMTimestampedChunk | None:
@@ -706,7 +620,7 @@ class FRAMManager:
             return None  # out of memory
 
         chunk = FRAMTimestampedChunk(
-            self, self._allocated_size, size, ntp_sync_callback, crc, _owner_seed(owner, crc), verify=verify, check_length=check_length,
+            self, self._allocated_size, size, ntp_sync_callback, crc, _owner_seed(owner, crc), verify=verify,
         )
         self._chunks.append(chunk)
         self._allocated_size += full_size

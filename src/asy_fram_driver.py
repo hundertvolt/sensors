@@ -138,9 +138,9 @@ class FRAM_SPI(Lockable):
         self._bus_lock = self._spidev.session_lock
 
     async def __aenter__(self) -> "Self":
-        # Driver lock then bus, both for one whole block operation, so the chunk layer's byte-level
-        # commands run synchronously under a lock it already holds - a second SPI device then waits
-        # ~25 CS rather than ~5 (owner, 2026-09-18; SPECIFICATION.md C.8).
+        # Driver lock then bus for one whole block operation, so the chunk layer's commands run synchronously under them:
+        # every other FRAM user (each FRAM-backed logger, the SGP40 backup, the supervisor through SYSTEM) waits out one
+        # block, two command yields, and a second SPI device ~25 CS (owner, 2026-09-18; SPECIFICATION.md C.8, F.3).
         await super().__aenter__()
         try:
             await self._bus_lock.acquire()  # explicit: this hold spans __aenter__/__aexit__, which async with cannot express

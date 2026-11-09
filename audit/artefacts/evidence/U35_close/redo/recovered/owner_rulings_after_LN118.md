@@ -1278,3 +1278,16 @@ recur. The weekly limit is at 99 %: push every finding now, before anything else
 ## 2026-11-09 17:16:27 UTC - resume where the weekly limit stopped the session
 "Go on where the session limit interrupted you"
 (Resume R5 where the weekly limit stopped it: bfix in its gate, the two read-only completeness passes.)
+
+## 2026-11-09 17:27:35 UTC - the bench is up for 3:30 (until about 20:57 UTC)
+"the bench is also up for 3:30 from now on, if you have tasks for it fitting this"
+(The bench is available for three and a half hours from now; relay tasks that fit that window.)
+
+## 2026-11-09 17:33:38 UTC - MicroPython's C CRC; why found only now
+"Micropyhton has a C implementation for CRC which can replace the existing modules? Finding such cases absolutely *is* the spirit, just wondering why now is the first time you stumble upon that, while I was asking many times throughout the process to explcitly use such optimizations"
+(Finding where a C implementation can replace Python code is exactly the intended lens; why was it missed until now,
+when the owner asked many times to use such optimizations explicitly?)
+
+## 2026-11-09 17:35:55 UTC - the BMP3XX polling: where and why; not "small"; all such places
+""the pressure sensor polls about 65 times during each 130 ms reading where one read would do. " where and why did that come in? Also, finding and fixing such occurrences is the goal, but I actually would not even call that "small" - that is major overkill, as it sounds to me. Hopefully you get all such places?"
+(Where and why the 2 ms STATUS polling came in; it is major overkill, not small; make sure every such place is found.)

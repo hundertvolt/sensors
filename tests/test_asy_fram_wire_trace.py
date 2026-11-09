@@ -5,8 +5,9 @@ A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must l
 the 2026-09-18 heap restructure was held to; what each protocol element is for is
 SPECIFICATION.md A.4 (owner, 2026-09-18).
 
-Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29; owner-reviewed, 2026-11-06); each chunk's CRC is seeded by
-its owner (owner, 2026-10-28); the bus runs at 8 MHz (owner, 2026-11-02)."""
+Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29; owner-reviewed,
+2026-11-06); each chunk's CRC is seeded by its owner (owner, 2026-10-28); the bus runs at 8 MHz (owner,
+2026-11-02); a read's cross-check reads block 1 whole (agent, 2026-11-07)."""
 # The recorder decomposes a trace into CS cycles. Every cycle is asserted to be framed by exactly
 # one SPI.init() at the fixed bus config and one CS low/high pair, so the goldens below need hold
 # only the transfers inside each cycle - the envelope is checked, not dropped (see _cycles()).
@@ -294,8 +295,7 @@ w:05 r:02
 w:02001d w:02
 w:04
 w:05 r:00
-w:03000f r:0000000000000000
-w:030017 r:00000000{store_crc}
+w:03000f r:000000000000000000000000{store_crc}
 w:06
 w:05 r:02
 w:02001c w:01
@@ -398,9 +398,7 @@ w:05 r:02
 w:020049 w:02
 w:04
 w:05 r:00
-w:030034 r:0000000000000000
-w:03003c r:1122334455667788
-w:030044 r:{value_crc}
+w:030034 r:00000000000000001122334455667788{value_crc}
 w:06
 w:05 r:02
 w:020048 w:01
@@ -499,9 +497,9 @@ def test_cs_cycle_counts_are_the_measured_figures() -> None:
     # is one such change, made on the owner's behalf for review (owner: "Solutions you proposed agreed.").
     traces = run(_collect())
     assert len(traces["blank"][0]) == 55
-    assert len(traces["valid"][0]) == 47
+    assert len(traces["valid"][0]) == 46
     assert len(traces["ts_write"][0]) == 51
-    assert len(traces["ts_read"][0]) == 48
+    assert len(traces["ts_read"][0]) == 46
     assert len(traces["clear"][0]) == 30
 
 

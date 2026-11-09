@@ -976,3 +976,99 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
 - The 26 decision lines complete1's filter withheld: the lead read them masked (quoted, backticked and the password
   pattern replaced; count 0 before printing). Wi-Fi fallback states, threat-model acceptances, bench capabilities,
   LED patterns: none keeps a time, hold or heap cost under combination or load. Clean.
+
+## 12.112 Snapshot 50 pushed (e0e2266a, next PARENT); the owed hotspot-copies question checked and dropped
+- Snapshot 50: records 12.109-12.111, COMPLETE_1/2, BRIEF_COMPLETE/BCHAIN; ftmp_complete1/2 excluded (0 in the tree).
+- "Remove the hotspot password's doc copies?" (owed since 11-07): A.11 row 8 accepts the shared default permanently
+  (owner, 2026-09-26) and row 15 names it the one accepted exception in the public repository; the same literal is in
+  `src/` and `python/`, so the doc copies add no exposure. Decided by the owner; not asked (never re-ask a decided
+  topic). The session's own rule (never print or write it) is unchanged.
+
+## 12.113 Bench up 3:30 (owner 17:27:35); the CRC cost is the loop, not the yield; C and native forms; why missed
+- Bench (17:30): trace image still on the board; at power-on it came up in its hotspot (Pi and board booted together;
+  restored 17:28). Relays 17:32 (bench 6ebd0644: probes crc_chip.py and scd30_frames.py, RAM/read only) and 17:34
+  (51be454b: probe 1 adds binascii.crc32 and a viper form). Fix image not tonight.
+- The chip CRC figure existed since round 1 (bench HANDBACK.md, three runs of the same test): crc_total_us
+  182,519-200,261 for 256 B, crc_gap_max_us 1,971-2,087. The lead's 11-07 relay asked for it again (a miss of the
+  lead's: the evidence was not searched first). The 11-07 rule (drop the yield if 264 x per-byte < 21 ms, else one
+  yield per 64 B) sized the yield, not the cost: at ~0.7 ms a byte even 64 B is ~45 ms. The cost is the bit-by-bit
+  Python loop (8 shift/xor steps per byte in two 16-bit halves).
+- Forms, same CRC-32/MPEG-2 value, host 264 B: bitwise 265 us, nibble table 67, byte table 35, viper 7 (all "same",
+  residue 0). MicroPython's C binascii.crc32 (1 us) is CRC-32/ISO-HDLC, another CRC: a swap changes every stored
+  chunk's checksum. No C exists for the CRC-8 (Sensirion's wire) or the CRC-16 (the UART's C-side contract); a viper
+  engine keeps all three values (Class B, internal). rp2 v1.29.0: MICROPY_EMIT_THUMB 1, mpy-cross -march=armv6m.
+  The tests already use CPython's binascii.crc_hqx and zlib.crc32 as oracles (test_asy_crc_checks.py:643): the C
+  counterparts were in view, as test tools only.
+- Owner 17:33:38 (why only now) and 17:35:55 (BMP3XX 2 ms polling: where, why; "major overkill", not small; all such
+  places). BMP3XX: the deployed legacy driver's `_wait_time = 0.002` ("change this value to have faster reads if
+  needed"), promoted unchanged 2026-07-21 (433e35ec), named `_STATUS_POLL_MS = 2` and budgeted by U31 2026-10-21
+  (72b12815) without a count per measurement: x32/x32 ~130 ms -> ~65 bus reads where one read after the datasheet's
+  computed conversion time does. complete1 called it "small" and the lead passed that on: wrong under D.8.
+- Why missed (lead, from git and docs): reviews checked correctness against oracles and bounded loops with timeouts,
+  and treated slowness as a scheduling problem (add a yield, name the poll step) instead of a cost against need;
+  CLAUDE.md's version-bump practice ("is there a newer/better way") was run over constructs that call MicroPython
+  APIs, so a pure-Python loop that could call one was never in its scope; OR36's "perfectly suited for the target
+  hardware" (2026-09-26) had no check that makes it answerable.
+- Prevention now: common_r1.md "The platform first" (every unit). Owed to the specs: D.8 names the platform check and
+  the poll count per event; CLAUDE.md's standing practice extends to pure-Python loops (with the D.8 doc unit).
+- Completeness: read-only unit cprim (r5/BRIEF_CPRIM.md, due 19:45): every src/ loop the platform does faster, every
+  poll/wait/retry loop's reads per event, the native emitter as a mechanism (freeze, both Unix binaries, twin, mypy).
+
+## 12.114 Bench probes back (17:39 bench clock; runs 17:35:45-17:37:32, owner OK "Yes, run both"; no flash cycle)
+- CRC, 264 B on the chip (probe's 17:32 version): image's per-byte-yield form 129,756 us; bitwise without yield
+  36,985-37,579 us (crosses 21 ms on its own); nibble table 10,179-10,261 us (2.1x margin); byte table 5,125-5,139 us
+  (4.1x); all "same", residue 0; building both tables at runtime 47,637 us. Chip/host ratio ~140-150. Native form and
+  C crc32 not yet timed: relay 17:38 (bench 59d14df4) asks probe 1's 17:34 version once more.
+- SCD30 on dev i2c1 at 50 kHz, 90 s, 0 errors: write cmd 658-1,608 us; 3 B read 817-1,953 us; 18 B read 3,656-5,127
+  us (wire 3,420): routine clock stretch <= ~1.7 ms in 396 frames; COMPLETE_2 #2's 30 ms-per-frame bound did not
+  occur (C for this board and 90 s). A sample holds the loop ~6-9 ms in four transfers.
+- 17:41 (bench clock; run 17:39:55-17:40:12): viper as first written 3,381-3,418 us (264 B, "same"); C binascii.crc32
+  89 us (another CRC). The viper loop converts big 32-bit constants per use; relay 17:40 (bench ed207fcb) adds a
+  hoisted form for one more run.
+- 17:43 (run 17:42:23-17:42:40): viper_hoisted 946-956 us ("same", residue 0). Chunk CRC, 264 B on the chip: image
+  130 ms; Python bit loop 37 ms; nibble table 10.2 ms; byte table 5.1 ms (+48 ms to build its tables at runtime, or a
+  512-entry literal); native bit loop 0.95 ms (no table, no RAM); C crc32 0.09 ms (another CRC: the physical need's
+  scale). Choice after cprim's mechanism check (freeze, both Unix binaries, twin, mypy): one native engine keeps all
+  three widths' values (Sensirion CRC-8 wire, UART CRC-16 contract, FRAM CRC-32 chunks) and drops the yields and the
+  16-bit split path; binascii would change the stored chunk format and still leave CRC-8/16 slow.
+
+## 12.115 cprim back (S/u35r/r5/CPRIM.md, 38 lines; count check 0): every loop and poll in src/, lead's routing
+- Scope: all 161 loop statements and comprehensions in src/, six generated modules, every non-zero sleep.
+- Same-value faster forms (internal, no wire or stored change): one viper CRC engine for widths 8/16/32 replacing
+  _crc/_crc_wide and the per-byte yield (CRC-16 on a crc16 UART link costs 20.7 ms per 53 B frame on silicon - the
+  bench measured it 2026-11-05 and noted "a faster CRC"; the lead did not take it up); _rx_copy (viper or slices);
+  FRAM verify compare by slice ==; _bytes_to_int -> int.from_bytes; VOC (STRETCH's folded ints ~16 ms est., 1.3x
+  under 21 ms: near-critical; viper needs a 16x16 split). COBS (wired on no device) and _rx_line_len (no src caller):
+  removal candidates, checked against their owner records first.
+- The 2026-09-18 "pure wall clock time ... don't touch" yield ruling: its fact failed (12.100); the owner took it back
+  on 2026-11-07 17:31 ("applying this already answers the open questions about the checksum"); not re-asked.
+- Viper as mechanism: freezes into rp2's .text with -march=armv6m (C), runs on the RP2040 from RAM (C, bench 11-09),
+  frozen run owed to the next image; same results on build-standard, build-settrace, lwip, i386; ruff needs one
+  `builtins` line, mypy one arg-type ignore per viper function, module_sizes.sh needs -march; coverage shows a viper
+  body unexecuted (I); no 64-bit product, x64 word must be masked.
+- Polls: BMP3XX 30-73 STATUS reads per sample at x32/x32. Origin: legacy's `_wait_time = 0.002`; U15 (5689e2f4,
+  2026-10-07) replaced it with the datasheet's computed sleep; the post-restart repair b4341646 (2026-11-03, "back to
+  their pre-audit read paths") restored the 2 ms poll with a parity-with-legacy check and no count per read. Same
+  pattern: 6c00e98e (2026-11-03, "LED back to the pre-audit forms") restored request_signal's 50 ms polling of a
+  ramp's end (40-2,400 rounds per signal). UART: the validator admits poll_idle_ms = 1 (1,000 rounds/s idle per link);
+  write gate 75 rounds per hold-off; notification pause tick (already approved for removal); captive DNS 10 polls/s
+  in AP mode (no public UDP readiness wait in 1.29: judged with its unit).
+- Lesson for the repair rounds: "back to pre-audit" was taken as "field-proven, therefore good" without the cost
+  check; the 11-03 rollbacks (R1 batch) are re-read under D.8 in the driver unit.
+
+## 12.116 Snapshot 50 green; bench released
+- Snapshot 50 (e0e2266a): CI green, the pull_request run 42664651318 (34 jobs); the push run cancelled by concurrency,
+  as before. Relay 17:56 (bench 6131fcfe): nothing more tonight. bfix told to drop its item 3 (the CRC engine is unit C).
+
+## 12.117 bfix merged into int (a202591d = merge of f86e7612 over b412d1b3; clean merge)
+- Lead's review: src +105/-149; fram_manager -814 B by removal (CRC once per write before the sessions; read checks
+  after release; cross-check compares by ==, CRC only on mismatch; check_length and the slice machinery gone); print_log
+  +554 B for err_q()/wrn_q() and one writer task per store (admitted fix; a task per burst of UART faults, not steady
+  state); UART's _err no longer awaits FRAM. _read_into() has production callers (not test-only). The commit's diff
+  removes 3 pattern-matching lines from a test, adds none (count only). Gate 11-09 17:17-18:09 green at both GC stages,
+  twin suite and harness green, lint and mypy clean. dev imageFreeBytes 59,540 -> 59,780.
+- Waits after (ii): a log entry 16-24 rounds (0.26-0.53 s loaded); supervisor pass 1.3-2.6 s against 6 s. Still open:
+  the SGP40 chunk's _op_lock spans its own CRC, ~272 rounds (4.4-6.0 s loaded) - quiesce() and SGP40 sampling wait on
+  it; on a fault 542-808 rounds cross the 8 s shutdown-step bound. Near-critical: 4.4-6.0 s of 8 s on the normal path.
+  The native CRC engine (unit C, 0.95 ms per chunk on the chip) removes it: unit C goes first after this merge.
+- Not yet run on the merged tree: lint, mypy, tests_scripts (bchain holds the host); CI on snapshot 51 runs them all.

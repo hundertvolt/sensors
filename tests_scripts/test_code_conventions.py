@@ -139,11 +139,11 @@ def starter_names(module: Module) -> list[str]:
 
 
 def log_keywords(module: Module) -> list[str]:
-    # (4) err_s()/wrn_s() take their number as errno=/wrnno=, never positionally.
+    # (4) err_s()/wrn_s() and err_q()/wrn_q() take their number as errno=/wrnno=, never positionally.
     found = []
     for node in ast.walk(module.tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"err_s", "wrn_s"}:
-            keyword = "errno" if node.func.attr == "err_s" else "wrnno"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"err_s", "wrn_s", "err_q", "wrn_q"}:
+            keyword = "errno" if node.func.attr.startswith("err") else "wrnno"
             numbers = [a for a in node.args if (isinstance(a, ast.Constant) and type(a.value) is int) or _NUMBER_NAME.fullmatch(ast.unparse(a).rsplit(".", 1)[-1])]
             if keyword not in {k.arg for k in node.keywords} or numbers:
                 found.append(f"{module.path}:{node.lineno}: {node.func.attr}() needs its number as {keyword}=")

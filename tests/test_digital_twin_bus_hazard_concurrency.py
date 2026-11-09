@@ -36,7 +36,7 @@ from _twin_devices import bus_construction, bus_keywords, devices_with_shared_bu
 import asy_i2c_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_bmp3xx_driver import BMP3XX_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
-from asy_crc_checks import CRC8  # noqa: E402 - imported after the prewarm and the UDP shim
+from asy_crc_checks import CRC8, CRC32  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_scd30_driver import SCD30_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_sgp40_driver import SGP40_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -88,6 +88,8 @@ _HOLD_SCD30_CYCLES = 3  # whole SCD30 cycles of real bus load the driven 60 s re
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
 _POLL_MS = int(_POLL_S * 1000)  # the same look on a driven clock
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
+# A 12-byte FRAM log entry's rounds: its CRC's per-byte yields, two per own block, two per block operation queued ahead.
+_ENTRY_ROUNDS = 24
 _I2C_DEFAULT_TIMEOUT_US: int = src_int("src/asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
@@ -579,6 +581,37 @@ def test_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
         assert await chunk.read() is None, "an interrupted read deliberately keeps the chunk unreadable until rewritten"
         assert await chunk.write(payload), "a write is what clears the stuck BUSY status bytes"
         assert await chunk.read() == bytearray(payload)
+
+    _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
+
+
+def test_a_system_entry_beside_a_backup_write_and_verify_waits_for_no_crc() -> None:
+    # The supervisor's SYSTEM logger on the booted graph, its entry started while a 264-byte CRC32 chunk (the SGP40
+    # backup's shape) writes and verifies: it waits for no CRC, so it lands within its own rounds.
+    async def scenario(device: str) -> None:
+        module, _watchdog = await _boot(device)
+        manager = module.fram
+        backup = manager.get_chunk(264, crc=CRC32(), verify=1, owner="HAZARD_BACKUP")
+        assert backup is not None
+        rounds = [0]
+
+        async def probe() -> None:
+            while True:
+                rounds[0] += 1
+                await asyncio.sleep(0)
+
+        counter = asyncio.get_event_loop().create_task(probe())
+        backing_up = asyncio.get_event_loop().create_task(backup.write(bytes(264)))
+        try:
+            while not manager.fram.session_lock.locked():
+                await asyncio.sleep(0)
+            start = rounds[0]
+            await module.sysfunct.pr.err_s("beside the backup", errno=code("E", "TEST_SEED_A"))
+            taken = rounds[0] - start
+            assert await backing_up is True
+        finally:
+            await cancel(counter)
+        assert taken <= _ENTRY_ROUNDS, f"{device}: the SYSTEM entry took {taken} rounds beside the backup"
 
     _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
 

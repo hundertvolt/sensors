@@ -100,12 +100,15 @@ def _edit(src: Path, name: str, old: str, new: str) -> None:
 
 
 def _logs(stmt: ast.stmt, name: str) -> bool:
-    # `await self.pr.err_s(..., <name>, ...)` as a statement of its own.
+    # `await self.pr.err_s(..., <name>, ...)` as a statement of its own; a logger's own writer task awaits self.err_s().
     if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Await) and isinstance(stmt.value.value, ast.Call)):
         return False
     call = stmt.value.value
     func = call.func
-    logger = isinstance(func, ast.Attribute) and func.attr == "err_s" and isinstance(func.value, ast.Attribute) and func.value.attr == "pr" and _is_self(func.value.value)
+    if not (isinstance(func, ast.Attribute) and func.attr == "err_s"):
+        return False
+    owner = func.value
+    logger = _is_self(owner) or (isinstance(owner, ast.Attribute) and owner.attr == "pr" and _is_self(owner.value))
     return logger and any(isinstance(a, ast.Name) and a.id == name for a in call.args)
 
 

@@ -1325,9 +1325,9 @@ def test_the_backup_chunk_owner_differs_from_the_loggers() -> None:
     owners: list[object] = []
     real_get_timestamped_chunk = manager.get_timestamped_chunk
 
-    def recording(size: int, ntp_sync_callback: "NtpSyncFct", crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "FRAMTimestampedChunk | None":
+    def recording(size: int, ntp_sync_callback: "NtpSyncFct", crc: "CRCBase | None" = None, verify: int = 0, *, owner: str) -> "FRAMTimestampedChunk | None":
         owners.append(owner)
-        return real_get_timestamped_chunk(size, ntp_sync_callback, crc, verify, check_length, owner=owner)
+        return real_get_timestamped_chunk(size, ntp_sync_callback, crc, verify, owner=owner)
 
     manager.get_timestamped_chunk = recording  # type: ignore[method-assign]
     reader = SGP40_Reader(
