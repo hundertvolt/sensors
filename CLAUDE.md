@@ -361,7 +361,8 @@ Three standing practices:
   caught-and-logged included, and no `gc.collect()` or other nonstandard `gc` setting propping it up,
   *before* it runs again at the project's `gc.threshold(32768)` (set once by the boot entry, checked),
   which it must also pass: `scripts/test.sh` is the (e) stage, `GC_THRESHOLD=32768 scripts/test.sh`
-  the (f) stage, plus CI's `unit-tests` and `unit-tests-gc-threshold`. The threshold is defence in
+  the (f) stage over every MicroPython file (the host `tests_scripts/` tier, which reads no threshold,
+  runs once, in the (e) stage), plus CI's `unit-tests` and `unit-tests-gc-threshold`. The threshold is defence in
   depth on an already-safe design, kept because on silicon it carries the boot placement gain into
   the run phase, and never the fix for a memory-pressure issue: that is relieved at the design level
   (chunking, reused buffers, streaming — a REST GET whose answer grows with configuration streams
@@ -632,8 +633,8 @@ Three standing practices:
   `setup`, cached under `$PICO_TOOLCHAIN_DIR`, and runs each `tests/test_*.py` file in its own
   process with `tests/microtest.py` as the runner (E.3). The host-side build chain (`scripts/`,
   `toolchain/`, `buildgen/`) and `tests_hardware/`'s host code are CPython, tested by
-  `tests_scripts/` under pytest, which `scripts/test.sh` launches first and backgrounds (E.1), and
-  linted and type-checked like everything else (owner, 2026-09-10, `fc6afbe`: 'add all build
+  `tests_scripts/` under pytest, which `scripts/test.sh` launches first and backgrounds at the reactive
+  default (E.1), and linted and type-checked like everything else (owner, 2026-09-10, `fc6afbe`: 'add all build
   scripts to the full CI'), through `host_typecheck.ini`'s pass. `pyproject.toml`'s per-file block
   lists every ruff exemption with its reason, MicroPython-run and host code each in their own group
   (SPECIFICATION.md Part D.6); `tests_scripts/test_ruff_exemptions_live.py` fails on an entry that no

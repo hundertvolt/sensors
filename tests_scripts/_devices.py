@@ -1,6 +1,6 @@
 """The real device set, found in devices/*.toml, not listed (scripts/_devices.sh: same rule for the shell runners), and
-the tests' shared queries: DEVICE_NAMES, device_toml(), devices_with(driver), bench_device(), so a seventh device joins
-every suite unedited and a test needing a device with a property picks it from the TOMLs, never by name."""
+the tests' shared queries (DEVICE_NAMES, device_toml(), devices_with(), bench_device(), distinct_devices()): a seventh
+device joins every suite unedited; a test needing a device with a property picks it from the TOMLs, never by name."""
 
 from pathlib import Path
 
@@ -37,6 +37,16 @@ def bench_device(devices_dir: Path = DEVICES_DIR) -> str:
 
 def device_toml(device: str) -> Path:
     return DEVICES_DIR / f"{device}.toml"
+
+
+def distinct_devices(devices_dir: Path = DEVICES_DIR) -> "list[str]":
+    # scripts/_devices.sh's distinct_devices, read with tomllib: one device per [device] hardware_family, the first in
+    # byte order, a device naming none its own (owner, 2026-10-23). A leaked zz_test_* fixture never counts.
+    found: dict[object, str] = {}
+    for path in sorted(p for p in devices_dir.glob("*.toml") if not p.stem.startswith("zz_test_")):
+        family = tomllib.loads(path.read_text(encoding="utf-8")).get("device", {}).get("hardware_family")
+        found.setdefault(family if isinstance(family, str) else (path.stem,), path.stem)
+    return list(found.values())
 
 
 def devices_with(driver: str) -> "list[str]":

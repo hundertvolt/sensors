@@ -16,8 +16,8 @@ case "$#:${1:-}" in
     1:*) echo "error: unknown level '$1' - L3 or L4" >&2; usage >&2; exit 2 ;;
     *) echo "error: one level only, got $#: $*" >&2; usage >&2; exit 2 ;;
 esac
-# The twin suite's devices, derived before any level runs: none found stops here.
-devices_text="$(derived_devices)"
+# The twin suite's devices, one per hardware_family, derived before any level runs: none found stops here.
+devices_text="$(distinct_devices)"
 mapfile -t devices <<<"$devices_text"
 
 # A status git cannot report reads as dirty: the run is never claimed for a commit it may not match.
