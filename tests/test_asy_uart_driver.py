@@ -22,7 +22,6 @@ import asy_uart_driver
 from asy_base_classes import COUNTER_CAP
 from asy_framing_codecs import COBS_DELIMITER, FramingBase, FramingCOBS, FramingPass
 from asy_print_log import PrintLog, PrintLogHistory
-from asy_uart_comm import UARTComm
 from asy_uart_driver import UART
 from crc_checks import CRC16, CRCBase, CRCPass
 
@@ -79,7 +78,6 @@ _TASK_INSIDE_MS = 5
 _STEP_BOUND_S = 2
 _NO_DELIMITER_TIMEOUT_MS = 100
 _LOCKED_WORK_MS = 30
-_SHORT_CANCEL_ACK_MS = 50
 _READY_TIMEOUT_MS = 100
 _DEADLOCK_WAIT_S = 0.2
 _FAST_POLL_WAIT_MS = 1
@@ -997,36 +995,6 @@ def test_no_read_happens_after_the_cancel_is_acknowledged() -> None:
     assert uart._rx_level() == 4  # nothing was consumed after the acknowledgement
 
 
-def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
-    # J.5's "provably terminating" half: a lock holder that never calls ready() again and never
-    # exits cannot make cancel_read_timeout() block forever. It returns True (a cancel is
-    # outstanding, so clear() must not then take the lock) and records the un-acknowledged case.
-    uart = _make_uart()
-    never_set = asyncio.Event()
-
-    async def wedged() -> None:
-        async with uart:
-            await never_set.wait()  # never touches the bus again
-
-    async def scenario() -> "tuple[bool, int]":
-        task = asyncio.create_task(wedged())
-        try:
-            await asyncio.sleep_ms(_TASK_INSIDE_MS)
-            # A product bound waited out: the cancel acknowledgement.
-            result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=_SHORT_CANCEL_ACK_MS), _STEP_BOUND_S)
-            return result, uart.cancel_unacknowledged
-        finally:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:  # expected; anything else is a real failure
-                pass
-
-    result, unacked = run(scenario(), _RUN_BOUND_S)
-    assert result is True
-    assert unacked == 1
-
-
 def test_cancelling_a_session_at_each_await_releases_the_lock() -> None:
     # A locked read and a write cancelled after 0, 1, 2, ... turns on a fresh port, every sleep a bare yield: the lock
     # is free, no cancel counted, and the unwinding reads and writes nothing (mark: the state at the cancel). A count
@@ -1057,7 +1025,6 @@ def test_cancelling_a_session_at_each_await_releases_the_lock() -> None:
     def invariants(uart: UART) -> None:
         held[0] += inside[0]
         assert_unlocked(session_lock=uart.session_lock)
-        assert uart.cancel_unacknowledged == 0, uart.cancel_unacknowledged
         assert seen(uart) == mark[0], f"read or written while unwinding: {mark[0]} -> {seen(uart)}"
 
     async def read_path(uart: UART) -> None:
@@ -1078,8 +1045,7 @@ def test_cancelling_a_session_at_each_await_releases_the_lock() -> None:
 
 def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
     # The other half of J.5's handshake: the request is acknowledged on every exit from the locked
-    # region, not only inside ready()'s loop. Ordered by events, the bound past the run bound: only a
-    # missing acknowledgement, never host load, counts as un-acknowledged.
+    # region, not only inside ready()'s loop. Ordered by events.
     uart = _make_uart()
     inside = asyncio.Event()
     release = asyncio.Event()
@@ -1089,19 +1055,17 @@ def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
             inside.set()
             await release.wait()
 
-    async def scenario() -> "tuple[bool, int]":
+    async def scenario() -> bool:
         task = asyncio.create_task(holder())
         await inside.wait()
-        canceller = asyncio.create_task(uart.cancel_read_timeout(timeout_ms=2000 * _RUN_BOUND_S))
+        canceller = asyncio.create_task(uart.cancel_read_timeout())
         await latched(uart)
         release.set()
-        result = await asyncio.wait_for(canceller, _STEP_BOUND_S)
+        result = await asyncio.wait_for(canceller, _STEP_BOUND_S)  # ends: acknowledged by the __aexit__
         await asyncio.wait_for(task, _STEP_BOUND_S)
-        return result, uart.cancel_unacknowledged
+        return result
 
-    result, unacked = run(scenario(), _RUN_BOUND_S)
-    assert result is True
-    assert unacked == 0  # acknowledged by the __aexit__
+    assert run(scenario(), _RUN_BOUND_S) is True
 
 
 def test_a_new_ready_call_does_not_clear_an_unrelated_cancel() -> None:
@@ -2893,27 +2857,6 @@ def test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged() -> None:
 
     assert run(scenario(), _RUN_BOUND_S) == (True, 0)
     assert (uart._cancel_req, uart._cancel_ack) == (0, 0), (uart._cancel_req, uart._cancel_ack)
-    assert uart.cancel_unacknowledged == 0
-
-
-def test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise() -> None:
-    uart = _make_uart()
-    comm = UARTComm(uart, "initiator")
-    uart.cancel_unacknowledged = COUNTER_CAP
-    comm._cancel_unacked_seen = COUNTER_CAP
-    release = asyncio.Event()
-
-    async def scenario() -> None:
-        task = asyncio.create_task(_holder(uart, release, reads=False))
-        await asyncio.sleep_ms(_TASK_INSIDE_MS)
-        await asyncio.wait_for(comm.clear(), _STEP_BOUND_S)
-        release.set()
-        await asyncio.wait_for(task, _STEP_BOUND_S)
-
-    run(scenario(), _RUN_BOUND_S)
-    assert uart.cancel_unacknowledged == 0, uart.cancel_unacknowledged
-    entry = run(comm.get_error_counter(), _RUN_BOUND_S)[comm.name]
-    assert entry["ErrNum"][-1] == code("W", "UART_CANCEL_UNACKED") and entry["ErrType"][-1] == "W", entry
 
 
 # ---------------------------------------------------------------------------

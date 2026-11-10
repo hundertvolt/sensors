@@ -3591,14 +3591,20 @@ def test_the_run_gives_up_when_its_window_closes() -> None:
     assert reader._measured_ratio() is None, "a window that closed with nothing stable publishes nothing"
 
 
-def test_a_published_candidate_stops_being_offered_once_its_hold_expires() -> None:
-    _i2c, reader = calibrating_reader("cal_hold")
-    queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
-    with FastAsyncSleep():
-        run(reader._measure_gain_ratio(2000))
-    assert reader._measured_ratio() is not None
-    reader._cal_meas_until_ms = time.ticks_add(time.ticks_ms(), -1)
-    assert reader._measured_ratio() is None, "a stale candidate must not read as a fresh one"
+def test_a_published_candidate_stays_readable_until_the_next_run_starts() -> None:
+    # No expiry on the driven clock: the candidate reads a day after publishing, and only the next run's start clears it.
+    _i2c, reader = ready_reader("cal_hold")
+    clock = Ticks30Time(7000)
+    asy_isl29125_driver.time = clock  # type: ignore[assignment]
+    try:
+        reader._publish_candidate(25.9)
+        clock.advance(86_400_000)
+        kept = reader._measured_ratio()
+        assert run(reader.start_calibration(flag=True)) is True
+        cleared = reader._measured_ratio()
+    finally:
+        asy_isl29125_driver.time = time
+    assert (kept, cleared) == (25.9, None), (kept, cleared)
 
 
 def test_a_calibration_window_ends_with_its_console_line_alone() -> None:
@@ -3629,23 +3635,6 @@ def test_a_calibration_window_ends_with_its_console_line_alone() -> None:
     assert converged._calibrating is False
     assert err_count(run(converged.get_error_counter())) == 0
     assert [line[0] for line in printed] == ["Gain-ratio calibration finished:"]
-
-
-def test_a_published_candidate_still_reads_one_tick_before_its_hold_ends_and_is_gone_at_it() -> None:
-    # The hold's exact bound on the driven clock: the candidate _CAL_HOLD_MS - 1 ms after publishing, None at _CAL_HOLD_MS.
-    hold = src_int("src/asy_isl29125_driver.py", "_CAL_HOLD_MS")
-    _i2c, reader = ready_reader("cal_edge")
-    clock = Ticks30Time(7000)
-    asy_isl29125_driver.time = clock  # type: ignore[assignment]
-    try:
-        reader._publish_candidate(25.9)
-        clock.advance(hold - 1)
-        before = reader._measured_ratio()
-        clock.advance(1)
-        at = reader._measured_ratio()
-    finally:
-        asy_isl29125_driver.time = time
-    assert (before, at) == (25.9, None), (before, at)
 
 
 def test_the_measured_candidate_travels_with_every_reading() -> None:

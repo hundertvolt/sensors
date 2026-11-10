@@ -328,8 +328,8 @@ class ConfigManager:
         self.unpersisted = False  # the latest file write failed: the store runs on values the flash lacks
         self.module_name = name  # the module name a config-fault report lists
         self._closed = False  # close_writes() before a commanded reset; one-way
-        # The owning module's PUT lock, set once by that module after construction: a commanded reset takes it
-        # before this store's flush, so a PUT in flight finishes its pushes and commit first. None: no PUT lock.
+        # The owning module's PUT lock, set once by that module after construction: every flush of this store and a
+        # commanded reset wait for it, so a PUT in flight finishes its pushes first. None: no PUT lock.
         self.owner_lock: asyncio.Lock | None = None
         self._cache: dict[str, CfgValue] = {}
         # Staging slot for write_config()'s deferred flash write (SPECIFICATION.md Part F.2) - not
@@ -337,8 +337,6 @@ class ConfigManager:
         # immediately rather than waiting for the actual flash write to complete.
         self._staged: dict[str, CfgValue] | None = None
         self._pending_flush: asyncio.Task[None] | None = None
-        self._commit_ready = asyncio.Event()  # cleared while a deferred snapshot waits for its commit()
-        self._commit_ready.set()
 
     async def _get_typed_values(self, keys: "ConfigSchema", coerce: "Callable[[CfgValue], T | None]") -> "list[T] | None":
         # Each stored value through the getter's own exact-type coercer, all-or-nothing: a refusal is a
@@ -381,15 +379,17 @@ class ConfigManager:
         return self._staged if self._staged is not None else self._cache
 
     async def _flush_staged(self, staged: "dict[str, CfgValue]") -> None:
-        # The still-synchronous, uninterruptible flash write, decoupled from whatever request triggered it;
-        # a deferred snapshot first waits for its commit(). It re-acquires write_config()'s own lock, so at
-        # most one write is in flight per ConfigManager.
+        # The still-synchronous, uninterruptible flash write, decoupled from whatever request triggered it; it first
+        # waits for the owning module's PUT lock, so a PUT's pushes end before its one write. It re-acquires
+        # write_config()'s own lock, so at most one write is in flight per ConfigManager.
         try:  # cleanup only: the task drops its pending mark once it ends, its entry landed first (A.8's flush_pending())
             try:
-                await self._commit_ready.wait()
+                if self.owner_lock is not None:
+                    async with self.owner_lock:  # the staging PUT's pushes and recovery end first
+                        pass
                 async with self._config_lock:
                     if self._staged is not staged:
-                        # A newer snapshot was staged while this one waited for its commit or the lock: writing this one
+                        # A newer snapshot was staged while this one waited for a lock: writing this one
                         # would regress a replaced value (PrintLogHistoryStore._write() applies the same rule).
                         return
                     failure: Exception | None = None
@@ -459,33 +459,24 @@ class ConfigManager:
         # between the last flush_pending() and the reset. One-way.
         self._closed = True
 
-    def commit(self) -> None:
-        # Releases a deferred write_config()'s flush (the caller's pushes have ended).
-        self._commit_ready.set()
-
     async def delete_file(self) -> bool:
         # Reset to defaults (owner, 2026-09-30): deletes the file unread, readable or not (owner, 2026-10-01);
         # after the reboot each file is written once with its defaults. The SCD30's chip settings stay in its own NVM.
         self.close_writes()
         async with self._config_lock:
-            failure: OSError | None = None
-            for _attempt in range(2):  # one retry
-                try:
-                    os.remove(self._config_file)
-                except OSError as e:
-                    if e.errno == errno.ENOENT:
-                        return True
-                    failure = e
-                else:
-                    self.pr.evt(self._config_file, "- deleted, written with the defaults after the reboot")
+            try:  # one try: a littlefs remove is synchronous and fails the same way again
+                os.remove(self._config_file)
+            except OSError as e:
+                if e.errno == errno.ENOENT:
                     return True
-            self.pr.err(self._config_file, "- could not be deleted:", failure)
-            return False
+                self.pr.err(self._config_file, "- could not be deleted:", e)
+                return False
+            self.pr.evt(self._config_file, "- deleted, written with the defaults after the reboot")
+            return True
 
     async def flush_pending(self) -> None:
-        # Releases a deferred flush, then awaits the latest flush task read under the lock, so a write_config()
-        # that held the lock has finished staging first; an earlier, superseded task no-ops by its identity check.
-        self._commit_ready.set()
+        # Awaits the latest flush task read under the lock, so a write_config() that held the lock has finished
+        # staging first; an earlier, superseded task no-ops by its identity check.
         async with self._config_lock:
             pending = self._pending_flush
         if pending is not None:
@@ -582,10 +573,9 @@ class ConfigManager:
         self._cache = valid_cfg
         self.valid = True
 
-    async def write_config(self, data: "JsonMapping", *, defer: bool = False) -> "tuple[bool, WriteValidity]":
+    async def write_config(self, data: "JsonMapping") -> "tuple[bool, WriteValidity]":
         # Validates against the manager's own schema and stages synchronously, then hands the flash write to an
-        # independent task (SPECIFICATION.md Part F.2): an RP2040 flash write disables interrupts port-wide. A
-        # deferred write's task waits for commit(), so a PUT's flash write follows its pushes.
+        # independent task (SPECIFICATION.md Part F.2): an RP2040 flash write disables interrupts port-wide.
         if self._closed_for_reset():
             return False, {}
         if not self.valid:
@@ -637,12 +627,8 @@ class ConfigManager:
             except MemoryError as e:  # nothing staged: the answer matches what is served
                 self.pr.err_s(self._config_file, "- Error staging config data:", e, errno=_ERR_ALLOC)
                 return False, {}
-            # No await from here to the return: the task cannot run before it is staged, and a deferred one
-            # then waits for commit(); _cache stays "what the file holds" until _flush_staged() commits it.
-            if defer:
-                self._commit_ready.clear()
-            else:
-                self._commit_ready.set()
+            # No await from here to the return: the task cannot run before it is staged; _cache stays "what the file
+            # holds" until _flush_staged() commits it.
             self._staged = new_cache
             self._pending_flush = task
             self.pr.evt(self._config_file, "- Config data staged, flash write scheduled.")

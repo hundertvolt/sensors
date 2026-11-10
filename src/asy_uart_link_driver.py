@@ -1,7 +1,7 @@
 """Bench-only UART crossover-link exerciser: wraps one role's `UARTComm` over an already-built
 `asy_uart_driver.UART` bus, plus the banner/echo application logic and transfer/failure counters
 that have no home in the standalone protocol module itself. See SPECIFICATION.md Part J.7/A.7."""
-# Not a SensorReader/SensorReaderConfig subclass, like UARTComm (agent, 2026-09-11; Part J.9; owner-reviewed, 2026-11-06) -
+# Not a SensorReader/SensorReaderConfig subclass, like UARTComm (agent, 2026-09-11; Part J.9) -
 # resolved via buildgen.driver_registry._OVERRIDES.
 
 import asyncio
@@ -54,7 +54,7 @@ _HEADER_BYTES = const(5)  # uid, cmd, size, chunks, cur_chunk (J.3)
 # script's; and the ACK window and pre-recovery wait, past its longest listen backoff too (5 more, J.5).
 _QUIET_TIMEOUTS = const(3)
 _WINDOW_TIMEOUTS = const(8)
-_HAZARD_RECOVERY_ATTEMPTS = const(2)  # after a hazard, a clean exchange within this many tries
+_HAZARD_RECOVERY_ATTEMPTS = const(1)  # one: its window outlasts the peer's longest backoff and resync (8 > 5 + 1.5 timeouts)
 _HAZARDS_KEY = const("UartHazards")  # PUT /uart's one key; buildgen reads it for the website's form
 # The link's own API on dev, registered by the generated module ahead of the static catch-all (owner, 2026-11-06: "If it is
 # selected, in brings in everything it needs"); buildgen reads it for the REST reference, as the webserver's ROUTES.

@@ -138,7 +138,6 @@ tests/test_asy_api_response.py	Both hooks supplied at once, with the synchronous
 tests/test_asy_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
 tests/test_asy_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
 tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
-tests/test_asy_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
 tests/test_asy_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n
 tests/test_asy_config_manager.py	An authoring shape that used to be rejected outright (def declared "int" but wri
 tests/test_asy_config_manager.py	Deliberate consequence of _cache (see module docstring): get_dict never re-opens
@@ -210,10 +209,8 @@ tests/test_asy_uart_comm.py	The 0xFE -> 0 wrap is a deliberate off-by-one barrie
 tests/test_asy_uart_comm.py	The UID space is exactly as large as the longest train, so no UID repeats inside
 tests/test_asy_uart_comm.py	an idle uart_listen() waits forever by design, so the task is cancelled out
 tests/test_asy_uart_comm.py	setup()'s drain is deliberately not a fault and not counted, but it shares _drai
-tests/test_asy_uart_driver.py	J.5's "provably terminating" half: a lock holder that never calls ready() again
 tests/test_asy_uart_driver.py	Not reentrant by design (a plain asyncio.Lock, same as I2CDevice/SPIDevice's sha
 tests/test_asy_uart_driver.py	Two consecutive delimiters must never surface as a zero-length frame to index in
-tests/test_asy_uart_driver.py	never touches the bus again
 tests/test_asy_udp_socket.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_udp_socket.py	write() semantically requires a connected socket, so calling it on a bound-but-u
 tests/test_asy_webserver_service.py	A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") n

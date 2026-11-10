@@ -62,11 +62,10 @@ _NTP_RETRY_UNSYNCED_S = const(60)  # unsynced: the wait after a failed attempt; 
 if TYPE_CHECKING:
     class NtpTiming(NamedTuple):
         dns_timeout_ms: int
-        dns_tries: int
         fetch_timeout_ms: int
 
 else:
-    NtpTiming = namedtuple("NtpTiming", ("dns_timeout_ms", "dns_tries", "fetch_timeout_ms"))
+    NtpTiming = namedtuple("NtpTiming", ("dns_timeout_ms", "fetch_timeout_ms"))
 
 _NTP_UDP_PORT = const(123)  # RFC 5905 SS7.2
 
@@ -166,7 +165,6 @@ class NTPClient(SensorReaderConfig):
         self._network_available_locked = network_available_locked  # WifiService.network_available_locked - caller must hold wifi_mode_lock
         self._get_dns_server = get_dns_server  # WifiService.get_dns_server_ip - the network's own DHCP-assigned DNS server, or None
         self._dns_timeout_ms = timing.dns_timeout_ms
-        self._dns_tries = timing.dns_tries
         self._ntp_fetch_timeout_ms = timing.fetch_timeout_ms
         self._retry_wait_s = _NTP_CHECK_INTERV  # the unsynced wait: every check until an attempt fails; reset by a sync or a forced resync
         self._unsynced_wait_s = 0  # seconds since the last unsynced attempt was triggered
@@ -315,7 +313,7 @@ class NTPClient(SensorReaderConfig):
 
     async def _resolve_ntp_server(self, ntp_host: str, dns_server: str | None, fallback: str) -> tuple[str, int] | None:
         servers = (() if dns_server is None else (dns_server,)) + tuple(s for s in fallback.split(",") if s)
-        ip = await resolve_ipv4(ntp_host, servers, timeout_ms=self._dns_timeout_ms, tries=self._dns_tries, logger=self.pr)
+        ip = await resolve_ipv4(ntp_host, servers, timeout_ms=self._dns_timeout_ms, logger=self.pr)
         if ip is None:
             self.pr.err_s("No valid NTP server:", ntp_host, errno=_ERR_NTP_DNS)
             return None

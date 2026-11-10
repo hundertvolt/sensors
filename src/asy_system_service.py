@@ -71,6 +71,12 @@ _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,
 # @tunable system.task_fail_max = 300
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
+# The reset sequence's one phase, only ever raised (agent, 2026-11-10): a system command goes DUE+OWNED, ARMED, STARVED,
+# the supervisor's escalation DUE, ARMED, STARVED (never OWNED: its later passes keep restarting, unfed), its fault DUE.
+_PHASE_DUE = const(1)  # a reset follows: ResetErrors refused so the logs explaining it survive (owner, 2026-10-13), commands too
+_PHASE_OWNED = const(2)  # a system command passed the gate: its shutdown sequence alone feeds (owner, 2026-09-30)
+_PHASE_ARMED = const(3)  # _reboot() armed the reset: the first armed reset is the one that fires
+_PHASE_STARVED = const(4)  # armed or unarmable: nothing feeds from here
 
 # The reset-reason record (region 0) and the boot-phase marker (region 1) each store [magic, value, value ^ check]; every
 # word stays below 2**30, so no store allocates. The codes and their decoding: SPECIFICATION.md Part F.5.4.
@@ -158,7 +164,7 @@ def begin_boot() -> int:
 
 def record_loop_end() -> None:
     # The boot entry's call when an exception other than Ctrl-C ended the loop: after BOOT_DONE it writes 22 unless a
-    # valid record names the reset already underway, which is kept (agent, 2026-10-26; owner-reviewed, 2026-11-06); during boot it writes nothing.
+    # valid record names the reset already underway, which is kept (agent, 2026-10-26); during boot it writes nothing.
     record = mem_backup(0)
     phase = mem_backup(1)
     done = phase[0] == _BP_MAGIC and phase[1] == BOOT_DONE and phase[2] == BOOT_DONE ^ _RR_CHECK
@@ -197,13 +203,7 @@ class SystemService:
         # None until _status_loop() resolves it (owner, 2026-07-18) - a later change to this value signals a reboot happened.
         self._boot_signature: int | None = None
         self._watchdog = watchdog
-        # One-way: set once a reset is armed or cannot be armed; no feed site feeds after it.
-        self._force_watchdog_starve = False
-        # One-way: set when a system command is accepted; from then only the shutdown sequence feeds (owner, 2026-09-30).
-        self._feed_owned = False
-        # One-way: set at each reset decision - a command's acceptance, the supervisor's escalation (before its first await)
-        # or its own fault; from then ResetErrors is refused, so the logs that explain the reset survive it (owner, 2026-10-13, paraphrase).
-        self._reset_decided = False
+        self._phase = 0  # the reset sequence's phase (_PHASE_*), 0 while no reset is due
         # System-settings store, deliberately not a SensorReaderConfig subclass - no measurement
         # data and no error-streak concept, both of which that base would drag in unused - just a
         # directly-embedded ConfigManager.
@@ -216,7 +216,6 @@ class SystemService:
         self._config_stores_provider = config_stores
         self._config_stores: list[ConfigManager] = []
         self._reset_reason = reset_reason
-        self._reset_armed = False  # one-way: the first armed reset is the one that fires
         self._reset_due = asyncio.ThreadSafeFlag()  # set by the reset timer; _reset_when_due() runs the reset
         self._reset_task: asyncio.Task[None] | None = None
         self._command_lock = asyncio.Lock()  # serialises the command gate
@@ -268,7 +267,7 @@ class SystemService:
 
     async def _flush_config_stores(self, *, close: bool = False, step_done: "Callable[[], None] | None" = None) -> bool:
         # The stores are caller-supplied through the provider: one failing flush never stops the others or the arm.
-        # Each flush runs under its module's PUT lock, so a PUT that already holds it finishes its writes first.
+        # Each flush follows its module's PUT lock, so a PUT that already holds it finishes its writes first.
         # False when a flush raised or a store still runs on values the flash lacks (its unpersisted flag).
         if close:
             for store in self._config_stores:
@@ -276,11 +275,10 @@ class SystemService:
         ok = True
         for store in self._config_stores:
             try:
-                if store.owner_lock is None:
-                    await store.flush_pending()
-                else:
-                    async with store.owner_lock:
-                        await store.flush_pending()
+                if store.owner_lock is not None:
+                    async with store.owner_lock:  # a PUT in flight ends its pushes; its staged flush waits for this lock
+                        pass
+                await store.flush_pending()
             except Exception as e:
                 self.pr.err_s("Config flush before reset failed:", store.name, e, errno=_ERR_CALLBACK)
                 ok = False
@@ -301,7 +299,7 @@ class SystemService:
             self.pr.err_s("Task", name, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
             report_if_fatal(e)
-            if fatal_reported() and not self._reset_armed:  # an overflow no handler recorded: its code ahead of the entry
+            if fatal_reported() and self._phase < _PHASE_ARMED:  # an overflow no handler recorded: its code ahead of the entry
                 write_reset_record(_RR_STACK_EXHAUSTED)  # (F.1)
             self.pr.err_s("Task", name, "ended with exception:", e, errno=_ERR_TASK_RAISED)
         else:
@@ -322,15 +320,15 @@ class SystemService:
 
     def _own_feed(self) -> None:
         # The shutdown sequence's own feed, once per bounded step; a hung step is never fed.
-        if self._watchdog is not None and not self._force_watchdog_starve:
+        if self._watchdog is not None and self._phase < _PHASE_STARVED:
             self._watchdog.feed()
 
     async def _reboot(self, code: int, message: str, action: "Callable[[], None]", *, fed: bool = False) -> None:
         # Every reset's one path: record, flush, pause, then arm the one-shot whose flag wakes _reset_when_due().
-        if self._reset_armed:
+        if self._phase >= _PHASE_ARMED:
             self.pr.evt("Reset already armed, request ignored")
             return
-        self._reset_armed = True
+        self._phase = _PHASE_ARMED
         write_reset_record(code)
         await self._flush_config_stores()
         self.pr.evt(message)
@@ -343,12 +341,12 @@ class SystemService:
                 self._own_feed()  # a system command's last feed, right before the arm
             self._reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda _b: self._reset_due.set())
             # Nothing feeds the countdown: a one-shot the scheduler drops leaves the watchdog to reset (Part C.9).
-            self._force_watchdog_starve = True
+            self._phase = _PHASE_STARVED
         except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM) or the task's allocation
             if self._reset_task is not None:
                 self._reset_task.cancel()
             write_reset_record(_RR_STARVE_ARM_FAILED)
-            self._force_watchdog_starve = True
+            self._phase = _PHASE_STARVED
             # print-only: FRAM is paused here, so a persisted entry would be dropped;
             # the reset-reason record (code 6) is this failure's persisted trace.
             self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
@@ -361,7 +359,7 @@ class SystemService:
                 return self._shutdown == purpose
             self._shutdown = purpose
             refusal = ""
-            if self._reset_decided:
+            if self._phase:
                 refusal = "a reset is already decided"
             elif purpose == _RR_CONFIG_RESET and not self._config_stores:
                 refusal = "no config store"
@@ -377,10 +375,9 @@ class SystemService:
                 self._shutdown = 0
                 self.pr.err("Could not start the shutdown:", e)
                 return False
-            self._feed_owned = True
-            self._reset_decided = True
+            self._phase = max(self._phase, _PHASE_OWNED)  # a reset that came due meanwhile is one step below
             # Until _reboot() records the command's own code, a step that hangs ends in a watchdog reset that reads
-            # "command incomplete" at the next boot, never as an unexplained one (agent, 2026-10-08; owner-reviewed, 2026-11-06).
+            # "command incomplete" at the next boot, never as an unexplained one (agent, 2026-10-08).
             write_reset_record(_RR_COMMAND_INCOMPLETE)
             # From acceptance on every store refuses writes, so no config PUT reaches the flash or a chip: no SCD30 write
             # while the sequence runs (owner, 2026-10-02).
@@ -453,7 +450,7 @@ class SystemService:
             if purpose in (_RR_CONFIG_RESET, _RR_FRAM_ERASED):
                 self.pr.evt("Shutdown:", _purpose_name(purpose), "done" if done else "incomplete")
             # A shortfall reads 9 at the next boot: a failed delete or erase, or config the reset loses (a config reset's
-            # deletes discard it anyway). Without FRAM the reset reason is a lost write's one surviving trace (agent, 2026-10-08; owner-reviewed, 2026-11-06).
+            # deletes discard it anyway). Without FRAM the reset reason is a lost write's one surviving trace (agent, 2026-10-08).
             code = purpose if done and (flushed or purpose == _RR_CONFIG_RESET) else _RR_COMMAND_INCOMPLETE
             if purpose == _RR_REBOOT:
                 message = "Reboot triggered"
@@ -485,7 +482,7 @@ class SystemService:
             if self._unpause_at is not None and time.ticks_diff(time.ticks_ms(), self._unpause_at) >= 0:
                 self._unpause_at = None
                 # A reset or a shutdown has paused storage for good; a late auto-unpause must not reopen it.
-                if not (self._reset_armed or self._feed_owned) and self._storage_pause is not None:
+                if self._phase < _PHASE_OWNED and self._storage_pause is not None:
                     self._storage_pause(value=False)
                     self.pr.evt("Storage auto-unpaused.")
             if self._start_time_set:
@@ -509,12 +506,12 @@ class SystemService:
         task_errors = 0
         try:
             while True:
-                if self._feed_owned:
+                if self._phase == _PHASE_OWNED:
                     self._supervisor_parked.set()
                     await self._never.wait()
                 # A recorded C-stack overflow skips the scan for the reboot: its handler usually keeps the task running, and
                 # a restarted chain would overflow again on the same path (SPECIFICATION.md F.1).
-                escalate = _RR_STACK_EXHAUSTED if fatal_reported() and not self._reset_armed else 0
+                escalate = _RR_STACK_EXHAUSTED if fatal_reported() and self._phase < _PHASE_ARMED else 0
                 no_fail = not escalate
                 for n in range(0 if escalate else len(self._tasks)):
                     task = self._tasks[n]
@@ -525,10 +522,10 @@ class SystemService:
                             # Retired before the escalation can break out: a second await of an ended task can raise None
                             # (SPECIFICATION.md Part F.1), and an empty slot is restarted without a second entry.
                             self._tasks[n] = None
-                        if self._feed_owned:
+                        if self._phase == _PHASE_OWNED:
                             break  # a command passed the gate during this pass: the shutdown sequence stops every task
                         task_errors = self._charge_task_budget(task_errors)
-                        if task_errors > _TASK_FAIL_MAX and not self._reset_armed:
+                        if task_errors > _TASK_FAIL_MAX and self._phase < _PHASE_ARMED:
                             # Escalate at the first end past the budget, fed once: a scan of every dead task could outlast the
                             # watchdog before the reset is even armed.
                             escalate = _RR_TASK_BUDGET
@@ -538,7 +535,7 @@ class SystemService:
                 if escalate:
                     # The reset is recorded before the escalation's first await and with no allocation: should what follows
                     # fail, the watchdog's reset still reads this code, and from here the command gate refuses.
-                    self._reset_decided = True
+                    self._phase = max(self._phase, _PHASE_DUE)
                     write_reset_record(escalate)
                     stack = escalate == _RR_STACK_EXHAUSTED
                     message = "Reboot: C stack exhausted" if stack else "Reboot triggered"
@@ -551,11 +548,10 @@ class SystemService:
                             self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
                     except MemoryError as e:  # the entry found no room: the reset arms, unless this line finds none too
                         self.pr.err("Reboot entry not written:", e)
-                    # One feed after the entry, then starve one-way: the reset arms below and nothing feeds until it
-                    # fires; later passes keep restarting, unfed.
+                    # One feed after the entry; nothing feeds from here: _reboot() starves once it armed, and nothing else
+                    # feeds while it flushes. Later passes keep restarting, unfed.
                     self.feed_watchdog()
-                    self._force_watchdog_starve = True
-                    # Resets directly: through the shutdown sequence it would run unfed (the starve flag stops the
+                    # Resets directly: through the shutdown sequence it would run unfed (a starved phase stops the
                     # sequence's own feed too) and its first step would cancel this very loop.
                     await self._reboot(escalate, message, system_reset)
                 if no_fail:
@@ -566,7 +562,7 @@ class SystemService:
                 self.feed_watchdog()
                 await asyncio.sleep(_TASK_CHECK_TIME)
         except Exception as e:  # the loop's own fault: recorded and persisted once; it ends unfed, so the watchdog resets
-            self._reset_decided = True  # a reset follows, so ResetErrors is refused as for every reset decision
+            self._phase = max(self._phase, _PHASE_DUE)  # a reset follows, so ResetErrors is refused as for every reset due
             self.pr.err_s("Supervisor ended with exception:", e, errno=_ERR_SUPERVISOR_RAISED)
 
     def get_task_starters(self) -> "list[TaskStarter]":
@@ -620,7 +616,7 @@ class SystemService:
         return self._uptime.read()
 
     def is_reset_decided(self) -> bool:
-        return self._reset_decided
+        return self._phase >= _PHASE_DUE
 
     def boot_phase(self, phase: int) -> None:
         # Marks a boot-phase transition in region 1: a watchdog reset before BOOT_DONE then decodes as 10 + phase.
@@ -631,9 +627,9 @@ class SystemService:
 
     def feed_watchdog(self) -> None:
         # Every feed site but the shutdown sequence's goes through here (SPECIFICATION.md Part G.2); once a system command
-        # is accepted the sequence alone feeds (owner, 2026-09-30), so this is a no-op from then on; the starve flag
-        # stops it one-way too.
-        if self._watchdog is not None and not self._force_watchdog_starve and not self._feed_owned:
+        # is accepted the sequence alone feeds (owner, 2026-09-30), so this is a no-op from then on, and from a starved
+        # phase on too.
+        if self._watchdog is not None and self._phase < _PHASE_OWNED:
             self._watchdog.feed()
 
     def pause_permanent_storage(self, duration: int) -> bool:
@@ -663,7 +659,7 @@ class SystemService:
     async def reset_error_counter(self) -> bool:
         # Refused from the reset decision on, read with no suspension before pr.reset()'s clear: an entry the escalation
         # writes while a ResetErrors runs survives into the reboot (owner, 2026-10-13: "2 b").
-        if self._reset_decided:
+        if self._phase:
             return False
         return await self.pr.reset()
 

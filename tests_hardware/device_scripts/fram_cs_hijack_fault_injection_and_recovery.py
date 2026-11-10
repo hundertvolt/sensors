@@ -42,14 +42,15 @@ _VICTIM_BOUND_S = 30.0
 
 
 class _CsHijack:
-    # Deasserts CS from inside the victim's own transfer, at the driver's synchronous seam: the CS window does not
-    # yield, so a racing task cannot land in it.
+    # Deasserts CS from inside the victim's own transfer, at the driver's synchronous seam: the bus methods its last
+    # begin() bound, which every command calls between its CS edges; the CS window does not yield, so no task lands in it.
 
     def __init__(self, fram: FRAM_SPI, payload: "int | bytes") -> None:
+        self._fram = fram
         self._spidev = fram._spidev
         self._payload = payload  # a payload length, or the exact one-byte command to deselect inside
-        self._write_sync = self._spidev.write_sync
-        self._readinto_sync = self._spidev.readinto_sync
+        self._write = fram._bus_write
+        self._readinto = fram._bus_readinto
         self.injected_with_cs_asserted = False
 
     def _hit(self, buf: "bytes | bytearray | memoryview") -> bool:
@@ -64,24 +65,24 @@ class _CsHijack:
         cs.value(not active)
 
     def install_for_read(self) -> None:
-        def hijacked(buf: "bytearray | memoryview", write_value: int = 0x00) -> None:
+        def hijacked(buf: "bytearray | memoryview") -> None:
             if self._hit(buf):
                 self._yank()
-            self._readinto_sync(buf, write_value)
+            self._readinto(buf)
 
-        self._spidev.readinto_sync = hijacked  # type: ignore[method-assign]
+        self._fram._bus_readinto = hijacked
 
     def install_for_write(self) -> None:
         def hijacked(buf: "bytes | bytearray | memoryview") -> None:
             if self._hit(buf):
                 self._yank()  # deselect the chip before the bytes reach it
-            self._write_sync(buf)
+            self._write(buf)
 
-        self._spidev.write_sync = hijacked  # type: ignore[method-assign]
+        self._fram._bus_write = hijacked
 
     def remove(self) -> None:
-        self._spidev.write_sync = self._write_sync  # type: ignore[method-assign]
-        self._spidev.readinto_sync = self._readinto_sync  # type: ignore[method-assign]
+        self._fram._bus_write = self._write
+        self._fram._bus_readinto = self._readinto
 
 
 async def _readback(fram: FRAM_SPI, offset: int, size: int) -> "bytes | None":

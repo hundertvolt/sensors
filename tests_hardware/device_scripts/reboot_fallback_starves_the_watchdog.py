@@ -60,8 +60,8 @@ def main() -> None:
     fact("pool_timers", len(timers))
     fired = []
     asyncio.run(svc._reboot(_RR_REBOOT, "reboot requested with the alarm pool exhausted", lambda: fired.append(True)))
-    if not svc._force_watchdog_starve:
-        _release(timers, "_reboot() did not set _force_watchdog_starve")
+    if svc._phase != 4:  # _PHASE_STARVED
+        _release(timers, "_reboot() did not starve the watchdog")
         return
     print("STARVE flag set, feeding only through feed_watchdog() now")
     t0 = time.ticks_ms()

@@ -79,6 +79,9 @@ def _const(name: str, path: str = _SRC) -> int:
     return src_int(path, name)  # an int const() of the source (tests/_src_const.py)
 
 
+_PHASE_DUE, _PHASE_OWNED, _PHASE_ARMED, _PHASE_STARVED = (_const(f"_PHASE_{n}") for n in ("DUE", "OWNED", "ARMED", "STARVED"))
+
+
 def _make_ntp_stub(
     *, synced: bool = False, raise_exc: "Exception | None" = None,
 ) -> "tuple[Callable[[], Coroutine[object, object, bool]], list[int]]":
@@ -281,12 +284,12 @@ def test_feed_watchdog_is_a_silent_no_op_without_a_watchdog() -> None:
     svc.feed_watchdog()  # must not raise
 
 
-def test_feed_watchdog_stops_once_force_watchdog_starve_latches() -> None:
-    # _force_watchdog_starve is the one-way "let the hardware watchdog do it" signal: set when a reset cannot be
-    # armed or the supervisor escalates - feed_watchdog() honours it even with a real watchdog present.
+def test_feed_watchdog_stops_once_the_phase_starves() -> None:
+    # The starved phase is the one-way "let the hardware watchdog do it" signal: entered once a reset is armed or
+    # cannot be armed - feed_watchdog() honours it even with a real watchdog present.
     wdt = machine.WDT()
     svc = _make_service(watchdog=wdt)
-    svc._force_watchdog_starve = True
+    svc._phase = _PHASE_STARVED
     svc.feed_watchdog()
     assert wdt.feed_count == 0
 
@@ -752,7 +755,7 @@ def test_an_arm_failure_starves_the_watchdog_and_records_code_6() -> None:
             for with_fram in (False, True):
                 machine.power_on()
                 svc, manager = _arm_failure(exc, bootloader=bootloader, with_fram=with_fram)
-                assert svc._force_watchdog_starve is True
+                assert svc._phase == _PHASE_STARVED
                 assert machine.mem_backup(0)[1] == _const("_RR_STARVE_ARM_FAILED")
                 assert svc._reset_task is not None and svc._reset_timer.period == -1  # created, then cancelled; never armed
                 if manager is not None:
@@ -831,7 +834,7 @@ def test_a_task_creation_failure_inside_reboot_starves_and_arms_nothing() -> Non
             asyncio.create_task = real_create_task
 
     run(reboot_with_no_room())
-    assert svc._force_watchdog_starve is True
+    assert svc._phase == _PHASE_STARVED
     assert svc._reset_task is None
     assert svc._reset_timer.arms == []
     assert machine.mem_backup(0)[1] == _const("_RR_STARVE_ARM_FAILED")
@@ -974,8 +977,8 @@ class _Outcome:
 
 
 def _armed(svc: SystemService) -> bool:
-    # Read through a call, so a type checker keeps no narrowing of the flag across the awaits that change it.
-    return svc._reset_armed
+    # Read through a call, so a type checker keeps no narrowing of the phase across the awaits that change it.
+    return svc._phase >= _PHASE_ARMED
 
 
 def _word(svc: SystemService, purpose: str) -> "Callable[[], Coroutine[object, object, bool]]":
@@ -1287,7 +1290,7 @@ def _refused(rig: _Rig, purpose: str, *, before: "Callable[[], Coroutine[object,
         sup = await rig.start()
         if before is not None:
             await before()
-        memory, arms, starved = bytes(rig.chip.memory), len(rig.svc._reset_timer.arms), rig.svc._force_watchdog_starve
+        memory, arms, starved = bytes(rig.chip.memory), len(rig.svc._reset_timer.arms), (rig.svc._phase == _PHASE_STARVED)
         record = machine.mem_backup(0)[1]
         paused = rig.manager is not None and rig.manager.get_pause()
         real_create_task = asyncio.create_task
@@ -1304,7 +1307,7 @@ def _refused(rig: _Rig, purpose: str, *, before: "Callable[[], Coroutine[object,
             asyncio.create_task = real_create_task
         assert answer is False, purpose
         svc = rig.svc
-        assert (svc._shutdown, _sequence(svc), svc._feed_owned) == (0, None, False), purpose
+        assert (svc._shutdown, _sequence(svc), svc._phase == _PHASE_OWNED) == (0, None, False), purpose
         assert not any(".close" in e for e in rig.events), rig.events
         assert rig.manager is None or rig.manager.get_pause() is paused
         assert rig.chip.memory == memory
@@ -1331,7 +1334,7 @@ def test_every_refusal_answers_false_and_changes_nothing() -> None:
         rig = _Rig()
 
         async def armed(svc: SystemService = rig.svc) -> None:
-            svc._reset_decided = True  # as both of _reboot()'s callers decide first
+            svc._phase = _PHASE_DUE  # as both of _reboot()'s callers decide first
             await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
 
         _refused(rig, purpose, before=armed)  # a reset already due and armed
@@ -1469,11 +1472,11 @@ def test_a_staged_write_the_shutdown_cannot_put_on_flash_reads_9_unless_a_config
 
         async def scenario(rig: _Rig = rig, store: cm.ConfigManager = store, purpose: str = purpose) -> None:
             sup = await rig.start()
-            assert (await store.write_config({"Count": 6}, defer=True))[0] is True  # staged; its flush waits for S2
+            assert (await store.write_config({"Count": 6}))[0] is True  # staged; its flush runs under the failing open
             with WriteCountingOpen(cm, fail_writes=True):
                 assert await _word(rig.svc, purpose)() is True
                 await rig.settle()
-            assert store.unpersisted and rig.svc._reset_armed, purpose
+            assert store.unpersisted and (rig.svc._phase >= _PHASE_ARMED), purpose
             await rig.stop(sup)
 
         with FastAsyncSleep():
@@ -1764,7 +1767,7 @@ def test_a_supervisor_that_already_ended_lets_the_sequence_proceed_without_a_par
         await _retire(rig.svc._supervisor_task)
         assert await rig.svc.reboot_system() is True
         await rig.settle()
-        assert rig.svc._reset_armed and machine.mem_backup(0)[1] == _const("_RR_REBOOT")
+        assert (rig.svc._phase >= _PHASE_ARMED) and machine.mem_backup(0)[1] == _const("_RR_REBOOT")
         assert "park" not in rig.steps()
         await rig.stop(sup)
 
@@ -1780,7 +1783,7 @@ def test_a_write_staged_before_the_command_is_on_flash_at_the_arm_and_a_later_on
 
     async def scenario() -> None:
         await rig.start()
-        assert await store.write_config({"Count": 7}, defer=True) == (True, {"Count": "Valid"})  # staged, flush waits
+        assert await store.write_config({"Count": 7}) == (True, {"Count": "Valid"})  # staged, its flush scheduled
         assert await rig.svc.reboot_system() is True
         assert await store.write_config({"Count": 8}) == (False, {})
         await rig.settle()
@@ -1880,7 +1883,7 @@ def test_tasks_dying_while_a_command_runs_never_escalate() -> None:
 
         with FastAsyncSleep():
             run(scenario())
-        assert rig.svc._force_watchdog_starve is True and len(rig.svc._reset_timer.arms) == 1
+        assert rig.svc._phase == _PHASE_STARVED and len(rig.svc._reset_timer.arms) == 1
         assert machine.mem_backup(0)[1] == _const("_RR_REBOOT")
         assert code("E", "TASK_BUDGET_REBOOT") not in _persisted(rig.svc)
 
@@ -1920,7 +1923,7 @@ def _gate_entry_write(rig: _Rig, entry: str) -> "tuple[asyncio.Event, asyncio.Ev
 
 async def _until_armed(svc: SystemService) -> None:
     for _ in range(_RUN_BOUND_S * 100):
-        if svc._reset_armed:
+        if svc._phase >= _PHASE_ARMED:
             return
         await _real_time(_POLL_MS)
     raise AssertionError("the escalation never armed its reset")
@@ -1956,7 +1959,7 @@ def test_a_command_during_the_escalations_entry_write_is_refused_and_the_escalat
             run(scenario())
         assert answers == [False, _const("_RR_TASK_BUDGET")], (purpose, answers)
         assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
-        assert rig.svc._force_watchdog_starve is True
+        assert rig.svc._phase == _PHASE_STARVED
         assert not _all_zero(rig.chip.memory), purpose  # a refused erase blanks nothing
 
 
@@ -1975,7 +1978,7 @@ def test_a_command_during_an_entry_write_that_never_ends_leaves_the_escalations_
         fed = rig.wdt.feed_count
         seen.extend((await rig.svc.reboot_system(), machine.mem_backup(0)[1]))
         await _yields(20)
-        seen.extend((rig.wdt.feed_count - fed, rig.svc._reset_armed, machine.mem_backup(0)[1]))
+        seen.extend((rig.wdt.feed_count - fed, (rig.svc._phase >= _PHASE_ARMED), machine.mem_backup(0)[1]))
         await rig.stop(sup)
 
     with FastAsyncSleep():
@@ -2170,7 +2173,7 @@ def _hang(rig: _Rig, purpose: str, plant: "Callable[[], Coroutine[object, object
         await _real_time(_HANG_WATCH_MS)
         assert rig.wdt.feed_count == fed, (purpose, fed, rig.wdt.feed_count)
         sequence = _sequence(rig.svc)
-        assert sequence is not None and sequence.done() is armed and rig.svc._reset_armed is armed
+        assert sequence is not None and sequence.done() is armed and (rig.svc._phase >= _PHASE_ARMED) is armed
         if armed:
             assert rig.svc._reset_task is not None and not rig.svc._reset_task.done()
         # The watchdog resets the hung unit; the next boot reads why: the command's own code once armed, else 9.
@@ -2272,7 +2275,7 @@ def test_an_arm_failure_in_the_sequence_starves_and_records_code_6() -> None:
             out = _drive(rig, purpose, fire=False)
         assert out.answer is True and out.arms == 0
         assert out.record == _const("_RR_STARVE_ARM_FAILED"), purpose
-        assert rig.svc._force_watchdog_starve is True
+        assert rig.svc._phase == _PHASE_STARVED
         fed = rig.wdt.feed_count
         rig.svc._own_feed()
         rig.svc.feed_watchdog()
@@ -2280,7 +2283,7 @@ def test_an_arm_failure_in_the_sequence_starves_and_records_code_6() -> None:
 
 
 def test_a_refused_command_never_stops_the_supervisor_feeding() -> None:
-    # A refusal clears _shutdown; the park and the escalation's suppression key on _feed_owned alone.
+    # A refusal clears _shutdown; the park and the escalation's suppression key on the owned phase alone.
     rig = _Rig(protect=True)
     assert rig.manager is not None
     real_ready = rig.manager.erase_ready
@@ -2308,7 +2311,7 @@ def test_a_refused_command_never_stops_the_supervisor_feeding() -> None:
     rig = _Rig()
 
     async def armed(svc: SystemService = rig.svc) -> None:
-        svc._reset_decided = True  # as both of _reboot()'s callers decide first
+        svc._phase = _PHASE_DUE  # as both of _reboot()'s callers decide first
         await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)
 
     _refused(rig, "_RR_REBOOT", before=armed)
@@ -2670,10 +2673,10 @@ def test_supervise_tasks_feeds_the_watchdog_while_tasks_stay_alive() -> None:
     assert wdt.feed_count >= 1
 
 
-def test_supervise_tasks_stops_feeding_the_watchdog_once_force_watchdog_starve_is_set() -> None:
+def test_supervise_tasks_stops_feeding_the_watchdog_once_the_phase_starves() -> None:
     wdt = machine.WDT()
     svc = _make_service(watchdog=wdt)
-    svc._force_watchdog_starve = True
+    svc._phase = _PHASE_STARVED
     _supervised(svc, [_long_lived_starter], 10)
     assert wdt.feed_count == 0  # never fed despite tasks staying alive and under the fail budget
 
@@ -2856,10 +2859,10 @@ def test_the_supervisor_escalates_past_the_failure_budget() -> None:
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
-        assert svc._reset_armed, "the supervisor never escalated"
-        assert (svc._shutdown, svc._feed_owned, svc._supervisor_parked.is_set()) == (0, False, False)  # no command path
+        assert svc._phase >= _PHASE_ARMED, "the supervisor never escalated"
+        assert (svc._shutdown, svc._phase == _PHASE_OWNED, svc._supervisor_parked.is_set()) == (0, False, False)  # no command path
         await _yields(10)
         assert not sup.done()  # it keeps running after the arm - main() never returns
         await cancel(sup)
@@ -2885,7 +2888,7 @@ def test_a_pass_with_every_task_dead_escalates_at_the_first_end_past_the_budget(
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(200):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
         # The escalating pass has armed the reset and sleeps: what it left is read before another pass runs.
         seen.extend((await svc.get_error_counter(), svc.pr._err_count, wdt.feed_count, calls[0]))
@@ -2949,7 +2952,7 @@ def test_an_escalating_pass_retires_the_dead_task_so_no_later_pass_awaits_it_aga
 
     with FastAsyncSleep():
         run(scenario())
-    assert svc._reset_armed, "the supervisor never escalated"
+    assert svc._phase >= _PHASE_ARMED, "the supervisor never escalated"
     assert again == [], f"{len(again)} later pass(es) awaited an already-logged dead task again"
     assert held == [None], held
     assert calls[0] > 4, calls  # later passes still restart, unfed
@@ -2973,7 +2976,7 @@ def test_three_deaths_stay_inside_the_budget_and_decay() -> None:
 
     _supervised(svc, [three_then_parked], 60)
     assert calls[0] == 4  # every end restarted
-    assert svc._reset_armed is False
+    assert (svc._phase >= _PHASE_ARMED) is False
     assert _persisted(svc) == [code("E", "TASK_RETURNED")]  # three ends, one slot (the repeat rule)
     assert svc.pr._err_count == 3
 
@@ -2992,9 +2995,9 @@ def test_the_escalation_flushes_a_staged_write_and_stops_feeding_for_good() -> N
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(500):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
-        assert svc._reset_armed
+        assert svc._phase >= _PHASE_ARMED
         assert _file_count(path) == 9  # flushed before the arm
         fed = wdt.feed_count
         await _yields(20)  # two more supervisor passes
@@ -3153,7 +3156,7 @@ def test_every_command_over_rest_reaches_its_arm_without_an_owner_lock_deadlock(
             sup = await rig.start()
             assert _result(await _put(app, "/system", {"DebugLevel": 1, "SystemCmd": word})) == {"DebugLevel": "Valid", "SystemCmd": "Valid"}
             await rig.settle()
-            assert rig.svc._reset_armed and len(rig.svc._reset_timer.arms) == 1
+            assert (rig.svc._phase >= _PHASE_ARMED) and len(rig.svc._reset_timer.arms) == 1
             assert rig.svc.cfgmgr._pending_flush is None  # the DebugLevel half was flushed before the arm
             assert _result(await _put(app, "/sensors", {"RESTMOD": {"Count": 6}})) == {"RESTMOD": {"Count": "Failed"}}
             assert _result(await _put(app, "/system", {"DebugLevel": 2})) == {"DebugLevel": "Failed"}
@@ -3259,7 +3262,7 @@ def test_the_supervisor_escalation_decodes_to_code_5() -> None:
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(500):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
         await cancel(sup)
         await _fire(svc)
@@ -3299,7 +3302,7 @@ def test_a_recorded_stack_overflow_reboots_with_code_20_at_the_next_pass() -> No
         asy_print_log.report_if_fatal(_stack_error())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
         seen.extend((_armed(svc), svc.is_reset_decided(), machine.mem_backup(0)[1], wdt.feed_count - fed))
         await _yields(10)
@@ -3333,7 +3336,7 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
-            if svc._reset_armed:
+            if svc._phase >= _PHASE_ARMED:
                 break
         await cancel(sup)
         await cancel(svc._reset_task)  # type: ignore[arg-type]
@@ -3466,7 +3469,7 @@ def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, s
             asy_print_log.report_if_fatal(_stack_error())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
-            if svc._reset_armed or (svc._supervisor_task is not None and svc._supervisor_task.done()):
+            if (svc._phase >= _PHASE_ARMED) or (svc._supervisor_task is not None and svc._supervisor_task.done()):
                 break
         fed = wdt.feed_count
         await _yields(50)

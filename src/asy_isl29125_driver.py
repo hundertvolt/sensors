@@ -112,9 +112,7 @@ _GAIN_RATIO_MAX = const(34.0)  # value enters (on load and on learn), never in t
 # Calibration is a bounded, user-started run, never a background schedule (owner, 2026-09-13): the driver only ever
 # READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part M.1.5).
 # @tunable isl29125.cal_window_ms = 120000
-_CAL_WINDOW_MS = const(120000)  # hard stop on a run that never converges - ~100 attempts at 16 bit
-# @tunable isl29125.cal_hold_ms = 600000
-_CAL_HOLD_MS = const(600000)  # how long a finished run's candidate stays readable before it clears
+_CAL_WINDOW_MS = const(120000)  # ~100 sandwiches at 16 bit, each 2 x _SETTLE_CYCLES x 303 ms of settle (agent, 2026-09-14)
 # @tunable isl29125.cal_converge_n = 3
 _CAL_CONVERGE_N = const(3)  # consecutive stable ratios that must agree before the run stops early
 # @tunable isl29125.cal_converge_tol = 0.01
@@ -295,7 +293,7 @@ def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> tu
 
 def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> tuple[float, float, float] | None:
     # sRGB/Rec.709 D65 primaries, pinned as literals: a second published rounding differs in the 6th decimal, and neither
-    # corrects the other (agent, 2026-09-12; Part M.1.3; owner-reviewed, 2026-11-06). No gamma decode - this sensor is
+    # corrects the other (agent, 2026-09-12; Part M.1.3). No gamma decode - this sensor is
     # linear in irradiance. A documented PLACEHOLDER: p13 Eq. 1 says the coefficients are per-setup.
     if red is None or green is None or blue is None:
         return None
@@ -381,8 +379,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self._calibrating = False
         self._cal_until_ms = time.ticks_ms()
         self._cal_recent: list[float] = []  # consecutive stable ratios, for the convergence check
-        self._cal_meas: float | None = None  # the published candidate, or None when none is current
-        self._cal_meas_until_ms = time.ticks_ms()  # when _cal_meas stops being offered
+        self._cal_meas: float | None = None  # the published candidate until the next run starts or a reboot
         self._filtered: list[float | None] = [None, None, None]  # green, red, blue, in lux
         self._push_callbacks[name_cfg(_VAL_SAMPLE_INTERVAL)] = self._push_trigger_s
         self._push_callbacks[name_cfg(_VAL_RESOLUTION)] = self._push_resolution
@@ -624,9 +621,6 @@ class ISL29125_Reader(SensorReaderConfig):
         await self._note_candidate(sample_ratio)
 
     def _measured_ratio(self) -> float | None:
-        # None once the hold expires, so a stale candidate is not mistaken for a fresh one.
-        if self._cal_meas is None or time.ticks_diff(time.ticks_ms(), self._cal_meas_until_ms) >= 0:
-            return None
         return self._cal_meas
 
     async def _note_candidate(self, sample_ratio: float) -> None:
@@ -644,7 +638,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # Requirement 17's silent-failure detector: the periodic evaluation is the safety net, and
         # this is what makes it visible when the net is carrying the load on its own.
         if self._int_held:
-            return  # Parked on purpose (agent, 2026-09-29; owner-reviewed, 2026-11-06): a periodic-led decision is by design now, not a dead line.
+            return  # Parked on purpose (agent, 2026-09-29): a periodic-led decision is by design now, not a dead line.
         if threshold_fired:
             self._periodic_only_switches = 0
             return
@@ -665,10 +659,8 @@ class ISL29125_Reader(SensorReaderConfig):
         self._read_event.set()
 
     def _publish_candidate(self, value: float) -> None:
-        # Every stable sandwich republishes, so the user sees the run settling rather than only its
-        # final answer - and the hold restarts from the most recent one, not the first.
+        # Every stable sandwich republishes, so the user sees the run settling rather than only its final answer.
         self._cal_meas = value
-        self._cal_meas_until_ms = time.ticks_add(time.ticks_ms(), _CAL_HOLD_MS)
 
     async def _push_autorange_dwell(self, value: int | float | str | bool | None) -> bool:
         return type(value) is float and await self.set_autorange_dwell(value)
@@ -760,7 +752,7 @@ class ISL29125_Reader(SensorReaderConfig):
             elif self._range_auto:
                 # The chip flags green outside its window; the peak of three may hold the range anyway, and in
                 # darkness the low range's 0 threshold matches 'below or equal'. Left armed the flag re-fires every
-                # PRST window, so it is parked until green is back inside (agent, 2026-09-29; owner-reviewed, 2026-11-06).
+                # PRST window, so it is parked until green is back inside (agent, 2026-09-29).
                 if self._int_held:
                     if self._green_in_window(counts[0]):
                         await self._set_int_armed(armed=True)
@@ -928,7 +920,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 CCT=self._colour_temperature(green, norm),
                 RangeAct=sample_range,
                 Overrange=self._last_overrange,
-                GainMeas=self._measured_ratio(),  # None unless a recent run produced a candidate
+                GainMeas=self._measured_ratio(),  # None unless the latest run produced a candidate
                 CalLight=self._last_cal_light,
                 TS=timestamp,
             ),
@@ -1188,6 +1180,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self._cal_until_ms = time.ticks_add(time.ticks_ms(), _CAL_WINDOW_MS)
         self._calibrating = True
         self._cal_recent = []
+        self._cal_meas = None  # the last run's candidate gives way to this one's
         self.pr.one("Gain-ratio calibration started - measuring while the scene stays in the overlap band.")
         return True
 

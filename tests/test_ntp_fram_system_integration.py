@@ -108,7 +108,7 @@ def _make_ntp(
         conn.get_wifi_mode_lock(),
         conn.network_available_locked,
         conn.get_dns_server_ip,
-        NtpTiming(500, 1, ntp_fetch_timeout_ms),
+        NtpTiming(1000, ntp_fetch_timeout_ms),
         cfg_path=cfg_path,
     )
     run(ntp.setup())

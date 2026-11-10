@@ -24,10 +24,8 @@ if TYPE_CHECKING:
 
 # @tunable module.max_error = 5
 _MAX_MODULE_ERROR = 5
-# @tunable dns.timeout_ms = 500
-_DNS_TIMEOUT_MS = 500
-# @tunable dns.tries = 1
-_DNS_TRIES = 1
+# @tunable dns.timeout_ms = 1000
+_DNS_TIMEOUT_MS = 1000  # per server: lwIP resends after DNS_TMR_INTERVAL (lib/lwip/src/include/lwip/dns.h:54, v1.29.0)
 # @tunable ntp.fetch_timeout_ms = 5000
 _NTP_FETCH_TIMEOUT_MS = 5000
 
@@ -203,7 +201,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             lines.append(f"    conn = WifiService({wifi}, {led_kw}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'conn')})")
             continue
         if node == "ntp":
-            timing = "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS)"
+            timing = "NtpTiming(_DNS_TIMEOUT_MS, _NTP_FETCH_TIMEOUT_MS)"
             lines.append(f"    ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, {timing}, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'ntp')})")
             continue
         if node == "sysfunct":
@@ -424,7 +422,6 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("")
     lines.append(f"_MAX_MODULE_ERROR = const({_MAX_MODULE_ERROR})")
     lines.append(f"_DNS_TIMEOUT_MS = const({_DNS_TIMEOUT_MS})")
-    lines.append(f"_DNS_TRIES = const({_DNS_TRIES})")
     lines.append(f"_NTP_FETCH_TIMEOUT_MS = const({_NTP_FETCH_TIMEOUT_MS})")
     lines.append(f"_FIRMWARE_VERSION = const({_lit(FIRMWARE_VERSION)})")
     lines.append(f"_WEBSITE_VERSION = const({_lit(WEBSITE_VERSION)})")

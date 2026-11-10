@@ -72,7 +72,6 @@ _scratch = TmpScratch("ntp")
 # The generated module's NtpTiming values: the resolver's DNS bounds, read from source; codegen's fetch timeout has no
 # src/ constant (buildgen/codegen.py writes it), so its copy keeps the tag.
 _DNS_TIMEOUT_MS: int = src_int("src/asy_dns_client.py", "_DNS_TIMEOUT_MS")
-_DNS_TRIES: int = src_int("src/asy_dns_client.py", "_DNS_TRIES")
 # @tunable ntp.fetch_timeout_ms = 5000
 _FETCH_TIMEOUT_MS = 5000
 _RETRY_UNSYNCED_S: int = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
@@ -462,10 +461,9 @@ def _slots(client: NTPClient) -> "tuple[int, list[int]]":
 
 def _timing(
     dns_timeout_ms: int = _DNS_TIMEOUT_MS,
-    dns_tries: int = _DNS_TRIES,
     fetch_timeout_ms: int = _FETCH_TIMEOUT_MS,
 ) -> NtpTiming:
-    return NtpTiming(dns_timeout_ms, dns_tries, fetch_timeout_ms)
+    return NtpTiming(dns_timeout_ms, fetch_timeout_ms)
 
 
 def _tmp_cfg_dir() -> str:
@@ -984,17 +982,17 @@ def test_resolve_ntp_server_literal_ip_returns_immediately() -> None:
 
 class _RecordingResolver:
     # Stands in for asy_dns_client.resolve_ipv4() - proves _resolve_ntp_server()'s orchestration
-    # (server order, tuple building, error handling, timeout_ms/tries/logger forwarding) independent of
+    # (server order, tuple building, error handling, timeout_ms/logger forwarding) independent of
     # resolve_ipv4()'s own network behavior, which tests/test_asy_dns_client.py covers exhaustively.
     def __init__(self, return_value: "str | None") -> None:
-        self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
+        self.calls: list[tuple[str, tuple[str, ...], int]] = []
         self.loggers: list[object] = []
         self.return_value = return_value
 
     async def __call__(
-        self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, logger: object = None,
+        self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, *, logger: object = None,
     ) -> "str | None":
-        self.calls.append((host, dns_servers, timeout_ms, tries))
+        self.calls.append((host, dns_servers, timeout_ms))
         self.loggers.append(logger)
         return self.return_value
 
@@ -1004,41 +1002,41 @@ def test_resolve_ntp_server_passes_the_given_dns_server_through() -> None:
     client = _make_client()
     result = _resolve_with(recorder, client, "pool.ntp.org", "192.0.2.53", "8.8.8.8,1.1.1.1")
     assert result == ("9.9.9.9", 123)
-    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53", "8.8.8.8", "1.1.1.1"), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53", "8.8.8.8", "1.1.1.1"), _DNS_TIMEOUT_MS)]
     assert recorder.loggers == [client.pr]  # the resolver logs through this client's history
 
 
 def test_resolve_ntp_server_none_dns_server_asks_only_the_fallback_list() -> None:
     recorder = _RecordingResolver("9.9.9.9")
     _resolve_with(recorder, _make_client(), "pool.ntp.org", None, "8.8.8.8,1.1.1.1")
-    assert recorder.calls == [("pool.ntp.org", ("8.8.8.8", "1.1.1.1"), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", ("8.8.8.8", "1.1.1.1"), _DNS_TIMEOUT_MS)]
 
 
 def test_resolve_ntp_server_asks_dhcp_first_then_the_fallback_list_in_order() -> None:
     recorder = _RecordingResolver("9.9.9.9")
     _resolve_with(recorder, _make_client(), "pool.ntp.org", "192.0.2.53", "198.51.100.7,192.0.2.1,203.0.113.9")
-    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53", "198.51.100.7", "192.0.2.1", "203.0.113.9"), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53", "198.51.100.7", "192.0.2.1", "203.0.113.9"), _DNS_TIMEOUT_MS)]
 
 
 def test_an_empty_fallback_asks_only_the_dhcp_server() -> None:
     recorder = _RecordingResolver("9.9.9.9")
     _resolve_with(recorder, _make_client(), "pool.ntp.org", "192.0.2.53", "")
-    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53",), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53",), _DNS_TIMEOUT_MS)]
 
 
 def test_no_dhcp_server_and_an_empty_fallback_ask_nobody() -> None:
     recorder = _RecordingResolver(None)
     assert _resolve_with(recorder, _make_client(), "pool.ntp.org", None, "") is None
-    assert recorder.calls == [("pool.ntp.org", (), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", (), _DNS_TIMEOUT_MS)]
 
 
-def test_resolve_ntp_server_forwards_the_constructors_own_dns_timeout_and_tries() -> None:
-    # Proves dns_timeout_ms/dns_tries are this instance's own configured values (see
+def test_resolve_ntp_server_forwards_the_constructors_own_dns_timeout() -> None:
+    # Proves dns_timeout_ms is this instance's own configured value (see
     # asy_ntp_client.py's own constructor comment) reaching resolve_ipv4() unchanged - not
     # asy_dns_client.py's own standalone defaults, and not hardcoded here either.
     recorder = _RecordingResolver("9.9.9.9")
-    _resolve_with(recorder, _make_client(timing=_timing(dns_timeout_ms=1234, dns_tries=3)), "pool.ntp.org", None, "")
-    assert recorder.calls == [("pool.ntp.org", (), 1234, 3)]
+    _resolve_with(recorder, _make_client(timing=_timing(dns_timeout_ms=1234)), "pool.ntp.org", None, "")
+    assert recorder.calls == [("pool.ntp.org", (), 1234)]
 
 
 def test_resolve_ntp_server_dns_failure_returns_none() -> None:
@@ -2780,7 +2778,7 @@ def test_write_config_round_trips_a_real_value() -> None:
 
 
 def test_an_unsynced_client_tries_at_every_check_until_an_attempt_fails_then_every_minute() -> None:
-    client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _FETCH_TIMEOUT_MS), cfg_path=_tmp_cfg_dir())
+    client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(_DNS_TIMEOUT_MS, _FETCH_TIMEOUT_MS), cfg_path=_tmp_cfg_dir())
     assert (client._retry_wait_s, client._unsynced_wait_s) == (_CHECK_INTERVAL_S, 0)
     assert _RETRY_UNSYNCED_S == 60  # owner, 2026-11-03
 

@@ -1174,7 +1174,7 @@ def test_ntp_timing_carries_the_dns_bounds_and_the_fetch_timeout(tmp_path: Path,
     source = generate_device(write_doc(tmp_path, "ntp_timing", base_doc()), src_dir, ext_dir).module_source
     ast.parse(source)
     line = next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
-    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS)" in line
+    assert "NtpTiming(_DNS_TIMEOUT_MS, _NTP_FETCH_TIMEOUT_MS)" in line
     assert "max_module_error" not in line  # NTP keeps no give-up streak (Part C.7.2)
 
 

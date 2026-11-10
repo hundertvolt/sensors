@@ -62,6 +62,8 @@ from asy_sgp40_driver import SGP40_Reader
 from asy_system_service import SystemService
 from asy_uart_link_driver import UARTLinkDriver
 
+_PHASE_ARMED, _PHASE_STARVED = (src_int("src/asy_system_service.py", f"_PHASE_{n}") for n in ("ARMED", "STARVED"))
+
 require_fresh()  # every scenario boots a generated module or reads its plan
 
 _PHASE_STA_SEEKING = src_const("src/asy_wifi_service.py", "_PHASE_STA_SEEKING")
@@ -445,7 +447,7 @@ def _scenario_dead_fram_chip_escalates(device: str) -> None:
         run(_supervise_until_the_reboot_is_armed(module.sysfunct, [watch], [module._collect_task_names()[starters.index(watch)]]))
     finally:
         asy_system_service.asyncio = asyncio
-    assert module.sysfunct._reset_armed is True
+    assert module.sysfunct._phase >= _PHASE_ARMED
     assert machine.mem_backup(0)[1] == _system_const("_RR_TASK_BUDGET")
     assert module.sysfunct._reset_timer.callback is not None
     run(_cancel_reset_task(module.sysfunct))
@@ -938,7 +940,7 @@ async def _command_to_reset(module: "ModuleType", sup: "asyncio.Task[None]", gat
             await at_step(gate.step)
         gate.open()
     await task
-    assert sysfunct._reset_armed and machine.reset_count + machine.bootloader_count == fired, "the sequence ended unarmed or reset early"
+    assert sysfunct._phase >= _PHASE_ARMED and machine.reset_count + machine.bootloader_count == fired, "the sequence ended unarmed or reset early"
     if armed is not None:
         await armed(result)
     sysfunct._reset_timer.trigger()  # the fake Timer fires only on request; its callback wakes the reset task
@@ -1591,7 +1593,7 @@ async def _supervise_until_the_reboot_is_armed(sysfunct: "SystemService", starte
     await sysfunct.start_tasks(starters, task_names=names)
     sup = asyncio.create_task(sysfunct.supervise_tasks())
     for _ in range(5000):
-        if sysfunct._reset_armed or sup.done():
+        if sysfunct._phase >= _PHASE_ARMED or sup.done():
             break
         await asyncio.sleep(0)
     await _stop_supervising(sysfunct, sup)
@@ -1892,7 +1894,7 @@ def _scenario_supervisor_scan_budget(device: str) -> None:
     pass_waits = waits.waits_ms[k:]
     if escalated:
         assert sysfunct._reset_timer.callback is not None  # the reboot is armed inside the pass
-        assert sysfunct._force_watchdog_starve is True
+        assert sysfunct._phase == _PHASE_STARVED
     assert pass_waits[0] == _system_const("_TASK_CHECK_TIME") * 1000, waits.waits_ms  # the pass ends in one sleep, escalated or not
 
 
@@ -1940,7 +1942,7 @@ def _scenario_every_task_starter_runs_under_the_real_supervisor(device: str) -> 
     assert sysfunct._task_starters == starters and len(sysfunct._tasks) == len(starters), "start_tasks() took another list"
     assert dead == [], f"{device}: task(s) {dead} not running after the first supervisor pass"
     assert ended == [None], ended  # no end recorded while every task runs
-    assert sysfunct._reset_armed is False
+    assert sysfunct._phase < _PHASE_ARMED
     for owner in _sensor_reader_owners(module) + [module.webserver]:
         for starter in owner.get_task_starters():
             assert starter in starters, f"no task starter bound to {owner!r}"
@@ -1999,7 +2001,7 @@ def _scenario_a_crashing_task_stops_every_feed(device: str) -> None:
         await clock.run_until(lambda: wdt.feed_count >= fed + 2, 2 * pass_ms)
         feeds["crash"] = wdt.feed_count
         planted.end(ends)
-        await clock.run_until(lambda: sysfunct._reset_armed, (ends + 1) * pass_ms)
+        await clock.run_until(lambda: sysfunct._phase >= _PHASE_ARMED, (ends + 1) * pass_ms)
         feeds["armed"] = wdt.feed_count
         await clock.elapse(10 * pass_ms)
         feeds["timers"], feeds["irqs"] = _fire_live_timers(sysfunct), _fire_wired_irqs()
@@ -2131,11 +2133,11 @@ def _scenario_forty_days_of_uptime(device: str) -> None:
             await clock.jump(stall_ms)  # the status pass runs once after it, late, and resumes on its grid
             if step == 1:
                 got["end_at"] = seconds()
-        got["fed"], got["armed"] = wdt.feed_count - fed, sysfunct._reset_armed
+        got["fed"], got["armed"] = wdt.feed_count - fed, (sysfunct._phase >= _PHASE_ARMED)
         got["uptime"], got["expected"], got["end"] = await sysfunct.get_uptime(), seconds(), sysfunct.get_last_task_end()
         planted.end(held)
         await clock.elapse((held + 1) * pass_ms)
-        got["armed_after"] = sysfunct._reset_armed
+        got["armed_after"] = sysfunct._phase >= _PHASE_ARMED
         await _stop_the_planted_graph(sysfunct, sup)
 
     with DrivenTime(asy_system_service, asy_base_classes, now=_TICKS_PERIOD - _HOUR_MS, sleeps=True) as clock:
@@ -3060,15 +3062,18 @@ def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
         module, sup = await _boot_supervised(device, gate, log_errors=False)
         _hold_each_step(module, gate)
         wifi = module.conn.cfgmgr
-        wifi.commit = lambda: None  # its flush waits on a commit no one sends: still staged when the command comes
+        held = asyncio.Lock()
+        await held.acquire()
+        wifi.owner_lock = held  # its flush waits on a PUT lock no one frees: still staged when the command comes
         answers.append(_strict((await _dispatch_async(module, "PUT", "/networking", {"LEDWifiOn": False})).body)["result"])
-        del wifi.commit
 
         async def at_step(step: str) -> None:
             if step in ("S2", "S3"):  # just before and just after the sequence's own flush step
                 for store, key in ((wifi, "LEDWifiOn"), (module.sysfunct.cfgmgr, "DebugLevel")):
                     with open(store._config_file) as f:
                         seen.append((step, store._pending_flush is None, json.load(f)[key]))
+            if step == "S2":
+                held.release()  # the PUT lock frees as the flush step starts, which waits for it
 
         async def armed(result: "dict[str, object]") -> None:  # past the flush step, the reset armed: too late for a write
             answers.append(result)
