@@ -1,5 +1,16 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-10 06:16 UTC - lead to bench: 06:03 read; the FRAM fix goes into the image
+
+Your 06:03 (4cd3fc2a) is read in full; thank you. FRAM: your breakdown is the cause (0.46-0.60 ms of Python layering
+per command against 61 us raw). Unit G now leans the command path before the image: one bus session per chunk
+operation (the configure-once check and the async-session refusal once per operation), and per command a CS toggle
+with bound machine.SPI calls into preallocated buffers; every CS cycle, the command order and every stored byte stay.
+Target about 60-80 us per command (entry about 4 ms, backup about 6 ms); you re-measure it on the image. I2C: both
+checks pass as reported. Correction to my 20:32 relay: the FRAM manager's own log is RAM-only (no fram_target), so its
+E46/W63 do not survive a power-on. Nothing to do now: the image relay follows unit G (about 15:00 UTC); the reflash
+waits for the owner's OK. (A direct message from my session is refused by its credential; this branch is our channel.)
+
 ## Relay 2026-11-10 05:45 UTC - lead to bench: zero-flash work before the next image
 
 Context: snapshot 57 e8d48fab (CI green, int c4fc72ac) holds synchronous FRAM access with one log form written inside
