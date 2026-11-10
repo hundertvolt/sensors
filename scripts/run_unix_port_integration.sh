@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Manual twin launch of one device: digital_twin/run_generic_integration.py under the real Unix port, separate from
-# scripts/test.sh (owner, 2026-08-13). With no further flags it serves on localhost:8080 forever (owner, 2026-08-13:
-# browser-reachable, escalation watchable), its chip state and config persisting in digital_twin/.
+# Manual twin launch of one device: digital_twin/run_generic_integration.py under the real Unix port, apart from
+# scripts/test.sh (agent, 2026-08-13); with no further flags it serves on localhost:8080 forever, browser-reachable
+# and escalation watchable (agent, 2026-08-13), its chip state and config persisting in digital_twin/ (owner, 7356bc8).
 #
 # Its MICROPYPATH is the twin layout of scripts/micropypath.toml: ext/ because every generated sensortask_<device>.py
 # imports vendored ext/microdot.py, and no tests/ (digital_twin/README.md's "never together" rule).

@@ -23,12 +23,7 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
 
 ## Open questions (need owner input or further investigation)
 
-- **Config-schema migration is a real data-loss risk on the *current deployed* codebase** —
-  `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
-  missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
-  values. No legacy config migration: legacy units get fresh setup at reflash (owner, 2026-09-26);
-  from the release on, a renamed key or file needs a migration, pinned by a golden stored-config
-  fixture (owner, 2026-09-26).
+None open.
 
 ## Real-hardware work still owed
 
@@ -101,6 +96,10 @@ gates, traps).
   writes in the script's scratch region). Twin row: the flash test
   `test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget` under `--twin` and the
   `loop_lag_under_combined_load` scenario (Part F.3's `lag.loop`).
+- **The serving rate behind `max_connections`** — on `dev`, back-to-back `GET /status` against
+  SPECIFICATION.md H.7's ~2.2 requests/s, measured when one `/status` build took ~455 ms of CPU, before
+  the 2026-11-06 `/status` fix; `max_connections` and `web.poll_interval_ms` move only after it. Twin
+  row: none (the figure is the board's CPU time).
 - **The UART hazard run under API load** — on `dev`,
   `bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict`:
   one `PUT /uart {"UartHazards": true}` while 3 readers GET `/status` until the run ends.
@@ -114,8 +113,7 @@ gates, traps).
   `bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`
   (`--allow-persistence-write`): three hard resets 25 s apart across the SGP40's 60 s backup
   cadence. Expected: the SGP40 log empty, FRAM's log holding nothing beyond `E FRAM_STATUS_BYTE`
-  and `W FRAM_BLOCK_INVALID` (owner, 2026-09-13, on the torn-write trace: "Settled as acceptable
-  degradation rather than a robustness gap"), saved before it is cleared, a fresh backup completing
+  and `W FRAM_BLOCK_INVALID` (agent, 2026-10-22), saved before it is cleared, a fresh backup completing
   after the last reset and no task ended. Wear: 2 flash writes (the `BackupPeriod` change and its
   restore); FRAM writes are not wear. Twin row: none (its twin record: the module needs the bench
   bridge).
@@ -424,11 +422,6 @@ gates, traps).
   wired-together (buildgen-generated) module against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). Comes out when
   that audit closes.
-- **SystemService's settings store grows with device-wide settings** — the timezone offsets
-  (`GMTOffset`/`DSTOffset`) now held by `NTPClient`'s config, future rsyslog settings;
-  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py`'s `_VAL_DEBUG_LEVEL`).
-  Owner-deferred goal (owner-confirmed, 2026-08-11, `249f2ae`: 'per the owner's explicit intent,
-  this is meant to grow into a general, module-independent system-settings store', paraphrase).
 - **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
   one reliably exists** (owner, 2026-07-24, `cc911be`: 'Don't treat the current state as
   permanently accepted risk'; confirmed by the owner, 2026-09-29). Today's list, each backstopped by

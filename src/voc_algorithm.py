@@ -102,7 +102,7 @@ class DFRobot_vocalgorithmParams:
         self.m_adaptive_lowpass_x3 = 0
 
     def pack_into(self, buf: bytearray | memoryview, offset: int = 0) -> bool:
-        # Every field is frozen, the uptime_gamma/uptime_gating learning counters included (owner, 2026-07-21)
+        # Every field is frozen, the uptime_gamma/uptime_gating learning counters included (the owner's code, 8c4a73d, 2026-07-13)
         try:
             struct.pack_into(
                 "32q",

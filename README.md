@@ -342,7 +342,8 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
                             # builds that interpreter automatically on first run (see SPECIFICATION.md Part E) -
                             # plus tests_scripts/, a CPython/pytest suite covering the host-only build
                             # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py),
-                            # and the host-side twin scenario harness once per device; it builds what it
+                            # and the host-side twin scenario harness once per hardware family
+                            # (SPECIFICATION.md E.2.1); it builds what it
                             # lacks, and rebuilds frozen_modules/frozen_html.py from the first device of
                             # devices/*.toml every run
 scripts/test.sh --coverage # same but the scenario harness, plus line coverage reports for src/, digital_twin/,
@@ -375,7 +376,8 @@ ships, and the suite has to pass both ways; a value that is not an integer, or f
 rp2040's own 32-bit machine word, is rejected up front before the run touches anything, rather than
 failing inside the runner once per test file; see "Memory-safety discipline" in CLAUDE.md for why
 both runs are required and which one proves what). Every `tests/test_*.py` file runs as its own
-interpreter process (a file marked `PER_DEVICE = True` once per device, with `TEST_DEVICE` set) and
+interpreter process (a file marked `PER_DEVICE = True` once per hardware family, with `TEST_DEVICE`
+set to the family's first device) and
 prints its `PASS`/`FAIL`/`SKIP` lines and its count, each prefixed with the file's name in brackets,
 a per-device job's with its device too (e.g. `[test_sensortask[dev]]`), since several files' output
 interleaves when they run concurrently; a file collecting no test fails. The run ends with the summary block every
@@ -705,7 +707,7 @@ persistence across a real reboot, the reset reasons and system commands, soak at
 suite" lists each run), then the scenario harness's (`scripts/_digital_twin_scenarios.py`) DNS scenarios,
 which need port 53 alone (`scripts/test.sh` runs the rest). It runs against the device named by its
 required argument, at both GC stages and both parts unless `--gc-threshold` or `--part` names one — CI
-runs one job per device and stage. Builds the Unix
+runs one job per hardware family and stage. Builds the Unix
 port and the real website for that device first if either is missing (same
 `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 
