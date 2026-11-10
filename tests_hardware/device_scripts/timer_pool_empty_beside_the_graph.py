@@ -91,7 +91,7 @@ async def _main() -> None:
             t.deinit()
         hogs = []
         fact("tasks_alive", all(task is not None and not task.done() for task in sysfunct._tasks))
-        fact("reset_armed", sysfunct._reset_armed)
+        fact("reset_armed", sysfunct._phase >= 3)  # _PHASE_ARMED
     except Exception as e:  # a failure before the verdict: reported, then the cleanup below
         fact("failure", repr(e))
     finally:

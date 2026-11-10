@@ -13,11 +13,27 @@ Fujitsu MB85RS64V (DS501-00015) and MB85RS2MTA (DS501-00032) datasheets.
 # device-ID mismatch, a write-enable latch that didn't set/clear and a stale write-protect
 # assumption, self-healing without raising (except __init__()/setup()'s one-time setup errors).
 
+from time import sleep_us
+
 from machine import Pin
 from micropython import const
 
 from asy_print_log import PrintLogHistory
-from asy_spi_driver import SPI, SPIDevice
+from asy_spi_driver import CS_SETTLE_US, SPI, SPIDevice
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
+def _unbound(_arg: object) -> None:
+    # The wiring before the first begin(): a command outside an operation is a programming error.
+    raise RuntimeError("FRAM command outside an operation - call begin() first")
+
 
 # RDID response (32 clock cycles after the opcode): manufacturer ID, then the JEDEC continuation-
 # code byte, then the two Product ID bytes (1st byte is the more significant one) - all four are
@@ -102,6 +118,11 @@ class FRAM_SPI:
         self._status_buf = bytearray(1)
         self._addr_buf = bytearray(_ADDR_BUF_24BIT) if self._max_size > _ADDR_16BIT_MAX else bytearray(_ADDR_BUF_16BIT)
         self._wrsr_buf = bytearray(2)  # WRSR opcode + target status byte, the one two-byte command
+        # The wiring begin() binds for one operation's commands: CS value() and its active level, the bus's write/readinto.
+        self._cs: Callable[[bool], object] = _unbound
+        self._cs_on = False
+        self._bus_write: Callable[[bytes | bytearray | memoryview], None] = _unbound
+        self._bus_readinto: Callable[[bytearray | memoryview], None] = _unbound
 
     def _is_write_protected(self) -> bool:
         # The value get_write_protected() reports, without its not-initialized guard: every caller
@@ -143,20 +164,20 @@ class FRAM_SPI:
         # (continual programming, p.6), so this WRDI is what clears it on both - one cheap retry, then False, which
         # the caller turns into a warning: a stuck latch doesn't undo the operation.
         self._send_command(_CMD_WRDI)
-        if not self._wel_is_set():
+        if not self._read_status() & _SR_WEL:
             return True
         self._send_command(_CMD_WRDI)
-        return not self._wel_is_set()
+        return not self._read_status() & _SR_WEL
 
     def _enable_write(self) -> int:
         # WREN-and-verify preamble for WRITE/WRSR (WEL gates both): RDSR catches a corrupted WREN the chip would
         # otherwise silently ignore the next WRITE/WRSR for. One retry, as _disable_write() retries WRDI; each
         # WREN is its own CS cycle, and the CS rising edge ends any half-received command (datasheet p.6).
         self._send_command(_CMD_WREN)
-        if self._wel_is_set():
+        if self._read_status() & _SR_WEL:
             return _W_OK
         self._send_command(_CMD_WREN)
-        return _W_WEL_RETRIED if self._wel_is_set() else _W_WEL_NOT_SET
+        return _W_WEL_RETRIED if self._read_status() & _SR_WEL else _W_WEL_NOT_SET
 
     def _read_address(self, address: int, read_buffer: bytearray | memoryview) -> None:
         self._send_and_read(self._setup_addr_buffer(address, _SPI_OPCODE_READ), read_buffer)
@@ -166,34 +187,40 @@ class FRAM_SPI:
         return self._status_buf[0]
 
     def _send_and_read(self, command: bytes | bytearray, read_buffer: bytearray | memoryview) -> None:
-        spidev = self._spidev
-        spidev.session_begin()
+        cs, on = self._cs, self._cs_on
+        cs(on)
+        sleep_us(CS_SETTLE_US)
         try:
-            spidev.write_sync(command)
-            spidev.readinto_sync(read_buffer)
+            self._bus_write(command)
+            self._bus_readinto(read_buffer)
         finally:
-            spidev.session_end()
+            cs(not on)
+            sleep_us(CS_SETTLE_US)
 
     def _send_and_write(self, command: bytes | bytearray, data: bytes | bytearray | memoryview) -> None:
-        spidev = self._spidev
-        spidev.session_begin()
+        cs, on = self._cs, self._cs_on
+        cs(on)
+        sleep_us(CS_SETTLE_US)
         try:
-            spidev.write_sync(command)
-            spidev.write_sync(data)
+            self._bus_write(command)
+            self._bus_write(data)
         finally:
-            spidev.session_end()
+            cs(not on)
+            sleep_us(CS_SETTLE_US)
 
-    # The _send_*() helpers are one synchronous CS cycle each: the chip is driven by blocking register writes, and an
-    # operation never suspends, so nothing can come between its commands (SPECIFICATION.md Part C.3.1, C.8).
+    # The _send_*() helpers are one synchronous CS cycle each, on the wiring begin() bound: the chip is driven by blocking
+    # register writes, and an operation never suspends, so nothing can come between its commands (Part C.3.1, C.8).
     def _send_command(self, command: bytes | bytearray) -> None:
         # WREN/WRDI are each a complete, standalone one-byte command (datasheet timing diagrams
         # show CS low only for the opcode); WRSR is the one two-byte command that ends here too.
-        spidev = self._spidev
-        spidev.session_begin()
+        cs, on = self._cs, self._cs_on
+        cs(on)
+        sleep_us(CS_SETTLE_US)
         try:
-            spidev.write_sync(command)
+            self._bus_write(command)
         finally:
-            spidev.session_end()
+            cs(not on)
+            sleep_us(CS_SETTLE_US)
 
     def _setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
         # Buffer width is fixed once in __init__ from max_size, which is trusted, not re-derived
@@ -208,9 +235,6 @@ class FRAM_SPI:
             buffer[2] = addr & 0xFF
         buffer[0] = opcode
         return buffer
-
-    def _wel_is_set(self) -> bool:
-        return bool(self._read_status() & _SR_WEL)
 
     def _write(self, start_address: int, data: bytes | bytearray | memoryview) -> int:
         if self._is_write_protected():
@@ -273,6 +297,7 @@ class FRAM_SPI:
         if not self.initialized:
             self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
+        self.begin()
         status = self._set_write_protected(value=value)
         if status & _W_WEL_NOT_SET:
             self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=_WRN_FRAM_WEL_NOT_SET)
@@ -287,8 +312,14 @@ class FRAM_SPI:
         self.pr.evt("FRAM Write Protection set to", value)
         return True
 
+    def begin(self) -> None:
+        # One bus session per operation, before its first command (C.8): raises while an async session holds the bus or the
+        # bus is down; configures the bus when another device configured it last. get_values()/set_values() run inside one.
+        self._cs, self._cs_on, self._bus_write, self._bus_readinto = self._spidev.begin_sync()
+
     async def setup(self) -> None:
         await self._spidev.setup()
+        self.begin()
         attempt = 0
         present = False
         while not present and attempt < _ID_ATTEMPTS:

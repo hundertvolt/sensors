@@ -18,7 +18,7 @@ class WarnSignal:
 
 
 # Keyed by the notification's TOML wiring key. Fixed by the generator, identical on every device
-# (agent, 2026-09-09; owner-reviewed, 2026-11-06): a new signal is a code change here, never a TOML field.
+# (agent, 2026-09-09): a new signal is a code change here, never a TOML field.
 WARN_SIGNALS: dict[str, WarnSignal] = {
     "warn_co2": WarnSignal("WarnCO2", "_FIELD_WARN_CO2", "int", 1600, 0, 3000, (1, 0, 0), "CO2 Warning Threshold", "ppm"),
     "warn_voc": WarnSignal("WarnVOC", "_FIELD_WARN_VOC", "int", 350, 0, 500, (0, 1, 0), "VOC Warning Threshold", None),

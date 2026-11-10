@@ -111,7 +111,7 @@ def _make_ntp(
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTPHost": "{ntp_host}", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0, "DNSFallback": ""}}')
-    timing = NtpTiming(500, 1, ntp_fetch_timeout_ms)
+    timing = NtpTiming(1000, ntp_fetch_timeout_ms)
     ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, timing, cfg_path=cfg_path)
     run(ntp.setup())
     return ntp
@@ -152,11 +152,11 @@ def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "in
 
 class _RecordingResolver:
     def __init__(self, return_value: "str | None") -> None:
-        self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
+        self.calls: list[tuple[str, tuple[str, ...], int]] = []
         self.return_value = return_value
 
-    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
-        self.calls.append((host, dns_servers, timeout_ms, tries))
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
+        self.calls.append((host, dns_servers, timeout_ms))
         return self.return_value
 
 
@@ -179,7 +179,7 @@ def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv
         ntpmod.resolve_ipv4 = original
     # The real conn-derived DNS server IP - not None, not a stand-in lambda's value - reached the
     # resolver call. This is the exact value that used to always arrive as None before the fix.
-    assert recorder.calls == [("pool.ntp.org", ("203.0.113.9",), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", ("203.0.113.9",), 1000)]
 
 
 def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service() -> None:
@@ -202,7 +202,7 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
         run(scenario())
     finally:
         ntpmod.resolve_ipv4 = original
-    assert recorder.calls == [("pool.ntp.org", ("0.0.0.0",), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", ("0.0.0.0",), 1000)]
 
 
 def test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated() -> None:
@@ -272,7 +272,7 @@ class _GatedResolver:
         self.servers: tuple[str, ...] | None = None
         self._gate = asyncio.Event()
 
-    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
         self.entered = True
         self.servers = dns_servers
         await self._gate.wait()

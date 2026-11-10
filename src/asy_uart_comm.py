@@ -94,9 +94,9 @@ _GC_PAUSE_WORST_MS = const(21)  # measured worst-case collection pause, SPECIFIC
 # programs littlefs runs without yielding, at the W25Q16JV maxima (tSE 400 ms, tPP 3 ms).
 _FLASH_HOLD_MAX_MS = const(2129)  # 5 erases x 400 + 43 page programs x 3, traced at v1.29.0 (J.6)
 # @tunable uart.poll_jitter_ms = 5
-_POLL_JITTER_MS = const(5)  # scheduling slack added to poll_wait_ms when sizing rxbuf
+_POLL_JITTER_MS = const(5)  # one 53-byte frame's wire time at the links' 115,200 baud (4.6 ms), rounded up
 _BACKOFF_MULT = const(2)
-_BACKOFF_MAX_MULT = const(5)  # cap = 5 x timeout, matching asy_captive_dns.py's own 0.5s -> 5s shape
+_BACKOFF_MAX_MULT = const(5)  # the listen backoff's cap, 5 x timeout (changelog A15)
 # @tunable uart.diag_resync_streak = 2
 _DIAG_RESYNC_STREAK = const(2)  # resyncs with bytes seen but no frame ever valid before the diagnostic fires
 _MIN_CHUNKS = const(2)  # even a payload-less command carries one data chunk, so it can be confirmed
@@ -139,7 +139,6 @@ _ERR_UART_CODEC_SIZE = const(92)
 _ERR_UART_TRANSFER_CAP = const(93)
 
 _WRN_UART_DRAIN_BOUND = const(54)
-_WRN_UART_CANCEL_UNACKED = const(55)
 _WRN_UART_CMD_DECLINED = const(56)
 
 # A responder's get/set callbacks (both required) and its optional message callback, passed as one object.
@@ -227,7 +226,6 @@ class UARTComm:
         self._valid_frames = 0
         self._blind_resyncs = 0  # resyncs that saw bytes but never a valid frame
         self._drain_bound_hit = False  # set by _drain(), read by the resync that called it
-        self._cancel_unacked_seen = 0  # the driver's counter is cumulative; only a rise is news
         self._discarded_seen = 0  # the driver's discarded_bytes at the last resync, read by _take_discarded()
         self._init_errno = self._validate_config()
         # Re-checked locally, never the caller's raw values: `5 + "48"` raises, and __init__ is the
@@ -550,9 +548,7 @@ class UARTComm:
         if not await self._read_frame(device, -1):  # the one legitimate unbounded wait
             await self._fault(device, _ERR_TIMEOUT, "listen read failed or was cancelled")
             return _LISTEN_FAILED
-        rx = self._rx.get_buf()
-        if rx is None:  # Unreachable: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
-            return _LISTEN_FAILED
+        rx: bytearray = self._rx.get_buf()  # type: ignore[assignment]  # set: _read_frame() already failed on a missing RX buffer
         cmd = rx[_MSG_CMD]
         exp = _CMD_GET if cmd == _CMD_GET else CMD_SET
         err = self._validate(rx, exp, 1, None, None)
@@ -676,9 +672,9 @@ class UARTComm:
         if not await self._read_frame(device, self._timeout):
             await self._fault(device, _ERR_TIMEOUT, "no answer to GET", get_id)
             return None
-        rx = self._rx.get_buf()
+        rx: bytearray = self._rx.get_buf()  # type: ignore[assignment]  # set: _read_frame() already failed on a missing RX buffer
         err = self._validate(rx, CMD_SET, 1, None, None)
-        if err or rx is None:  # Unreachable in its rx half: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
+        if err:
             await self._fault(device, err or _ERR_UART_FRAME_INVALID, "invalid answer to GET", get_id)
             return None
         if rx[_MSG_PAYLOAD] != get_id:
@@ -717,9 +713,9 @@ class UARTComm:
             if not await self._read_frame(device, self._timeout):
                 await self._fault(device, _ERR_TIMEOUT, "train stalled at chunk", cur)
                 return None
-            rx = self._rx.get_buf()
+            rx: bytearray = self._rx.get_buf()  # type: ignore[assignment]  # set: _read_frame() already failed on a missing RX buffer
             err = self._validate(rx, CMD_SET, cur, chunks, _next_uid(prev_uid))
-            if err or rx is None:  # Unreachable in its rx half: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
+            if err:
                 await self._fault(device, err or _ERR_UART_FRAME_INVALID, "invalid frame at chunk", cur)
                 return None
             prev_uid = rx[_MSG_UID]
@@ -966,10 +962,7 @@ class UARTComm:
             await self._err(_ERR_UART_FRAME_INVALID, "could not build frame", cur_chunk, "of", chunks)
             return False
         self._uid = uid  # only advanced once the frame is genuinely going out
-        buf = self._tx.get_buf()
-        if buf is None:  # Unreachable: _prepare_tx() returned False if the TX buffer were missing - kept to narrow the Optional for the type checker
-            await self._err(_ERR_ALLOC, "no TX buffer")
-            return False
+        buf: bytearray = self._tx.get_buf()  # type: ignore[assignment]  # set: _prepare_tx() returned False if the TX buffer were missing
         if not await device.writefrom(buf, self._frame_size):
             await self._fault(device, _ERR_UART_WRITE_FAILED, "frame write failed")
             return False
@@ -1019,11 +1012,6 @@ class UARTComm:
         if not await self._uart.cancel_read_timeout():
             async with self._uart as device:
                 await self._resync(device)
-        elif self._uart.cancel_unacknowledged != self._cancel_unacked_seen:
-            # The driver's counter is cumulative, so reading it as a flag reported every later
-            # cancel - healthy ones included - as un-acknowledged, persisting a warning each time.
-            self._cancel_unacked_seen = self._uart.cancel_unacknowledged
-            self.pr.wrn_s("Driver cancel was not acknowledged", wrnno=_WRN_UART_CANCEL_UNACKED)
 
     async def reset_error_counter(self) -> bool:
         # Clears the history and the blind-resync streak; the valid-frame count is link evidence, not error
@@ -1066,10 +1054,8 @@ class UARTComm:
         result = await self._run_get(get_id, exp_size)
         if result is None:
             return None
-        written, own = result
-        if own is None:  # Unreachable: _run_get() returns a buffer whenever neither dest nor push was given - kept to narrow the Optional for the type checker
-            return PieceBuffer(0, self._chunk_bytes)
-        return own if own.trim(written) else None
+        own: PieceBuffer = result[1]  # type: ignore[assignment]  # set: _run_get() returns a buffer whenever neither dest nor push was given
+        return own if own.trim(result[0]) else None
 
     async def uart_get_into(self, get_id: int, buf: "Writable | None", exp_size: int | None = None) -> int | None:
         if not await self._gate(ROLE_INITIATOR) or not await self._check_cmd_id(get_id):

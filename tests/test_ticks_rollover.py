@@ -357,27 +357,6 @@ def _tickseconds_reads(start: int, *, count_down: bool) -> "list[int]":
         _restore(asy_base_classes)
 
 
-def _uart_cancel_wait(start: int, ack_at: "int | None") -> "tuple[bool, int, int]":
-    # UART.cancel_read_timeout(50) against a held session, 1 ms per clock read from uptime `start`; the read path
-    # acknowledges at read `ack_at` (None: at _LET_GO_READS). Returns (cancel outstanding, unacknowledged count, clock reads).
-    driver = _uart_driver()
-
-    def on_read(reads: int) -> None:
-        if reads == (ack_at or _LET_GO_READS):
-            driver._ack_cancel()
-
-    clock = _install_stepping(asy_uart_driver, start, 1, on_read)
-
-    async def cancel() -> bool:
-        async with driver.session_lock:
-            return await driver.cancel_read_timeout(50)
-
-    try:
-        return run(cancel()), driver.cancel_unacknowledged, clock.reads
-    finally:
-        _restore(asy_uart_driver)
-
-
 def _uart_driver() -> UART:
     # A UART whose fed bytes land at once, its receive ring armed; transmit polls through the bounded LinkPoller.
     DMA.reset_registry()  # each armed ring holds two of the twelve channels; the per-test reset runs only between tests
@@ -601,14 +580,6 @@ def test_the_uart_ready_wait_crosses_the_ticks_wrap() -> None:
         wrapped = _uart_ready_wait(TICKS_PERIOD - 20, arrive_at)
         assert wrapped == _uart_ready_wait(_REFERENCE_NOW, arrive_at), (arrive_at, wrapped)
         assert wrapped == expected, (arrive_at, wrapped)
-
-
-def test_the_uart_cancel_ack_wait_crosses_the_ticks_wrap() -> None:
-    # Started 20 ms before the wrap: no acknowledgement ends at the 50 ms bound and counts it, one after the wrap ends it.
-    for ack_at, expected in ((None, (True, 1, 52)), (40, (True, 0, 40))):
-        wrapped = _uart_cancel_wait(TICKS_PERIOD - 20, ack_at)
-        assert wrapped == _uart_cancel_wait(_REFERENCE_NOW, ack_at), (ack_at, wrapped)
-        assert wrapped == expected, (ack_at, wrapped)
 
 
 def test_the_udp_ready_deadline_crosses_the_ticks_wrap() -> None:

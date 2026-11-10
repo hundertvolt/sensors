@@ -1,5 +1,5 @@
 """Wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device CS-pin wrapper, with an async lock-scoped
-session and a synchronous one). Sole consumer: asy_fram_driver.py's FRAM_SPI, through the synchronous session.
+session and synchronous ones). Sole consumer: asy_fram_driver.py's FRAM_SPI, through a synchronous operation.
 """
 # RP2040 SPI has no ACK/NAK, so write() cannot raise; a 32+ byte READ can raise OSError(EIO) on an
 # RX overrun since 1.29. write_readinto() turns machine.SPI's mismatched-length ValueError into
@@ -17,7 +17,7 @@ from asy_base_classes import Lockable
 # Blocking CS settle. Both parts specify tCSU/tCSH >= 10 ns and tD >= 40 ns (MB85RS2MTA) / 60 ns
 # (MB85RS64V), so 2 us is orders of magnitude clear of them; rp2's sleep_us() busy-waits on
 # time_us_64(), where sleep_us(1) only promises an elapsed time in (0, 1] us and 2 promises >= 1.
-_CS_SETTLE_US = const(2)
+CS_SETTLE_US = const(2)
 
 try:
     from typing import TYPE_CHECKING
@@ -25,9 +25,13 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Literal
 
     from typing_extensions import Self
+
+    # One synchronous operation's wiring: the CS pin's value(), its active level, and the bus's own write and readinto.
+    Wiring = tuple[Callable[[bool], object], bool, Callable[[bytes | bytearray | memoryview], None], Callable[[bytearray | memoryview], None]]
 
 
 class SPI:
@@ -71,6 +75,12 @@ class SPI:
         if self._spi is None:
             return
         self._spi.readinto(buf, write_value)
+
+    def transfers(self) -> "tuple[Callable[[bytes | bytearray | memoryview], None], Callable[[bytearray | memoryview], None]]":
+        # machine.SPI's own write and readinto, for a synchronous operation's commands; an RX overrun propagates as readinto() says.
+        if self._spi is None:
+            raise RuntimeError("SPI bus not initialized - call init() first")
+        return self._spi.write, self._spi.readinto
 
     def write(self, buf: bytes | bytearray | memoryview) -> None:
         if self._spi is None:
@@ -149,27 +159,43 @@ class SPIDevice(Lockable):
         return released
 
     def _begin(self) -> None:
-        # Configures the bus only when another device (or none) configured it last, then asserts CS. The settle blocks
-        # on purpose: an awaited one would hand the loop to another task with CS asserted.
+        # Configures the bus, then asserts CS. The settle blocks on purpose: an awaited one would hand the loop to another
+        # task with CS asserted.
         if not self.initialized:
             raise RuntimeError("SPIDevice not set up - call setup() first")
-        spi = self.spi
         try:
-            if spi.configured_for is not self:
-                spi.configured_for = None  # until configure() returns: a half-applied init is no device's
-                spi.configure(
-                    baudrate=self._baudrate,
-                    polarity=self._polarity,
-                    phase=self._phase,
-                    bits=self._bits,
-                    firstbit=self._firstbit,
-                )
-                spi.configured_for = self
+            self._configure()
             self._cs_pin.value(self._cs_active_value)
-            time.sleep_us(_CS_SETTLE_US)
+            time.sleep_us(CS_SETTLE_US)
         except BaseException:
             self._cs_pin.value(not self._cs_active_value)  # deassert if asserted
             raise
+
+    def _configure(self) -> None:
+        # Configures the bus only when another device (or none) configured it last.
+        spi = self.spi
+        if spi.configured_for is not self:
+            spi.configured_for = None  # until configure() returns: a half-applied init is no device's
+            spi.configure(
+                baudrate=self._baudrate,
+                polarity=self._polarity,
+                phase=self._phase,
+                bits=self._bits,
+                firstbit=self._firstbit,
+            )
+            spi.configured_for = self
+
+    def begin_sync(self) -> "Wiring":
+        # One synchronous operation's start, its checks once rather than per command (C.8): refused while an async session
+        # holds the bus, whose CS may stay asserted across a suspension; the bus configured for this device. The operation
+        # then frames each command itself with the returned CS and bus methods, never suspending in between.
+        if self.session_lock.locked():
+            raise RuntimeError("SPI bus held by an async session")
+        if not self.initialized:
+            raise RuntimeError("SPIDevice not set up - call setup() first")
+        self._configure()
+        write, readinto = self.spi.transfers()
+        return self._cs_pin.value, self._cs_active_value, write, readinto
 
     async def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
         self.readinto_sync(buf, write_value=write_value)
@@ -188,7 +214,7 @@ class SPIDevice(Lockable):
         # The caller's own try/finally is what guarantees this runs; __aexit__() is that caller for
         # `async with` users.
         self._cs_pin.value(not self._cs_active_value)
-        time.sleep_us(_CS_SETTLE_US)
+        time.sleep_us(CS_SETTLE_US)
 
     async def setup(self) -> None:
         self._cs_pin.init(self._cs_pin.OUT, value=not self._cs_active_value)  # value= sets the level before the pad becomes an output: no CS glitch.

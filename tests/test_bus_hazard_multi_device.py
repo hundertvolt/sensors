@@ -593,13 +593,14 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
             async_done += 1
 
     async def fram_worker() -> None:
-        # The FRAM's synchronous command is refused while the other device's session holds the bus, never run in its CS
-        # window; it runs once the bus is free.
+        # The FRAM's synchronous operation is refused at its begin() while the other device's session holds the bus, never
+        # run in its CS window; it runs once the bus is free.
         nonlocal overlap_observed, fram_done, refused, refused_free
         buf = bytearray(4)
         while fram_done < rounds:
             held, asserted = bus.bus_lock.locked(), async_device._cs_pin.value() == async_device._cs_active_value
             try:
+                fram.begin()
                 assert fram.get_values(buf, 0)
             except RuntimeError:
                 refused += 1
@@ -666,14 +667,15 @@ def test_two_fram_users_in_two_tasks_never_interleave_their_commands() -> None:
     run(store.setup())
     owners: list[str] = []
     names: dict[int, str] = {}
-    spidev = manager.fram._spidev
-    begin = spidev.session_begin
+    chip = manager.fram._spidev.spi._spi
+    assert chip is not None
+    write = chip.write
 
-    def tagged() -> None:
+    def tagged(buf: object) -> None:  # every command opens with a write; each operation's begin() binds this one
         owners.append(names[id(asyncio.current_task())])
-        begin()
+        write(buf)
 
-    spidev.session_begin = tagged  # type: ignore[method-assign]
+    chip.write = tagged  # type: ignore[method-assign]
 
     async def backing_up() -> bool:
         names[id(asyncio.current_task())] = "backup"
@@ -691,7 +693,7 @@ def test_two_fram_users_in_two_tasks_never_interleave_their_commands() -> None:
         return await writing
 
     assert run(scenario()) is True
-    spidev.session_begin = begin  # type: ignore[method-assign]
+    chip.write = write  # type: ignore[method-assign]
     runs = [owner for i, owner in enumerate(owners) if i == 0 or owners[i - 1] != owner]
     assert sorted(runs) == ["backup", "entry"], runs
     assert backup.read() == bytearray(bytes(range(132)) * 2)

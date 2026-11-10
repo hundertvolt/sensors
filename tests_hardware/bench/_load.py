@@ -334,10 +334,10 @@ def mode(host: str) -> object:
 
 def ntp_attempt_s() -> float:
     # One sync attempt's longest run (src/asy_ntp_client.py _run_ntp_sync_attempt()): a send and a reply wait per lookup
-    # try on each server, the DHCP one and up to _DNS_FALLBACK_MAX more (asy_dns_client.py resolve_ipv4()), then the NTP
+    # on each server, the DHCP one and up to _DNS_FALLBACK_MAX more (asy_dns_client.py resolve_ipv4()), then the NTP
     # request's send and reply wait (_fetch_ntp_reply()), each bounded by its timeout in buildgen/codegen.py.
     servers = 1 + src_number(_NTP, "_DNS_FALLBACK_MAX")
-    lookup_s = servers * buildgen_number("codegen.py", "_DNS_TRIES") * 2 * buildgen_number("codegen.py", "_DNS_TIMEOUT_MS") / 1000
+    lookup_s = servers * 2 * buildgen_number("codegen.py", "_DNS_TIMEOUT_MS") / 1000
     return lookup_s + 2 * ntp_fetch_timeout_s()
 
 

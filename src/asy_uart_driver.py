@@ -36,12 +36,6 @@ if TYPE_CHECKING:
 
 _LF = const(0x0A)  # b"\n"[0] - readline_until_complete's own-line terminator
 
-# How long cancel_read_timeout() waits for its request to be acknowledged before reporting the
-# un-acknowledged case instead of waiting on. A healthy holder acknowledges within one poll round;
-# only a genuinely wedged one reaches this bound, and it is what makes the call provably terminating.
-# @tunable uart.cancel_ack_timeout_ms = 1000
-_CANCEL_ACK_TIMEOUT_MS = const(1000)
-
 # How many bytes _read_delimited() consumes between yields. It must read one byte per call (a wider
 # read would swallow the next frame's head), so yielding per byte would cost a task switch every
 # ~87us of wire time at 115200 baud; 16 bounds the loop's hold at ~1.4ms instead.
@@ -197,7 +191,6 @@ class UART(Lockable):
         # sequences rather than an Event, masked to COUNTER_CAP and compared by distance, so one
         # acknowledgement stays visible to every waiting canceller.
         self._cancel = False
-        self.cancel_unacknowledged = 0  # bumped when a holder never acknowledged within the bound
         self._cancel_req = 0
         self._cancel_ack = 0
         # Bytes a failed *_until_complete() read consumed and dropped: a wrap-by-design count (masked to
@@ -456,7 +449,7 @@ class UART(Lockable):
             sent += n
         return True
 
-    async def cancel_read_timeout(self, timeout_ms: int = _CANCEL_ACK_TIMEOUT_MS) -> bool:
+    async def cancel_read_timeout(self) -> bool:
         # Lets another task abort this instance's in-flight ready()/read wait from the outside.
         # False means "nothing was in flight" (the lock is free), which is what lets a caller take
         # the lock and drain itself; True means a cancel is outstanding, so it must not.
@@ -467,12 +460,9 @@ class UART(Lockable):
         self._cancel_req = self._cancel_req + 1 if self._cancel_req < COUNTER_CAP else 0
         my_req = self._cancel_req
         self._cancel = True
-        t0 = time.ticks_ms()
+        # No deadline: the holder is this device's own task, acknowledging in every ready() round and on its way out of
+        # the lock; a holder wedged synchronously is the watchdog's (CLAUDE.md).
         while 0 < ((my_req - self._cancel_ack) & COUNTER_CAP) < _SEQ_HALF:
-            if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
-                n = self.cancel_unacknowledged  # a wedged holder; the request stays latched
-                self.cancel_unacknowledged = n + 1 if n < COUNTER_CAP else 0
-                return True
             await asyncio.sleep_ms(self.poll_wait_ms)
         return True
 

@@ -20,6 +20,7 @@ from _fram_chip_fake import FakeMB85RS64V
 from asy_fram_driver import FRAM_SPI
 from asy_fram_manager import FRAMChunk, FRAMManager, FRAMTimestampedChunk, _owner_seed
 from asy_print_log import PrintLogHistoryStore
+from asy_spi_driver import SPIDevice
 from crc_checks import CRC8, CRC32
 
 try:
@@ -493,6 +494,42 @@ def test_cs_cycle_counts_are_the_measured_figures() -> None:
     # is one such change, made on the owner's behalf for review (owner: "Solutions you proposed agreed.").
     traces = run(_collect())
     assert [len(traces[name][0]) for name in ("blank", "valid", "ts_write", "ts_read", "clear")] == [55, 46, 51, 46, 30]
+
+
+def test_a_chunk_operation_opens_one_bus_session() -> None:
+    # The configure check and the async-session refusal run once at a chunk operation's start, never per command; each
+    # command toggles CS on the bus's own methods (SPECIFICATION.md C.3.1, C.8).
+    begins: list[int] = []
+    real_begin = FRAM_SPI.begin
+    real_session = SPIDevice.session_begin
+
+    def counted(self: FRAM_SPI) -> None:
+        begins.append(1)
+        real_begin(self)
+
+    def refused(self: SPIDevice) -> None:
+        raise AssertionError(f"a per-command session on {self}")
+
+    async def body() -> "list[int]":
+        _manager, _logger, chunk = await _rig()
+        buf = chunk.get_buffer()
+        FRAM_SPI.begin = counted  # type: ignore[method-assign]
+        SPIDevice.session_begin = refused  # type: ignore[method-assign]
+        try:
+            counts = []
+            for op in (chunk.write_into, chunk.read_into):
+                begins.clear()
+                assert (await op(buf))[0]
+                counts.append(len(begins))
+            begins.clear()
+            assert chunk.clear()
+            counts.append(len(begins))
+            return counts
+        finally:
+            FRAM_SPI.begin = real_begin  # type: ignore[method-assign]
+            SPIDevice.session_begin = real_session  # type: ignore[method-assign]
+
+    assert run(body()) == [1, 1, 1]
 
 
 async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore, FRAMTimestampedChunk]":

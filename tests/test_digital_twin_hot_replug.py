@@ -28,11 +28,14 @@ from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imp
 from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _task_names import task_names_of  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
 from asy_base_classes import ValueRef  # noqa: E402 - imported after the prewarm and the UDP shim
+
+_PHASE_ARMED = src_int("src/asy_system_service.py", "_PHASE_ARMED")  # the reset phase the system service reaches
 
 try:
     from typing import TYPE_CHECKING, cast
@@ -176,7 +179,7 @@ def _replug_on(device: str, driver: str) -> None:
             ended = [i for i, t in enumerate(first) if t is not None and t.done()]
             await _until(clock, f"{device}'s {key} task was never restarted", lambda: all(sysfunct._tasks[i] not in (None, first[i]) for i in ended))
             await _until(clock, f"{device}'s {key} never read again after the re-plug", read_after(reader._datastruct))
-            assert not sysfunct._reset_armed and machine.reset_count == 0, f"{device}: the re-plug of {key} armed a reset"
+            assert sysfunct._phase < _PHASE_ARMED and machine.reset_count == 0, f"{device}: the re-plug of {key} armed a reset"
             assert watchdog.would_have_triggered_count == 0, f"{device}: the re-plug of {key} starved the watchdog"
 
         await _supervised(clock, module, reader, body)

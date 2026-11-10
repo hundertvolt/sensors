@@ -41,6 +41,8 @@ from asy_scd30_driver import SCD30_I2C  # noqa: E402 - imported after the prewar
 from asy_sgp40_driver import SGP40_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
 from crc_checks import CRC8, CRC32  # noqa: E402 - imported after the prewarm and the UDP shim
 
+_PHASE_ARMED = src_int("src/asy_system_service.py", "_PHASE_ARMED")  # the reset phase the system service reaches
+
 try:
     from typing import TYPE_CHECKING, cast
 except ImportError:  # typing isn't available on the real MicroPython test interpreter
@@ -126,7 +128,7 @@ class _RetryOnDrivenClock:
 async def _armed(sysfunct: "SystemService") -> None:
     # Returns once a command's reset is armed, before its Timer fires: the reset-and-relaunch is the suite's.
     waited = 0.0
-    while not sysfunct._reset_armed:
+    while sysfunct._phase < _PHASE_ARMED:
         assert waited < _COMMAND_WAIT_S, "the command never reached its armed reset"
         await asyncio.sleep(_POLL_S)
         waited += _POLL_S
@@ -587,12 +589,12 @@ def test_a_system_entry_and_a_backup_write_from_two_tasks_never_interleave_their
         assert backup is not None
         owners: list[str] = []
         names: dict[int, str] = {}
-        spidev = manager.fram._spidev
-        begin = spidev.session_begin
+        bus = manager.fram._spidev.spi._spi
+        write = bus.write
 
-        def tagged() -> None:
+        def tagged(buf: object) -> None:  # every command opens with a write; each operation's begin() binds this one
             owners.append(names.get(id(asyncio.current_task()), "other"))
-            begin()
+            write(buf)
 
         async def backing_up() -> bool:
             names[id(asyncio.current_task())] = "backup"
@@ -604,13 +606,13 @@ def test_a_system_entry_and_a_backup_write_from_two_tasks_never_interleave_their
             await asyncio.sleep(0)
             module.sysfunct.pr.err_s("beside the backup", errno=code("E", "TEST_SEED_A"))
 
-        spidev.session_begin = tagged
+        bus.write = tagged
         try:
             writing = asyncio.get_event_loop().create_task(backing_up())
             await asyncio.get_event_loop().create_task(logging())
             assert await writing is True
         finally:
-            spidev.session_begin = begin
+            bus.write = write
         runs = [owner for i, owner in enumerate(owners) if i == 0 or owners[i - 1] != owner]
         assert runs.count("backup") == 1 and runs.count("entry") == 1, f"{device}: {runs}"
 
@@ -1088,7 +1090,7 @@ def test_two_setups_failing_together_are_each_retried_by_the_restart_with_no_bus
             while (await module.sgp40.get_data()).VOC is None or (await module.bmp3xx.get_data()).Pres is None:
                 await asyncio.sleep(_POLL_S)
             assert watchdog.would_have_triggered_count == 0
-            assert not module.sysfunct._reset_armed, "two setup failures spent the restart budget"
+            assert module.sysfunct._phase < _PHASE_ARMED, "two setup failures spent the restart budget"
             for reader in (module.sgp40, module.bmp3xx):
                 log = (await reader.pr.get_log())[reader.pr.name]
                 kinds = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
@@ -1243,7 +1245,7 @@ def test_no_scd30_write_reaches_the_chip_while_a_system_command_runs() -> None:
             _keep_evidence(_chip(module), "fram_before_" + word + ".bin")
             writes = chip.nvm_writes
             assert await module._system_cmd_callback(word) is True, f"{device}: {word} was not accepted"
-            while not module.sysfunct._reset_armed:
+            while module.sysfunct._phase < _PHASE_ARMED:
                 results = await scd30._set_dict_cfg(body, scd30.get_cfg_schema())
                 assert set(results.values()) == {"Failed"}, f"{device}: {word}: a setter answered {results} during the sequence"
                 await asyncio.sleep(_POLL_S)

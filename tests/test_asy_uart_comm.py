@@ -117,9 +117,8 @@ _INSIDE_LOCK_LIMIT_MS = 1000  # the bound on the wait for a task to hold the bus
 _LISTENER_SHORT_BOUND_S = 8
 _ASYNC_CALLBACK_YIELD_MS = 1
 _BSEC_RUN_BOUND_S = 60
-_PROMPT_HOLD_MS = 5
 _RECORDER_POLL_MS = 1  # the test's own real look at the sleep recorder's delays
-_PAST_CANCEL_ACK_HOLD_MS = 1300
+_WRITE_GATE_HOLD_MS = 1500  # the write gate's longest hold-off under the bus lock: 1.5 x the 1,000 ms timeout
 _REFUSALS = 50
 _HAMMER_ROUNDS = 200
 _HAMMER_RUN_BOUND_S = 120
@@ -1640,32 +1639,28 @@ def test_clear_with_nothing_in_flight_takes_the_lock_and_drains() -> None:
     assert pair.fake_a.rx_queue == bytearray()
 
 
-def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
-    # cancel_unacknowledged is cumulative, and clear() read it as a flag: once any holder had ever
-    # wedged, every later cancel - healthy ones included - persisted W55 again, which is the
-    # bounded-history churn Part C.7.1 exists to prevent, on a link that had already recovered.
+def test_clear_waits_out_a_healthy_holder_and_reports_nothing() -> None:
+    # A holder in the write gate's longest hold-off (1.5 x the 1,000 ms timeout, under the bus lock) acknowledges only
+    # when it leaves the locked region: clear() waits for that, with no deadline, and persists nothing.
     pair = Pair()
     run(pair.setup(), RUN_LIMIT_S)
     bus = pair.initiator._uart
     assert bus is not None
 
-    async def hold(ms: int) -> None:
-        async with bus:  # the cancel is acknowledged on leaving the locked region, never before
-            await asyncio.sleep_ms(ms)
+    async def hold() -> None:
+        async with bus:
+            await asyncio.sleep_ms(_WRITE_GATE_HOLD_MS)
 
-    async def scenario(hold_ms: int) -> None:
-        holder = asyncio.create_task(hold(hold_ms))
-        await asyncio.sleep_ms(0)  # one turn: the holder takes the bus (its hold may be shorter than a poll)
+    async def scenario() -> None:
+        holder = asyncio.create_task(hold())
+        await asyncio.sleep_ms(0)  # one turn: the holder takes the bus
         assert bus.session_lock.locked()
         await pair.initiator.clear()
+        assert not bus.session_lock.locked()  # returned once the holder acknowledged on its way out
         await holder
 
-    run(scenario(_PAST_CANCEL_ACK_HOLD_MS), _RUN_BOUND_S)  # past the driver's own 1000ms acknowledgement bound
-    assert bus.cancel_unacknowledged == 1
-    assert persisted(pair.initiator) == [_w("UART_CANCEL_UNACKED")]
-    run(scenario(_PROMPT_HOLD_MS), _RUN_BOUND_S)  # a holder that acknowledges promptly: nothing new to report
-    assert bus.cancel_unacknowledged == 1
-    assert persisted(pair.initiator) == [_w("UART_CANCEL_UNACKED")]
+    run(scenario(), _RUN_BOUND_S)
+    assert persisted(pair.initiator) == []
 
 
 # ---------------------------------------------------------------------------

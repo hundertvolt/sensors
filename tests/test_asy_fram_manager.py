@@ -1753,8 +1753,8 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
 
 
 def test_chunk_operations_fail_cleanly_when_the_bus_is_deinitialized_mid_run() -> None:
-    # A deinitialised bus raises configure()'s RuntimeError at the driver's first transfer; each chunk operation catches it
-    # as its own unexpected error and fails, logging its own entry.
+    # A deinitialised bus raises configure()'s RuntimeError at an operation's begin(); each chunk operation catches it as
+    # its own unexpected error and fails before any command, logging its own entry.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
@@ -1775,8 +1775,7 @@ def test_chunk_operations_fail_cleanly_when_the_bus_is_deinitialized_mid_run() -
     assert read_result is None
     assert cleared is False
     assert code("E", "UNEXPECTED") in errnums  # each operation's caught RuntimeError
-    assert code("E", "FRAM_BLOCK_WRITE") in errnums
-    assert code("E", "FRAM_CLEAR") in errnums
+    assert errs["FRAM"]["ErrCount"] == 3, errs  # one entry per operation, none from a command
 
 
 # ---------------------------------------------------------------------------

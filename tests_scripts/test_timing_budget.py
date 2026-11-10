@@ -124,7 +124,7 @@ def expected_rows(src: Path) -> "dict[str, list[int]]":
     disconnect_ms = module_int_const(src, wifi, "_STA_DISCONNECT_WAIT_ITERS") * module_int_const(src, wifi, "_STA_DISCONNECT_POLL_MS")
     connect_ms = module_int_const(src, wifi, "_STA_CONNECT_POLL_ITERS") * module_int_const(src, wifi, "_STA_CONNECT_POLL_MS")
     switch_s = sum(module_int_const(src, wifi, f"_WLAN_{n}_SETTLE_S") for n in ("DOWN", "DEINIT", "MODE"))
-    clear_us, cs_us = module_int_const(src, "asy_i2c_driver.py", "_CLEAR_HALF_PERIOD_US"), module_int_const(src, "asy_spi_driver.py", "_CS_SETTLE_US")
+    clear_us, cs_us = module_int_const(src, "asy_i2c_driver.py", "_CLEAR_HALF_PERIOD_US"), module_int_const(src, "asy_spi_driver.py", "CS_SETTLE_US")
     per_call_s, outer_s = (module_float_const(src, "asy_webserver_service.py", n) for n in ("_DEFAULT_PER_CALL_TIMEOUT_S", "_DEFAULT_OUTER_CAP_S"))
     rows = {
         "con.watchdog": [(_WDT_TIMEOUT_MS - task_check_s * 1000) * 1000],
