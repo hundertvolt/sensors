@@ -11750,9 +11750,10 @@ test-side budget is C.8's. A body carrying both `AmbPres` and `ContMeas=false` i
 driver's fixed order with the stop last, so the sensor ends stopped (owner, 2026-10-26: "And the
 order of application of the commands is okay."; the question, paraphrase: whether a stop sent after
 the same body's `AmbPres` is the right order).
-0x0010's argument persistence and read-back are undocumented: 1.4.1 says only that the
-continuous-measurement status is kept in NVM, and the driver reads the pressure back through the
-same word as legacy did (owner, 2026-07-22, `75f2e11`).
+The chip keeps every setting through a power cut, the 0x0010 pressure and the continuous-measurement
+status included, and resumes as it ended (owner, 2026-11-10: "Field proven many times."; 1.4.1 documents
+only the status). Reading the pressure back through the same word is undocumented; the driver does it as
+legacy did (owner, 2026-07-22, `75f2e11`).
 
 **Forced-recalibration readiness** (owner, 2026-09-29: the four criteria and the states; agent,
 2026-09-28: the code values). `FRCState` reports whether the conditions suit a `ForceCalRef`; it never

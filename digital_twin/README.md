@@ -223,7 +223,7 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Chips | the SGP40's serial number is hard-coded at production, the same three words on every read (datasheet 3.4) | the same: one serial per chip, drawn at its first read | `sgp40_conformance_probe.py` A02_serial_stable: yes on the bench's part (2026-10-28) | L3 | fixed: `D sgp40::the_serial_number_reads_the_same_three_words_on_every_read` |
 | Chips | the SCD30 measures nothing before continuous measurement starts; soft reset is a power-up; the FRC readback is volatile | the same; the twin starts provisioned (measuring), not datasheet-derived | Interface Description 1.4.1-1.4.6 | L2 | fixed: `D scd30::an_unprovisioned_chip_measures_nothing_until_started`, `D scd30::a_soft_reset_drops_the_unread_measurement_and_the_frc_reference`, `D scd30::the_forced_recalibration_reference_reads_back_the_last_one_until_a_power_up` |
 | Chips | the SCD30's reaction to a wrong argument CRC, an interval outside 2-1800 s or an FRC outside 400-2000 ppm | ignored and counted | the datasheet states none | — | assumption: BACKLOG "The SCD30's reaction to a wrong argument CRC or an out-of-range interval" |
-| Chips | whether the SCD30's 0x0010 ambient-pressure value itself persists in NVM | persisted | Interface Description 1.4.1 names only the measuring status | — | assumption: BACKLOG "Whether the SCD30 keeps the ambient pressure across a power cycle" |
+| Chips | the SCD30 keeps its 0x0010 ambient pressure through a power cut, as every other setting | persisted | field use (Interface Description 1.4.1 names only the measuring status) | — | accepted (owner, 2026-11-10: "Field proven many times.") |
 | Chips | the SCD30's 0x0010 overrides altitude compensation | not modelled | Interface Description 1.4.1 | — | accepted (agent, 2026-10-14) until a driver depends on it |
 | Chips | the SCD30's temperature offset shifts the reported RH | RH reported as walked | no datasheet gives the formula | — | accepted (owner, 2026-11-06; no datasheet gives the formula): no invented RH model |
 | Chips | the SCD30's NVM writes | counted per NVM command the fake carries out | — | L2 | a test surface, not chip behaviour: `D scd30::nvm_writes_counts_each_accepted_nvm_command_and_nothing_else` |
@@ -560,8 +560,8 @@ chip's end is refused rather than growing the chip.
 Real SCD30 hardware keeps the measurement interval, ambient pressure, altitude, temperature offset,
 ASC enable and the continuous-measurement status in NVM (Interface Description 1.4.1-1.4.8); the twin
 persists those six on explicit flush, with the same design as FRAM persistence above — never
-automatic. Whether the ambient-pressure value itself persists is an assumption (the datasheet names
-only the status) — fidelity table, BACKLOG row. The live CO2/temperature/humidity readings always
+automatic. The ambient pressure's persistence is field-proven (owner, 2026-11-10; the datasheet names
+only the status). The live CO2/temperature/humidity readings always
 restart fresh on a new process, matching what a real power cycle does to the sensor's in-flight
 measurement state:
 

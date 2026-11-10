@@ -132,18 +132,6 @@ gates, traps).
   cadence facts, cycles near 600 expected; the figures go into SPECIFICATION.md M.3 (no pass threshold: a
   dropped soft-timer tick is not mitigated in software, owner, 2026-07-18, `f3924e1`). Wear: none (FRAM writes
   are not wear; read the FRAM logs first). Twin row: none (the twin's timers model no rp2 drop).
-- **Whether the SCD30 keeps the ambient pressure across a power cycle** — on `dev`, the manual
-  tier's power-cycle step (`tests_hardware/manual/manual_persistence.py`, run through
-  `scripts/run_manual_hardware_tests.sh`; every power-cut test there takes it) reads `GET /sensors`'
-  SCD30 `AmbPres` before the cut and again once the board serves, writes nothing itself, and reports
-  whether the product's boot sends 0x0010 (read from `src/asy_scd30_driver.py`'s `setup()` at run
-  time). Still owed, with no instrument yet: one `AmbPres` PUT before the cut, read back after it
-  (one SCD30 NVM write, `--allow-persistence-write`). Expected: none stated, since Interface
-  Description 1.4.1 documents only the measurement status as persisted; both readings and whether
-  the boot sends 0x0010 go into SPECIFICATION.md M.2, and the fidelity row moves to measured, or to
-  not relied on when the boot sends 0x0010 (SCD30 Interface Description 1.4.1). Wear: the step none
-  (`real_fram_persistence_across_power_cycle` writes FRAM only); the owed PUT one SCD30 NVM write.
-  Twin row: the fidelity table's SCD30 pressure-persistence assumption (`digital_twin/README.md`).
 - **The modlwip send stall, reproduced and then the override proven (owner, 2026-09-30)** — on
   `dev`, `errcount` read and saved first (CLAUDE.md's FRAM rule). (1) Flash a control image: the
   pinned tree built without `apply_modlwip_eagain_override()` (the build code changed in a throwaway
