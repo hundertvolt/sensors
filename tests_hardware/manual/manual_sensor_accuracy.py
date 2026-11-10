@@ -2,7 +2,7 @@
 reference - apart from flash/test_sensor_accuracy.py's automated plausibility check (sane bounds, not an exact
 reference) - and the NeoPixel rig's geometry, recorded as evidence."""
 
-import datetime
+import datetime as dt
 
 import bench_facts
 import evidence
@@ -82,7 +82,7 @@ def test_isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry() -> Non
     print_instruction(f"Finally, set up the NeoPixel rig the automated sweep needs: the on-board WS2812 (GP{pin} on this bench board) aimed at the ISL29125's window, at a fixed distance, ambient light excluded (an enclosure or a darkened room).")
     distance_mm = input("    Enter the LED-to-sensor distance in mm as actually set up: ").strip()
     ambient = input("    Describe the ambient condition (enclosure, darkened room, ...): ").strip()
-    record = {"date": datetime.datetime.now(datetime.UTC).date().isoformat(), "distance_mm": distance_mm, "ambient": ambient, "reference_lux": reference_lux, "neopixel_pin": pin}
+    record = {"date": dt.datetime.now(dt.UTC).date().isoformat(), "distance_mm": distance_mm, "ambient": ambient, "reference_lux": reference_lux, "neopixel_pin": pin}
     evidence.save_json("rig-geometry.json", record)
     print_instruction(f"Recorded {record} in the run's evidence. Record the distance and ambient condition in tests_hardware/README.md's rig section with today's date.")
     state_expected_outcome("with that rig in place, `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep` runs the two automated light programs and they pass; without it, both skip.")

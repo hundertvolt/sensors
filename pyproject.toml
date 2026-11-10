@@ -13,20 +13,20 @@ requires-python = ">=3.11"
 [tool.uv]
 package = false
 # Any other uv refuses to run in this tree (uv's own check); CI's uv-sync action and the chroot recipe install this one.
-required-version = "==0.8.17"
+required-version = "==0.13.7"
 
 [dependency-groups]
 dev = [
     # PINNED, like every tool here: select = ["ALL"] and a zero-findings gate turn an unpinned
     # upgrade's new rule into a hard CI failure nobody chose. Bump deliberately, re-running lint.sh
     # and typecheck.sh.
-    "mypy==2.4.0",
-    "ruff==0.16.10",
-    "pytest==9.1.1",
+    "mypy==2.4.1",
+    "ruff==0.17.4",
+    "pytest==9.2.0",
     "mpremote==1.29.0",
     # Stubs for pyserial (tests_hardware/harness.py; host_typecheck.ini has none otherwise). Pinned
     # like the tools: a stub release can change a signature and fail the gate.
-    "types-pyserial==3.5.0.20260712",
+    "types-pyserial==3.5.0.20261104",
     # shellcheck and actionlint ship their binaries in these wrappers, so every `uv sync` (and so
     # every setup_toolchain.py env tier) installs them. actionlint-py downloads its binary at
     # install time, so a fully offline sync lacks it.
@@ -34,10 +34,10 @@ dev = [
     "actionlint-py==1.7.12.25",
     # zizmor audits the workflows themselves (token scope, credential persistence, pinning); policy
     # in .github/zizmor.yml, pinned like the rest.
-    "zizmor==1.30.1",
+    "zizmor==1.32.0",
     # The host-side coverage run of scripts/test.sh --coverage, pinned like the rest; scripts/_render_coverage.py's
     # PEP 723 header pins the same (tests_scripts/test_script_metadata_pins.py).
-    "coverage==7.16.2",
+    "coverage==7.17.2",
 ]
 
 # The RPI_PICO_W MicroPython stubs are deliberately NOT a dependency group: they replace mypy's
@@ -217,7 +217,7 @@ max-returns = 10
 "buildgen/**" = ["EM101", "EM102", "T20", "TRY003"]
 "scripts/**" = ["EM101", "EM102", "T20", "TRY003"]
 "toolchain/**" = ["EM101", "EM102", "T20", "TRY003"]
-# The host test suites keep composite asserts, whose rewrite reports each operand (PT018; visit_BoolOp in pytest 9.1.1's
+# The host test suites keep composite asserts, whose rewrite reports each operand (PT018; visit_BoolOp in pytest 9.2.0's
 # _pytest/assertion/rewrite.py), and literal raise messages, which are a test's failure text (EM101/EM102/TRY003)
 # (owner, 2026-10-19: "Default is ok", SPECIFICATION.md Part D.6).
 #

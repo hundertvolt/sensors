@@ -7,7 +7,7 @@ bench tier as needing the bridge."""
 
 import argparse
 import ast
-import datetime
+import datetime as dt
 import hashlib
 import json
 import os
@@ -164,7 +164,7 @@ def main(argv: "list[str] | None" = None) -> int:
     reasons: dict[str, str] = json.loads(args.reasons.read_text(encoding="utf-8")) if args.reasons else {}
     flash = {stage: _flash_outcomes(stage) for stage in GC_THRESHOLDS}
     run_by = _scripts_run_by_flash()
-    date = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    date = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     record: dict[str, dict[str, object]] = {}
     unexplained: list[str] = []
     for path in instruments():

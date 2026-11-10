@@ -445,7 +445,7 @@ tests under a real MicroPython Unix-port interpreter), html-validate, and Stylel
 `.nvmrc`-pinned Node into `$PICO_TOOLCHAIN_DIR/node` when the host has none, then runs `npm ci` and
 downloads the Playwright Chromium build Vitest needs, failing by name when that download fails. Node comes from nodejs.org (checksum-verified
 against the release SHASUMS), deliberately **not** from apt: Debian trixie ships Node 20 while this
-repo pins 24, so `apt install nodejs` would silently install a version the repo says not to use.
+repo pins 26, so `apt install nodejs` would silently install a version the repo says not to use.
 The release's SHASUMS256.txt is fetched once per install and the tarball checked against it before
 anything is unpacked; the tree is unpacked aside, renamed into place and recorded in
 `node/node-record.json`. A Node already on `PATH` that matches the pin is used as-is and never
@@ -1108,7 +1108,7 @@ fi
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
 # uv as pyproject.toml's [tool.uv] required-version names it (any other uv refuses to sync), with pip
 # where the sandbox's egress policy blocks astral.sh.
-chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv==0.8.17"
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv==0.13.7"
 # sudo: toolchain/setup_toolchain.py's ensure_apt_packages() always prepends it, and minbase lacks it.
 # libcap2-bin (setcap, for the port-53 DNS test) is in versions.toml's apt_packages too; it stays here
 # because a reused chroot with a built toolchain skips that install and fails late.

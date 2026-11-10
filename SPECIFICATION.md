@@ -5389,7 +5389,7 @@ tests running into timeout."): a test, a test file or a tier that runs into its 
 twice, three attempts in all — a per-file or `scenarios[<device>]` job and the backgrounded
 `tests_scripts/` tier (`runner.per_file_attempts`), a JS test, its `beforeEach`/`afterEach` included, on
 vitest's own message (`Test timed out in <n>ms`, `Hook timed out in <n>ms`; `l0.vitest_timeout_retries`; a
-suite's `beforeAll`/`afterAll` runs once, the pinned vitest 5.0.3 retrying only inside a test, so a timeout there
+suite's `beforeAll`/`afterAll` runs once, the pinned vitest 5.1.0 retrying only inside a test, so a timeout there
 fails at once) — and a pass
 after a retry is reported apart (`RETRIED-PASS`, `Passed only on retry`); any other failure fails at
 once. An event retry (a bench, host or network event, never a timeout: the hotspot join, a

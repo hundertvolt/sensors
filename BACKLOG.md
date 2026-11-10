@@ -387,11 +387,17 @@ gates, traps).
     read as the card's write stalls, which the noble leg's scratch in RAM removed (inferred for
     trixie, not re-run there: a fresh chroot is the heaviest card write; owner, 2026-11-07: "too
     heavy write cycles should not be conducted allover again...").
-  - **Installed now that 2026-09-12 did not**: Node 24 (`.nvmrc`, then 22) and the refreshed npm tree;
-    uv exactly 0.8.17 (`pyproject.toml`'s `[tool.uv] required-version`, pinned in the recipe); the
+  - **Installed now that 2026-09-12 did not**: the `.nvmrc` Node (then 22) and the refreshed npm tree;
+    uv exactly as `pyproject.toml`'s `[tool.uv] required-version` names it (pinned in the recipe); the
     refreshed dev-group pins, `coverage` among them; the stub post-releases `toolchain/versions.toml`'s
     `[stubs]` names; a third Unix-port binary, `build-lwip`, so a from-scratch run builds the Unix port
     three times.
+  - **Moved after both legs (2026-11-10), Python tools**: uv 0.8.17 → 0.13.7 (the recipe's `pip install`,
+    `uv.lock` rewritten at lock revision 5) and the dev group's mypy 2.4.1, ruff 0.17.4, pytest 9.2.0,
+    coverage 7.17.2, zizmor 1.32.0 and types-pyserial 3.5.0.20261104.
+  - **Moved after both legs (2026-11-10), Node**: Node 24 → 26 (`.nvmrc`; `env` fetches `latest-v26.x`)
+    and the regenerated npm tree, Stylelint 18 and Playwright 1.65 among it, whose Chromium 158 `env`
+    downloads.
   - **Host requirements, present on both targets**: `flock` (util-linux), coreutils' `timeout`, a
     writable `${XDG_RUNTIME_DIR:-/tmp}` for the port locks, and a copied tree that is a git checkout
     with its own `.git`.

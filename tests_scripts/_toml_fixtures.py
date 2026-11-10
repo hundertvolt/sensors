@@ -6,13 +6,13 @@ instances()) and writes with dump_toml(), instead of hand-editing another near-i
 # (SPECIFICATION.md Part L.3's device TOML schema), which is all these fixtures ever need.
 
 import copy
-import datetime
+import datetime as dt
 import json
 from pathlib import Path
 from typing import TypeAlias
 
 # Same shape as buildgen.model.TomlDoc, kept local: this module never imports buildgen/.
-TomlValue: TypeAlias = str | int | float | bool | datetime.date | datetime.time | datetime.datetime | list["TomlValue"] | dict[str, "TomlValue"]
+TomlValue: TypeAlias = str | int | float | bool | dt.date | dt.time | dt.datetime | list["TomlValue"] | dict[str, "TomlValue"]
 TomlDoc: TypeAlias = dict[str, TomlValue]
 
 
