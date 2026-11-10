@@ -621,12 +621,12 @@ class _SoakRequest:
     def __init__(self) -> None:
         self.config = self
 
-    def getoption(self, name: str) -> object:
-        return {"--soak-duration": "short"}[name]
-
     def getfixturevalue(self, name: str) -> object:
         assert name == "dut_ip", name
         return "dut"
+
+    def getoption(self, name: str) -> object:
+        return {"--soak-duration": "short"}[name]
 
 
 @pytest.mark.parametrize("window", ["quiet", "rebooted"])
@@ -760,6 +760,9 @@ def test_a_recovery_reset_inside_observe_during_waits_for_the_tail_to_free_the_p
     class Tailed(_Recorder):
         held = threading.Event()
 
+        def hard_reset(self) -> None:
+            self.calls.append("hard_reset with the port held" if self.held.is_set() else "hard_reset")
+
         def tail_log(self, duration_s: float, baudrate: int = 115200) -> "list[str]":
             del baudrate
             self.held.set()
@@ -768,9 +771,6 @@ def test_a_recovery_reset_inside_observe_during_waits_for_the_tail_to_free_the_p
             finally:
                 self.held.clear()
             return []
-
-        def hard_reset(self) -> None:
-            self.calls.append("hard_reset with the port held" if self.held.is_set() else "hard_reset")
 
     board = Tailed()
 

@@ -40,19 +40,6 @@ class SourceIndex:
                     self.classes[node.name] = node
                     self.class_file[node.name] = path.name
 
-    def bases(self, name: str) -> list[str]:
-        node = self.classes.get(name)
-        return [] if node is None else [b.id for b in node.bases if isinstance(b, ast.Name)]
-
-    def mro(self, name: str) -> list[str]:
-        out, todo = [], [name]
-        while todo:
-            current = todo.pop(0)
-            if current not in out:
-                out.append(current)
-                todo.extend(self.bases(current))
-        return out
-
     def is_lockable(self, name: str) -> bool:
         return "Lockable" in self.mro(name)
 
@@ -62,16 +49,6 @@ class SourceIndex:
         text = annotation.value if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str) else ast.unparse(annotation)
         found = [word for word in re.findall(r"\w+", text) if word in self.classes]
         return found[0] if len(found) == 1 else None
-
-    def value_class(self, value: ast.expr, params: dict[str, ast.expr | None], depth: int = 0) -> str | None:
-        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id in self.classes:
-            return value.func.id
-        if isinstance(value, ast.Name) and value.id in params:
-            return self.annotation_class(params[value.id])
-        if isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and value.value.id in params and depth < 4:
-            owner = self.annotation_class(params[value.value.id])
-            return None if owner is None else self.attr_class(owner, value.attr, depth + 1)
-        return None
 
     def attr_class(self, cls: str, attr: str, depth: int = 0) -> str | None:
         for name in self.mro(cls):
@@ -87,6 +64,29 @@ class SourceIndex:
                                 return found
                             if stmt.value is not None and (found := self.value_class(stmt.value, params, depth)):
                                 return found
+        return None
+
+    def bases(self, name: str) -> list[str]:
+        node = self.classes.get(name)
+        return [] if node is None else [b.id for b in node.bases if isinstance(b, ast.Name)]
+
+    def mro(self, name: str) -> list[str]:
+        out, todo = [], [name]
+        while todo:
+            current = todo.pop(0)
+            if current not in out:
+                out.append(current)
+                todo.extend(self.bases(current))
+        return out
+
+    def value_class(self, value: ast.expr, params: dict[str, ast.expr | None], depth: int = 0) -> str | None:
+        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id in self.classes:
+            return value.func.id
+        if isinstance(value, ast.Name) and value.id in params:
+            return self.annotation_class(params[value.id])
+        if isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and value.value.id in params and depth < 4:
+            owner = self.annotation_class(params[value.value.id])
+            return None if owner is None else self.attr_class(owner, value.attr, depth + 1)
         return None
 
 

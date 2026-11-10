@@ -898,12 +898,12 @@ class _TaskCounting:
     def __getattr__(self, name: str) -> object:
         return getattr(asyncio, name)
 
+    def get_event_loop(self) -> "_TaskCounting":
+        return self
+
     def create_task(self, coro: "Coroutine[object, object, None]") -> "asyncio.Task[None]":
         self.built += 1
         return asyncio.get_event_loop().create_task(coro)
-
-    def get_event_loop(self) -> "_TaskCounting":
-        return self
 
 
 def test_wdt_a_feed_after_a_stall_past_the_deadline_records_that_window_itself() -> None:

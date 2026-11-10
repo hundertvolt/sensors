@@ -73,3 +73,11 @@
 - 18:4x: gate60 green (12.179); cov60 running (lock lead); (c) measurement prepared in wt-uload (uload.sh). W1b running. Then snapshot 60.
 - 18:5x: SGP40 serial read DONE by evidence (bench 10-28; comment fix owed in src/asy_sgp40_driver.py after cov60). RP (read-only probe re-read, BRIEF_RP.md) out. Writing: W1b. SNAP_EXCLUDE += ftmp_uload ftmp_rp.
 - 19:0x: package list fixed (owner asked 19:03:24 why the count stays): 1 W1b; 2 small fixes + snapshot 60 (cov60, (c), SGP40 comment, SPEC/BACKLOG staleness); 3 probe re-check (RP done 19:0x); 4 re-verification + image; 5 last bench round; 6 W3; 7 final verification + D. New finds fold into a row; a row is ticked only when done.
+- 19:1x: cov60 green; snapshot 60 37216f41 pushed (CI pending). Lock free for W1b; then uload measurement (lead).
+- 19:3x: W1b merged (int f0d59a75, 12.182) after docs batch cf5724ae. uload before-runs (lock lead). Then: fix (c), tc-c re-record, P01 re-verification.
+- 19:3x: snapshot 60 CI green (run 42881699131); next PARENT 37216f41.
+- 19:5x: (c) fixed (bfa240fa, 12.183); tc-c re-recorded; gate61 running (lock lead). Next: snapshot 61 (PARENT 37216f41) = P01 with CI; meanwhile draft the last-round relay (read-only).
+- 19:5x: LR (read-only last-round relay draft, BRIEF_LR.md) out. SNAP_EXCLUDE += ftmp_lr.
+- 20:2x: last-round relay prepared (12.184); owner asked (go, wear in or out). gate61 at the twin stage.
+- 20:3x: gate61 cut by the 30 min limit after e/f green; gate61b (twin + npm) running. Waiting: owner's (a)/(b) for the last round.
+- 20:4x: bench day 5 end (fc4e5708). Relay builds on fc4e5708. Waiting: owner's confirmation of (a) with wear last; gate61b.

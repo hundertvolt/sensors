@@ -2019,3 +2019,82 @@ Open from W1a: (c) uart_ring_under_concurrent_load 32768 1/8 on W1a's tree - to 
 - Slip (lead, 19:0x): looking for the 16:35 package table, a grep's file list included the session transcript under
   /root/.claude/ (piped to head -0: nothing printed, nothing read into context). Rule: never open /root/.claude/. The
   16:35 table was not kept in the records; from now on the package list is the fixed 7-row list of 19:00 (NEXT.md).
+
+## 12.181 cov60 green; snapshot 60 pushed (lead, 19:1x)
+- cov60: 58 files, 79 jobs (per-device ones included) under build-settrace: all rc 0, no MemoryError text. Lock
+  released (W1b waits for it).
+- Snapshot 60 37216f41 (parent a771238b, tree = int 886f8af0 + records; SNAP_EXCLUDE + ftmp_pin ftmp_w1b ftmp_uload
+  ftmp_rp): PAT matches in the added lines 0. Pushed to claude/whole-project-audit-plan; CI pending; 37216f41 is the
+  next PARENT once green.
+
+## 12.182 W1b reviewed and merged; docs batch committed (lead, 19:3x)
+- W1b 3e35f5c9 (HANDBACK_W1B.md): 69 files reordered by hand (buildgen 13, digital_twin 2, scripts 13, toolchain 2,
+  tests 18, tests_hardware 11, tests_scripts 10; js/ already in order). Lead's own AST check (u35/lead/ast_moves.py,
+  module and class level, same-name pairs as multisets): 66 files identical; 3 differ only by method moves inside
+  nested classes (tests/_protocols.py in TYPE_CHECKING, two test-local fakes), read by hand; test_code_conventions.py
+  carries the intended change. Comments: one topical heading gone (driver_registry.py:95-96, cached-by-text note), its
+  content visible in each function's lru_cache + text parameter + tuple return. Check: one condition (_TESTS_THEMSELVES)
+  and one scope test; the empty _PENDING_ASSERTS, its loader and pin test gone; Module.generated now "build/" (same
+  set for the fixture). Exemption of tests_hardware/manual/manual_*.py (5 files: pytest runs them in definition order
+  = the manual session's steps) and tests/_*_scenarios.py (2: the scenarios are the tests) follows OR96 and the
+  no-behaviour-change rule; credited (agent, 2026-11-10), goes to O4's list.
+- W1b's tc-c incident: its test.sh on tc-c hit the toolchain-record staleness (setup_toolchain.py and
+  micropython_overrides.py reordered change the input hashes), setup deleted tc-c's record and failed at the fetch;
+  binaries untouched; it restored the record by hand at 19:08. Lead: re-record tc-c offline with the merged tree
+  (setup_toolchain.py test --toolchain-dir) before the next gate; the hand restore is superseded by it.
+- W1b slip: one early unfiltered grep printed a fake test SSID literal (tests/_sensortask_scenarios.py), not a secret.
+  W1b finding: common_r1's MICROPYPATH lacked fakes -> fixed (common_r1.md:53, as test.sh's unit path).
+- Lead: docs batch cf5724ae (12.180's F1/F2 + credits + SGP40 comment; 882 doc/credit/comment tests passed), merge
+  w1b f0d59a75 (auto-clean, SPEC both sides).
+- Snapshot 60 37216f41 CI green (run 42881699131, success). Next PARENT = 37216f41.
+
+## 12.183 Finding (c) root-caused and fixed in the test; tc-c re-recorded; gate61 running (lead, 19:5x)
+- Measured in wt-uload (scratch instrument, never committed), dev, gc 32768, 6 runs each:
+  before (flusher sleeps 50 ms after a refusal): 2-4 PUTs per 20 s window, 0 in run 5's maximum-stall window (rc 1,
+  "config PUTs under load answered []"); retry at once (my first hypothesis, asymmetric retry): 0 PUTs in 6 of 6, about
+  675 refusals each - hypothesis refuted. Per-thread served counts [9, 9, 9, 9, 8, 8, 0] (2 runs): the six hammers
+  first served keep their slots the whole window - a served client's reconnect retakes its own slot before any
+  refused one's - so the seventh hammer and the flusher are never served; the twin log's 1401 "Connection refused at
+  the ceiling" are real ceiling refusals. src/ refuses fairly (reject-when-full); the cause is the test's load design.
+- Fix (int bfa240fa, scripts/_digital_twin_scenarios.py _uart_load, +15/-5): the flusher starts first, its first PUT
+  lands, it keeps its slot with /status between its half-second PUTs and retries a refusal at once; the hammers start
+  after (holding.wait bounded by the existing _UART_LOAD_REQUEST_S). 6 of 6 runs: 8 and 5 PUTs per window, two
+  hammers refused throughout (the ceiling still exceeded, the refusal FRAM entries still written). c61: lint 0, mypy
+  285/309/58 clean, 1031 reader tests passed.
+- tc-c re-recorded offline after W1b's toolchain/ reorder (setup_toolchain.py test, rc 0, 91 s; the two "warning:"
+  lines are uv's own notices). tests_hardware --collect-only: 217/250 (33 deselected), rc 0.
+- Package 4 = gate61 (test.sh -1 and 32768, dev twin both stages, npm) + snapshot 61, whose CI runs coverage, the twin
+  on every device and every device's firmware build (ci.yml devices matrix): the re-verification without duplicating
+  CI locally.
+
+## 12.184 LR draft read; the last round's relay prepared (lead, 20:2x)
+- r5/LASTROUND_DRAFT.md (agent, read-only): every CLOSE_STATUS bench-last-round row mapped to a runner step. Missing
+  in round1.sh: 5gh/5h (12.169's heap loads on both images, 2 rows + 8 lines) and 12g (L04's FRAM chunk re-measure,
+  12f's row + 1 line); 12f and held_sda() go (PROBES_RECHECK); ring_peak_final.py:33 "2.5 s" -> "2 s". Diff kept at
+  r5/ftmp_lr/round1_u1.diff (not applied).
+- Lead settled the draft's disagreements by "current docs win": M1 before 7f (BACKLOG:35-40: M1 writes down the rig
+  geometry S3b depends on; HANDOVER's day order is older); rings 512 B (dev.toml); no AmbPres read in the power cut
+  (owner 16:47:07); current line numbers in the relay. 4a stays beside the chroot legs (4a is the runner's own
+  lower-level prerequisite, ok() maps rc 4 on it; the legs verify a clean OS). BACKLOG:64-66 damaged-config boot: no
+  instrument; W3 records it as derived (one config write's stall on a 0.93 s setup batch vs the 8 s watchdog).
+- Relay text: u35/lead/lastround/relay.txt (29 lines, shas as placeholders; PAT 0). Goes to the owner first (one
+  question: go, wear included or not), then to the bench after gate61 + snapshot 61 CI.
+- gate61: test_e 0, test_f 0 so far.
+- gate61 stopped by the harness's 30 min background limit (lead's slip: started without a timeout) after test_e 0 and
+  test_f 0, inside twin -1 suite; no process left. The rest re-run as gate61b (u35/lead/gate_rest.sh: twin suite and
+  harness at both stages, npm) with a 2 h limit, same tree bfa240fa, lock lead.
+- Owner 20:37:10: wear accepted if the code behind the wear steps is final. Wear steps (round1.sh): 7f/7b persistence
+  writes, SCD30 extra writes, NeoPixel sweep (config_manager, SCD30 NVM setters, notification/NeoPixel, the REST PUT
+  path); 8f/8b flash cycles (reflash smoke, CRC16 image and back, lwIP control image); 10b; 15 the tick-offset image.
+  Nothing planned changes that code (CLOSE_STATUS firmware 0; W3 is docs, records, twin; D merges and tags; no pin
+  moves). Two unplanned paths only: a red elsewhere in the round, and H34 if 5gh/5h show the post-load largest block
+  shrinking toward the 11.4 KB a UART receive needs (snapshot 58: 23.0/20.2/18.3 KB, recovering at 2 readers) - a fix
+  there would touch the webserver path the persistence writes go through. Relay item i now runs the wear last: after
+  a-h green, M1 done, and the lead's cleared: line, given after every result is read and H34 settled.
+- Bench day-5 note (cross-session, 20:4x): snapshot 58 idle and serving; hand-back fc4e5708 (HANDBACK.md +7 only);
+  no probe after 12:38; SysUptime 29,329 s, ResetReason 21, STA; errcount unchanged since the heap load series (NTP 2,
+  SGP40 27, WEBSERVER 208, WIFI 26); flash cycles today 1. Bench head for the relay build: fc4e5708 (not bc53cdfa).
+  The draft's round1.sh diff is against bc53cdfa; fc4e5708 touches HANDBACK.md only, so it applies unchanged.
+- gate61 green on int bfa240fa: test_e 0, test_f 0 (gate61), twin -1 suite/harness 0/0, twin 32768 suite/harness 0/0,
+  npm 0 (gate61b, 1,671 s). The suite outputs' 40 marker lines are its own "log carries none of" OK lines (as gate60).
+  Lock released.

@@ -1425,3 +1425,7 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-10 19:03:24 UTC - why the open-package count stays constant
 "Why did the overall number of open packages stay more or less constant although packages were finished?"
 (The owner asks why the count of open packages did not fall although packages were finished since the last count.)
+
+## 2026-11-10 20:37:10 UTC - last round's wear steps: only on final code
+"Is there anything about the wear related tests which could become subject to change expectably and need to be retested? I'm fine with the wear cycles if the code behind them can be deemed final except these wear tests."
+(The owner accepts the wear cycles, on condition that the code the wear tests exercise is final apart from the wear tests themselves; they ask whether anything could be expected to change and force a retest.)

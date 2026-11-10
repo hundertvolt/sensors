@@ -50,7 +50,7 @@ without either it is not added. Real features stay, no gap opens or reopens, and
   datasheet is missing (owner, 2026-11-04 16:30 UTC: "They are all in the private subrepo and you have access.").
 - Every run, a short probe included, goes through `S/u35/lead/run.sh <worktree> <label> "<command>"` (network
   namespace, nice 19, run log lines, a disk check; output in `S/u35/lead/<label>.log`). Prefix labels with your unit.
-- One MicroPython test file, both GC stages: `TZ=UTC MICROPYPATH=build/generated_src:src:tests:frozen_modules:.frozen
+- One MicroPython test file, both GC stages: `TZ=UTC MICROPYPATH=build/generated_src:src:tests:fakes:frozen_modules:.frozen
   S/tc-c/micropython/ports/unix/build-standard/micropython -X heapsize=16M tests/test_x.py`, and the same with
   `tests/_threshold_runner.py tests/test_x.py 32768` as its arguments (`TEST_DEVICE=<device>` for a per-device file).
 - Every test file you add or change also runs once under the coverage build (its result gates in CI, owner 2026-09-22):

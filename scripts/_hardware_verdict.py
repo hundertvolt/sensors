@@ -40,21 +40,13 @@ PERMANENT_SKIPS = (
 _NOT_COVERED = "not covered by this run"
 
 
-def _flag(dest: str) -> str:
-    return "--" + dest.replace("_", "-")
-
-
-def _load(path: Path) -> "dict[str, object]":
-    try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return record if isinstance(record, dict) else {}
-
-
 def _entries(record: "dict[str, object]", key: str) -> "list[dict[str, object]]":
     value = record.get(key)
     return [e for e in value if isinstance(e, dict)] if isinstance(value, list) else []
+
+
+def _flag(dest: str) -> str:
+    return "--" + dest.replace("_", "-")
 
 
 def _judge_skip(nodeid: str, reason: str, markers: "list[str]", options: "dict[str, object]") -> "tuple[str, str]":
@@ -68,6 +60,23 @@ def _judge_skip(nodeid: str, reason: str, markers: "list[str]", options: "dict[s
                 return "failed", f"skipped although {_flag(dest)} was given: {reason}"
             return "skipped", f"{reason} (gate {_flag(dest)} not given)"
     return "failed", f"unexpected skip: {reason}"
+
+
+def _load(path: Path) -> "dict[str, object]":
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def _not_a_run(summary: Summary, record: "dict[str, object]") -> int:
+    # A collection pass ran nothing: its deselections are listed, nothing is judged.
+    block = _CollectionOnly(runner=summary.runner, levels=summary.levels)
+    for entry in _entries(record, "deselected"):
+        block.add("deselected", str(entry.get("nodeid")), str(entry.get("by") or "runner selection"))
+    block.print(0)
+    return 0
 
 
 @dataclass
@@ -132,15 +141,6 @@ def judge(record_path: Path, pytest_exit: int, runner: str, levels: str, not_cle
 class _CollectionOnly(Summary):
     def result(self, exit_code: int) -> str:
         return "NOT A RUN (collection only)"
-
-
-def _not_a_run(summary: Summary, record: "dict[str, object]") -> int:
-    # A collection pass ran nothing: its deselections are listed, nothing is judged.
-    block = _CollectionOnly(runner=summary.runner, levels=summary.levels)
-    for entry in _entries(record, "deselected"):
-        block.add("deselected", str(entry.get("nodeid")), str(entry.get("by") or "runner selection"))
-    block.print(0)
-    return 0
 
 
 def main(argv: "list[str] | None" = None) -> int:

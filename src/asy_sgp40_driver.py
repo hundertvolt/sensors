@@ -680,7 +680,7 @@ class SGP40_I2C:
             serialnumber = await self._read_words(sgp40, _SERIAL_READ_WAIT_MS, 3)
         if serialnumber[0] != 0x0000:
             # Word 0 == 0 is undocumented (datasheet 3.4 gives no structure) but field-proven: legacy checks it on
-            # every unit. The dev board's word 0 is still to be recorded on real hardware.
+            # every unit, and the dev board reads 0x0000 (bench, 2026-10-28).
             raise RuntimeError("serial number does not match")
 
         async with self._i2c_sgp40 as sgp40:  # device session

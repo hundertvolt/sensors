@@ -29,15 +29,6 @@ class Session:
     start_sent: bool = False
 
 
-def new_session() -> Session:
-    return Session()
-
-
-def interval_facts(board: _Runner) -> "dict[str, object]":
-    # The read-only interval script's facts as it yields them (an interval or an error); the session snapshot reads this.
-    return parse_facts(board.run_isolated(INTERVAL_SCRIPT, timeout_s=_INTERVAL_READ_TIMEOUT_S))
-
-
 def _interval(board: _Runner) -> int:
     facts = interval_facts(board)
     interval = facts.get("interval")
@@ -70,3 +61,12 @@ def ensure_scd30_measuring(board: _Runner, state: Session) -> str:
     if not _measuring(board, interval):
         raise HardwareTestFailureError("started but no measurement within 3 intervals")
     return "started (one NVM write)"
+
+
+def interval_facts(board: _Runner) -> "dict[str, object]":
+    # The read-only interval script's facts as it yields them (an interval or an error); the session snapshot reads this.
+    return parse_facts(board.run_isolated(INTERVAL_SCRIPT, timeout_s=_INTERVAL_READ_TIMEOUT_S))
+
+
+def new_session() -> Session:
+    return Session()

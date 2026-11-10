@@ -18,17 +18,17 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from scripts._twin_process import JSONObject, JSONValue, errcount_table
 
 
-def _table(path: Path) -> dict[str, JSONObject]:
-    body: JSONValue = json.loads(path.read_text(encoding="utf-8"))
-    return errcount_table(200, body if isinstance(body, dict) and "errcount" in body else {"errcount": body})
-
-
 def _logged(entry: JSONObject) -> tuple[int, str]:
     # The counter and the kept non-"N" history entries, oldest first ("W22,E81"); a repeat is counted, not kept again.
     history = entry.get("history")
     kept = [f"{h.get('type')}{h.get('num')}" for h in (history if isinstance(history, list) else []) if isinstance(h, dict) and h.get("type") != "N"]
     counter = entry.get("counter")
     return (counter if isinstance(counter, int) else -1), ",".join(kept) or "-"
+
+
+def _table(path: Path) -> dict[str, JSONObject]:
+    body: JSONValue = json.loads(path.read_text(encoding="utf-8"))
+    return errcount_table(200, body if isinstance(body, dict) and "errcount" in body else {"errcount": body})
 
 
 def main(argv: list[str]) -> int:

@@ -22,6 +22,13 @@ def _checksum(data: bytes) -> int:
     return int((~total) & 0xFFFF)
 
 
+def _documentation_address(value: str) -> str:
+    address = ipaddress.ip_address(value)
+    if not any(address in net for net in _DOCUMENTATION_NETWORKS):
+        raise argparse.ArgumentTypeError(f"--src {value} is not a documentation address (RFC 5737: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24); this tool forges only those")
+    return value
+
+
 def build_datagram(src: str, dst: str, sport: int, dport: int, payload: bytes) -> bytes:
     # One IPv4 datagram carrying a UDP packet, both checksums filled in. IPPROTO_RAW expects the
     # whole IP header, so the kernel computes nothing for us.
@@ -35,13 +42,6 @@ def build_datagram(src: str, dst: str, sport: int, dport: int, payload: bytes) -
     header = struct.pack(">BBHHHBBH", 0x45, 0, total_length, 0, 0, 64, socket.IPPROTO_UDP, 0) + src_bytes + dst_bytes
     header = header[:10] + struct.pack(">H", _checksum(header)) + header[12:]
     return header + udp
-
-
-def _documentation_address(value: str) -> str:
-    address = ipaddress.ip_address(value)
-    if not any(address in net for net in _DOCUMENTATION_NETWORKS):
-        raise argparse.ArgumentTypeError(f"--src {value} is not a documentation address (RFC 5737: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24); this tool forges only those")
-    return value
 
 
 def main(argv: "list[str] | None" = None) -> int:

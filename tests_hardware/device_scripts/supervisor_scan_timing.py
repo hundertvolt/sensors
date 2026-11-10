@@ -99,19 +99,19 @@ async def _main() -> None:
     done()
 
 
-def _starter(end: asyncio.Event) -> "TaskStarter":
-    def start() -> "asyncio.Task[None]":
-        return asyncio.create_task(_ends_on(end))
-
-    return start
-
-
 async def _ends_on(end: asyncio.Event) -> None:
     await end.wait()
 
 
 async def _ntp_never_synced() -> bool:
     return False
+
+
+def _starter(end: asyncio.Event) -> "TaskStarter":
+    def start() -> "asyncio.Task[None]":
+        return asyncio.create_task(_ends_on(end))
+
+    return start
 
 
 asyncio.run(_main())

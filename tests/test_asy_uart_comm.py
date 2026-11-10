@@ -3012,10 +3012,6 @@ class _StarvedAlloc:
         self.armed = False
         self.fired = 0
 
-    def arm(self, skip: int = 0) -> None:
-        self.skip = skip
-        self.armed = True
-
     def __call__(self, *args: int) -> bytearray:
         if self.armed:
             if self.skip:
@@ -3032,6 +3028,10 @@ class _StarvedAlloc:
 
     def __exit__(self, *exc: object) -> None:
         asy_uart_comm.bytearray = bytearray  # type: ignore[attr-defined]
+
+    def arm(self, skip: int = 0) -> None:
+        self.skip = skip
+        self.armed = True
 
 
 def test_a_scratch_allocation_that_fails_during_construction_refuses_the_object() -> None:

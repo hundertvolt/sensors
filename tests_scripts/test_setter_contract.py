@@ -45,14 +45,8 @@ class Classes:
                     self.nodes[node.name] = node
                     self.file[node.name] = path.name
 
-    def mro(self, name: str) -> list[str]:
-        out, todo = [], [name]
-        while todo:
-            current = todo.pop(0)
-            if current in self.nodes and current not in out:
-                out.append(current)
-                todo.extend(b.id for b in self.nodes[current].bases if isinstance(b, ast.Name))
-        return out
+    def by_name(self, name: str) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
+        return [(cls, fn) for cls, node in self.nodes.items() for fn in node.body if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name == name]
 
     def method(self, cls: str, name: str) -> tuple[str, ast.FunctionDef | ast.AsyncFunctionDef] | None:
         for owner in self.mro(cls):
@@ -61,8 +55,14 @@ class Classes:
                     return owner, fn
         return None
 
-    def by_name(self, name: str) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
-        return [(cls, fn) for cls, node in self.nodes.items() for fn in node.body if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name == name]
+    def mro(self, name: str) -> list[str]:
+        out, todo = [], [name]
+        while todo:
+            current = todo.pop(0)
+            if current in self.nodes and current not in out:
+                out.append(current)
+                todo.extend(b.id for b in self.nodes[current].bases if isinstance(b, ast.Name))
+        return out
 
 
 def _returns(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str:

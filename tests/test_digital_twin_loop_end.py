@@ -87,10 +87,8 @@ class _Plant:
         self.raised_in_phase = 0
         self.watcher: asyncio.Task[None] | None = None
 
-    async def main(self, *, watchdog: "machine.WDT") -> None:
-        self.watchdog = watchdog
-        self.watcher = asyncio.create_task(self._watch())
-        await self.module.main(watchdog=watchdog, cfg_path=self.cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=_ports.next())
+    def _failing_wait(self, _dt: int) -> None:
+        raise OSError(errno.EIO)
 
     async def _watch(self) -> None:
         await _wired(self.module)
@@ -109,8 +107,10 @@ class _Plant:
         else:
             raise SystemExit(3)  # a non-Exception BaseException out of a task: asyncio's loop does not catch it
 
-    def _failing_wait(self, _dt: int) -> None:
-        raise OSError(errno.EIO)
+    async def main(self, *, watchdog: "machine.WDT") -> None:
+        self.watchdog = watchdog
+        self.watcher = asyncio.create_task(self._watch())
+        await self.module.main(watchdog=watchdog, cfg_path=self.cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=_ports.next())
 
 
 class _EntryRuntime:

@@ -234,22 +234,6 @@ async def cancel_all(tasks: "Iterable[asyncio.Task[T]]", settle_yields: int = 0)
         await asyncio.sleep(0)
 
 
-def track_starts(owner: object, method: str) -> "list[asyncio.Task[object]]":
-    # Rebinds owner.<method>, a coroutine method, so each run first records its own task: the handle of a task its owner
-    # keeps no reference to (a system command's shutdown sequence). A task appears once it has begun to run.
-    starts: list[asyncio.Task[object]] = []
-    real = getattr(owner, method)
-
-    async def recorded(*args: object) -> object:
-        task = asyncio.current_task()
-        assert task is not None  # the coroutine runs as its own task
-        starts.append(task)
-        return await real(*args)
-
-    setattr(owner, method, recorded)
-    return starts
-
-
 async def newest_start(starts: "list[asyncio.Task[object]]") -> "asyncio.Task[object]":
     # The newest task track_starts() recorded, after the scheduler rounds a task created just now needs to begin.
     for _ in range(_START_ROUNDS):
@@ -283,3 +267,19 @@ def run_to_interrupt(coro: "Coroutine[object, object, object]") -> bool:
         _core.cur_task = None
         return True
     return False
+
+
+def track_starts(owner: object, method: str) -> "list[asyncio.Task[object]]":
+    # Rebinds owner.<method>, a coroutine method, so each run first records its own task: the handle of a task its owner
+    # keeps no reference to (a system command's shutdown sequence). A task appears once it has begun to run.
+    starts: list[asyncio.Task[object]] = []
+    real = getattr(owner, method)
+
+    async def recorded(*args: object) -> object:
+        task = asyncio.current_task()
+        assert task is not None  # the coroutine runs as its own task
+        starts.append(task)
+        return await real(*args)
+
+    setattr(owner, method, recorded)
+    return starts

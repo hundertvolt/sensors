@@ -19,10 +19,12 @@ class RogueUdpResponder:
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
-    @property
-    def port(self) -> int:
-        # The bound port: the one a redirect must point at when the OS picked it.
-        return int(self._sock.getsockname()[1])
+    def __enter__(self) -> "RogueUdpResponder":
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.stop()
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
@@ -38,6 +40,11 @@ class RogueUdpResponder:
                 continue  # not counted: answered_from holds only what really went out
             self.answered_from[addr[0]] = self.answered_from.get(addr[0], 0) + 1
 
+    @property
+    def port(self) -> int:
+        # The bound port: the one a redirect must point at when the OS picked it.
+        return int(self._sock.getsockname()[1])
+
     def start(self) -> None:
         self._thread.start()
 
@@ -45,10 +52,3 @@ class RogueUdpResponder:
         self._stop_event.set()
         self._thread.join(timeout=_JOIN_TIMEOUT_S)
         self._sock.close()
-
-    def __enter__(self) -> "RogueUdpResponder":
-        self.start()
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        self.stop()

@@ -66,21 +66,6 @@ class DeviceModel:
     device_wiring: "dict[str, dict[str, WiringField]]" = field(default_factory=dict)  # consumer label -> TOML field -> its @wiring tag, filled by validate.py
 
 
-def resolve_instance_key(model: DeviceModel, value: str) -> "tuple[str, str]":
-    # A wiring value is always a plain "driver" or "driver_ext" string, never a pair. Try the
-    # unextended reading first, as every real device's wiring values use it, then fall back to
-    # splitting the last "_"-group off as name_ext - which only a synthetic fixture needs today.
-    key = (value, "")
-    if key in model.instances:
-        return key
-    if "_" in value:
-        driver_part, _, ext_part = value.rpartition("_")
-        alt = (driver_part, ext_part)
-        if alt in model.instances:
-            return alt
-    return key  # unresolved - the caller is responsible for erroring (validate.py already has by the time graph.py/codegen.py ever see this)
-
-
 def load_device(path: Path) -> DeviceModel:
     device = path.stem
     try:
@@ -185,4 +170,19 @@ def lwip_macros(path: Path = VERSIONS_PATH) -> "dict[str, int]":
             field="max_connections",
         )
     return dict(table)
+
+
+def resolve_instance_key(model: DeviceModel, value: str) -> "tuple[str, str]":
+    # A wiring value is always a plain "driver" or "driver_ext" string, never a pair. Try the
+    # unextended reading first, as every real device's wiring values use it, then fall back to
+    # splitting the last "_"-group off as name_ext - which only a synthetic fixture needs today.
+    key = (value, "")
+    if key in model.instances:
+        return key
+    if "_" in value:
+        driver_part, _, ext_part = value.rpartition("_")
+        alt = (driver_part, ext_part)
+        if alt in model.instances:
+            return alt
+    return key  # unresolved - the caller is responsible for erroring (validate.py already has by the time graph.py/codegen.py ever see this)
 

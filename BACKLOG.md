@@ -280,13 +280,13 @@ gates, traps).
   scripts under `--twin`).
 - **The bench `ResetErrors` budget** — on `dev`, after the round's FRAM evidence is saved: the
   `ResetErrors` sweep timed three times each against 0, 1, 2, 3 and 4 concurrent `GET /status`
-  readers, on the concurrent reset the owner chose (owner, 2026-09-26). Then the bench analogue of
+  readers, on the reset one source after another (owner, 2026-11-07). Then the bench analogue of
   the twin's per-sweep budget check goes into `tests_hardware/error_log_helpers.py`, beside its 30 s
   timeout, which alone asserts nothing about elapsed time. Expected: a curve that leaves room for a
   budget below the server's 15 s `outer_cap_s` that "reliably won't fail the pipeline accidentally
   with a false positive" and "will reliably fail if something really went wrong" (the owner's
   standing requirement as BACKLOG.md recorded it on 2026-09-17, `569c6bb`). Last measured 2026-09-25
-  on the one-after-another reset since replaced: about 3.5 s per reader, three readers at
+  on an earlier one-after-another reset: about 3.5 s per reader, three readers at
   13.2-14.7 s, four past the connection ceiling. Wear: none (the clears are FRAM writes). Twin row:
   `_RESET_ERRORS_BUDGET_S` in `scripts/_digital_twin_ci_suite.py`.
 - **S4, the six-hour soak** — on `dev`, after the round's FRAM evidence is saved and on top of a

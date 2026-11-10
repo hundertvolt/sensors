@@ -330,6 +330,12 @@ def _archive_state(ctx: RunContext, label: str) -> None:
     state.mkdir(parents=True, exist_ok=True)
 
 
+def _blank_backups(ctx: RunContext) -> "tuple[str, ...]":
+    # Run 1's SGP40s on FRAM: no boot of it lives long enough to write a backup, so each restore finds the chunk blank.
+    fram = any(inst.driver == "fram" for inst in ctx.instances)
+    return tuple(inst.errcount_name for inst in ctx.instances if inst.driver == "sgp40" and fram)
+
+
 def _boot_entries(table: dict[str, JSONObject]) -> list[tuple[str, JSONValue, JSONValue]]:
     # Every E and W slot of one errcount table as (module, type, num), in the table's order: what a boot logged.
     return [(name, kind, num) for name, entry in table.items() for kind, num in _error_codes(entry) if kind in ("E", "W")]
@@ -597,15 +603,15 @@ def _link_crc_modes(device_toml: Path) -> list[str]:
     return [str(spec.fields.get("crc", "none")) for spec in model.instances.values() if spec.driver == "uart_link"]
 
 
+def _link_failures(before: JSONObject, after: JSONObject) -> int:
+    # One process's own failures: a boot-time warning folded into an older slot before it cancels out.
+    return _failure_events(after) - (_failure_events(before) if before else 0)
+
+
 def _link_responders(device_toml: Path) -> frozenset[str]:
     # The fault key of each uart_link instance of a TOML whose role is responder.
     model = load_device(device_toml)
     return frozenset(instance_label(spec.key) for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "responder")
-
-
-def _link_failures(before: JSONObject, after: JSONObject) -> int:
-    # One process's own failures: a boot-time warning folded into an older slot before it cancels out.
-    return _failure_events(after) - (_failure_events(before) if before else 0)
 
 
 def _logs_dir(args: argparse.Namespace) -> Path:
@@ -722,12 +728,6 @@ def _put_system_cmd(cmd: JSONValue) -> str | None:
     result = body.get("result")
     word = result.get("SystemCmd") if isinstance(result, dict) else None
     return word if isinstance(word, str) else None
-
-
-def _blank_backups(ctx: RunContext) -> "tuple[str, ...]":
-    # Run 1's SGP40s on FRAM: no boot of it lives long enough to write a backup, so each restore finds the chunk blank.
-    fram = any(inst.driver == "fram" for inst in ctx.instances)
-    return tuple(inst.errcount_name for inst in ctx.instances if inst.driver == "sgp40" and fram)
 
 
 def _real_reading(reading: object) -> bool:

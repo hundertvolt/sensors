@@ -25,6 +25,9 @@ class _FakeBoard:
         self.answers = {name: list(queue) for name, queue in answers.items()}
         self.runs: list[tuple[str, float | None]] = []
 
+    def count(self, script: Path) -> int:
+        return sum(1 for name, _ in self.runs if name == script.stem)
+
     def run_isolated(self, script_path: "str | Path", *, soft_reset_after: bool = True, timeout_s: "float | None" = None, allow_recovery: bool = True, **extras: object) -> str:
         del soft_reset_after, allow_recovery, extras
         name = Path(script_path).stem
@@ -33,9 +36,6 @@ class _FakeBoard:
         if isinstance(answer, Exception):
             raise answer
         return answer
-
-    def count(self, script: Path) -> int:
-        return sum(1 for name, _ in self.runs if name == script.stem)
 
 
 _INTERVAL_OK = _facts(interval=_INTERVAL)

@@ -237,6 +237,18 @@ def _inline(text: str, rendering: _Rendering, source: Path) -> str:
     return "".join(out)
 
 
+def _never_started(result: "MpremoteResult") -> bool:
+    # A transient marker with stdout empty or holding only the one bytes repr mpremote prints of its read: it raises "could
+    # not enter raw repl" only before a command's bytes go out, then exits (tools/mpremote/mpremote/transport_serial.py:
+    # 178-210, 270-295, v1.29.0), and a started script's own output is never that one repr alone.
+    lines = result.stdout.splitlines()
+    try:
+        echo_only = not lines or (len(lines) == 1 and isinstance(ast.literal_eval(lines[0]), bytes))
+    except (ValueError, SyntaxError):
+        echo_only = False
+    return echo_only and any(marker in result.stderr.lower() for marker in _TRANSIENT_MARKERS)
+
+
 def _open_probe(host: str, port: int, connect_timeout_s: float = 2.0) -> "socket.socket | None":
     # A connected socket, or None when the connect itself fails - its own timeout, apart from the
     # probe's read timeout, so a slow handshake is never mistaken for a held-open connection.
@@ -269,18 +281,6 @@ def _poll(check: "Callable[[], bool]", bound_s: float, step_s: float = _USB_GRAC
             return False
         time.sleep(step_s)
     return True
-
-
-def _never_started(result: "MpremoteResult") -> bool:
-    # A transient marker with stdout empty or holding only the one bytes repr mpremote prints of its read: it raises "could
-    # not enter raw repl" only before a command's bytes go out, then exits (tools/mpremote/mpremote/transport_serial.py:
-    # 178-210, 270-295, v1.29.0), and a started script's own output is never that one repr alone.
-    lines = result.stdout.splitlines()
-    try:
-        echo_only = not lines or (len(lines) == 1 and isinstance(ast.literal_eval(lines[0]), bytes))
-    except (ValueError, SyntaxError):
-        echo_only = False
-    return echo_only and any(marker in result.stderr.lower() for marker in _TRANSIENT_MARKERS)
 
 
 def _retryable_picotool_exit(code: int) -> bool:
@@ -506,23 +506,12 @@ def fram_backed_logger_names(device: "str | None" = None) -> "list[str]":
     return [str(name) for name in names]
 
 
-def scratch_config_entries() -> "tuple[tuple[str, str, str], ...]":
-    # What a scratch-config build leaves on FRAM: each FRAM-backed config store's file not found, as provokes_log names it.
-    return tuple((name, "W", "CFG_FILE_UNREADABLE") for name in fram_backed_logger_names() if name.startswith("CFGMGR_"))
-
-
 def hotspot_password(device: "str | None" = None) -> str:
     # The hotspot password the device's TOML builds in ([device] hotspot_password), the bench board's by default.
     password = _device_table(device or bench_device()).get("hotspot_password")
     if not isinstance(password, str):
         raise HardwareNotAvailableError(f"{device_toml(device)} sets no string [device] hotspot_password")
     return password
-
-
-def kick_then_reset(board: "Board", bench: "BenchBridge") -> None:
-    # kick_all_stations()'s workaround, then the reset: no stale AP-side entry outlives the DUT's reboot.
-    bench.kick_all_stations()
-    board.hard_reset()
 
 
 def kick_after_reset(board: "Board", bench: "BenchBridge", timeout_s: float) -> float:
@@ -534,6 +523,12 @@ def kick_after_reset(board: "Board", bench: "BenchBridge", timeout_s: float) -> 
     gone = time.monotonic()
     bench.kick_all_stations()
     return gone
+
+
+def kick_then_reset(board: "Board", bench: "BenchBridge") -> None:
+    # kick_all_stations()'s workaround, then the reset: no stale AP-side entry outlives the DUT's reboot.
+    bench.kick_all_stations()
+    board.hard_reset()
 
 
 def observe_during(board: "Board", action: "Callable[[], T]") -> "tuple[T, list[str]]":
@@ -592,6 +587,24 @@ def parse_facts(output: str, *, allow_missing_done: bool = False) -> "dict[str, 
     return facts
 
 
+def picotool(board: "Board", *args: str, timeout_s: float) -> None:
+    # `sudo picotool <args>` against the board in BOOTSEL, retried only while no BOOTSEL device is enumerated yet (each
+    # retry recorded on the board); any other failed exit, or the last, raises with picotool's own output.
+    for attempt in range(1, _PICOTOOL_ATTEMPTS + 1):
+        try:
+            done = subprocess.run(["sudo", "picotool", *args], cwd=REPO_ROOT, capture_output=True, text=True, timeout=timeout_s, check=False)
+        except FileNotFoundError as exc:
+            raise HardwareNotAvailableError(f"picotool not on sudo's PATH: {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise HardwareTestFailureError(f"picotool {' '.join(args)} timed out after {timeout_s}s") from exc
+        if done.returncode == 0:
+            return
+        if not _retryable_picotool_exit(done.returncode) or attempt == _PICOTOOL_ATTEMPTS:
+            raise HardwareTestFailureError(f"picotool {' '.join(args)} failed on attempt {attempt} (exit {done.returncode}):\n{done.stdout}\n{done.stderr}")
+        board.recovery_events.append(f"picotool {args[0]} attempt {attempt}: exit {done.returncode} (no BOOTSEL device yet), retried after {_PICOTOOL_RETRY_BACKOFF_S}s")
+        time.sleep(_PICOTOOL_RETRY_BACKOFF_S)
+
+
 def recover_by_reset(
     board: "Board",
     bench: "BenchBridge",
@@ -619,24 +632,6 @@ def recover_by_reset(
         finally:
             _CONSOLE_WANTED.clear()
         wait_until(ready, retry_wait_s, description=f"{description} (after one recovery kick + hard_reset())")
-
-
-def picotool(board: "Board", *args: str, timeout_s: float) -> None:
-    # `sudo picotool <args>` against the board in BOOTSEL, retried only while no BOOTSEL device is enumerated yet (each
-    # retry recorded on the board); any other failed exit, or the last, raises with picotool's own output.
-    for attempt in range(1, _PICOTOOL_ATTEMPTS + 1):
-        try:
-            done = subprocess.run(["sudo", "picotool", *args], cwd=REPO_ROOT, capture_output=True, text=True, timeout=timeout_s, check=False)
-        except FileNotFoundError as exc:
-            raise HardwareNotAvailableError(f"picotool not on sudo's PATH: {exc}") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise HardwareTestFailureError(f"picotool {' '.join(args)} timed out after {timeout_s}s") from exc
-        if done.returncode == 0:
-            return
-        if not _retryable_picotool_exit(done.returncode) or attempt == _PICOTOOL_ATTEMPTS:
-            raise HardwareTestFailureError(f"picotool {' '.join(args)} failed on attempt {attempt} (exit {done.returncode}):\n{done.stdout}\n{done.stderr}")
-        board.recovery_events.append(f"picotool {args[0]} attempt {attempt}: exit {done.returncode} (no BOOTSEL device yet), retried after {_PICOTOOL_RETRY_BACKOFF_S}s")
-        time.sleep(_PICOTOOL_RETRY_BACKOFF_S)
 
 
 def reflash(board: "Board", uf2_path: Path) -> None:
@@ -737,6 +732,11 @@ def schema_default(src_file: str, field: str) -> object:
     if field not in fields:
         raise HardwareNotAvailableError(f"src/{src_file} declares no schema field {field!r} (it has {sorted(fields)})")
     return fields[field][1]
+
+
+def scratch_config_entries() -> "tuple[tuple[str, str, str], ...]":
+    # What a scratch-config build leaves on FRAM: each FRAM-backed config store's file not found, as provokes_log names it.
+    return tuple((name, "W", "CFG_FILE_UNREADABLE") for name in fram_backed_logger_names() if name.startswith("CFGMGR_"))
 
 
 def wait_for_boot(board: "Board", timeout_s: float) -> "list[str]":

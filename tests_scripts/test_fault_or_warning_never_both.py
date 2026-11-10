@@ -132,6 +132,11 @@ class _Walk:
     breaks: "list[set[Event]]" = field(default_factory=list)
     continues: "list[set[Event]]" = field(default_factory=list)
 
+    def block(self, stmts: "list[ast.stmt]", pending: "set[Event]") -> "set[Event]":
+        for stmt in stmts:
+            pending = self.stmt(stmt, pending)
+        return pending
+
     def calls(self, node: ast.AST, pending: "set[Event]") -> "set[Event]":
         found = []
         stack = [node]
@@ -148,24 +153,6 @@ class _Walk:
                 self.pairs.update((self.module.path, self.function, before, event) for before in pending if before[0] != kind)
                 pending = {event}
         return pending
-
-    def block(self, stmts: "list[ast.stmt]", pending: "set[Event]") -> "set[Event]":
-        for stmt in stmts:
-            pending = self.stmt(stmt, pending)
-        return pending
-
-    def stmt(self, stmt: ast.stmt, pending: "set[Event]") -> "set[Event]":
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            return pending
-        if isinstance(stmt, (ast.Return, ast.Raise)):
-            self.calls(stmt, pending)
-            return set()  # the path ends here
-        if isinstance(stmt, (ast.Break, ast.Continue)):
-            targets = self.breaks if isinstance(stmt, ast.Break) else self.continues
-            if targets:
-                targets[-1] |= pending
-            return set()
-        return self.compound(stmt, pending)
 
     def compound(self, stmt: ast.stmt, pending: "set[Event]") -> "set[Event]":
         if isinstance(stmt, ast.If):
@@ -194,6 +181,19 @@ class _Walk:
         if isinstance(stmt, ast.While) and isinstance(stmt.test, ast.Constant) and stmt.test.value:
             return broken  # `while True` leaves only through a break
         return self.block(stmt.orelse, pending | body | continued) | broken
+
+    def stmt(self, stmt: ast.stmt, pending: "set[Event]") -> "set[Event]":
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return pending
+        if isinstance(stmt, (ast.Return, ast.Raise)):
+            self.calls(stmt, pending)
+            return set()  # the path ends here
+        if isinstance(stmt, (ast.Break, ast.Continue)):
+            targets = self.breaks if isinstance(stmt, ast.Break) else self.continues
+            if targets:
+                targets[-1] |= pending
+            return set()
+        return self.compound(stmt, pending)
 
     def try_(self, stmt: "ast.Try | ast.TryStar", pending: "set[Event]") -> "set[Event]":
         # A handler is entered from the start of any statement of the try body, and from the end of its last.

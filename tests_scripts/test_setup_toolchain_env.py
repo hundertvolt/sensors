@@ -978,14 +978,14 @@ class _FlagOnLine:
     def __init__(self, line: str, flag: Path) -> None:
         self.line, self.flag, self.text = line, flag, ""
 
+    def flush(self) -> None:
+        pass
+
     def write(self, text: str) -> int:
         self.text += text
         if self.line in self.text:
             self.flag.touch()
         return len(text)
-
-    def flush(self) -> None:
-        pass
 
 
 def test_run_streams_each_line_while_the_command_still_runs(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

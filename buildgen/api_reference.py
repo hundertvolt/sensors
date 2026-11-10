@@ -107,17 +107,6 @@ def _read_result_words(src_dir: Path, device: str) -> "list[JsonValue]":
     return words
 
 
-def _read_wire_text(src_dir: Path, filename: str, name: str, device: str) -> str:
-    # A text the server sends as it is: the degraded-source marker's word, the unknown-code descr.
-    text = _module_literal(src_dir, filename, name, device)
-    if not isinstance(text, str):
-        raise BuildError(
-            device, f"{src_dir / filename}: {name} is {text!r}, not a string", field=name,
-            rule="api.wire-text-not-string", fix=f"bind {name} in {filename} to the text the server sends, a string",
-        )
-    return text
-
-
 def _read_routes(src_dir: Path, device: str, filename: str = _WEBSERVER, routes: "list[tuple[str, str]] | None" = None) -> "list[tuple[str, str]]":
     # ROUTES' (method, path) pairs in registration order, after `routes`; a row of any other shape, or a repeat, fails here.
     rows = _module_literal(src_dir, filename, "ROUTES", device)
@@ -150,6 +139,17 @@ def _read_standard_codes(src_dir: Path, device: str) -> JsonDict:
             rule="api.envelope-codes-malformed", fix="write _STANDARD_CODES as a literal mapping each int code to its text",
         )
     return {str(code): str(text) for code, text in sorted(codes.items())}
+
+
+def _read_wire_text(src_dir: Path, filename: str, name: str, device: str) -> str:
+    # A text the server sends as it is: the degraded-source marker's word, the unknown-code descr.
+    text = _module_literal(src_dir, filename, name, device)
+    if not isinstance(text, str):
+        raise BuildError(
+            device, f"{src_dir / filename}: {name} is {text!r}, not a string", field=name,
+            rule="api.wire-text-not-string", fix=f"bind {name} in {filename} to the text the server sends, a string",
+        )
+    return text
 
 
 def _route_groups(method: str, section: "JsonDict | None", errcount_modules: "list[JsonValue]", device: str) -> "list[JsonValue]":

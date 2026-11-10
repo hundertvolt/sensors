@@ -19,58 +19,8 @@ class OverrideError(Exception):
     pass
 
 
-def _read_anchor_source(path: Path, override_name: str) -> str:
-    if not path.exists():
-        raise OverrideError(
-            f"{override_name}: expected source file not found at {path} - MicroPython's own file "
-            "layout has changed. Re-verify this override against the current pinned source and "
-            "update it (SPECIFICATION.md Part B.14) before retrying.",
-        )
-    return path.read_text(encoding="utf-8")
-
-
 # What a generated make, CMake, C or manifest line cannot carry unquoted: whitespace and these.
 _UNEMBEDDABLE_CHARS = "\"'\\$#;:"
-
-
-def _embeddable(path: Path, what: str) -> Path:
-    # paths are resolved, and refused when a generated file cannot carry them
-    path = path.resolve()
-    for char in str(path):
-        if char.isspace() or char in _UNEMBEDDABLE_CHARS:
-            raise OverrideError(f"{what}: the path {path} contains {char!r}, which the generated make/CMake/C/manifest text cannot carry - use a --toolchain-dir (or $PICO_TOOLCHAIN_DIR) without whitespace, quotes, backslashes, '$', '#', ';' or ':'")
-    return path
-
-
-def _fresh_dir(path: Path) -> Path:
-    # An override's directory, emptied first: a file an older generator wrote would otherwise still be
-    # compiled (a variant's *.c) or found first on an include path, after a re-run over a dirty toolchain.
-    if path.exists():
-        shutil.rmtree(path)
-    path.mkdir(parents=True)
-    return path
-
-
-def _count_once(text: str, anchor: str, where: Path, name: str, tail: str) -> int:
-    # The anchor's one position in text; absent or repeated is an OverrideError naming both.
-    count = text.count(anchor)
-    if count != 1:
-        state = "not found" if count == 0 else f"found {count} times, not once"
-        raise OverrideError(f"{name}: expected {anchor!r} {state} in {where} - {tail}")
-    return text.index(anchor)
-
-
-def _require_in_order(micropython_dir: Path, name: str, relative: str, anchors: tuple[str, ...], tail: str) -> None:
-    # Each anchor present in micropython_dir/relative, each after the one before it.
-    path = micropython_dir / relative
-    text = _read_anchor_source(path, name)
-    position = 0
-    for anchor in anchors:
-        found = text.find(anchor, position)
-        if found < 0:
-            state = "is no longer after the anchor before it" if anchor in text else "is gone"
-            raise OverrideError(f"{name}: expected {anchor!r} in {path} {state} - {tail}")
-        position = found + len(anchor)
 
 
 # A GCC >= 14 -Warray-bounds false positive in mbedtls_xor() (SPECIFICATION.md B.7.1), suppressed in
@@ -100,59 +50,6 @@ UNIX_KBD_INTR_SENTINEL = "MICROPY_SENSORS_KBD_INTR_OVERRIDE_APPLIED"
 _UNIX_KBD_INTR_ANCHOR = "#define MICROPY_ASYNC_KBD_INTR         (!MICROPY_PY_THREAD_GIL)"
 
 
-def verify_unix_kbd_intr_anchor(micropython_dir: Path) -> Path:
-    common_header = micropython_dir / "ports" / "unix" / "variants" / "mpconfigvariant_common.h"
-    text = _read_anchor_source(common_header, "unix_kbd_intr")
-    if _UNIX_KBD_INTR_ANCHOR not in text:
-        raise OverrideError(
-            f"unix_kbd_intr: expected anchor line not found in {common_header} - "
-            "MICROPY_ASYNC_KBD_INTR's own definition has changed upstream (renamed, reguarded, or "
-            "the async/immediate nlr_raise()-from-signal-handler mechanism itself was restructured "
-            "in ports/unix/unix_mphal.c's sighandler()). Re-verify against the new pinned source "
-            "and update this override's anchor and generated #undef/#define pair accordingly - "
-            "SPECIFICATION.md Part B.14.1. Do NOT remove this check and build unpatched: an "
-            "interrupt mid critical section can corrupt VM state (reproduced as a garbled, "
-            "impossible traceback - SPECIFICATION.md B.14.1).",
-        )
-    return common_header
-
-
-def _unix_kbd_intr_header(real_variant_dir: Path) -> str:
-    # The generated mpconfigvariant.h's first part: the real one, then the safe SIGINT path and the
-    # sentinel the post-build readback looks for; _unix_variant_header() adds the mark stack.
-    return (
-        f'#include "{real_variant_dir / "mpconfigvariant.h"}"\n'
-        "// SPECIFICATION.md Part B.14.1: force MicroPython's own safe,\n"
-        "// deferred SIGINT-delivery path - see toolchain/micropython_overrides.py.\n"
-        "#undef MICROPY_ASYNC_KBD_INTR\n"
-        "#define MICROPY_ASYNC_KBD_INTR (0)\n"
-        f"#define {UNIX_KBD_INTR_SENTINEL} 1\n"
-    )
-
-
-def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> dict[str, str]:
-    # Points the Unix standard variant's VARIANT_DIR at an external directory that #includes the real
-    # variant files, forces MICROPY_ASYNC_KBD_INTR to 0 and sets the mark stack (B.14.6); paths are
-    # resolved and refused when unembeddable. Returns build_unix_port()'s extra `make` variables; B.14.1.
-    micropython_dir = _embeddable(micropython_dir, "unix_kbd_intr")
-    overrides_dir = _embeddable(overrides_dir, "unix_kbd_intr")
-    verify_unix_kbd_intr_anchor(micropython_dir)
-    verify_unix_gc_stack_anchor(micropython_dir)
-    real_variant_dir = micropython_dir / "ports" / "unix" / "variants" / "standard"
-    override_dir = _fresh_dir(overrides_dir / UNIX_KBD_INTR_DIR_NAME)
-    (override_dir / "mpconfigvariant.h").write_text(_unix_variant_header(real_variant_dir), encoding="utf-8")
-    # mpconfigvariant.mk/manifest.py both relay to the real files rather than copying their
-    # content, so neither can silently drift out of sync with a future pinned-version change -
-    # `include()` is the freeze-manifest DSL's own primitive for exactly this (tools/manifestfile.py).
-    (override_dir / "mpconfigvariant.mk").write_text(  # GNU make's include takes no quotes; _embeddable() guards it
-        f'include {real_variant_dir / "mpconfigvariant.mk"}\n{_UNIX_MBEDTLS_ARRAY_BOUNDS}', encoding="utf-8",
-    )
-    real_manifest = real_variant_dir / "manifest.py"
-    if real_manifest.exists():
-        (override_dir / "manifest.py").write_text(f"include({str(real_manifest)!r})\n", encoding="utf-8")
-    return {"VARIANT": "standard", "VARIANT_DIR": str(override_dir)}
-
-
 # ---------------------------------------------------------------------------------------------
 # unix_gc_stack: every Unix-port build marks with a larger GC stack than MicroPython's 64, so a
 # collection on the test heap never re-scans the whole heap after a stack overflow. Time only; the
@@ -180,25 +77,6 @@ UNIX_QSTR_BYTES_IN_LEN = 2
 _UNIX_QSTR_LEN_ANCHOR = "#ifndef MICROPY_QSTR_BYTES_IN_LEN\n#define MICROPY_QSTR_BYTES_IN_LEN (1)\n#endif\n"
 _UNIX_QSTR_LEN_REVERIFY = "the qstr length width's guarded default changed upstream - re-check that a launch string over 255 bytes still kills the rig and set the width again (SPECIFICATION.md F.7 row 32)"
 _UNIX_GC_STACK_REVERIFY = "the GC mark stack's default or its overflow path changed upstream - re-derive the rig's mark stack, or retire it if the overflow no longer re-scans the heap (SPECIFICATION.md B.14.6)"
-
-
-def verify_unix_gc_stack_anchor(micropython_dir: Path) -> None:
-    for relative, anchors in _UNIX_GC_STACK_ANCHORS:
-        _require_in_order(micropython_dir, "unix_gc_stack", relative, anchors, _UNIX_GC_STACK_REVERIFY)
-    _require_in_order(micropython_dir, "unix_qstr_len", "py/mpconfig.h", (_UNIX_QSTR_LEN_ANCHOR,), _UNIX_QSTR_LEN_REVERIFY)
-
-
-def _unix_variant_header(real_variant_dir: Path) -> str:
-    # The generated mpconfigvariant.h of the standard and settrace builds, which the host lwIP build
-    # starts from: the SIGINT part (B.14.1), the mark stack (B.14.6), then the qstr length width (F.7).
-    return (
-        f"{_unix_kbd_intr_header(real_variant_dir)}"
-        "// SPECIFICATION.md Part B.14.6: a mark stack deep enough that a collection never\n"
-        "// re-scans the whole test heap; time only, the firmware keeps 64.\n"
-        f"#define MICROPY_ALLOC_GC_STACK_SIZE ({UNIX_GC_STACK_ENTRIES})\n"
-        "// SPECIFICATION.md F.7 row 32: launch strings past 255 bytes; the firmware keeps one length byte.\n"
-        f"#define MICROPY_QSTR_BYTES_IN_LEN ({UNIX_QSTR_BYTES_IN_LEN})\n"
-    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -251,40 +129,6 @@ _LWIP_REVERIFY = (
 )
 
 
-def _require_anchor(text: str, anchor: str, where: Path, what: str) -> None:
-    if anchor not in text:
-        raise OverrideError(f"lwip_connection_counts: expected {what} not found in {where} - {anchor!r} is gone. {_LWIP_REVERIFY}")
-
-
-def verify_lwip_connection_counts_anchor(micropython_dir: Path, board: str) -> None:
-    # Checks every pinned-source fact this override depends on: lwIP's own `#if !defined` guards,
-    # MicroPython's atomic MEM_SIZE block and its plain #defines, the rp2 CMake include order, and
-    # the board directory's own shape. Raises OverrideError naming the drift; see Part B.14.2.
-    opt_h = micropython_dir / "lib" / "lwip" / "src" / "include" / "lwip" / "opt.h"
-    opt_text = _read_anchor_source(opt_h, "lwip_connection_counts")
-    for macro in LWIP_MACROS_GUARDED_IN_OPT_H:
-        _require_anchor(opt_text, f"#if !defined {macro} || defined __DOXYGEN__", opt_h, f"lwIP's own guard for {macro}")
-
-    common_h = micropython_dir / "extmod" / "lwip-include" / "lwipopts_common.h"
-    common_text = _read_anchor_source(common_h, "lwip_connection_counts")
-    for anchor in _LWIP_COMMON_ANCHORS:
-        _require_anchor(common_text, anchor, common_h, "MicroPython's own pinned lwIP option")
-
-    rp2_lwipopts = micropython_dir / "ports" / "rp2" / "lwip_inc" / "lwipopts.h"
-    _require_anchor(_read_anchor_source(rp2_lwipopts, "lwip_connection_counts"), _RP2_LWIPOPTS_ANCHOR, rp2_lwipopts, "the rp2 port's include of the common options")
-
-    rp2_cmake = micropython_dir / "ports" / "rp2" / "CMakeLists.txt"
-    cmake_text = _read_anchor_source(rp2_cmake, "lwip_connection_counts")
-    for anchor in _RP2_CMAKE_ANCHORS:
-        _require_anchor(cmake_text, anchor, rp2_cmake, "the rp2 port's board/include wiring")
-
-    board_cmake = micropython_dir / "ports" / "rp2" / "boards" / board / "mpconfigboard.cmake"
-    _require_anchor(_read_anchor_source(board_cmake, "lwip_connection_counts"), _BOARD_CMAKE_ANCHOR, board_cmake, f"{board}'s own frozen-manifest line")
-    for name in ("mpconfigboard.h", "manifest.py", "pins.csv"):
-        if not (board_cmake.parent / name).is_file():
-            raise OverrideError(f"lwip_connection_counts: {board}'s board directory no longer contains {name} ({board_cmake.parent}), so the generated board directory cannot relay it. {_LWIP_REVERIFY}")
-
-
 # lwIP's options are NOT independent: lib/lwip/src/core/init.c turns each relationship below into a
 # compile-time #error, and opt.h DERIVES four more values from the ones set here. Mirrored here to
 # fail before the build, naming the relationship, rather than in a wall of preprocessor output.
@@ -305,169 +149,6 @@ _PBUF_PROTOCOL_HEADER_BYTES = 74
 _MEM_ALIGNMENT = 4  # extmod/lwip-include/lwipopts_common.h
 _U16_MAX = 0xFFFF
 _MIN_TCP_SND_QUEUELEN = 2  # lwIP's own floor, lib/lwip/src/core/init.c:157
-
-
-def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
-    # The four values lwIP's own opt.h computes from the ones this override sets, by the same
-    # formulas (TCP_SND_QUEUELEN / TCP_SNDLOWAT / TCP_SNDQUEUELOWAT / PBUF_POOL_BUFSIZE). They are
-    # what most of init.c's sanity checks are really about, and none of them is settable here.
-    mss, snd_buf = macros["TCP_MSS"], macros["TCP_SND_BUF"]
-    snd_queuelen = (4 * snd_buf + (mss - 1)) // mss
-    return {
-        "TCP_SND_QUEUELEN": snd_queuelen,
-        "TCP_SNDLOWAT": min(max(snd_buf // 2, 2 * mss + 1), snd_buf - 1),
-        "TCP_SNDQUEUELOWAT": max(snd_queuelen // 2, 5),
-        # LWIP_MEM_ALIGN_SIZE at MEM_ALIGNMENT 4 (lwipopts_common.h) over TCP_MSS plus the headers.
-        "PBUF_POOL_BUFSIZE": ((mss + _PBUF_PROTOCOL_HEADER_BYTES) + 3) & ~3,
-    }
-
-
-def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = None) -> list[str]:
-    # Every init.c relationship over the options set or derived here, plus the three it does NOT
-    # check: it sizes the shared pools for ONE connection, while this firmware admits max_connections.
-    # Returns the violated relationships; empty means the set is coherent.
-    d = derive_lwip_dependents(macros)
-    mss, snd_buf, wnd = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["TCP_WND"]
-    seg, pool, pool_buf = macros["MEMP_NUM_TCP_SEG"], macros["PBUF_POOL_SIZE"], d["PBUF_POOL_BUFSIZE"]
-    queuelen = d["TCP_SND_QUEUELEN"]
-    problems: list[str] = []
-    # --- lwIP's own, from lib/lwip/src/core/init.c. The port leaves MEMP_MEM_MALLOC, LWIP_WND_SCALE
-    # and LWIP_DISABLE_*_SANITY_CHECKS at 0 and LWIP_TCP/LWIP_UDP at 1, so every one is live. ---
-    if macros["MEMP_NUM_UDP_PCB"] <= 0:
-        problems.append(f"MEMP_NUM_UDP_PCB ({macros['MEMP_NUM_UDP_PCB']}) <= 0 - lwIP requires at least one UDP pcb with LWIP_UDP enabled")
-    if macros["MEMP_NUM_TCP_PCB"] <= 0:
-        problems.append(f"MEMP_NUM_TCP_PCB ({macros['MEMP_NUM_TCP_PCB']}) <= 0 - lwIP requires at least one TCP pcb with LWIP_TCP enabled")
-    if wnd > _U16_MAX:
-        problems.append(f"TCP_WND ({wnd}) > 0xFFFF - it must fit in a u16_t without LWIP_WND_SCALE, which this port does not enable")
-    if queuelen > _U16_MAX:
-        problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) > 0xFFFF - it must fit in a u16_t")
-    if queuelen < _MIN_TCP_SND_QUEUELEN:
-        problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) < {_MIN_TCP_SND_QUEUELEN} - lwIP needs at least {_MIN_TCP_SND_QUEUELEN} for no-copy writes")
-    if pool_buf <= _MEM_ALIGNMENT:
-        problems.append(f"PBUF_POOL_BUFSIZE ({pool_buf}) <= MEM_ALIGNMENT ({_MEM_ALIGNMENT})")
-    if seg < queuelen:
-        problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS)")
-    if snd_buf < 2 * mss:
-        problems.append(f"TCP_SND_BUF ({snd_buf}) < 2 * TCP_MSS ({2 * mss})")
-    if queuelen < 2 * (snd_buf // mss):
-        problems.append(f"TCP_SND_QUEUELEN ({queuelen}) < 2 * (TCP_SND_BUF / TCP_MSS) ({2 * (snd_buf // mss)})")
-    if d["TCP_SNDLOWAT"] >= snd_buf:
-        problems.append(f"TCP_SNDLOWAT ({d['TCP_SNDLOWAT']}) >= TCP_SND_BUF ({snd_buf})")
-    if mss >= (16 * 1024) - 1:
-        problems.append(f"TCP_MSS ({mss}) >= 16383, which underflows lwIP's own TCP_SNDLOWAT calculation")
-    if d["TCP_SNDLOWAT"] >= _U16_MAX - 4 * mss:
-        problems.append(f"TCP_SNDLOWAT ({d['TCP_SNDLOWAT']}, derived from TCP_SND_BUF/TCP_MSS) >= 0xFFFF - 4 * TCP_MSS ({_U16_MAX - 4 * mss}) - it must stay 4 * TCP_MSS below u16_t overflow")
-    if d["TCP_SNDQUEUELOWAT"] >= queuelen:
-        problems.append(f"TCP_SNDQUEUELOWAT ({d['TCP_SNDQUEUELOWAT']}) >= TCP_SND_QUEUELEN ({queuelen})")
-    if pool and pool_buf <= _PBUF_PROTOCOL_HEADER_BYTES:
-        problems.append(f"PBUF_POOL_BUFSIZE ({pool_buf}) leaves no room past the {_PBUF_PROTOCOL_HEADER_BYTES}-byte protocol headers")
-    if pool and wnd > pool * (pool_buf - _PBUF_PROTOCOL_HEADER_BYTES):
-        problems.append(f"TCP_WND ({wnd}) > PBUF_POOL_SIZE * (PBUF_POOL_BUFSIZE - headers) ({pool * (pool_buf - _PBUF_PROTOCOL_HEADER_BYTES)})")
-    if wnd < mss:
-        problems.append(f"TCP_WND ({wnd}) < TCP_MSS ({mss})")
-    if max_connections is None:
-        return problems
-    if max_connections < 1:  # every share below divides by it, and admitting nothing serves nothing
-        problems.append(f"max_connections ({max_connections}) < 1 - the per-connection relationships are undefined for a ceiling admitting no connection")
-        return problems
-    return problems + _per_connection_problems(macros, max_connections)
-
-
-def _per_connection_problems(macros: dict[str, int], max_connections: int) -> list[str]:
-    # The three relationships lwIP does not check, because it sizes for one connection and we admit N.
-    mss, snd_buf, seg = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["MEMP_NUM_TCP_SEG"]
-    problems: list[str] = []
-    want_pcb = max_connections + SPARE_TCP_PCBS
-    if macros["MEMP_NUM_TCP_PCB"] < want_pcb:
-        problems.append(f"MEMP_NUM_TCP_PCB ({macros['MEMP_NUM_TCP_PCB']}) < max_connections + {SPARE_TCP_PCBS} ({want_pcb}) - connections still closing and the one queued over-ceiling arrival hold PCBs from the same pool")
-    # Segments are a GLOBAL pool while TCP_SND_QUEUELEN is PER connection, so one connection can
-    # drain the pool. Every admitted connection gets a full window of full-MSS segments; short writes and
-    # closing pcbs can still drain it (SPECIFICATION.md Part B.14.2.1).
-    want_seg = max_connections * (snd_buf // mss)
-    if seg < want_seg:
-        problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < max_connections * (TCP_SND_BUF / TCP_MSS) ({want_seg}) - {max_connections} connections cannot each hold a full send window")
-    # MEM_SIZE is the arena every outbound byte passes through: modlwip.c's tcp_write() always sets
-    # TCP_WRITE_FLAG_COPY, so the payload is copied into a PBUF_RAM pbuf, which is mem_malloc()'d
-    # from it. Its per-connection share may not fall below the floor above.
-    per_connection = macros["MEM_SIZE"] // max_connections
-    if per_connection < MEM_SIZE_BYTES_PER_CONNECTION_FLOOR:
-        problems.append(f"MEM_SIZE ({macros['MEM_SIZE']}) leaves {per_connection} B per admitted connection, below the {MEM_SIZE_BYTES_PER_CONNECTION_FLOOR} B floor - every outbound byte is copied into this arena (modlwip.c's tcp_write TCP_WRITE_FLAG_COPY)")
-    return problems
-
-
-def validate_lwip_macros(macros: dict[str, int]) -> None:
-    missing = [name for name in LWIP_SETTABLE_MACROS if name not in macros]
-    unknown = sorted(set(macros) - set(LWIP_SETTABLE_MACROS))
-    if missing or unknown:
-        raise OverrideError(
-            f"lwip_connection_counts: [lwip] in toolchain/versions.toml must set exactly "
-            f"{list(LWIP_SETTABLE_MACROS)} - missing {missing}, unrecognized {unknown}. Every macro is "
-            "required even when unchanged, so the firmware's lwIP options are fully pinned and "
-            "reviewable in that one table (SPECIFICATION.md Part B.14.2).",
-        )
-    for name, value in macros.items():
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-            raise OverrideError(f"lwip_connection_counts: [lwip].{name} must be a non-negative int, got {value!r}")
-    if macros["TCP_MSS"] < 1:  # every segment and window derivation divides by it
-        raise OverrideError(f"lwip_connection_counts: [lwip].TCP_MSS must be at least 1, got {macros['TCP_MSS']}")
-    # lwIP's own relationships, always - an incoherent set is a compile-time #error deep inside
-    # lib/lwip/src/core/init.c, and this says the same thing before the build with the relationship
-    # named. The N-connection ones are checked per device by buildgen, which knows N.
-    problems = check_lwip_ensemble(macros)
-    if problems:
-        raise OverrideError(
-            "lwip_connection_counts: [lwip] in toolchain/versions.toml is not a coherent set - lwIP's "
-            "options are NOT independent (lib/lwip/src/core/init.c turns each of these into a "
-            "compile-time #error, and opt.h derives TCP_SND_QUEUELEN/TCP_SNDLOWAT/TCP_SNDQUEUELOWAT/"
-            "PBUF_POOL_BUFSIZE from them):\n  - " + "\n  - ".join(problems),
-        )
-
-
-def _lwip_redefines(macros: dict[str, int]) -> str:
-    # The sentinel closes the one hole a value comparison cannot: if this header is never found,
-    # every option resolves to MicroPython's own default, and a run that happens to ASK for the
-    # defaults would verify clean against a build the override never touched.
-    return f"#define {LWIP_OVERRIDE_SENTINEL} 1\n" + "".join(f"#undef {name}\n#define {name} ({macros[name]})\n" for name in LWIP_SETTABLE_MACROS)
-
-
-def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: Path, board: str, macros: dict[str, int], *, extra_include_dirs: tuple[Path, ...] = ()) -> dict[str, str]:
-    # Generates an out-of-tree board directory whose own lwipopts.h #includes the real one and then
-    # redefines every lwIP option, reached through MicroPython's documented BOARD_DIR redirect; paths
-    # are resolved and refused when unembeddable. Returns build_firmware()'s `make` variables; Part B.14.2.
-    micropython_dir = _embeddable(micropython_dir, "lwip_connection_counts")
-    overrides_dir = _embeddable(overrides_dir, "lwip_connection_counts")
-    extra_include_dirs = tuple(_embeddable(path, "lwip_connection_counts") for path in extra_include_dirs)
-    verify_lwip_connection_counts_anchor(micropython_dir, board)
-    validate_lwip_macros(macros)
-    rp2_dir = micropython_dir / "ports" / "rp2"
-    real_board_dir = rp2_dir / "boards" / board
-    override_dir = _fresh_dir(overrides_dir / LWIP_OVERRIDE_BOARD_DIR_NAME)
-    include_dir = override_dir / LWIP_OVERRIDE_INCLUDE_DIR_NAME
-    include_dir.mkdir()
-    (include_dir / "lwipopts.h").write_text(
-        "// Generated by toolchain/micropython_overrides.py - SPECIFICATION.md Part B.14.2.\n"
-        "// Found ahead of ports/rp2/lwip_inc/lwipopts.h, so these win over both MicroPython's own\n"
-        "// plain #defines and lwIP's opt.h defaults; every option is set, never a subset.\n"
-        f'#include "{rp2_dir / "lwip_inc" / "lwipopts.h"}"\n'
-        f"{_lwip_redefines(macros)}", encoding="utf-8",
-    )
-    # include_directories(BEFORE) at the port's own directory scope, which every target there
-    # inherits ahead of its own target-level dirs - the only ordering that beats `lwip_inc`.
-    # MICROPY_BOARD_PINS is set rather than the csv copied, so pins can never drift from the pin.
-    extra_lines = "".join(f'include_directories(BEFORE "{path}")\n' for path in extra_include_dirs)
-    (override_dir / "mpconfigboard.cmake").write_text(
-        "# Generated by toolchain/micropython_overrides.py - SPECIFICATION.md Part B.14.2.\n"
-        f'set(MICROPY_BOARD_PINS "{real_board_dir / "pins.csv"}")\n'
-        f'include("{real_board_dir / "mpconfigboard.cmake"}")\n'
-        f'include_directories(BEFORE "{include_dir}")\n'
-        f"{extra_lines}{_RP2_MBEDTLS_ARRAY_BOUNDS}", encoding="utf-8",
-    )
-    # Relays, never copies, for the same reason B.14.1's manifest is an include(): neither can
-    # drift from a future pinned-version change. The real board cmake points the frozen manifest at
-    # ${MICROPY_BOARD_DIR}, which is now this directory, so manifest.py has to be relayed too.
-    (override_dir / "mpconfigboard.h").write_text(f'#include "{real_board_dir / "mpconfigboard.h"}"\n', encoding="utf-8")
-    (override_dir / "manifest.py").write_text(f"include({str(real_board_dir / 'manifest.py')!r})\n", encoding="utf-8")
-    return {"BOARD": board, "BOARD_DIR": str(override_dir)}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -578,84 +259,6 @@ _MODLWIP_LISTEN_ALLOC_REVERIFY = (
 )
 
 
-def _micropython_version(micropython_dir: Path, name: str) -> str:
-    # X.Y.Z from the checkout's own py/mpconfig.h, so a generated file names the source it came from.
-    mpconfig = micropython_dir / "py" / "mpconfig.h"
-    text = _read_anchor_source(mpconfig, name)
-    parts = []
-    for define in _MODLWIP_VERSION_DEFINES:
-        match = re.search(rf"^#define {define} (\d+)$", text, re.MULTILINE)
-        if match is None:
-            raise OverrideError(f"{name}: {mpconfig} has no `#define {define} <n>` line - {_MODLWIP_REVERIFY}")
-        parts.append(match.group(1))
-    return ".".join(parts)
-
-
-def _verify_modlwip_source(micropython_dir: Path, name: str) -> str:
-    # The pinned extmod/modlwip.c, once its loop, the insertion point, the local include, listen()'s queue allocation
-    # and close()'s callback block each occur exactly once - the loop's text holds the insertion point, so its one
-    # occurrence is inside the loop. Shared by the rp2 build and the host lwIP build.
-    source = micropython_dir / "extmod" / "modlwip.c"
-    text = _read_anchor_source(source, name)
-    for anchor in _MODLWIP_SOURCE_ANCHORS:
-        _count_once(text, anchor, source, name, _MODLWIP_REVERIFY)
-    _count_once(text, _MODLWIP_LISTEN_ALLOC, source, name, _MODLWIP_LISTEN_ALLOC_REVERIFY)
-    _count_once(text, _MODLWIP_CLOSE_CALLBACKS, source, name, _MODLWIP_CLOSE_REVERIFY)
-    return text
-
-
-def _modlwip_eagain_source(micropython_dir: Path, name: str) -> str:
-    # The patched copy's text: the pinned file with the EAGAIN block inserted, listen()'s stores reordered, close()'s
-    # callbacks guarded and the include rewritten, no #line, so a diagnostic names the copy. Same bytes for every build.
-    text = _verify_modlwip_source(micropython_dir, name)
-    version = _micropython_version(micropython_dir, name)
-    patched = text.replace(_MODLWIP_INSERT_AFTER, _MODLWIP_INSERT_AFTER + _MODLWIP_EAGAIN_BLOCK, 1).replace(_MODLWIP_CLOSE_CALLBACKS, _MODLWIP_CLOSE_GUARDED, 1)
-    patched = patched.replace(_MODLWIP_LISTEN_ALLOC, _MODLWIP_LISTEN_ARRAY_FIRST, 1).replace(_MODLWIP_LOCAL_INCLUDE, _MODLWIP_COPY_INCLUDE, 1)
-    return (
-        f"// Generated by toolchain/micropython_overrides.py from extmod/modlwip.c of MicroPython {version}, with three patches -\n"
-        "// EAGAIN on a non-blocking ERR_MEM send, listen()'s accept queue allocated first, no listener callbacks at close\n"
-        "// (SPECIFICATION.md B.14.4). Do not edit.\n"
-        f"{patched}"
-    )
-
-
-def verify_modlwip_eagain_anchor(micropython_dir: Path) -> None:
-    # Every pinned-source fact the override relies on: the loop and its insertion point, the local include, listen()'s
-    # queue allocation, close()'s callback block, and the CMake/Makefile wiring that swaps the copy in. Raises naming it.
-    _verify_modlwip_source(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME)
-    for relative, anchors in _MODLWIP_RP2_WIRING:
-        _require_in_order(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME, relative, anchors, _MODLWIP_REVERIFY)
-    extmod_cmake = micropython_dir / "extmod" / "extmod.cmake"
-    text = extmod_cmake.read_text(encoding="utf-8")
-    block_start = text.index(_EXTMOD_SOURCE_SET)
-    block_end = text.find("\n)", block_start)
-    if text.find(_EXTMOD_MODLWIP_LINE, block_start) > block_end >= 0:
-        raise OverrideError(f"{MODLWIP_OVERRIDE_DIR_NAME}: extmod/modlwip.c is no longer inside set(MICROPY_SOURCE_EXTMOD ...) in {extmod_cmake} - {_MODLWIP_REVERIFY}")
-
-
-def apply_modlwip_eagain_override(micropython_dir: Path, overrides_dir: Path) -> dict[str, str]:
-    # Writes the patched copy and a micropython.cmake that swaps it for the original in
-    # MICROPY_SOURCE_EXTMOD; paths are resolved and refused when unembeddable. Returns
-    # build_firmware()'s USER_C_MODULES (a directory: usermod.cmake appends micropython.cmake).
-    micropython_dir = _embeddable(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME)
-    overrides_dir = _embeddable(overrides_dir, MODLWIP_OVERRIDE_DIR_NAME)
-    verify_modlwip_eagain_anchor(micropython_dir)
-    copy_text = _modlwip_eagain_source(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME)
-    override_dir = _fresh_dir(overrides_dir / MODLWIP_OVERRIDE_DIR_NAME)
-    copy_path = override_dir / MODLWIP_COPY_NAME
-    copy_path.write_text(copy_text, encoding="utf-8")
-    (override_dir / "micropython.cmake").write_text(
-        "# Generated by toolchain/micropython_overrides.py - SPECIFICATION.md B.14.\n"
-        'list(FIND MICROPY_SOURCE_EXTMOD "${MICROPY_EXTMOD_DIR}/modlwip.c" _sensors_modlwip_index)\n'
-        "if(_sensors_modlwip_index EQUAL -1)\n"
-        '    message(FATAL_ERROR "modlwip_eagain: extmod/modlwip.c is not in MICROPY_SOURCE_EXTMOD - re-verify toolchain/micropython_overrides.py (SPECIFICATION.md B.14)")\n'
-        "endif()\n"
-        "list(REMOVE_AT MICROPY_SOURCE_EXTMOD ${_sensors_modlwip_index})\n"
-        f'list(APPEND MICROPY_SOURCE_EXTMOD "{copy_path}")\n', encoding="utf-8",
-    )
-    return {"USER_C_MODULES": str(override_dir)}
-
-
 # ---------------------------------------------------------------------------------------------
 # unix_lwip_host: a third Unix-port build flavour that compiles the patched modlwip.c above over
 # lwIP on a loopback netif, so the send path runs on the host (owner, 2026-09-30). Full account:
@@ -696,6 +299,147 @@ _LWIP_HOST_OBJECT_FLAGS = (
     ("extmod/modlwip.o", "-DSOMAXCONN=2", "ports/unix/mpconfigport.h:176 takes the default listen() backlog from <sys/socket.h>'s SOMAXCONN, which modlwip.c never includes; 2 is rp2's own default (py/mpconfig.h:2148)"),
 )
 _LWIP_HOST_REVERIFY = "the Unix port's lwIP wiring changed upstream - re-derive the host lwIP build (SPECIFICATION.md B.14)"
+
+
+# ---------------------------------------------------------------------------------------------
+# tick_offset_test: a TEST-ONLY build in which mp_hal_ticks_ms() returns the time since boot plus 2**32
+# ms minus 15 minutes, so ticks_ms() and the 32-bit millisecond count wrap about 15 minutes after boot
+# (owner, 2026-10-01). Never in a release image. Full account: SPECIFICATION.md B.14.
+# ---------------------------------------------------------------------------------------------
+
+TICK_OFFSET_DIR_NAME = "tick_offset_test"
+TICK_OFFSET_SENTINEL = "MICROPY_SENSORS_TICK_OFFSET_TEST_APPLIED"
+# The test image's own build directory per board, so a later release build never reuses its
+# objects and two boards never share one CMake cache: build-<board>-tickoffset.
+TICK_OFFSET_BUILD_SUFFIX = "-tickoffset"
+# 15 minutes before the 32-bit wrap; 2**32 is also a multiple of ticks_ms()'s 2**30 period, so both wrap together
+TICK_OFFSET_MS = 2**32 - 15 * 60 * 1000
+# mp_hal_ticks_ms() as pinned in ports/rp2/mphalport.h; py/mphal.h reaches it as <mphalport.h>,
+# which no rp2, extmod or shared file includes with quotes, so a copy found first replaces it.
+_TICK_OFFSET_ANCHOR = "static inline mp_uint_t mp_hal_ticks_ms(void) {\n    return to_ms_since_boot(get_absolute_time());\n}\n"
+_TICK_OFFSET_REPLACEMENT = "static inline mp_uint_t mp_hal_ticks_ms(void) {\n    return (mp_uint_t)(to_ms_since_boot(get_absolute_time()) + MICROPY_SENSORS_TICK_OFFSET_MS);\n}\n"
+_TICK_OFFSET_REVERIFY = "re-derive this override's anchor and its replacement (SPECIFICATION.md B.14); do not build the test image unpatched"
+
+
+# The flags CMake really compiled `firmware` with. Reading them back, rather than reconstructing an
+# include path by hand, is what makes the check below a statement about the real translation unit.
+_FLAGS_MAKE_KEYS = ("C_DEFINES", "C_INCLUDES", "C_FLAGS")
+# The probe puts each option name inside a string literal: bare, the preprocessor expands it too
+# and the line comes back as `LWIPPROBE (16) = (16)`, with the option's identity gone.
+_LWIP_PROBE_MARK = "LWIPPROBE"
+_MAX_SHIFT = 64
+_DEFAULT_COMPILER = "arm-none-eabi-gcc"
+# pico-sdk 2.3.0 names every object <source>.o (cmake/preload/toolchains/util/pico_gcc_common.cmake:45),
+# and CMake writes an outside source's object at its absolute path under the target dir.
+_FIRMWARE_OBJECT_SUFFIX = ".o"
+_TICK_PROBE_MARK = "TICKPROBE"
+# The host binary's runtime probe: modlwip is `socket`, and lwIP's cyclic timers, started by reset()
+# and run by the event hook while it sleeps, outlive two 1 s IPv6 reassembly ticks.
+_LWIP_HOST_TIMERS_OK = "lwip timers ok"
+_LWIP_HOST_PROBE = f"import lwip, socket, time; print(socket is lwip); lwip.reset(); time.sleep_ms(2500); lwip.callback(); print({_LWIP_HOST_TIMERS_OK!r})"
+# ports/unix/unix_mphal.c, which both Unix readbacks preprocess: its sighandler() takes SIGINT (the
+# body runs to the next function), and its mp_state_mem_t (py/mpstate.h) holds the mark stack.
+_UNIX_MPHAL_PP_SOURCE = "unix_mphal"
+_SIGHANDLER_START = "static void sighandler(int signum)"
+_SIGHANDLER_END = "void mp_hal_set_interrupt_char"
+_MEM_STATE_STRUCT_START = "typedef struct _mp_state_mem_t {"
+_MEM_STATE_STRUCT_END = "} mp_state_mem_t;"
+
+# Every directory the apply_*() functions write under build_overrides/; setup removes any other it finds there.
+CURRENT_OVERRIDE_DIRS = (UNIX_KBD_INTR_DIR_NAME, LWIP_OVERRIDE_BOARD_DIR_NAME, MODLWIP_OVERRIDE_DIR_NAME, UNIX_LWIP_HOST_DIR_NAME, TICK_OFFSET_DIR_NAME)
+
+
+def _check_unix_gc_stack_pp(pp_text: str, pp_path: Path) -> None:
+    # One build's preprocessed unix_mphal.c: mp_state_mem_t's gc_block_stack, the array py/gc.c marks
+    # with, has exactly UNIX_GC_STACK_ENTRIES entries.
+    start = pp_text.find(_MEM_STATE_STRUCT_START)
+    end = pp_text.find(_MEM_STATE_STRUCT_END, start) if start >= 0 else -1
+    if end < 0:
+        raise OverrideError(f"unix_gc_stack: {pp_path.name} has no mp_state_mem_t: the pinned source changed - re-verify SPECIFICATION.md B.14.6 ({pp_path})")
+    found = re.findall(r"\bgc_block_stack\[(.*?)\];", pp_text[start:end])
+    if found != [f"({UNIX_GC_STACK_ENTRIES})"]:
+        raise OverrideError(f"unix_gc_stack: this build's GC mark stack is not the rig's {UNIX_GC_STACK_ENTRIES} entries - mp_state_mem_t in {pp_path} declares gc_block_stack {found!r}: it never reached the generated variant header's MICROPY_ALLOC_GC_STACK_SIZE, or was built for another value (SPECIFICATION.md B.14.6)")
+
+
+def _check_unix_kbd_intr_pp(pp_text: str, pp_path: Path) -> None:
+    # One build's preprocessed unix_mphal.c: the sentinel reached, the last MICROPY_ASYNC_KBD_INTR
+    # definition (0), sighandler() calling mp_sched_keyboard_interrupt() and never nlr_jump().
+    if not re.search(rf"^#define {UNIX_KBD_INTR_SENTINEL} 1\s*$", pp_text, re.MULTILINE):
+        raise OverrideError(f"unix_kbd_intr: sentinel absent: the variant redirect was not used - {pp_path} never reached the generated mpconfigvariant.h (SPECIFICATION.md B.14.1)")
+    defines = re.findall(r"^#define MICROPY_ASYNC_KBD_INTR\s+(.*?)\s*$", pp_text, re.MULTILINE)
+    last = defines[-1] if defines else None
+    if last != "(0)":
+        raise OverrideError(f"unix_kbd_intr: the immediate nlr_raise() path was compiled - the last MICROPY_ASYNC_KBD_INTR definition in {pp_path} is {last!r}, not '(0)' (SPECIFICATION.md B.14.1)")
+    start = pp_text.find(_SIGHANDLER_START)
+    end = pp_text.find(f"\n{_SIGHANDLER_END}", start) if start >= 0 else -1
+    if end < 0:
+        raise OverrideError(f"unix_kbd_intr: unix_mphal.pp has no sighandler(): the pinned source changed - re-verify SPECIFICATION.md B.14.1 ({pp_path})")
+    body = pp_text[start:end]
+    if "nlr_jump(" in body or "mp_sched_keyboard_interrupt()" not in body:
+        raise OverrideError(f"unix_kbd_intr: the immediate nlr_raise() path was compiled - sighandler() in {pp_path} calls nlr_jump() or never mp_sched_keyboard_interrupt() (SPECIFICATION.md B.14.1)")
+
+
+def _count_once(text: str, anchor: str, where: Path, name: str, tail: str) -> int:
+    # The anchor's one position in text; absent or repeated is an OverrideError naming both.
+    count = text.count(anchor)
+    if count != 1:
+        state = "not found" if count == 0 else f"found {count} times, not once"
+        raise OverrideError(f"{name}: expected {anchor!r} {state} in {where} - {tail}")
+    return text.index(anchor)
+
+
+def _embeddable(path: Path, what: str) -> Path:
+    # paths are resolved, and refused when a generated file cannot carry them
+    path = path.resolve()
+    for char in str(path):
+        if char.isspace() or char in _UNEMBEDDABLE_CHARS:
+            raise OverrideError(f"{what}: the path {path} contains {char!r}, which the generated make/CMake/C/manifest text cannot carry - use a --toolchain-dir (or $PICO_TOOLCHAIN_DIR) without whitespace, quotes, backslashes, '$', '#', ';' or ':'")
+    return path
+
+
+def _eval_macro_expression(text: str) -> int:
+    # Evaluates a preprocessed integer constant expression (e.g. `(8 * (800))`) with no eval() -
+    # lwIP options are arithmetic over literals, and anything else must fail loudly, not guess.
+
+    def walk(node: ast.AST) -> int:
+        if isinstance(node, ast.Expression):
+            return walk(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+            return node.value
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            return +walk(node.operand) if isinstance(node.op, ast.UAdd) else -walk(node.operand)
+        if isinstance(node, ast.BinOp):
+            left, right = walk(node.left), walk(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            if isinstance(node.op, ast.FloorDiv):  # C's `/`, rewritten below: truncates toward zero
+                if right == 0:
+                    raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - it divides by zero")
+                quotient = abs(left) // abs(right)
+                return -quotient if (left < 0) != (right < 0) else quotient
+            if isinstance(node.op, (ast.LShift, ast.RShift)):
+                if not 0 <= right < _MAX_SHIFT:  # C leaves these undefined; never guess a value
+                    raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - shift count {right} is outside 0..{_MAX_SHIFT - 1}")
+                return left << right if isinstance(node.op, ast.LShift) else left >> right
+        raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - it is not an integer constant expression")
+
+    try:
+        return walk(ast.parse(text.replace("/", "//"), mode="eval"))
+    except SyntaxError as exc:
+        raise OverrideError(f"lwip_connection_counts: cannot parse preprocessed option value {text!r}") from exc
+
+
+def _fresh_dir(path: Path) -> Path:
+    # An override's directory, emptied first: a file an older generator wrote would otherwise still be
+    # compiled (a variant's *.c) or found first on an include path, after a re-run over a dirty toolchain.
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True)
+    return path
 
 
 def _lwip_host_files(micropython_dir: Path, variant_dir: Path, lwip_macros: dict[str, int]) -> dict[str, str]:
@@ -752,162 +496,61 @@ def _lwip_host_files(micropython_dir: Path, variant_dir: Path, lwip_macros: dict
     return files
 
 
-def _verify_unix_lwip_host_anchors(micropython_dir: Path) -> None:
-    # The SIGINT and mark-stack anchors, modlwip's, and every fact the host build relies on (above).
-    verify_unix_kbd_intr_anchor(micropython_dir)
-    verify_unix_gc_stack_anchor(micropython_dir)
-    _verify_modlwip_source(micropython_dir, "unix_lwip_host")
-    for relative, anchors in _LWIP_HOST_ANCHORS:
-        _require_in_order(micropython_dir, "unix_lwip_host", relative, anchors, _LWIP_HOST_REVERIFY)
-    if not (micropython_dir / _LWIP_HOST_TCP_OUT).is_file():
-        raise OverrideError(f"unix_lwip_host: {micropython_dir / _LWIP_HOST_TCP_OUT} is missing - lib/lwip is not fetched for the Unix port (make submodules MICROPY_PY_LWIP=1), or {_LWIP_HOST_REVERIFY}")
+def _lwip_redefines(macros: dict[str, int]) -> str:
+    # The sentinel closes the one hole a value comparison cannot: if this header is never found,
+    # every option resolves to MicroPython's own default, and a run that happens to ASK for the
+    # defaults would verify clean against a build the override never touched.
+    return f"#define {LWIP_OVERRIDE_SENTINEL} 1\n" + "".join(f"#undef {name}\n#define {name} ({macros[name]})\n" for name in LWIP_SETTABLE_MACROS)
 
 
-def apply_unix_lwip_host_override(micropython_dir: Path, overrides_dir: Path, lwip_macros: dict[str, int]) -> dict[str, str]:
-    # Generates the host build flavour's variant directory: the SIGINT header plus the lwIP event
-    # hook, lwIP's options and port layer, and the patched modlwip.c found by vpath ahead of the
-    # original; paths are resolved and refused when unembeddable. Returns its `make` variables.
-    micropython_dir = _embeddable(micropython_dir, "unix_lwip_host")
-    overrides_dir = _embeddable(overrides_dir, "unix_lwip_host")
-    _verify_unix_lwip_host_anchors(micropython_dir)
-    validate_lwip_macros(lwip_macros)
-    variant_dir = overrides_dir / UNIX_LWIP_HOST_DIR_NAME
-    files = _lwip_host_files(micropython_dir, variant_dir, lwip_macros)
-    _fresh_dir(variant_dir)
-    for relative, text in files.items():
-        (variant_dir / relative).parent.mkdir(parents=True, exist_ok=True)
-        (variant_dir / relative).write_text(text, encoding="utf-8")
-    return {
-        "VARIANT": "standard",
-        "VARIANT_DIR": str(variant_dir),
-        "BUILD": _UNIX_LWIP_BUILD,
-        "MICROPY_PY_LWIP": "1",
-        "MICROPY_PY_LWIP_LOOPBACK": "1",
-        "MICROPY_PY_SOCKET": "0",
-    }
+def _micropython_version(micropython_dir: Path, name: str) -> str:
+    # X.Y.Z from the checkout's own py/mpconfig.h, so a generated file names the source it came from.
+    mpconfig = micropython_dir / "py" / "mpconfig.h"
+    text = _read_anchor_source(mpconfig, name)
+    parts = []
+    for define in _MODLWIP_VERSION_DEFINES:
+        match = re.search(rf"^#define {define} (\d+)$", text, re.MULTILINE)
+        if match is None:
+            raise OverrideError(f"{name}: {mpconfig} has no `#define {define} <n>` line - {_MODLWIP_REVERIFY}")
+        parts.append(match.group(1))
+    return ".".join(parts)
 
 
-# ---------------------------------------------------------------------------------------------
-# tick_offset_test: a TEST-ONLY build in which mp_hal_ticks_ms() returns the time since boot plus 2**32
-# ms minus 15 minutes, so ticks_ms() and the 32-bit millisecond count wrap about 15 minutes after boot
-# (owner, 2026-10-01). Never in a release image. Full account: SPECIFICATION.md B.14.
-# ---------------------------------------------------------------------------------------------
-
-TICK_OFFSET_DIR_NAME = "tick_offset_test"
-TICK_OFFSET_SENTINEL = "MICROPY_SENSORS_TICK_OFFSET_TEST_APPLIED"
-# The test image's own build directory per board, so a later release build never reuses its
-# objects and two boards never share one CMake cache: build-<board>-tickoffset.
-TICK_OFFSET_BUILD_SUFFIX = "-tickoffset"
-# 15 minutes before the 32-bit wrap; 2**32 is also a multiple of ticks_ms()'s 2**30 period, so both wrap together
-TICK_OFFSET_MS = 2**32 - 15 * 60 * 1000
-# mp_hal_ticks_ms() as pinned in ports/rp2/mphalport.h; py/mphal.h reaches it as <mphalport.h>,
-# which no rp2, extmod or shared file includes with quotes, so a copy found first replaces it.
-_TICK_OFFSET_ANCHOR = "static inline mp_uint_t mp_hal_ticks_ms(void) {\n    return to_ms_since_boot(get_absolute_time());\n}\n"
-_TICK_OFFSET_REPLACEMENT = "static inline mp_uint_t mp_hal_ticks_ms(void) {\n    return (mp_uint_t)(to_ms_since_boot(get_absolute_time()) + MICROPY_SENSORS_TICK_OFFSET_MS);\n}\n"
-_TICK_OFFSET_REVERIFY = "re-derive this override's anchor and its replacement (SPECIFICATION.md B.14); do not build the test image unpatched"
-
-
-def verify_tick_offset_anchor(micropython_dir: Path) -> Path:
-    # The pinned mp_hal_ticks_ms() body, exactly once; returns the header that holds it.
-    header = micropython_dir / "ports" / "rp2" / "mphalport.h"
-    _count_once(_read_anchor_source(header, TICK_OFFSET_DIR_NAME), _TICK_OFFSET_ANCHOR, header, TICK_OFFSET_DIR_NAME, _TICK_OFFSET_REVERIFY)
-    return header
-
-
-def apply_tick_offset_override(micropython_dir: Path, overrides_dir: Path, *, board: str) -> dict[str, str]:
-    # Writes a copy of the pinned mphalport.h whose mp_hal_ticks_ms() adds TICK_OFFSET_MS in 32-bit
-    # unsigned arithmetic; the hardware timer is never written. build_firmware() puts the directory
-    # ahead on the include path; returns the test image's own build directory as `make` variables.
-    micropython_dir = _embeddable(micropython_dir, TICK_OFFSET_DIR_NAME)
-    overrides_dir = _embeddable(overrides_dir, TICK_OFFSET_DIR_NAME)
-    header = verify_tick_offset_anchor(micropython_dir)
-    override_dir = _fresh_dir(overrides_dir / TICK_OFFSET_DIR_NAME)
-    (override_dir / "mphalport.h").write_text(
-        "// Generated by toolchain/micropython_overrides.py from ports/rp2/mphalport.h - SPECIFICATION.md B.14.\n"
-        "// TEST-ONLY: ticks_ms() wraps about 15 minutes after boot. Never in a release image.\n"
-        f"#define MICROPY_SENSORS_TICK_OFFSET_MS ({TICK_OFFSET_MS}u)\n"
-        f"#define {TICK_OFFSET_SENTINEL} 1\n"
-        + header.read_text(encoding="utf-8").replace(_TICK_OFFSET_ANCHOR, _TICK_OFFSET_REPLACEMENT, 1), encoding="utf-8",
+def _modlwip_eagain_source(micropython_dir: Path, name: str) -> str:
+    # The patched copy's text: the pinned file with the EAGAIN block inserted, listen()'s stores reordered, close()'s
+    # callbacks guarded and the include rewritten, no #line, so a diagnostic names the copy. Same bytes for every build.
+    text = _verify_modlwip_source(micropython_dir, name)
+    version = _micropython_version(micropython_dir, name)
+    patched = text.replace(_MODLWIP_INSERT_AFTER, _MODLWIP_INSERT_AFTER + _MODLWIP_EAGAIN_BLOCK, 1).replace(_MODLWIP_CLOSE_CALLBACKS, _MODLWIP_CLOSE_GUARDED, 1)
+    patched = patched.replace(_MODLWIP_LISTEN_ALLOC, _MODLWIP_LISTEN_ARRAY_FIRST, 1).replace(_MODLWIP_LOCAL_INCLUDE, _MODLWIP_COPY_INCLUDE, 1)
+    return (
+        f"// Generated by toolchain/micropython_overrides.py from extmod/modlwip.c of MicroPython {version}, with three patches -\n"
+        "// EAGAIN on a non-blocking ERR_MEM send, listen()'s accept queue allocated first, no listener callbacks at close\n"
+        "// (SPECIFICATION.md B.14.4). Do not edit.\n"
+        f"{patched}"
     )
-    return {"BUILD": f"build-{board}{TICK_OFFSET_BUILD_SUFFIX}"}
 
 
-# The flags CMake really compiled `firmware` with. Reading them back, rather than reconstructing an
-# include path by hand, is what makes the check below a statement about the real translation unit.
-_FLAGS_MAKE_KEYS = ("C_DEFINES", "C_INCLUDES", "C_FLAGS")
-# The probe puts each option name inside a string literal: bare, the preprocessor expands it too
-# and the line comes back as `LWIPPROBE (16) = (16)`, with the option's identity gone.
-_LWIP_PROBE_MARK = "LWIPPROBE"
-_MAX_SHIFT = 64
-_DEFAULT_COMPILER = "arm-none-eabi-gcc"
-# pico-sdk 2.3.0 names every object <source>.o (cmake/preload/toolchains/util/pico_gcc_common.cmake:45),
-# and CMake writes an outside source's object at its absolute path under the target dir.
-_FIRMWARE_OBJECT_SUFFIX = ".o"
-_TICK_PROBE_MARK = "TICKPROBE"
-# The host binary's runtime probe: modlwip is `socket`, and lwIP's cyclic timers, started by reset()
-# and run by the event hook while it sleeps, outlive two 1 s IPv6 reassembly ticks.
-_LWIP_HOST_TIMERS_OK = "lwip timers ok"
-_LWIP_HOST_PROBE = f"import lwip, socket, time; print(socket is lwip); lwip.reset(); time.sleep_ms(2500); lwip.callback(); print({_LWIP_HOST_TIMERS_OK!r})"
-# ports/unix/unix_mphal.c, which both Unix readbacks preprocess: its sighandler() takes SIGINT (the
-# body runs to the next function), and its mp_state_mem_t (py/mpstate.h) holds the mark stack.
-_UNIX_MPHAL_PP_SOURCE = "unix_mphal"
-_SIGHANDLER_START = "static void sighandler(int signum)"
-_SIGHANDLER_END = "void mp_hal_set_interrupt_char"
-_MEM_STATE_STRUCT_START = "typedef struct _mp_state_mem_t {"
-_MEM_STATE_STRUCT_END = "} mp_state_mem_t;"
-
-# Every directory the apply_*() functions write under build_overrides/; setup removes any other it finds there.
-CURRENT_OVERRIDE_DIRS = (UNIX_KBD_INTR_DIR_NAME, LWIP_OVERRIDE_BOARD_DIR_NAME, MODLWIP_OVERRIDE_DIR_NAME, UNIX_LWIP_HOST_DIR_NAME, TICK_OFFSET_DIR_NAME)
-
-
-def _eval_macro_expression(text: str) -> int:
-    # Evaluates a preprocessed integer constant expression (e.g. `(8 * (800))`) with no eval() -
-    # lwIP options are arithmetic over literals, and anything else must fail loudly, not guess.
-
-    def walk(node: ast.AST) -> int:
-        if isinstance(node, ast.Expression):
-            return walk(node.body)
-        if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
-            return node.value
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-            return +walk(node.operand) if isinstance(node.op, ast.UAdd) else -walk(node.operand)
-        if isinstance(node, ast.BinOp):
-            left, right = walk(node.left), walk(node.right)
-            if isinstance(node.op, ast.Add):
-                return left + right
-            if isinstance(node.op, ast.Sub):
-                return left - right
-            if isinstance(node.op, ast.Mult):
-                return left * right
-            if isinstance(node.op, ast.FloorDiv):  # C's `/`, rewritten below: truncates toward zero
-                if right == 0:
-                    raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - it divides by zero")
-                quotient = abs(left) // abs(right)
-                return -quotient if (left < 0) != (right < 0) else quotient
-            if isinstance(node.op, (ast.LShift, ast.RShift)):
-                if not 0 <= right < _MAX_SHIFT:  # C leaves these undefined; never guess a value
-                    raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - shift count {right} is outside 0..{_MAX_SHIFT - 1}")
-                return left << right if isinstance(node.op, ast.LShift) else left >> right
-        raise OverrideError(f"lwip_connection_counts: cannot evaluate preprocessed option value {text!r} - it is not an integer constant expression")
-
-    try:
-        return walk(ast.parse(text.replace("/", "//"), mode="eval"))
-    except SyntaxError as exc:
-        raise OverrideError(f"lwip_connection_counts: cannot parse preprocessed option value {text!r}") from exc
-
-
-def _recorded_c_compiler(build_dir: Path, flags_text: str) -> str:
-    # The C compiler CMake itself chose for this build: flags.make's own header line, else
-    # CMakeCache.txt's CMAKE_C_COMPILER, else the toolchain's usual name on PATH.
-    match = re.search(r"^# compile C with (\S.*)$", flags_text, re.MULTILINE)
-    if match is not None:
-        return match.group(1).strip()
-    cache = build_dir / "CMakeCache.txt"
-    if cache.is_file():
-        match = re.search(r"^CMAKE_C_COMPILER:[A-Z]+=(\S.*)$", cache.read_text(encoding="utf-8"), re.MULTILINE)
-        if match is not None:
-            return match.group(1).strip()
-    return _DEFAULT_COMPILER
+def _per_connection_problems(macros: dict[str, int], max_connections: int) -> list[str]:
+    # The three relationships lwIP does not check, because it sizes for one connection and we admit N.
+    mss, snd_buf, seg = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["MEMP_NUM_TCP_SEG"]
+    problems: list[str] = []
+    want_pcb = max_connections + SPARE_TCP_PCBS
+    if macros["MEMP_NUM_TCP_PCB"] < want_pcb:
+        problems.append(f"MEMP_NUM_TCP_PCB ({macros['MEMP_NUM_TCP_PCB']}) < max_connections + {SPARE_TCP_PCBS} ({want_pcb}) - connections still closing and the one queued over-ceiling arrival hold PCBs from the same pool")
+    # Segments are a GLOBAL pool while TCP_SND_QUEUELEN is PER connection, so one connection can
+    # drain the pool. Every admitted connection gets a full window of full-MSS segments; short writes and
+    # closing pcbs can still drain it (SPECIFICATION.md Part B.14.2.1).
+    want_seg = max_connections * (snd_buf // mss)
+    if seg < want_seg:
+        problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < max_connections * (TCP_SND_BUF / TCP_MSS) ({want_seg}) - {max_connections} connections cannot each hold a full send window")
+    # MEM_SIZE is the arena every outbound byte passes through: modlwip.c's tcp_write() always sets
+    # TCP_WRITE_FLAG_COPY, so the payload is copied into a PBUF_RAM pbuf, which is mem_malloc()'d
+    # from it. Its per-connection share may not fall below the floor above.
+    per_connection = macros["MEM_SIZE"] // max_connections
+    if per_connection < MEM_SIZE_BYTES_PER_CONNECTION_FLOOR:
+        problems.append(f"MEM_SIZE ({macros['MEM_SIZE']}) leaves {per_connection} B per admitted connection, below the {MEM_SIZE_BYTES_PER_CONNECTION_FLOOR} B floor - every outbound byte is copied into this arena (modlwip.c's tcp_write TCP_WRITE_FLAG_COPY)")
+    return problems
 
 
 def _preprocess_with_build_flags(build_dir: Path, probe_body: str, name: str, what: str, reverify: str, compiler: str | None) -> str:
@@ -939,60 +582,59 @@ def _preprocess_with_build_flags(build_dir: Path, probe_body: str, name: str, wh
     return result.stdout
 
 
-def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compiler: str | None = None) -> dict[str, int]:
-    # Preprocesses lwIP's own opt.h with the exact flags (and, unless `compiler` is given, the
-    # compiler) CMake built the firmware with, returning each option's resolved value - proof the
-    # override landed rather than an assumption the generated header was found (Part B.14.2).
-    probe_body = '#include "lwip/opt.h"\n' + "".join(f'{_LWIP_PROBE_MARK} "{name}" = {name}\n' for name in (*macros, LWIP_OVERRIDE_SENTINEL))
-    output = _preprocess_with_build_flags(build_dir, probe_body, "lwip_connection_counts", "lwIP's options", _LWIP_REVERIFY, compiler)
-    found: dict[str, int] = {}
-    for line in output.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(_LWIP_PROBE_MARK):
-            name, _, value = stripped[len(_LWIP_PROBE_MARK):].partition("=")
-            name, value = name.strip().strip('"'), value.strip()
-            if value != name:  # an undefined macro comes back as its own name: absent, not a value
-                found[name] = _eval_macro_expression(value)
-    return found
-
-
-def verify_lwip_macros_in_build(build_dir: Path, macros: dict[str, int], compiler: str | None = None) -> dict[str, int]:
-    # read_lwip_macros_from_build() plus the assertion. Raises OverrideError naming every option
-    # whose resolved value differs from what was asked for.
-    found = read_lwip_macros_from_build(build_dir, macros, compiler)
-    if found.get(LWIP_OVERRIDE_SENTINEL) != 1:
+def _read_anchor_source(path: Path, override_name: str) -> str:
+    if not path.exists():
         raise OverrideError(
-            f"lwip_connection_counts: the generated lwipopts.h was never reached by the firmware's own "
-            f"translation unit - its sentinel {LWIP_OVERRIDE_SENTINEL} is absent, so every option came "
-            f"from MicroPython's defaults however the values below compare. The BOARD_DIR redirect or "
-            f"the include ordering it depends on has changed. {_LWIP_REVERIFY}",
+            f"{override_name}: expected source file not found at {path} - MicroPython's own file "
+            "layout has changed. Re-verify this override against the current pinned source and "
+            "update it (SPECIFICATION.md Part B.14) before retrying.",
         )
-    wrong = {name: (want, found.get(name)) for name, want in macros.items() if found.get(name) != want}
-    if wrong:
-        detail = ", ".join(f"{name}: asked {want}, built {got}" for name, (want, got) in sorted(wrong.items()))
-        raise OverrideError(
-            f"lwip_connection_counts: the generated lwipopts.h did not reach the firmware's own "
-            f"translation unit - {detail}. The build is NOT configured as asked. {_LWIP_REVERIFY}",
-        )
-    return found
+    return path.read_text(encoding="utf-8")
 
 
-def _check_unix_kbd_intr_pp(pp_text: str, pp_path: Path) -> None:
-    # One build's preprocessed unix_mphal.c: the sentinel reached, the last MICROPY_ASYNC_KBD_INTR
-    # definition (0), sighandler() calling mp_sched_keyboard_interrupt() and never nlr_jump().
-    if not re.search(rf"^#define {UNIX_KBD_INTR_SENTINEL} 1\s*$", pp_text, re.MULTILINE):
-        raise OverrideError(f"unix_kbd_intr: sentinel absent: the variant redirect was not used - {pp_path} never reached the generated mpconfigvariant.h (SPECIFICATION.md B.14.1)")
-    defines = re.findall(r"^#define MICROPY_ASYNC_KBD_INTR\s+(.*?)\s*$", pp_text, re.MULTILINE)
-    last = defines[-1] if defines else None
-    if last != "(0)":
-        raise OverrideError(f"unix_kbd_intr: the immediate nlr_raise() path was compiled - the last MICROPY_ASYNC_KBD_INTR definition in {pp_path} is {last!r}, not '(0)' (SPECIFICATION.md B.14.1)")
-    start = pp_text.find(_SIGHANDLER_START)
-    end = pp_text.find(f"\n{_SIGHANDLER_END}", start) if start >= 0 else -1
-    if end < 0:
-        raise OverrideError(f"unix_kbd_intr: unix_mphal.pp has no sighandler(): the pinned source changed - re-verify SPECIFICATION.md B.14.1 ({pp_path})")
-    body = pp_text[start:end]
-    if "nlr_jump(" in body or "mp_sched_keyboard_interrupt()" not in body:
-        raise OverrideError(f"unix_kbd_intr: the immediate nlr_raise() path was compiled - sighandler() in {pp_path} calls nlr_jump() or never mp_sched_keyboard_interrupt() (SPECIFICATION.md B.14.1)")
+def _recorded_c_compiler(build_dir: Path, flags_text: str) -> str:
+    # The C compiler CMake itself chose for this build: flags.make's own header line, else
+    # CMakeCache.txt's CMAKE_C_COMPILER, else the toolchain's usual name on PATH.
+    match = re.search(r"^# compile C with (\S.*)$", flags_text, re.MULTILINE)
+    if match is not None:
+        return match.group(1).strip()
+    cache = build_dir / "CMakeCache.txt"
+    if cache.is_file():
+        match = re.search(r"^CMAKE_C_COMPILER:[A-Z]+=(\S.*)$", cache.read_text(encoding="utf-8"), re.MULTILINE)
+        if match is not None:
+            return match.group(1).strip()
+    return _DEFAULT_COMPILER
+
+
+def _require_anchor(text: str, anchor: str, where: Path, what: str) -> None:
+    if anchor not in text:
+        raise OverrideError(f"lwip_connection_counts: expected {what} not found in {where} - {anchor!r} is gone. {_LWIP_REVERIFY}")
+
+
+def _require_in_order(micropython_dir: Path, name: str, relative: str, anchors: tuple[str, ...], tail: str) -> None:
+    # Each anchor present in micropython_dir/relative, each after the one before it.
+    path = micropython_dir / relative
+    text = _read_anchor_source(path, name)
+    position = 0
+    for anchor in anchors:
+        found = text.find(anchor, position)
+        if found < 0:
+            state = "is no longer after the anchor before it" if anchor in text else "is gone"
+            raise OverrideError(f"{name}: expected {anchor!r} in {path} {state} - {tail}")
+        position = found + len(anchor)
+
+
+def _unix_kbd_intr_header(real_variant_dir: Path) -> str:
+    # The generated mpconfigvariant.h's first part: the real one, then the safe SIGINT path and the
+    # sentinel the post-build readback looks for; _unix_variant_header() adds the mark stack.
+    return (
+        f'#include "{real_variant_dir / "mpconfigvariant.h"}"\n'
+        "// SPECIFICATION.md Part B.14.1: force MicroPython's own safe,\n"
+        "// deferred SIGINT-delivery path - see toolchain/micropython_overrides.py.\n"
+        "#undef MICROPY_ASYNC_KBD_INTR\n"
+        "#define MICROPY_ASYNC_KBD_INTR (0)\n"
+        f"#define {UNIX_KBD_INTR_SENTINEL} 1\n"
+    )
 
 
 def _unix_mphal_pp(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, env: dict[str, str], name: str) -> tuple[str, Path]:
@@ -1020,26 +662,357 @@ def _unix_mphal_pp(unix_dir: Path, make_vars: dict[str, str], build_dir_name: st
         pp_path.unlink(missing_ok=True)
 
 
-def verify_unix_kbd_intr_in_build(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, *, env: dict[str, str]) -> None:
-    # The SIGINT path as this build compiled it, read from its own preprocessed unix_mphal.c.
-    _check_unix_kbd_intr_pp(*_unix_mphal_pp(unix_dir, make_vars, build_dir_name, env, "unix_kbd_intr"))
+def _unix_variant_header(real_variant_dir: Path) -> str:
+    # The generated mpconfigvariant.h of the standard and settrace builds, which the host lwIP build
+    # starts from: the SIGINT part (B.14.1), the mark stack (B.14.6), then the qstr length width (F.7).
+    return (
+        f"{_unix_kbd_intr_header(real_variant_dir)}"
+        "// SPECIFICATION.md Part B.14.6: a mark stack deep enough that a collection never\n"
+        "// re-scans the whole test heap; time only, the firmware keeps 64.\n"
+        f"#define MICROPY_ALLOC_GC_STACK_SIZE ({UNIX_GC_STACK_ENTRIES})\n"
+        "// SPECIFICATION.md F.7 row 32: launch strings past 255 bytes; the firmware keeps one length byte.\n"
+        f"#define MICROPY_QSTR_BYTES_IN_LEN ({UNIX_QSTR_BYTES_IN_LEN})\n"
+    )
 
 
-def _check_unix_gc_stack_pp(pp_text: str, pp_path: Path) -> None:
-    # One build's preprocessed unix_mphal.c: mp_state_mem_t's gc_block_stack, the array py/gc.c marks
-    # with, has exactly UNIX_GC_STACK_ENTRIES entries.
-    start = pp_text.find(_MEM_STATE_STRUCT_START)
-    end = pp_text.find(_MEM_STATE_STRUCT_END, start) if start >= 0 else -1
-    if end < 0:
-        raise OverrideError(f"unix_gc_stack: {pp_path.name} has no mp_state_mem_t: the pinned source changed - re-verify SPECIFICATION.md B.14.6 ({pp_path})")
-    found = re.findall(r"\bgc_block_stack\[(.*?)\];", pp_text[start:end])
-    if found != [f"({UNIX_GC_STACK_ENTRIES})"]:
-        raise OverrideError(f"unix_gc_stack: this build's GC mark stack is not the rig's {UNIX_GC_STACK_ENTRIES} entries - mp_state_mem_t in {pp_path} declares gc_block_stack {found!r}: it never reached the generated variant header's MICROPY_ALLOC_GC_STACK_SIZE, or was built for another value (SPECIFICATION.md B.14.6)")
+def _verify_modlwip_source(micropython_dir: Path, name: str) -> str:
+    # The pinned extmod/modlwip.c, once its loop, the insertion point, the local include, listen()'s queue allocation
+    # and close()'s callback block each occur exactly once - the loop's text holds the insertion point, so its one
+    # occurrence is inside the loop. Shared by the rp2 build and the host lwIP build.
+    source = micropython_dir / "extmod" / "modlwip.c"
+    text = _read_anchor_source(source, name)
+    for anchor in _MODLWIP_SOURCE_ANCHORS:
+        _count_once(text, anchor, source, name, _MODLWIP_REVERIFY)
+    _count_once(text, _MODLWIP_LISTEN_ALLOC, source, name, _MODLWIP_LISTEN_ALLOC_REVERIFY)
+    _count_once(text, _MODLWIP_CLOSE_CALLBACKS, source, name, _MODLWIP_CLOSE_REVERIFY)
+    return text
 
 
-def verify_unix_gc_stack_in_build(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, *, env: dict[str, str]) -> None:
-    # The mark stack as this build compiled it, read from its own preprocessed unix_mphal.c.
-    _check_unix_gc_stack_pp(*_unix_mphal_pp(unix_dir, make_vars, build_dir_name, env, "unix_gc_stack"))
+def _verify_unix_lwip_host_anchors(micropython_dir: Path) -> None:
+    # The SIGINT and mark-stack anchors, modlwip's, and every fact the host build relies on (above).
+    verify_unix_kbd_intr_anchor(micropython_dir)
+    verify_unix_gc_stack_anchor(micropython_dir)
+    _verify_modlwip_source(micropython_dir, "unix_lwip_host")
+    for relative, anchors in _LWIP_HOST_ANCHORS:
+        _require_in_order(micropython_dir, "unix_lwip_host", relative, anchors, _LWIP_HOST_REVERIFY)
+    if not (micropython_dir / _LWIP_HOST_TCP_OUT).is_file():
+        raise OverrideError(f"unix_lwip_host: {micropython_dir / _LWIP_HOST_TCP_OUT} is missing - lib/lwip is not fetched for the Unix port (make submodules MICROPY_PY_LWIP=1), or {_LWIP_HOST_REVERIFY}")
+
+
+def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: Path, board: str, macros: dict[str, int], *, extra_include_dirs: tuple[Path, ...] = ()) -> dict[str, str]:
+    # Generates an out-of-tree board directory whose own lwipopts.h #includes the real one and then
+    # redefines every lwIP option, reached through MicroPython's documented BOARD_DIR redirect; paths
+    # are resolved and refused when unembeddable. Returns build_firmware()'s `make` variables; Part B.14.2.
+    micropython_dir = _embeddable(micropython_dir, "lwip_connection_counts")
+    overrides_dir = _embeddable(overrides_dir, "lwip_connection_counts")
+    extra_include_dirs = tuple(_embeddable(path, "lwip_connection_counts") for path in extra_include_dirs)
+    verify_lwip_connection_counts_anchor(micropython_dir, board)
+    validate_lwip_macros(macros)
+    rp2_dir = micropython_dir / "ports" / "rp2"
+    real_board_dir = rp2_dir / "boards" / board
+    override_dir = _fresh_dir(overrides_dir / LWIP_OVERRIDE_BOARD_DIR_NAME)
+    include_dir = override_dir / LWIP_OVERRIDE_INCLUDE_DIR_NAME
+    include_dir.mkdir()
+    (include_dir / "lwipopts.h").write_text(
+        "// Generated by toolchain/micropython_overrides.py - SPECIFICATION.md Part B.14.2.\n"
+        "// Found ahead of ports/rp2/lwip_inc/lwipopts.h, so these win over both MicroPython's own\n"
+        "// plain #defines and lwIP's opt.h defaults; every option is set, never a subset.\n"
+        f'#include "{rp2_dir / "lwip_inc" / "lwipopts.h"}"\n'
+        f"{_lwip_redefines(macros)}", encoding="utf-8",
+    )
+    # include_directories(BEFORE) at the port's own directory scope, which every target there
+    # inherits ahead of its own target-level dirs - the only ordering that beats `lwip_inc`.
+    # MICROPY_BOARD_PINS is set rather than the csv copied, so pins can never drift from the pin.
+    extra_lines = "".join(f'include_directories(BEFORE "{path}")\n' for path in extra_include_dirs)
+    (override_dir / "mpconfigboard.cmake").write_text(
+        "# Generated by toolchain/micropython_overrides.py - SPECIFICATION.md Part B.14.2.\n"
+        f'set(MICROPY_BOARD_PINS "{real_board_dir / "pins.csv"}")\n'
+        f'include("{real_board_dir / "mpconfigboard.cmake"}")\n'
+        f'include_directories(BEFORE "{include_dir}")\n'
+        f"{extra_lines}{_RP2_MBEDTLS_ARRAY_BOUNDS}", encoding="utf-8",
+    )
+    # Relays, never copies, for the same reason B.14.1's manifest is an include(): neither can
+    # drift from a future pinned-version change. The real board cmake points the frozen manifest at
+    # ${MICROPY_BOARD_DIR}, which is now this directory, so manifest.py has to be relayed too.
+    (override_dir / "mpconfigboard.h").write_text(f'#include "{real_board_dir / "mpconfigboard.h"}"\n', encoding="utf-8")
+    (override_dir / "manifest.py").write_text(f"include({str(real_board_dir / 'manifest.py')!r})\n", encoding="utf-8")
+    return {"BOARD": board, "BOARD_DIR": str(override_dir)}
+
+
+def apply_modlwip_eagain_override(micropython_dir: Path, overrides_dir: Path) -> dict[str, str]:
+    # Writes the patched copy and a micropython.cmake that swaps it for the original in
+    # MICROPY_SOURCE_EXTMOD; paths are resolved and refused when unembeddable. Returns
+    # build_firmware()'s USER_C_MODULES (a directory: usermod.cmake appends micropython.cmake).
+    micropython_dir = _embeddable(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME)
+    overrides_dir = _embeddable(overrides_dir, MODLWIP_OVERRIDE_DIR_NAME)
+    verify_modlwip_eagain_anchor(micropython_dir)
+    copy_text = _modlwip_eagain_source(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME)
+    override_dir = _fresh_dir(overrides_dir / MODLWIP_OVERRIDE_DIR_NAME)
+    copy_path = override_dir / MODLWIP_COPY_NAME
+    copy_path.write_text(copy_text, encoding="utf-8")
+    (override_dir / "micropython.cmake").write_text(
+        "# Generated by toolchain/micropython_overrides.py - SPECIFICATION.md B.14.\n"
+        'list(FIND MICROPY_SOURCE_EXTMOD "${MICROPY_EXTMOD_DIR}/modlwip.c" _sensors_modlwip_index)\n'
+        "if(_sensors_modlwip_index EQUAL -1)\n"
+        '    message(FATAL_ERROR "modlwip_eagain: extmod/modlwip.c is not in MICROPY_SOURCE_EXTMOD - re-verify toolchain/micropython_overrides.py (SPECIFICATION.md B.14)")\n'
+        "endif()\n"
+        "list(REMOVE_AT MICROPY_SOURCE_EXTMOD ${_sensors_modlwip_index})\n"
+        f'list(APPEND MICROPY_SOURCE_EXTMOD "{copy_path}")\n', encoding="utf-8",
+    )
+    return {"USER_C_MODULES": str(override_dir)}
+
+
+def apply_tick_offset_override(micropython_dir: Path, overrides_dir: Path, *, board: str) -> dict[str, str]:
+    # Writes a copy of the pinned mphalport.h whose mp_hal_ticks_ms() adds TICK_OFFSET_MS in 32-bit
+    # unsigned arithmetic; the hardware timer is never written. build_firmware() puts the directory
+    # ahead on the include path; returns the test image's own build directory as `make` variables.
+    micropython_dir = _embeddable(micropython_dir, TICK_OFFSET_DIR_NAME)
+    overrides_dir = _embeddable(overrides_dir, TICK_OFFSET_DIR_NAME)
+    header = verify_tick_offset_anchor(micropython_dir)
+    override_dir = _fresh_dir(overrides_dir / TICK_OFFSET_DIR_NAME)
+    (override_dir / "mphalport.h").write_text(
+        "// Generated by toolchain/micropython_overrides.py from ports/rp2/mphalport.h - SPECIFICATION.md B.14.\n"
+        "// TEST-ONLY: ticks_ms() wraps about 15 minutes after boot. Never in a release image.\n"
+        f"#define MICROPY_SENSORS_TICK_OFFSET_MS ({TICK_OFFSET_MS}u)\n"
+        f"#define {TICK_OFFSET_SENTINEL} 1\n"
+        + header.read_text(encoding="utf-8").replace(_TICK_OFFSET_ANCHOR, _TICK_OFFSET_REPLACEMENT, 1), encoding="utf-8",
+    )
+    return {"BUILD": f"build-{board}{TICK_OFFSET_BUILD_SUFFIX}"}
+
+
+def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> dict[str, str]:
+    # Points the Unix standard variant's VARIANT_DIR at an external directory that #includes the real
+    # variant files, forces MICROPY_ASYNC_KBD_INTR to 0 and sets the mark stack (B.14.6); paths are
+    # resolved and refused when unembeddable. Returns build_unix_port()'s extra `make` variables; B.14.1.
+    micropython_dir = _embeddable(micropython_dir, "unix_kbd_intr")
+    overrides_dir = _embeddable(overrides_dir, "unix_kbd_intr")
+    verify_unix_kbd_intr_anchor(micropython_dir)
+    verify_unix_gc_stack_anchor(micropython_dir)
+    real_variant_dir = micropython_dir / "ports" / "unix" / "variants" / "standard"
+    override_dir = _fresh_dir(overrides_dir / UNIX_KBD_INTR_DIR_NAME)
+    (override_dir / "mpconfigvariant.h").write_text(_unix_variant_header(real_variant_dir), encoding="utf-8")
+    # mpconfigvariant.mk/manifest.py both relay to the real files rather than copying their
+    # content, so neither can silently drift out of sync with a future pinned-version change -
+    # `include()` is the freeze-manifest DSL's own primitive for exactly this (tools/manifestfile.py).
+    (override_dir / "mpconfigvariant.mk").write_text(  # GNU make's include takes no quotes; _embeddable() guards it
+        f'include {real_variant_dir / "mpconfigvariant.mk"}\n{_UNIX_MBEDTLS_ARRAY_BOUNDS}', encoding="utf-8",
+    )
+    real_manifest = real_variant_dir / "manifest.py"
+    if real_manifest.exists():
+        (override_dir / "manifest.py").write_text(f"include({str(real_manifest)!r})\n", encoding="utf-8")
+    return {"VARIANT": "standard", "VARIANT_DIR": str(override_dir)}
+
+
+def apply_unix_lwip_host_override(micropython_dir: Path, overrides_dir: Path, lwip_macros: dict[str, int]) -> dict[str, str]:
+    # Generates the host build flavour's variant directory: the SIGINT header plus the lwIP event
+    # hook, lwIP's options and port layer, and the patched modlwip.c found by vpath ahead of the
+    # original; paths are resolved and refused when unembeddable. Returns its `make` variables.
+    micropython_dir = _embeddable(micropython_dir, "unix_lwip_host")
+    overrides_dir = _embeddable(overrides_dir, "unix_lwip_host")
+    _verify_unix_lwip_host_anchors(micropython_dir)
+    validate_lwip_macros(lwip_macros)
+    variant_dir = overrides_dir / UNIX_LWIP_HOST_DIR_NAME
+    files = _lwip_host_files(micropython_dir, variant_dir, lwip_macros)
+    _fresh_dir(variant_dir)
+    for relative, text in files.items():
+        (variant_dir / relative).parent.mkdir(parents=True, exist_ok=True)
+        (variant_dir / relative).write_text(text, encoding="utf-8")
+    return {
+        "VARIANT": "standard",
+        "VARIANT_DIR": str(variant_dir),
+        "BUILD": _UNIX_LWIP_BUILD,
+        "MICROPY_PY_LWIP": "1",
+        "MICROPY_PY_LWIP_LOOPBACK": "1",
+        "MICROPY_PY_SOCKET": "0",
+    }
+
+
+def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = None) -> list[str]:
+    # Every init.c relationship over the options set or derived here, plus the three it does NOT
+    # check: it sizes the shared pools for ONE connection, while this firmware admits max_connections.
+    # Returns the violated relationships; empty means the set is coherent.
+    d = derive_lwip_dependents(macros)
+    mss, snd_buf, wnd = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["TCP_WND"]
+    seg, pool, pool_buf = macros["MEMP_NUM_TCP_SEG"], macros["PBUF_POOL_SIZE"], d["PBUF_POOL_BUFSIZE"]
+    queuelen = d["TCP_SND_QUEUELEN"]
+    problems: list[str] = []
+    # --- lwIP's own, from lib/lwip/src/core/init.c. The port leaves MEMP_MEM_MALLOC, LWIP_WND_SCALE
+    # and LWIP_DISABLE_*_SANITY_CHECKS at 0 and LWIP_TCP/LWIP_UDP at 1, so every one is live. ---
+    if macros["MEMP_NUM_UDP_PCB"] <= 0:
+        problems.append(f"MEMP_NUM_UDP_PCB ({macros['MEMP_NUM_UDP_PCB']}) <= 0 - lwIP requires at least one UDP pcb with LWIP_UDP enabled")
+    if macros["MEMP_NUM_TCP_PCB"] <= 0:
+        problems.append(f"MEMP_NUM_TCP_PCB ({macros['MEMP_NUM_TCP_PCB']}) <= 0 - lwIP requires at least one TCP pcb with LWIP_TCP enabled")
+    if wnd > _U16_MAX:
+        problems.append(f"TCP_WND ({wnd}) > 0xFFFF - it must fit in a u16_t without LWIP_WND_SCALE, which this port does not enable")
+    if queuelen > _U16_MAX:
+        problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) > 0xFFFF - it must fit in a u16_t")
+    if queuelen < _MIN_TCP_SND_QUEUELEN:
+        problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) < {_MIN_TCP_SND_QUEUELEN} - lwIP needs at least {_MIN_TCP_SND_QUEUELEN} for no-copy writes")
+    if pool_buf <= _MEM_ALIGNMENT:
+        problems.append(f"PBUF_POOL_BUFSIZE ({pool_buf}) <= MEM_ALIGNMENT ({_MEM_ALIGNMENT})")
+    if seg < queuelen:
+        problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS)")
+    if snd_buf < 2 * mss:
+        problems.append(f"TCP_SND_BUF ({snd_buf}) < 2 * TCP_MSS ({2 * mss})")
+    if queuelen < 2 * (snd_buf // mss):
+        problems.append(f"TCP_SND_QUEUELEN ({queuelen}) < 2 * (TCP_SND_BUF / TCP_MSS) ({2 * (snd_buf // mss)})")
+    if d["TCP_SNDLOWAT"] >= snd_buf:
+        problems.append(f"TCP_SNDLOWAT ({d['TCP_SNDLOWAT']}) >= TCP_SND_BUF ({snd_buf})")
+    if mss >= (16 * 1024) - 1:
+        problems.append(f"TCP_MSS ({mss}) >= 16383, which underflows lwIP's own TCP_SNDLOWAT calculation")
+    if d["TCP_SNDLOWAT"] >= _U16_MAX - 4 * mss:
+        problems.append(f"TCP_SNDLOWAT ({d['TCP_SNDLOWAT']}, derived from TCP_SND_BUF/TCP_MSS) >= 0xFFFF - 4 * TCP_MSS ({_U16_MAX - 4 * mss}) - it must stay 4 * TCP_MSS below u16_t overflow")
+    if d["TCP_SNDQUEUELOWAT"] >= queuelen:
+        problems.append(f"TCP_SNDQUEUELOWAT ({d['TCP_SNDQUEUELOWAT']}) >= TCP_SND_QUEUELEN ({queuelen})")
+    if pool and pool_buf <= _PBUF_PROTOCOL_HEADER_BYTES:
+        problems.append(f"PBUF_POOL_BUFSIZE ({pool_buf}) leaves no room past the {_PBUF_PROTOCOL_HEADER_BYTES}-byte protocol headers")
+    if pool and wnd > pool * (pool_buf - _PBUF_PROTOCOL_HEADER_BYTES):
+        problems.append(f"TCP_WND ({wnd}) > PBUF_POOL_SIZE * (PBUF_POOL_BUFSIZE - headers) ({pool * (pool_buf - _PBUF_PROTOCOL_HEADER_BYTES)})")
+    if wnd < mss:
+        problems.append(f"TCP_WND ({wnd}) < TCP_MSS ({mss})")
+    if max_connections is None:
+        return problems
+    if max_connections < 1:  # every share below divides by it, and admitting nothing serves nothing
+        problems.append(f"max_connections ({max_connections}) < 1 - the per-connection relationships are undefined for a ceiling admitting no connection")
+        return problems
+    return problems + _per_connection_problems(macros, max_connections)
+
+
+def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
+    # The four values lwIP's own opt.h computes from the ones this override sets, by the same
+    # formulas (TCP_SND_QUEUELEN / TCP_SNDLOWAT / TCP_SNDQUEUELOWAT / PBUF_POOL_BUFSIZE). They are
+    # what most of init.c's sanity checks are really about, and none of them is settable here.
+    mss, snd_buf = macros["TCP_MSS"], macros["TCP_SND_BUF"]
+    snd_queuelen = (4 * snd_buf + (mss - 1)) // mss
+    return {
+        "TCP_SND_QUEUELEN": snd_queuelen,
+        "TCP_SNDLOWAT": min(max(snd_buf // 2, 2 * mss + 1), snd_buf - 1),
+        "TCP_SNDQUEUELOWAT": max(snd_queuelen // 2, 5),
+        # LWIP_MEM_ALIGN_SIZE at MEM_ALIGNMENT 4 (lwipopts_common.h) over TCP_MSS plus the headers.
+        "PBUF_POOL_BUFSIZE": ((mss + _PBUF_PROTOCOL_HEADER_BYTES) + 3) & ~3,
+    }
+
+
+def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compiler: str | None = None) -> dict[str, int]:
+    # Preprocesses lwIP's own opt.h with the exact flags (and, unless `compiler` is given, the
+    # compiler) CMake built the firmware with, returning each option's resolved value - proof the
+    # override landed rather than an assumption the generated header was found (Part B.14.2).
+    probe_body = '#include "lwip/opt.h"\n' + "".join(f'{_LWIP_PROBE_MARK} "{name}" = {name}\n' for name in (*macros, LWIP_OVERRIDE_SENTINEL))
+    output = _preprocess_with_build_flags(build_dir, probe_body, "lwip_connection_counts", "lwIP's options", _LWIP_REVERIFY, compiler)
+    found: dict[str, int] = {}
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(_LWIP_PROBE_MARK):
+            name, _, value = stripped[len(_LWIP_PROBE_MARK):].partition("=")
+            name, value = name.strip().strip('"'), value.strip()
+            if value != name:  # an undefined macro comes back as its own name: absent, not a value
+                found[name] = _eval_macro_expression(value)
+    return found
+
+
+def tick_offset_in_build(build_dir: Path) -> bool:
+    # Whether the firmware's own translation units reach the tick-offset copy: py/mphal.h with the
+    # build's recorded flags, its sentinel read back the way the lwIP readback reads its options.
+    probe_body = f'#include "py/mphal.h"\n{_TICK_PROBE_MARK} = {TICK_OFFSET_SENTINEL}\n'
+    output = _preprocess_with_build_flags(build_dir, probe_body, TICK_OFFSET_DIR_NAME, "the tick-offset sentinel", _TICK_OFFSET_REVERIFY, None)
+    values = [line.strip()[len(_TICK_PROBE_MARK):].partition("=")[2].strip() for line in output.splitlines() if line.strip().startswith(_TICK_PROBE_MARK)]
+    if values == ["1"]:
+        return True
+    if values == [TICK_OFFSET_SENTINEL]:  # an undefined macro comes back as its own name
+        return False
+    raise OverrideError(f"tick_offset_test: reading {TICK_OFFSET_SENTINEL} back from {build_dir} gave {values!r}, neither 1 nor absent - {_TICK_OFFSET_REVERIFY}")
+
+
+def validate_lwip_macros(macros: dict[str, int]) -> None:
+    missing = [name for name in LWIP_SETTABLE_MACROS if name not in macros]
+    unknown = sorted(set(macros) - set(LWIP_SETTABLE_MACROS))
+    if missing or unknown:
+        raise OverrideError(
+            f"lwip_connection_counts: [lwip] in toolchain/versions.toml must set exactly "
+            f"{list(LWIP_SETTABLE_MACROS)} - missing {missing}, unrecognized {unknown}. Every macro is "
+            "required even when unchanged, so the firmware's lwIP options are fully pinned and "
+            "reviewable in that one table (SPECIFICATION.md Part B.14.2).",
+        )
+    for name, value in macros.items():
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise OverrideError(f"lwip_connection_counts: [lwip].{name} must be a non-negative int, got {value!r}")
+    if macros["TCP_MSS"] < 1:  # every segment and window derivation divides by it
+        raise OverrideError(f"lwip_connection_counts: [lwip].TCP_MSS must be at least 1, got {macros['TCP_MSS']}")
+    # lwIP's own relationships, always - an incoherent set is a compile-time #error deep inside
+    # lib/lwip/src/core/init.c, and this says the same thing before the build with the relationship
+    # named. The N-connection ones are checked per device by buildgen, which knows N.
+    problems = check_lwip_ensemble(macros)
+    if problems:
+        raise OverrideError(
+            "lwip_connection_counts: [lwip] in toolchain/versions.toml is not a coherent set - lwIP's "
+            "options are NOT independent (lib/lwip/src/core/init.c turns each of these into a "
+            "compile-time #error, and opt.h derives TCP_SND_QUEUELEN/TCP_SNDLOWAT/TCP_SNDQUEUELOWAT/"
+            "PBUF_POOL_BUFSIZE from them):\n  - " + "\n  - ".join(problems),
+        )
+
+
+def verify_lwip_connection_counts_anchor(micropython_dir: Path, board: str) -> None:
+    # Checks every pinned-source fact this override depends on: lwIP's own `#if !defined` guards,
+    # MicroPython's atomic MEM_SIZE block and its plain #defines, the rp2 CMake include order, and
+    # the board directory's own shape. Raises OverrideError naming the drift; see Part B.14.2.
+    opt_h = micropython_dir / "lib" / "lwip" / "src" / "include" / "lwip" / "opt.h"
+    opt_text = _read_anchor_source(opt_h, "lwip_connection_counts")
+    for macro in LWIP_MACROS_GUARDED_IN_OPT_H:
+        _require_anchor(opt_text, f"#if !defined {macro} || defined __DOXYGEN__", opt_h, f"lwIP's own guard for {macro}")
+
+    common_h = micropython_dir / "extmod" / "lwip-include" / "lwipopts_common.h"
+    common_text = _read_anchor_source(common_h, "lwip_connection_counts")
+    for anchor in _LWIP_COMMON_ANCHORS:
+        _require_anchor(common_text, anchor, common_h, "MicroPython's own pinned lwIP option")
+
+    rp2_lwipopts = micropython_dir / "ports" / "rp2" / "lwip_inc" / "lwipopts.h"
+    _require_anchor(_read_anchor_source(rp2_lwipopts, "lwip_connection_counts"), _RP2_LWIPOPTS_ANCHOR, rp2_lwipopts, "the rp2 port's include of the common options")
+
+    rp2_cmake = micropython_dir / "ports" / "rp2" / "CMakeLists.txt"
+    cmake_text = _read_anchor_source(rp2_cmake, "lwip_connection_counts")
+    for anchor in _RP2_CMAKE_ANCHORS:
+        _require_anchor(cmake_text, anchor, rp2_cmake, "the rp2 port's board/include wiring")
+
+    board_cmake = micropython_dir / "ports" / "rp2" / "boards" / board / "mpconfigboard.cmake"
+    _require_anchor(_read_anchor_source(board_cmake, "lwip_connection_counts"), _BOARD_CMAKE_ANCHOR, board_cmake, f"{board}'s own frozen-manifest line")
+    for name in ("mpconfigboard.h", "manifest.py", "pins.csv"):
+        if not (board_cmake.parent / name).is_file():
+            raise OverrideError(f"lwip_connection_counts: {board}'s board directory no longer contains {name} ({board_cmake.parent}), so the generated board directory cannot relay it. {_LWIP_REVERIFY}")
+
+
+def verify_lwip_macros_in_build(build_dir: Path, macros: dict[str, int], compiler: str | None = None) -> dict[str, int]:
+    # read_lwip_macros_from_build() plus the assertion. Raises OverrideError naming every option
+    # whose resolved value differs from what was asked for.
+    found = read_lwip_macros_from_build(build_dir, macros, compiler)
+    if found.get(LWIP_OVERRIDE_SENTINEL) != 1:
+        raise OverrideError(
+            f"lwip_connection_counts: the generated lwipopts.h was never reached by the firmware's own "
+            f"translation unit - its sentinel {LWIP_OVERRIDE_SENTINEL} is absent, so every option came "
+            f"from MicroPython's defaults however the values below compare. The BOARD_DIR redirect or "
+            f"the include ordering it depends on has changed. {_LWIP_REVERIFY}",
+        )
+    wrong = {name: (want, found.get(name)) for name, want in macros.items() if found.get(name) != want}
+    if wrong:
+        detail = ", ".join(f"{name}: asked {want}, built {got}" for name, (want, got) in sorted(wrong.items()))
+        raise OverrideError(
+            f"lwip_connection_counts: the generated lwipopts.h did not reach the firmware's own "
+            f"translation unit - {detail}. The build is NOT configured as asked. {_LWIP_REVERIFY}",
+        )
+    return found
+
+
+def verify_modlwip_eagain_anchor(micropython_dir: Path) -> None:
+    # Every pinned-source fact the override relies on: the loop and its insertion point, the local include, listen()'s
+    # queue allocation, close()'s callback block, and the CMake/Makefile wiring that swaps the copy in. Raises naming it.
+    _verify_modlwip_source(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME)
+    for relative, anchors in _MODLWIP_RP2_WIRING:
+        _require_in_order(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME, relative, anchors, _MODLWIP_REVERIFY)
+    extmod_cmake = micropython_dir / "extmod" / "extmod.cmake"
+    text = extmod_cmake.read_text(encoding="utf-8")
+    block_start = text.index(_EXTMOD_SOURCE_SET)
+    block_end = text.find("\n)", block_start)
+    if text.find(_EXTMOD_MODLWIP_LINE, block_start) > block_end >= 0:
+        raise OverrideError(f"{MODLWIP_OVERRIDE_DIR_NAME}: extmod/modlwip.c is no longer inside set(MICROPY_SOURCE_EXTMOD ...) in {extmod_cmake} - {_MODLWIP_REVERIFY}")
 
 
 def verify_modlwip_eagain_in_build(build_dir: Path, micropython_dir: Path, copy_path: Path) -> None:
@@ -1063,6 +1036,56 @@ def verify_modlwip_eagain_in_build(build_dir: Path, micropython_dir: Path, copy_
         raise OverrideError(f"modlwip_eagain: expected exactly one {MODLWIP_COPY_NAME}{_FIRMWARE_OBJECT_SUFFIX} under {target_dir}, at {expected}; found {[str(path) for path in objects]}. {_MODLWIP_REVERIFY}")
     if expected.stat().st_size == 0:
         raise OverrideError(f"modlwip_eagain: {expected} is empty - the patched copy did not compile into the image. {_MODLWIP_REVERIFY}")
+
+
+def verify_tick_offset_anchor(micropython_dir: Path) -> Path:
+    # The pinned mp_hal_ticks_ms() body, exactly once; returns the header that holds it.
+    header = micropython_dir / "ports" / "rp2" / "mphalport.h"
+    _count_once(_read_anchor_source(header, TICK_OFFSET_DIR_NAME), _TICK_OFFSET_ANCHOR, header, TICK_OFFSET_DIR_NAME, _TICK_OFFSET_REVERIFY)
+    return header
+
+
+def verify_tick_offset_in_build(build_dir: Path, *, expected: bool) -> None:
+    # Run after every rp2 build: a release build (expected False) carrying the override is refused,
+    # and so is a test build (expected True) that never reached it.
+    found = tick_offset_in_build(build_dir)
+    if found and not expected:
+        raise OverrideError(f"tick_offset_test: a release build carries the tick-offset test override - {build_dir} reaches the generated mphalport.h, so ticks_ms() would wrap 15 minutes after boot. Build the release image without tick_offset_test (SPECIFICATION.md B.14).")
+    if expected and not found:
+        raise OverrideError(f"tick_offset_test: the test build at {build_dir} never reached the generated mphalport.h - its sentinel {TICK_OFFSET_SENTINEL} is absent, so the image wraps at the usual time. {_TICK_OFFSET_REVERIFY}")
+
+
+def verify_unix_gc_stack_anchor(micropython_dir: Path) -> None:
+    for relative, anchors in _UNIX_GC_STACK_ANCHORS:
+        _require_in_order(micropython_dir, "unix_gc_stack", relative, anchors, _UNIX_GC_STACK_REVERIFY)
+    _require_in_order(micropython_dir, "unix_qstr_len", "py/mpconfig.h", (_UNIX_QSTR_LEN_ANCHOR,), _UNIX_QSTR_LEN_REVERIFY)
+
+
+def verify_unix_gc_stack_in_build(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, *, env: dict[str, str]) -> None:
+    # The mark stack as this build compiled it, read from its own preprocessed unix_mphal.c.
+    _check_unix_gc_stack_pp(*_unix_mphal_pp(unix_dir, make_vars, build_dir_name, env, "unix_gc_stack"))
+
+
+def verify_unix_kbd_intr_anchor(micropython_dir: Path) -> Path:
+    common_header = micropython_dir / "ports" / "unix" / "variants" / "mpconfigvariant_common.h"
+    text = _read_anchor_source(common_header, "unix_kbd_intr")
+    if _UNIX_KBD_INTR_ANCHOR not in text:
+        raise OverrideError(
+            f"unix_kbd_intr: expected anchor line not found in {common_header} - "
+            "MICROPY_ASYNC_KBD_INTR's own definition has changed upstream (renamed, reguarded, or "
+            "the async/immediate nlr_raise()-from-signal-handler mechanism itself was restructured "
+            "in ports/unix/unix_mphal.c's sighandler()). Re-verify against the new pinned source "
+            "and update this override's anchor and generated #undef/#define pair accordingly - "
+            "SPECIFICATION.md Part B.14.1. Do NOT remove this check and build unpatched: an "
+            "interrupt mid critical section can corrupt VM state (reproduced as a garbled, "
+            "impossible traceback - SPECIFICATION.md B.14.1).",
+        )
+    return common_header
+
+
+def verify_unix_kbd_intr_in_build(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, *, env: dict[str, str]) -> None:
+    # The SIGINT path as this build compiled it, read from its own preprocessed unix_mphal.c.
+    _check_unix_kbd_intr_pp(*_unix_mphal_pp(unix_dir, make_vars, build_dir_name, env, "unix_kbd_intr"))
 
 
 def verify_unix_lwip_host_in_build(build_dir: Path, micropython_dir: Path, binary: Path, *, env: dict[str, str]) -> None:
@@ -1090,26 +1113,3 @@ def verify_unix_lwip_host_in_build(build_dir: Path, micropython_dir: Path, binar
         raise OverrideError(f"unix_lwip_host: {binary}'s socket module is not modlwip - {detail}")
     if result.returncode != 0 or lines[1:] != [_LWIP_HOST_TIMERS_OK]:
         raise OverrideError(f"unix_lwip_host: {binary} did not survive lwIP's own timers - {detail}")
-
-
-def tick_offset_in_build(build_dir: Path) -> bool:
-    # Whether the firmware's own translation units reach the tick-offset copy: py/mphal.h with the
-    # build's recorded flags, its sentinel read back the way the lwIP readback reads its options.
-    probe_body = f'#include "py/mphal.h"\n{_TICK_PROBE_MARK} = {TICK_OFFSET_SENTINEL}\n'
-    output = _preprocess_with_build_flags(build_dir, probe_body, TICK_OFFSET_DIR_NAME, "the tick-offset sentinel", _TICK_OFFSET_REVERIFY, None)
-    values = [line.strip()[len(_TICK_PROBE_MARK):].partition("=")[2].strip() for line in output.splitlines() if line.strip().startswith(_TICK_PROBE_MARK)]
-    if values == ["1"]:
-        return True
-    if values == [TICK_OFFSET_SENTINEL]:  # an undefined macro comes back as its own name
-        return False
-    raise OverrideError(f"tick_offset_test: reading {TICK_OFFSET_SENTINEL} back from {build_dir} gave {values!r}, neither 1 nor absent - {_TICK_OFFSET_REVERIFY}")
-
-
-def verify_tick_offset_in_build(build_dir: Path, *, expected: bool) -> None:
-    # Run after every rp2 build: a release build (expected False) carrying the override is refused,
-    # and so is a test build (expected True) that never reached it.
-    found = tick_offset_in_build(build_dir)
-    if found and not expected:
-        raise OverrideError(f"tick_offset_test: a release build carries the tick-offset test override - {build_dir} reaches the generated mphalport.h, so ticks_ms() would wrap 15 minutes after boot. Build the release image without tick_offset_test (SPECIFICATION.md B.14).")
-    if expected and not found:
-        raise OverrideError(f"tick_offset_test: the test build at {build_dir} never reached the generated mphalport.h - its sentinel {TICK_OFFSET_SENTINEL} is absent, so the image wraps at the usual time. {_TICK_OFFSET_REVERIFY}")

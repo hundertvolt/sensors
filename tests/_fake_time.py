@@ -102,13 +102,6 @@ class _Wake:
         raise exc
 
 
-def driven_modules(*extra: str) -> "list[object]":
-    # Every src module holding asyncio, the twin's machine and network and the named extras: one clock for each sleep
-    # and tick read, so a tick one module reads is diffed by another on the same clock.
-    names = ("machine", "network") + extra  # a (*a, b) display is a SyntaxError on MicroPython
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in names) and getattr(m, "asyncio", None) is asyncio]
-
-
 class DrivenTime(Ticks30Time):
     # `now` and advance() as Ticks30Time's; inside the block each given module's `time` is this object. `strict`: any
     # wall-clock read raises (a test proving no RTC, time() or NTP value is used); every other name is the real module's.
@@ -265,6 +258,20 @@ class DrivenTime(Ticks30Time):
         self.advance(ms)
         await self._settle()
 
+    def release(self) -> None:
+        # Real time from the instant reached: `now` runs on at the real rate, each module's asyncio is the real one again,
+        # and each parked sleep or wait_for() bound ends on the real clock after the time it had left (a bound still
+        # awaiting its task). The modules' `time` stays this clock until the block's exit, so no stamp steps.
+        self._real = (time.ticks_ms(), time.ticks_us())
+        if self._shim is not None:
+            count = len(self._modules)
+            for index, module in enumerate(self._modules):
+                module.asyncio = self._saved[count + index]  # type: ignore[attr-defined]
+        wakes, self._sleepers = self._sleepers, []
+        for wake in wakes:
+            wake.listed = False
+        self._wakers = [asyncio.create_task(_wake_after(wake, wake.at - self.now)) for wake in wakes]  # each ends by itself
+
     async def run_until(self, condition: "Callable[[], bool]", limit_ms: int) -> int:
         # elapse() one wake at a time until condition() holds: the virtual ms it took, or a failure naming the time reached.
         start = self.now
@@ -287,20 +294,6 @@ class DrivenTime(Ticks30Time):
                 self.now = limit
             else:
                 raise AssertionError(f"run_until: the condition still fails at virtual t={self.now} ms, {limit_ms} ms after t={start}")
-
-    def release(self) -> None:
-        # Real time from the instant reached: `now` runs on at the real rate, each module's asyncio is the real one again,
-        # and each parked sleep or wait_for() bound ends on the real clock after the time it had left (a bound still
-        # awaiting its task). The modules' `time` stays this clock until the block's exit, so no stamp steps.
-        self._real = (time.ticks_ms(), time.ticks_us())
-        if self._shim is not None:
-            count = len(self._modules)
-            for index, module in enumerate(self._modules):
-                module.asyncio = self._saved[count + index]  # type: ignore[attr-defined]
-        wakes, self._sleepers = self._sleepers, []
-        for wake in wakes:
-            wake.listed = False
-        self._wakers = [asyncio.create_task(_wake_after(wake, wake.at - self.now)) for wake in wakes]  # each ends by itself
 
     def ticks_ms(self) -> int:
         if self._real is None:
@@ -363,6 +356,13 @@ async def _wake_after(wake: _Wake, ms: int) -> None:
     # A wake parked at release(), set on the real clock once the time it had left has passed.
     await asyncio.sleep_ms(max(0, ms))
     wake.fire()
+
+
+def driven_modules(*extra: str) -> "list[object]":
+    # Every src module holding asyncio, the twin's machine and network and the named extras: one clock for each sleep
+    # and tick read, so a tick one module reads is diffed by another on the same clock.
+    names = ("machine", "network") + extra  # a (*a, b) display is a SyntaxError on MicroPython
+    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in names) and getattr(m, "asyncio", None) is asyncio]
 
 
 async def tick(flag: "asyncio.ThreadSafeFlag | ManualTick", times: int = 1, clock: "DrivenTime | None" = None, step_ms: int = 1000) -> None:
