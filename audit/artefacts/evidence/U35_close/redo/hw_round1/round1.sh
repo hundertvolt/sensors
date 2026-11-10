@@ -30,9 +30,11 @@ STEPS=(  # id|name|minutes|FC|FS owned|NVM|FS prerequisite|stop|needs|command; t
   "3g|gc_control_image|5|1|0|0|0|fc|GC_CONTROL_IMAGE|gc_image"
   "4g|flash_tier_gc_control|120|0|0|1|136|pytest|GC_CONTROL_IMAGE|gc flash_tier"
   "5g|bench_tier_gc_control|180|0|0|0|66|pytest|GC_CONTROL_IMAGE|gc bench"
+  "5gh|heap_loads_gc_control|16|0|0|0|0|end|GC_CONTROL_IMAGE, DUT_IP|heap_loads ctl"
   "3|final_image|35|1|0|0|0|fc|-|final_image"
   "4b|flash_tier|120|0|0|0|136|pytest|-|flash_tier"
   "5|bench_tier|180|0|0|0|66|pytest|-|bench"
+  "5h|heap_loads|16|0|0|0|0|end|DUT_IP|heap_loads"
   "9|crc16_hazards|10|0|0|0|0|pytest|-|hazards"
   "10a|soak_short|30|0|0|0|8|pytest|-|soak short --deselect=$HOTSPOT"
   "10m|soak_mid|75|0|0|0|8|pytest|-|soak mid --deselect=$HOTSPOT"
@@ -42,7 +44,7 @@ STEPS=(  # id|name|minutes|FC|FS owned|NVM|FS prerequisite|stop|needs|command; t
   "12c|dns_idle_poll|5|0|0|0|0|end|stored Wi-Fi config|dns_idle"
   "12d|reset_errors_budget|6|0|0|0|0|end|DUT_IP, step 1 evidence|reset_errors"
   "12e|general_call_per_chip|2|0|0|0|0|end|-|mp $HM/general_call_per_chip.py 60"
-  "12f|held_sda_resets|8|0|0|0|0|end|DUT_IP; owner: scope optional|held_sda"
+  "12g|fram_chunk_timing|3|0|0|0|0|end|-|framchunk"
   "16b|bmp3xx_probe|3|0|0|0|0|end|owner: power cycle, then rerun|probe bmp3xx_conformance_probe.py"
   "13|country_scan|3|0|0|0|0|end|owner: AP on channel 13, CH13=1|country"
   "10c|soak_long_clock_stretch|380|0|0|0|0|pytest|-|soak long -k test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout"
@@ -70,6 +72,14 @@ ok() { "$@"; local r=$?; [ "$r" = 4 ] && r=0; return "$r"; }  # a wrapper's NOT 
 gc() {  # 4g, 5g: a tier on the GC control image (OR40.a (3)), its own record for the harness's image check
   if [ -z "${GC_CONTROL_IMAGE:-}" ]; then echo "NOTE GC_CONTROL_IMAGE unset: owed"; return 0; fi
   "$@" --image-record "${GC_CONTROL_IMAGE%.uf2}.json"
+}
+
+heap_loads() {  # 5gh, 5h: /status read by 6, 6, 6, then 2 readers, one collect after each idle (lead, 2026-11-10)
+  local p=$H/probes_20261110 c=$L/heap_loads${1:+_$1}.out
+  [ -z "${1:-}" ] || [ -n "${GC_CONTROL_IMAGE:-}" ] || { echo "NOTE GC_CONTROL_IMAGE unset: owed"; return 0; }
+  sed "${1:+/^gc\.threshold(32768)\$/d}" "$p/snap58_heap_loads.py" > "$L/heap_loads.py"  # ctl: no threshold, as that image boots
+  sed "s#^SCRIPT = .*#SCRIPT = \"$L/heap_loads.py\"#" "$p/heap_loads_host.py" > "$L/heap_loads_host.py"
+  uv run --no-sync python "$L/heap_loads_host.py" "$c" && python3 "$p/heap_loads_summary.py" "$c" && grep -q '^DONE' "$c"
 }
 
 wear() {  # the opt-in wear guard: refused until WEAR.txt is cleared, skipped once passed unless FORCE_WEAR names it
@@ -188,13 +198,7 @@ reset_errors() {  # row 12d: "wipe" answered without a prompt, only once step 1'
   py get status 180 && echo wipe | python3 "$HM/host_reset_errors_timing.py" "$DUT_IP"
 }
 
-held_sda() {  # row 12f: SDA held, then each reset kind; /status and /sensors once the product serves again
-  local m
-  for m in machine_reset watchdog; do
-    mpc held_sda_reset.py 60 -e "s/^MODE = .*/MODE = \"$m\"/"
-    py get status 180 && py get sensors 30
-  done
-}
+framchunk() { : > "$L/mp.out"; mp "$H/probes_20261110/fram_chunk_timing_frozen.py" 180; grep -q '^FRAMCHUNK done' "$L/mp.out"; }  # row 12g
 
 country() {  # row 13: only with CH13=1, the owner's access point on channel 13 in range
   [ "${CH13:-0}" = 1 ] || { echo "NOTE country scan skipped: CH13=1 not set"; return 0; }
