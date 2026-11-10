@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from _async_harness import CoroutineOf
     from typing_extensions import TypedDict, Unpack
 
-    from asy_base_classes import PieceBuffer
+    from asy_uart_driver import PieceBuffer
 
     class _UartBaseKw(TypedDict, total=False):
         # UART()'s keywords a test may name, framing aside: cobs_uart() names its own.
@@ -1321,7 +1321,10 @@ def test_a_line_split_across_the_ring_end_reads_whole() -> None:
     assert fake(uart).rx_api_calls == 0
 
 
-class _UnbuildablePieceBuffer(asy_base_classes.PieceBuffer):
+_REAL_PIECE_BUFFER = asy_uart_driver.PieceBuffer
+
+
+class _UnbuildablePieceBuffer(_REAL_PIECE_BUFFER):
     # Rebound as the module's PieceBuffer: built as on a heap with no room left for one piece.
     def __init__(self, size: int, piece_bytes: int) -> None:
         raise MemoryError("simulated allocation failure")
@@ -1339,7 +1342,7 @@ def test_a_refused_line_piece_answers_none_prints_its_text_and_consumes_nothing(
             try:
                 refused = await read_line(uart)
             finally:
-                asy_uart_driver.PieceBuffer = asy_base_classes.PieceBuffer  # type: ignore[misc]
+                asy_uart_driver.PieceBuffer = _REAL_PIECE_BUFFER  # type: ignore[misc]
             return refused, uart.discarded_bytes, await read_line(uart)
 
     with record_prints() as rec:

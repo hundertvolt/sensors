@@ -319,7 +319,7 @@ def test_a_lower_level_taken_before_a_higher_one_fails(src_copy: Path) -> None:
 def test_an_untabled_lock_attribute_fails(src_copy: Path) -> None:
     path = src_copy / "asy_neopixel_driver.py"
     text = path.read_text(encoding="utf-8")
-    anchor = "        self._overlay_lock = asyncio.Lock()"
+    anchor = "        self._led_lock = asyncio.Lock()"
     assert anchor in text
     path.write_text(text.replace(anchor, "        self._extra_lock = asyncio.Lock()\n" + anchor), encoding="utf-8")
     findings = all_findings(src_copy, _spec())
@@ -327,9 +327,11 @@ def test_an_untabled_lock_attribute_fails(src_copy: Path) -> None:
 
 
 def test_an_acquisition_inside_a_leaf_lock_fails(src_copy: Path) -> None:
-    _append(src_copy, "asy_base_classes.py", "\n\nasync def _planted(r):\n    async with r._data_lock:\n        async with r._overlay_lock:\n            pass\n")
-    findings = all_findings(src_copy, _spec())
-    assert len(findings) == 1 and "_planted():" in findings[0] and "taken inside the leaf lock SensorReader._data_lock" in findings[0], findings
+    # No row is a leaf today: the planted one makes the UDP socket's lock one.
+    spec = _spec().replace("| `UDPSocket._connect_lock` | — |", "| `UDPSocket._connect_lock` | leaf |")
+    _append(src_copy, "asy_udp_socket.py", "\n\nasync def _planted(r):\n    async with r._connect_lock:\n        async with r._led_lock:\n            pass\n")
+    findings = all_findings(src_copy, spec)
+    assert len(findings) == 1 and "_planted():" in findings[0] and "taken inside the leaf lock UDPSocket._connect_lock" in findings[0], findings
 
 
 def test_an_unlevelled_row_nested_with_another_fails(src_copy: Path) -> None:

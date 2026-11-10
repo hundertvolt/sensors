@@ -548,8 +548,7 @@ class FRAMManager:
         return []
 
     def start_asy_watch_chip(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._watch_chip_loop())
+        return asyncio.create_task(self._watch_chip_loop())
 
     def get_chunk(self, size: int, crc: CRCBase | None = None, verify: int = 0, *, owner: str) -> FRAMChunk | None:
         if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc (owner, 2026-07-18: reject generally at the top)

@@ -86,7 +86,6 @@ def _make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notifica
 
     signal = NotificationSignal("WarnHum", ValueRef(scd_reader, "Hum"), (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
-    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
     return pixel, notify
 
@@ -108,7 +107,6 @@ def _make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notification
 
     signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
-    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
     return pixel, notify
 

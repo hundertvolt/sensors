@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     from _uart_comm_hazard_common import CrcMaker
     from machine import _LinkDirection as Direction  # one direction of the crossover link
 
-    from asy_base_classes import PieceBuffer
     from asy_uart_comm import ListenResult
+    from asy_uart_driver import PieceBuffer
 
 _FRAME = 5 + _PAYLOAD
 

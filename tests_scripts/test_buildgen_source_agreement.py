@@ -143,7 +143,8 @@ def test_every_driver_has_its_build_table_rows() -> None:
 
 def test_every_driver_and_mandatory_module_has_its_errcount_rows() -> None:
     catalog = {key: has_cfgmgr for key, _label, has_cfgmgr in definitions._ERRCOUNT_CATALOG}
-    owners = {name: _owns_cfgmgr(_tree(info.source_path), info.class_name) for name, info in _drivers().items()}
+    # The LED keeps no log, so it has no row (SPECIFICATION.md A.4: the pixel has no failure path).
+    owners = {name: _owns_cfgmgr(_tree(info.source_path), info.class_name) for name, info in _drivers().items() if name != "neopixel"}
     owners |= {key: _owns_cfgmgr(_tree(_SRC / filename)) for key, filename in definitions._MANDATORY_ERRCOUNT_FILES.items()}
     assert catalog == owners, "the errcount catalog's (row, CFGMGR_ companion) pairs differ from the sources"
     assert set(definitions._CFGMGR_LABEL) == {key for key, has_cfgmgr in catalog.items() if has_cfgmgr}

@@ -11,7 +11,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP shim's director
 import network
 from _async_harness import cancel, run
 from _error_codes import code
-from _fake_time import DrivenTime, tick
+from _fake_time import DrivenTime, ManualTick, tick
 from _fram_builders import make_fram_manager
 from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _port_bands import PortAllocator
@@ -213,6 +213,13 @@ _PORTS = PortAllocator("test_ntp_fram_system_integration")
 # ---------------------------------------------------------------------------
 
 
+def _ticked(svc: SystemService) -> ManualTick:
+    # The status pass's cadence, stepped by hand: installed before the loop's first wait.
+    if not isinstance(svc._tick, ManualTick):
+        svc._tick = ManualTick()
+    return svc._tick
+
+
 def test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_synced() -> None:
     conn = _make_conn()
     ntp = _make_ntp(conn, "127.0.0.1")
@@ -279,7 +286,7 @@ _WRITE_PROMPT_S = 1.0
 
 def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_concurrent_real_sync() -> None:
     # Proves the "no cross-lock contention" assumption asy_fram_manager.py's comments rely on:
-    # ntp_issynced() only touches SensorReader's private _data_lock, never conn's or ntp's shared
+    # ntp_issynced() reads SensorReader's last sample, taking no lock, never conn's or ntp's shared
     # wifi_mode_lock.
     #
     # So a FRAM backup cycle calling it while a real NTP sync attempt is genuinely in flight, and holding
@@ -332,7 +339,7 @@ def test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_sync
         async def scenario() -> int | float | None:
             await sync_real_ntp_chain(conn, ntp)
             task = asyncio.create_task(svc._status_loop())
-            await tick(svc._uptime_event, 1, clock)
+            await tick(_ticked(svc), 1, clock)
             await cancel(task)
             return await svc.get_boot_signature()
 
@@ -349,7 +356,7 @@ def test_system_service_boot_signature_falls_back_to_random_once_the_real_chain_
 
         async def scenario() -> int | float | None:
             task = asyncio.create_task(svc._status_loop())
-            await tick(svc._uptime_event, 121, clock)  # 121 driven seconds: past _NTP_WAIT_TIME (120 s)
+            await tick(_ticked(svc), 121, clock)  # 121 driven seconds: past _NTP_WAIT_TIME (120 s)
             await cancel(task)
             assert await ntp.ntp_issynced() is False  # sanity: the real chain genuinely never synced
             return await svc.get_boot_signature()
@@ -374,7 +381,7 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
         async def scenario() -> tuple[int | float | None, bool]:
             await sync_real_ntp_chain(conn, ntp)
             task = asyncio.create_task(svc._status_loop())
-            await tick(svc._uptime_event, 1, clock)
+            await tick(_ticked(svc), 1, clock)
             await cancel(task)
             boot_signature = await svc.get_boot_signature()
             write_ok, _ntp_synced, _utc = await chunk.write(b"12345678", require_ntp=True)

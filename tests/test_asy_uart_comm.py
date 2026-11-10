@@ -40,7 +40,7 @@ from rp2 import DMA
 import asy_base_classes
 import asy_print_log
 import asy_uart_comm
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_crc_checks import CRC16
 from asy_framing_codecs import FramingCOBS
 from asy_print_log import LogConfig, PrintLogHistoryStore, fatal_reported, make_logger
@@ -53,7 +53,7 @@ from asy_uart_comm import (
     TransferLimits,
     UARTComm,
 )
-from asy_uart_driver import UART
+from asy_uart_driver import UART, PieceBuffer
 
 try:
     from typing import TYPE_CHECKING

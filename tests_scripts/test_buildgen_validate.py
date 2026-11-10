@@ -1306,7 +1306,6 @@ def test_partial_instance_level_fram_wiring_is_fine(tmp_path: Path, src_dir: Pat
     # while testing something else; this asserts the partial case on its own terms.
     doc = base_doc()
     del table_at(doc, "instance", 0, "wiring")["fram_target"]  # scd30 - unwired
-    del table_at(doc, "instance", 3, "wiring")["fram_target"]  # neopixel - unwired
     # sgp40 (index 1) and notification (index 4) keep their fram_target wiring - genuinely partial.
     _model, source = _generated(tmp_path, src_dir, doc)
     logs = {var: _construction(source, var).rsplit("log=", 1)[1] for var in ("scd30", "neopixel", "sgp40", "notification")}
@@ -1576,7 +1575,7 @@ def test_device_wiring_value_must_be_a_string_reference(tmp_path: Path, src_dir:
 def test_driver_declaring_requires_tags_but_sitting_on_no_bus(tmp_path: Path, src_dir: Path) -> None:
     # A bus requirement on a driver with no bus field is a contradiction the build must name, not
     # silently skip. neopixel is the only driver with no bus at all, so the tag is staged onto it.
-    staged = _staged_src(tmp_path, src_dir, "asy_neopixel_driver.py", "# @wiring fram_target", "# @requires bus.frequency<=100000\n# @wiring fram_target")
+    staged = _staged_src(tmp_path, src_dir, "asy_neopixel_driver.py", '_NAME = const("NEOPIXEL")', '# @requires bus.frequency<=100000\n_NAME = const("NEOPIXEL")')
     path = write_doc(tmp_path, "fixture", base_doc())
     with pytest.raises(BuildError, match="declares @requires bus tags but has no 'bus' field"):
         build_model(path, staged)

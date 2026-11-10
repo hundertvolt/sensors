@@ -31,11 +31,7 @@ _RUN_PHASE_ALLOWED: "dict[tuple[str, str, str], str]" = {
         ("asy_isl29125_driver.py", f"ISL29125_Reader.{method}", "_cal_recent"): "calibration only, at most _CAL_CONVERGE_N ratios"
         for method in ("_end_calibration", "_measure_gain_ratio", "_note_candidate", "_read_on", "start_calibration")
     },
-    ("asy_neopixel_driver.py", "NeopixelDriver._overlay_loop", "_overlay_rgb"): "the pixel tuple, replaced at every overlay wake",
-    **{
-        ("asy_neopixel_driver.py", f"NeopixelDriver.{method}", "_rgbt"): "the signal's four values, replaced by the next request stored"
-        for method in ("led_signal", "request_signal")
-    },
+    ("asy_neopixel_driver.py", "NeopixelDriver.led_signal", "_rgbt"): "the external command's four values, replaced by the next one accepted",
     ("asy_print_log.py", "PrintLogHistoryStore._write_later", "_writer"): "the history's one writer task per burst, dropped as it ends",
     ("asy_scd30_driver.py", "SCD30_Reader._store_scd", "_datastruct"): "the latest reading, replaced at every read",
     ("asy_spi_driver.py", "SPI.init", "_spi"): "construction: init() runs from __init__ only, and machine.SPI() returns a static object (ports/rp2/machine_spi.c)",

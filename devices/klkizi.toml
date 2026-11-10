@@ -79,9 +79,6 @@ max_size = 0x2000
 driver = "neopixel"
 pin = 15
 
-[instance.wiring]
-fram_target = "fram"
-
 [[instance]]
 driver = "notification"
 

@@ -24,7 +24,7 @@ _SCAN_SCRIPT_TIMEOUT_S = 60.0  # the script's own 20 s watch, its FRAM setup and
 _SCAN_ENTRIES = 5  # four task ends and the reboot's entry (Part N system.scan_budget)
 _GRAPH_SCRIPT_TIMEOUT_S = 120.0
 _TASK_RETURNED = code("E", "TASK_RETURNED")
-_TIMER = code("E", "TIMER")
+_STARTER_RAISED = code("E", "TASK_STARTER_RAISED")
 _SGP_BACKUP_AGE = code("W", "SGP_BACKUP_AGE")
 _RR_WATCHDOG = module_int_const(SRC_DIR, "asy_system_service.py", "_RR_WATCHDOG")
 _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # the watchdog's REASON bits 0-1, TIMER and FORCE (pico-sdk watchdog.h)
@@ -73,20 +73,18 @@ def test_one_supervisor_pass_with_every_task_ended_stays_inside_the_watchdog(boa
 
 
 def test_the_running_graph_handles_every_failed_arm_of_an_emptied_alarm_pool_in_place(board: "Board") -> None:
-    # The whole graph's tasks and timers started with no alarm free: every starter runs, the stagger's failed arm is
-    # logged and slept instead, the uptime still rises, mempause answers, the WiFi tick re-arms once the pool frees, and
-    # no task ends and no reset arms.
+    # The whole graph's tasks and timers started with no alarm free: every starter runs and handles its failed arm
+    # itself (SYSTEM logs no starter raising), the uptime still rises, mempause answers, and no task ends and no reset arms.
     save_fram_raw(board, "timer-pool-empty-beside-the-graph")
     facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "timer_pool_empty_beside_the_graph.py", timeout_s=_GRAPH_SCRIPT_TIMEOUT_S))
     assert "failure" not in facts and "leftover_errno" not in facts, f"the scratch graph failed before its verdict: {facts}"
     assert isinstance(facts.get("pool_free"), int) and facts.get("timers_started") is True, f"the timers never started over the empty pool: {facts}"
-    assert facts.get("uptime_rose") is True, f"the uptime stood still while its tick was unarmed: {facts}"
+    assert facts.get("uptime_rose") is True, f"the uptime stood still over the empty pool: {facts}"
     assert facts.get("mempause") is True and facts.get("paused") in (True, None), f"mempause with the pool empty did not pause: {facts}"
-    assert facts.get("wifi_tick_armed_empty") in (False, None) and facts.get("wifi_tick_rearmed", True) is True, f"the WiFi tick armed from an empty pool or never re-armed: {facts}"
     system, gained = facts.get("system"), facts.get("system_gained")
-    assert isinstance(system, dict) and isinstance(gained, int) and gained >= 1, f"SYSTEM logged no failed arm: {facts}"
-    newest = [num for kind, num in zip(system["ErrType"], system["ErrNum"], strict=True) if kind == "E"][-gained:]
-    assert _TIMER in newest, f"the stagger's failed arm is not among SYSTEM's {gained} newest entries {newest}: {facts}"
+    assert isinstance(system, dict) and isinstance(gained, int), f"no SYSTEM log read back: {facts}"
+    newest = [num for kind, num in zip(system["ErrType"], system["ErrNum"], strict=True) if kind == "E"][-gained:] if gained else []
+    assert _STARTER_RAISED not in newest, f"a starter raised over the empty pool, among SYSTEM's {gained} newest entries {newest}: {facts}"
     assert facts.get("tasks_alive") is True and facts.get("reset_armed") is False, f"a task ended or a reset armed over the empty pool: {facts}"
 
 

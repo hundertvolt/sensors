@@ -207,10 +207,10 @@ def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
-        "--test-hold-system-entry", "25", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
+        "--test-hold-system-entry", "25", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "reset", "--test-watchdog-fault", "block",
         "--test-defer-faults", "--test-pin-send-buffer", "--test-uart-driven-clock",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), 10, "sequencer", "block", True, True, True)
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), 10, "reset", "block", True, True, True)
     assert _parse("--test-hold-system-entry", "25:cut").instrumentation.hold_system_entry == (25, True)
     refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-hold-system-entry", "25:never"), ("--test-hold-system-entry", "0:cut"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
     for flags in refused:
@@ -553,14 +553,9 @@ class _FramManager:
         return await self.fram.report_set_values(1)  # the first pass-2 unit refused
 
 
-class _Counter:
-    async def get_value(self) -> int:
-        return 3
-
-
 class _Webserver:
     def __init__(self) -> None:
-        self._open_conns, self._backlog, self.closed = _Counter(), 7, 0
+        self._open_conns, self._backlog, self.closed = 3, 7, 0
         self.served: list[int] = []  # each served connection's send buffer, as the kernel read it back when serving began
 
     async def _close_writer(self, _writer: object) -> None:
@@ -636,23 +631,23 @@ def test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs
     fired: list[int] = []
     ticks: list[int] = []
     sysfunct, module = _Holder(), _Holder()
-    sysfunct._reset_timer, sysfunct._sequencer_timer = machine.Timer(), machine.Timer()  # type: ignore[attr-defined]
+    sysfunct._reset_timer = machine.Timer()  # type: ignore[attr-defined]
     module.sysfunct = sysfunct  # type: ignore[attr-defined]
 
     async def drive() -> int:
-        cleared = asyncio.create_task(runner._test_drop_timer_fire(cast("ModuleType", module), "sequencer", said.append))
+        cleared = asyncio.create_task(runner._test_drop_timer_fire(cast("ModuleType", module), "reset", said.append))
         ticker = machine.Timer(period=_TICKER_PERIOD_MS, callback=lambda _t: ticks.append(1))
-        sysfunct._sequencer_timer.init(period=_DROP_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
+        sysfunct._reset_timer.init(period=_DROP_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
         await asyncio.wait_for_ms(cleared, _DROP_CLEAR_BOUND_MS)
         during = len(ticks)
-        sysfunct._sequencer_timer.init(period=_REARM_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
+        sysfunct._reset_timer.init(period=_REARM_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
         await asyncio.sleep_ms(_REARM_RUN_MS)
         ticker.deinit()
         await asyncio.sleep_ms(0)  # the deinit's cancel lands before the run ends
         return len(ticks) - during
 
     after = run_timed(drive(), _RUN_BOUND_S)
-    assert said[0] == "DROP_ARMED sequencer" and said[1].startswith("FIRE_DROPPED sequencer callbacks="), said
+    assert said[0] == "DROP_ARMED reset" and said[1].startswith("FIRE_DROPPED reset callbacks="), said
     assert int(said[1].split("=")[1]) >= 1 and machine.Timer.drop_next_soft_callbacks == 0, (said, machine.Timer.drop_next_soft_callbacks)
     assert fired == [2] and after >= 2, (fired, after)  # the armed fire lost, the next arm's kept, the ticker back
 

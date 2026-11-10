@@ -759,14 +759,13 @@ every figure it records.
   `0x20040000 − __GcHeapStart` minus the GC's own tables, ~4.3-4.5 KB scaling with heap, §M6.2).
 - **rp2 has no exact end-of-GC signal** — `__del__` never runs on user-class instances and
   `MICROPY_PY_WEAKREF` is off — so a sampler that never collects cannot find the live set (archive
-  §7R.4, §9). Read `_open_conns.value` as a plain int (no coroutine, no allocation); an `await`-less
-  `get_value()` is a coroutine object, always truthy.
+  §7R.4, §9). Read `_open_conns`, a plain int (no coroutine, no allocation).
 
 **Re-derive a tool's printed summary from the raw output when a label looks wrong**, and remember
 a minimum from a 5 s snapshot bounds the true peak from one side only.
 
-**Count on both sides, and treat a gap as a finding.** Wrap `_open_conns.increment` to count every
-increment above the limit — installed as soon as `sensortask_dev.webserver` exists, not at a
+**Count on both sides, and treat a gap as a finding.** Count every `_open_conns`
+step above the limit — installed as soon as `sensortask_dev.webserver` exists, not at a
 `READY` line, or the first seconds of load reach only the host's count. Device allocation lines come
 in pairs per failure (the `MemoryError` and the webserver's `Unhandled exception in route
 handler`), so lines ÷ 2 = host 500s.

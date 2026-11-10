@@ -24,6 +24,7 @@ _BUSY_RECHECK_MS = 10
 
 class _Sleeps:
     # A module's `asyncio` on the clock: only what the lent modules use at run time, so a new name fails here.
+    create_task = staticmethod(asyncio.create_task)
     get_event_loop = staticmethod(asyncio.get_event_loop)
 
     def __init__(self, clock: "DrivenClock") -> None:

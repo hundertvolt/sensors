@@ -30,7 +30,7 @@ def src_dir(repo_root: Path) -> Path:
         ("bmp3xx", "asy_bmp3xx_driver", "BMP3XX_Reader", "sensor", True),
         ("isl29125", "asy_isl29125_driver", "ISL29125_Reader", "sensor", True),
         ("fram", "asy_fram_manager", "FRAMManager", "service", True),
-        ("neopixel", "asy_neopixel_driver", "NeopixelDriver", "service", True),
+        ("neopixel", "asy_neopixel_driver", "NeopixelDriver", "service", False),
         ("notification", "asy_notification_service", "NotificationService", "service", True),
         ("uart_link", "asy_uart_link_driver", "UARTLinkDriver", "service", True),
     ],

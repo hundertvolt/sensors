@@ -70,7 +70,8 @@ if TYPE_CHECKING:
     from machine import UART as TwinUART
     from machine import UARTLink as TwinLink
 
-    from asy_base_classes import JsonDict, PieceBuffer
+    from asy_base_classes import JsonDict
+    from asy_uart_driver import PieceBuffer
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.

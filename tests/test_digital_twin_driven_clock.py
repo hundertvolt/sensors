@@ -216,7 +216,7 @@ def test_only_what_the_uart_modules_use_is_lent_and_a_module_without_time_gets_t
     assert clock.install([timed, untimed]) == 2
     assert timed.asyncio is not asyncio and untimed.asyncio is not asyncio, "a module's asyncio was not lent"
     assert timed.time is not time and not hasattr(untimed, "time"), "a module's time was lent wrongly"
-    assert timed.asyncio.get_event_loop is asyncio.get_event_loop
+    assert timed.asyncio.get_event_loop is asyncio.get_event_loop and timed.asyncio.create_task is asyncio.create_task
     assert timed.time.ticks_diff is time.ticks_diff, "the module's own ticks_diff() was not kept"
     assert not hasattr(timed.asyncio, "wait_for_ms"), "the lent asyncio holds a name the UART modules do not use"
     clock.release()

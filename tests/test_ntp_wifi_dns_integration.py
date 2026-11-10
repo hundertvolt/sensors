@@ -13,7 +13,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP shim's director
 import network
 from _async_harness import cancel, run
 from _error_codes import code
-from _fake_time import DrivenTime, tick
+from _fake_time import DrivenTime, ManualTick, tick
 from _fast_sleep import FastAsyncSleep
 from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _port_bands import PortAllocator
@@ -314,16 +314,17 @@ def test_a_held_lock_serves_the_snapshot_and_uptime_keeps_counting() -> None:
         resolver = _GatedResolver()
 
         async def scenario() -> "tuple[WIFI, WIFI, int, int, str | None, tuple[str, ...] | None]":
+            conn._tick = ManualTick()  # the uptime pass, stepped by hand
             uptime_task = asyncio.create_task(conn._uptime_loop())
             await asyncio.sleep(0)  # the loop starts its uptime at the driven clock's zero
             clock.advance(1000)
-            await tick(conn._time_counter_trigger_event)  # one 1 Hz step before the hold
+            await tick(conn._tick)  # one 1 Hz step before the hold
             before = await conn.get_data()
             uptime_before = await conn.get_wifi_uptime()
             sync_task = await _ntp_holding_the_lock(ntp, resolver)
             for _ in range(3):  # three seconds pass while the NTP attempt holds the lock
                 clock.advance(1000)
-                await tick(conn._time_counter_trigger_event)
+                await tick(conn._tick)
             assert conn.wifi_mode_lock.locked() is True  # still held: the uptime loop's own step waits on it
             held = await asyncio.wait_for(conn.get_data(), _LOCK_BLOCKED_WAIT_S)  # served at once, never waiting
             uptime_held = await conn.get_wifi_uptime()
@@ -511,7 +512,7 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
                         break
                     await asyncio.sleep_ms(_STATE_POLL_MS)
                 synced = await ntp.ntp_issynced()
-                last_sync = await ntp.get_last_ntp_sync()
+                last_sync = (await ntp.get_data()).LastSyncAge
                 await cancel(task)
                 return synced, last_sync
         finally:

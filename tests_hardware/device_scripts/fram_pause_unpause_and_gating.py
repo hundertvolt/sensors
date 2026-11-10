@@ -41,7 +41,7 @@ wdt: "machine.WDT | None" = None
 
 
 async def _check_auto_unpause_timers(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
-    # 5. The auto-unpause deadline, tested by the uptime pass on the board's real tick timer.
+    # 5. The auto-unpause deadline, tested by the uptime pass on the board's real 1 s tick.
     check(f"pause_permanent_storage({_PAUSE_S}) answered False", condition=sysfunct.pause_permanent_storage(_PAUSE_S))
     check(f"pause_permanent_storage({_PAUSE_S}) did not pause", condition=fram.get_pause() is True)
     await _sleep_fed_s(_PAUSE_S + _PAUSE_MARGIN_S)
@@ -92,8 +92,8 @@ async def _check_clear_and_timestamped(fram: FRAMManager, chunk: FRAMChunk) -> N
 
 async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
     # 8. Safety invariant under an exhausted alarm pool: storage is never left paused with nothing
-    #    able to unpause it. A pause arms no timer, so the pool cannot refuse it; the uptime tick
-    #    armed before the pool ran out ends it.
+    #    able to unpause it. Neither the pause nor the uptime tick that ends it arms a timer, so the
+    #    pool cannot refuse either.
     hogged = []
     exhausted = False
     try:
@@ -179,8 +179,7 @@ async def _main() -> None:
         done()
         return
     sysfunct = SystemService(_ntp_never_synced, storage=fram)
-    sysfunct.start_uptime_timer()  # the uptime pass that tests the auto-unpause deadline once a second
-    status_task = sysfunct.start_asy_status()
+    status_task = sysfunct.start_asy_status()  # the uptime pass that tests the auto-unpause deadline once a second
     try:
         fact("cleared_first", await chunk.clear())
         await _check_gating(fram, chunk)

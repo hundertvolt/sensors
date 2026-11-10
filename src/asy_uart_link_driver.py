@@ -22,10 +22,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asy_api_response import ResponseEnvelope, _RequestLike
-    from asy_base_classes import ErrorSource, JsonDict, JsonValue, PieceBuffer, TaskStarter, TimerStarter
+    from asy_base_classes import ErrorSource, JsonDict, JsonValue, TaskStarter, TimerStarter
     from asy_print_log import ErrorLog, LogConfig, PrintLogHistory
     from asy_uart_comm import TransferLimits
-    from asy_uart_driver import UART
+    from asy_uart_driver import UART, PieceBuffer
     from asy_webserver_service import _MicrodotApp
 
 _NAME = const("UART")
@@ -253,7 +253,7 @@ class UARTLinkDriver:
         return self._comm.get_timer_starters()  # empty - no machine.Timer anywhere in this file either
 
     def start_asy_exercise(self) -> asyncio.Task[None]:
-        return asyncio.get_event_loop().create_task(self._exercise_loop())
+        return asyncio.create_task(self._exercise_loop())
 
     # -- getters -----------------------------------------------------------
 

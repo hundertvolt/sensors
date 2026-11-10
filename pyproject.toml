@@ -237,7 +237,7 @@ max-returns = 10
 "src/asy_scd30_driver.py" = ["FBT001", "N801", "N802", "PLR0124"]
 "src/asy_sgp40_driver.py" = ["FBT001", "N801"]
 "src/asy_fram_driver.py" = ["N801"]
-"src/voc_algorithm.py" = ["N801"]
+"src/voc_algorithm.py" = ["N801", "PLR2004"]  # PLR2004: each C F16() constant folded in place, its expression beside it
 # PLR0913: ISL29125_I2C.configure() takes one keyword per CONFIG1-3 field (FN8424 p10-11).
 "src/asy_isl29125_driver.py" = ["FBT001", "N801", "PLR0124", "PLR0913"]
 # PLR0913/PLR0917: UART.__init__/init() take machine.UART's twelve parameters plus the wrapper's own four.

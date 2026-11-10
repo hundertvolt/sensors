@@ -256,8 +256,8 @@ throughout: same top-level features as today's deployed units, not a feature cha
   `socket.getaddrinfo()` against Neopixel animation. Deployed-only — `src/` splits this into
   `asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` and retires the lock (F.2).
 - `legacy/firmware/python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
-  `TimeCounterManager`, `LockedValue`/`Flag`. `src/asy_config_manager.py`/`src/asy_base_classes.py`'s
-  `LockedValue`/`LockedCounter`/`LockedFlag` (snake_case, unlike the old camelCase) replace these.
+  `TimeCounterManager`, `LockedValue`/`Flag`. `src/asy_config_manager.py` replaces the manager; the
+  holders are plain attributes, no step awaiting.
   MicroPython's flat frozen-module namespace means `import async_manager` silently resolves to
   whichever file defines that name — always import by name from `asy_config_manager`/`asy_base_classes`,
   never `async_manager`. Its config loads once at `__init__` into an in-memory cache; a read can't
@@ -464,28 +464,27 @@ throughout: same top-level features as today's deployed units, not a feature cha
   `asy_neopixel_driver.py`'s `NeopixelDriver` (pure LED hardware; also serves
   `asy_wifi_service.py`'s `LEDControl` Protocol) and `asy_notification_service.py`'s
   `NotificationService` (generic threshold signalling — owns the sleep window, interval, `AutoOn`
-  and the global `FlashBri`/`FlashDur`, one combined `ConfigManager` and logger). `led_signal()`
-  (the REST command) is refused at once while a signal is queued or running (owner, 2026-09-29),
-  and the refusal tells the caller to try again later: an external caller could flood the device
-  into exhaustion (owner, 2026-10-02); `request_signal()` (internal) waits for a running signal up
-  to a deadline (`led.signal_wait_ms`, Part N), then queues anyway, its values replacing any still
-  waiting in the slot, and returns — never when its own ramp ends — because internal requests are
-  bounded in number and rate (owner, 2026-10-02: 'internal LED commands are guaranteed to be
-  bounded by number and frequency, they won't flood the device'; legacy queued them without a
-  bound). Both store the values as given, and the ramp makes them safe as it reads them: each colour
-  clamped to 0-255 (NaN and ±inf → 0), the duration floored at 0.1 s (NaN too) and +inf played as
-  one step each way; the callers bound the duration (REST `t` 0.5-60 s, `FlashDur` 0.5-10 s). A ramp
-  ends black with the slot freed inside the overlay lock, then the overlay restored. The pixel
-  reports no faults (`NeoPixel.write()` hands `machine.bitstream()` only arguments the class builds
-  itself, and the ramp clamps every frame value before storing it), so its recovery is the task's:
-  the supervisor restarts an ended overlay or signal task; a restarted signal task writes black and,
-  ended mid-ramp, plays the flash still in its slot once more before the overlay is restored. A
-  controlled shutdown or bootloader entry mid-ramp cancels the task and leaves the last frame
-  showing until the next boot's start frame. On silicon one `write()` of the pixel takes 129 µs, and
-  the pixel kept its state through 794,560 Wi-Fi burst packets (12 × 10 min, no deviated sample; dev,
-  2026-10-29). The
-  overlay task writes on a change alone (`on()`, `off()`, `toggle()`, a ramp's end); a running
-  signal holds the overlay lock, so an overlay write never cuts into a ramp. The notification
+  and the global `FlashBri`/`FlashDur`, one combined `ConfigManager` and logger). One lock, `_led_lock`,
+  is held by whatever drives the pixel. `led_signal()` (the REST command) is refused at once while it is
+  held or a request is pending (owner, 2026-09-29), and the refusal tells the caller to try again later:
+  an external caller could flood the device into exhaustion (owner, 2026-10-02); otherwise the signal task
+  plays it. `request_signal()` (internal) waits its turn on the lock in arrival order, with no
+  deadline and never dropped, plays its ramp and returns at its end: every ramp is finite and internal
+  requests are bounded in number and rate (owner, 2026-10-02: 'internal LED commands are guaranteed to be
+  bounded by number and frequency, they won't flood the device'; legacy queued them without a bound).
+  Both take the values as given, and the ramp makes them safe as it reads them: each colour clamped to
+  0-255 (NaN and ±inf → 0), the duration floored at 0.1 s (NaN too) and +inf played as one step each
+  way; the callers bound the duration (REST `t` 0.5-60 s, `FlashDur` 0.5-10 s). A ramp steps in integers
+  (`c * n // steps`) into one reused frame, so no frame allocates, ends black, then restores the overlay;
+  `on()`/`off()`/`toggle()` write the overlay at once while the lock is free, else the ramp's end does.
+  The pixel has no failure path, so it keeps no error log (no FRAM chunk, no `/status` errcount entry;
+  event lines on the plain console printer): `NeoPixel.write()` hands `machine.bitstream()` only
+  arguments the class builds itself, and every frame value is clamped. A crashed task is the
+  supervisor's: a restarted signal task writes black and plays an external command it ended mid-ramp
+  once more. A controlled shutdown or bootloader entry mid-ramp cancels the task and leaves the last
+  frame showing until the next boot's start frame. On silicon one `write()` of the pixel takes 129 µs,
+  and the pixel kept its state through 794,560 Wi-Fi burst packets (12 × 10 min, no deviated sample;
+  dev, 2026-10-29). The notification
   signals are passed at construction (`signals=`, C.14.3): the constructor validates each in check
   order, prints a refusal at once and builds the combined schema, and `setup()` persists each
   refusal once. The active window runs from On to Off, and an On time later than Off spans midnight
@@ -817,31 +816,31 @@ under the implicit FRAM-wiring rule below the list):
    dependency edge from each of `conn`/`ntp`/`sysfunct` onto `fram` whenever
    `[device.wiring].fram_target` is set (a device with none adds no such edge, and `fram` lands
    wherever its own dependents and instance ordering put it).
-5. `neopixel = NeopixelDriver(15, log=log_fram)` — **FRAM chunk 1**; no on-flash config, no
+5. `neopixel = NeopixelDriver(15, log=log_ram)` — no FRAM chunk (no failure path, A.4); no on-flash config, no
    `cfgmgr`. Ahead of `conn` because `[device.wiring].led_target` hands it to `conn` as `ext_led`
    (step 6), so it inherits `conn`'s urgency.
 6. `conn = WifiService(WifiConfig(hostname, hotspot_password, conn_fail_to_hotspot,
-   hotspot_time_min), ext_led=neopixel, ..., log=log_fram)` — **chunk 2**;
+   hotspot_time_min), ext_led=neopixel, ..., log=log_fram)` — **chunk 1**;
    `SensorReaderConfig.__init__` (which `WifiService` goes through) builds its own `self.pr` chunk
-   first, then its owned `ConfigManager` — **chunk 3** (the implicit-FRAM-wiring rule, step 4:
+   first, then its owned `ConfigManager` — **chunk 2** (the implicit-FRAM-wiring rule, step 4:
    every `SensorReaderConfig`'s own `cfgmgr` inherits the same `log=` its owner was given, its own
    separate `"CFGMGR_<name>"`-named logger, never folded into the owner's own history; the one exception is SCD30's,
    built RAM-only, step 9). `conn` then
    owns `CaptiveDNS` internally (`asy_captive_dns.py`), constructed with the same `log=` —
-   **chunk 4**, its own separate `"DNSSRV"`-named logger.
+   **chunk 3**, its own separate `"DNSSRV"`-named logger.
 7. `ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked,
    conn.get_dns_server_ip, NtpTiming(...), ..., log=log_fram)` — bound methods off `conn` —
-   **chunk 5**, its own `cfgmgr` — **chunk 6**.
+   **chunk 4**, its own `cfgmgr` — **chunk 5**.
 8. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, storage=fram, ..., log=log_fram,
    level_setters=_collect_level_setters, config_stores=_collect_config_stores,
-   reset_reason=reset_reason)` — **chunk 7**. Not a
+   reset_reason=reset_reason)` — **chunk 6**. Not a
    `SensorReaderConfig` subclass (no measurement data), but embeds its own `ConfigManager`
-   directly the same way (`asy_system_service.py`'s own comment) — **chunk 8**, same "own chunk, then
+   directly the same way (`asy_system_service.py`'s own comment) — **chunk 7**, same "own chunk, then
    cfgmgr chunk" shape as every `SensorReaderConfig`-based module. `storage=fram` gives it the
    FRAM pause control and the chip a system command quiesces and erases; `level_setters` and
    `config_stores` are providers, not lists — `sysfunct.setup()` calls each once (step 15), after
    every module exists.
-9. `scd30 = SCD30_Reader(i2c0, 8, trigger_s=3, ..., cfg_path=cfg_path, log=log_fram)` — **chunk 9**; six
+9. `scd30 = SCD30_Reader(i2c0, 8, trigger_s=3, ..., cfg_path=cfg_path, log=log_fram)` — **chunk 8**; six
    of its keys live on-sensor and the three FRC settings in its config file (C.4.3), so it has a `cfgmgr` whose
    `CFGMGR_SCD30` log is RAM-only (`_CFG_LOG_FRAM = False`): no chunk of its own. Constructed before
    `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a direct `ValueRef(scd30, ...)` reference
@@ -851,21 +850,21 @@ under the implicit FRAM-wiring rule below the list):
    here for readability. Any order is valid: the chunk layout is fixed within one build and need
    not survive a reflash (owner, 2026-09-26).
 10. `sgp40 = SGP40_Reader(i2c1, temperature=ValueRef(scd30, 'Temp'), humidity=ValueRef(scd30,
-    'Hum'), backup=SgpBackup(fram, ntp.ntp_clock_valid), ..., log=log_fram)` — **chunk 10** (error
-    log), then its own `cfgmgr` — **chunk 11**, then the VOC backup its `__init__` draws from
+    'Hum'), backup=SgpBackup(fram, ntp.ntp_clock_valid), ..., log=log_fram)` — **chunk 9** (error
+    log), then its own `cfgmgr` — **chunk 10**, then the VOC backup its `__init__` draws from
     `backup.store` (**timestamped chunk**, not part of this numbering).
     `scd30` is referenced directly for both values (C.14.3's generalized per-value
     measurement wiring) — a `ValueRef(source, field)`, no wrapping callback; the two resolve
     independently, so a future device could compensate temperature and humidity from two different
     sensors.
-11. `bmp3xx = BMP3XX_Reader(i2c1, address=0x77, ..., log=log_fram)` — **chunk 12**, own `cfgmgr`
-    — **chunk 13**. No cross-instance wiring dependency of its own on `wozi` (SCD30's `AmbPres`
+11. `bmp3xx = BMP3XX_Reader(i2c1, address=0x77, ..., log=log_fram)` — **chunk 11**, own `cfgmgr`
+    — **chunk 12**. No cross-instance wiring dependency of its own on `wozi` (SCD30's `AmbPres`
     stays a static config value even though `wozi` physically has a live BMP388 — A.4's own note),
     so unconstrained by ordering-hazard #1. (`dev`-only `isl29125` follows the identical
     "own chunk, then cfgmgr chunk" shape, positioned here too when present.)
 12. `notification = NotificationService(neopixel.request_signal, ntp.cettime,
     signals=(NotificationSignal('WarnCO2', ValueRef(scd30, 'CO2'), _FIELD_WARN_CO2, (1, 0, 0)), ...),
-    ..., log=log_fram)` — **chunk 14**, own `cfgmgr` — **chunk 15**. Its three signals (each a
+    ..., log=log_fram)` — **chunk 13**, own `cfgmgr` — **chunk 14**. Its three signals (each a
     `ValueRef` — `scd30`/`"CO2"`, `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) are constructor
     arguments, checked and appended to its schema before its own `cfgmgr` is built.
 13. Nothing completes a module after construction (Part C.4.3): `conn`'s LED, `sysfunct`'s
@@ -897,7 +896,7 @@ under the implicit FRAM-wiring rule below the list):
     ..., error_sources=_collect_error_sources()), serving=ServingLimits(..., host=web_host,
     port=web_port), uptime_s=sysfunct.get_uptime, static=StaticSite(mount="/html",
     index_file="index.html", is_hotspot_active=conn.is_hotspot_active), log=log_fram)`
-    — **chunk 16** (under the same implicit-if-FRAM-present rule as every other
+    — **chunk 15** (under the same implicit-if-FRAM-present rule as every other
     mandatory-infra module); no on-flash config, no `cfgmgr`. `static=` registers the static route
     pair last, so an exact-match API route always wins.
 15. **The one-time setup batch**: `run_setups(_collect_setups())` awaits, in order, `fram` (first:
@@ -934,8 +933,8 @@ under the implicit FRAM-wiring rule below the list):
 | 1 (`boot.unfed_stretch_1_ms`) | the boot entry's `WDT()` → every product import (the device module and every module it imports) → every construction (allocation only, no bus I/O beyond each driver's `Pin`/bus constructor; each `I2C` constructor runs the boot bus clear, C.3, up to 11 SCL waits of one bus timeout) → the webserver's construction → `run_setups()`'s first `gc.collect()` → `fram.setup()` → the batch's first feed | the measured module import (~1.1 s), construction (~0.14 s) and `fram.setup()` (6 ms) below; a collect ≤ 21 ms measured (I.1); the boot clears' summed worst case, at most 4.4 s on two buses at the bound (Part N `i2c.timeout_max_us`) |
 | 2 (`boot.unfed_stretch_2_ms`) | the batch's last feed → `start_tasks()`: one `gc.collect()`, then per task its starter, an `asyncio.sleep_ms(1000 // N)` and a collect (at most 1,000 ms of sleeps in all) → `start_timers()` (the unstaggered timer starters, then the trigger stagger, last start below 1,000 ms, C.9.1) → `ntp_force_sync()` (sets an event, no I/O) → `supervise_tasks()` starts the supervisor task → its first pass and its feed | the stagger's and the task starts' own arithmetic; each started task's first slice up to its first `await` has no bound in code and is measured |
 
-**Real FRAM chunk order** (full wiring — every real device's own TOML today, wozi's own 16
-`PrintLogHistoryStore` chunks plus 1 timestamped chunk): Neopixel (no `cfgmgr`) → WifiService →
+**Real FRAM chunk order** (full wiring — every real device's own TOML today, wozi's own 15
+`PrintLogHistoryStore` chunks plus 1 timestamped chunk; the Neopixel takes none): WifiService →
 its own `CFGMGR_WIFI` → CaptiveDNS → NTPClient → its own `CFGMGR_NTP` → SystemService → its own
 `CFGMGR_SYSTEM` → SCD30 (its `CFGMGR_SCD30` RAM-only, no chunk) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup
 (timestamped) → BMP3xx → its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own
@@ -3122,8 +3121,9 @@ buffers from `__init__` and sends its one-byte commands as module constants.
   at boot rather than degrading silently forever.
 - A multi-transaction sequence that must not be interleaved holds the session lock for the whole
   sequence — `async with self._i2c_<sensor> as dev: async with dev.i2c_device as i2c: ...` — nested
-  again if more than one bus transaction is needed (`SCD30_I2C.read_measurement()`). One continuous
-  hold spanning an internal delay doesn't need the second nesting (`_read_dev_register`).
+  again if more than one bus transaction is needed (`SCD30_I2C.read_measurement()`). A sequence
+  with an internal delay takes the bus once per transfer and waits with it free, inside the session
+  (`_read_dev_register`).
 - Compensation/calibration math and datasheet operating-range checks live here — reject and raise
   rather than return an implausible value silently.
 
@@ -3396,7 +3396,7 @@ module's setting.
 **`FiltCoeff` keeps two meanings** (owner, 2026-09-26): the BMP3XX IIR filter coefficient (one of 0,
 1, 3 … 127, `_IIR_SETTINGS`; the chip's CONFIG register holds its index) and the ISL29125 output EMA
 coefficient, namespaced per sensor on `/sensors`. For the ISL29125, −1.0 (the default) is 'filter
-off', and so is any coefficient outside (0, 1] (`math_helpers.ema_step()`).
+off', and so is any coefficient outside (0, 1] (`asy_isl29125_driver.py`'s `ema_step()`).
 
 One JSON file per sensor: `config_<name>.cfg`. Both `SensorReaderConfig.__init__` and
 `ConfigManager.__init__` only stash constructor args; load/write happens once `setup()` is awaited
@@ -3690,8 +3690,7 @@ setup, the mildest step first, and the budget's reboot, whose construction clear
 last (owner, 2026-09-30: "try to recover mildly"). `condition` lets
 a driver suppress counting a cycle that is not a sensor failure: every reader passes
 `condition=results[0] is None`, so a pre-sync `TS` of `None` alone counts as a good read, and SGP40
-adds `compensated and` (a cycle skipped for want of a compensation value) and ISL29125 `and not
-self._unsettled_cycle` (a cycle discarded past the settle bound, M.1.4). **A call site with just
+adds `compensated and` (a cycle skipped for want of a compensation value). **A call site with just
 one pass/fail flag** passes a fixed one-element sentinel and drives the flag through `condition=`
 (`_error_check((None,), condition=<flag>)`), not a ternary swapping the whole tuple.
 `WifiService`'s connect loop is one, judging its WLAN-hardware streak once per iteration; in the
@@ -4043,13 +4042,11 @@ needs its write awaited (a failed config flush's, which `flush_pending()` awaits
 | `ISL29125_Reader._threshold_lock` | — | the chip's threshold registers with the active range and auto-range threshold they derive from, so a range switch and a threshold rewrite never interleave | a device session and bus lock (2, 1) |
 | `WifiService.wifi_mode_lock` | — | the CYW43 radio mode (`NTPClient` holds the same lock for its sync attempt) | `UDPSocket._connect_lock` (the NTP attempt's DNS and NTP exchanges) |
 | `UDPSocket._connect_lock` | — | the socket object, its connect against its disconnect | nothing (the class has no logger) |
-| `NeopixelDriver._overlay_lock` | — | the pixel and its `write()` | nothing |
+| `NeopixelDriver._led_lock` | — | the pixel: whatever drives it, its waiters in arrival order with no deadline | nothing |
 | `SystemService._command_lock` | — | the system-command gate: one command's acceptance, preflight or refusal at a time, so two commands at once see each other's outcome (A.8); held only up to the shutdown sequence's `create_task()`, so never while the sequence takes a store's `owner_lock` | nothing |
 | `WebserverService._status_lock` | — | one `GET /status` build, so concurrent requests hold one response's pieces at a time (I.3) | what the status sources and error-count readers take |
-| `SensorReader._data_lock` | leaf | the last sample | nothing |
 <!-- locks:end -->
 
-`LockedCounter`/`LockedFlag`/`LockedValue` hold no lock: no method awaits.
 `NotificationService._monitor_loop()` reads its three config groups without a lock:
 `ConfigManager`'s value read never suspends on its success path, so the three reads run as one
 uninterrupted unit.
@@ -4090,7 +4087,7 @@ contract: a function that needs its caller to hold a lock ends in `_locked`.
 | status read and the 1 Hz snapshot (the uptime loop) | one to three radio calls: `status()`, then `ifconfig()` and, on a STA link, `status("rssi")` |
 | NTP attempt (`NTPClient`), its DNS resolution inside the lock (owner, 2026-07-28) | the DHCP server plus up to three `DNSFallback` servers × (`dns.timeout_ms` 500 + one 20 ms poll step) + `ntp.fetch_timeout_ms` 5,000 + 20 ms ≈ 7.1 s with every server silent; a failed socket setup costs a 0.5 s backoff (`_RETRY_BACKOFF_MS`), at a DNS server up to two, since the resolver ignores its write's answer and the receive sets the socket up again (at most 0.5 s + 0.52 s per server), at the fetch one, which then stops at its unsent request: ≤ 4 × 1.02 s + 5.02 s ≈ 9.1 s |
 
-Each waiter is harmless: the uptime loop waits for the lock, the 1 Hz flag coalesces the ticks
+Each waiter is harmless: the uptime loop waits for the lock, its 1 s grid coalesces the ticks
 missed meanwhile, and uptime and sync age are measured ticks, so nothing undercounts; the `/status`
 getters read the snapshot and never wait; a PUT reconnect only sets the reconnect flag
 (`reconnect_wifi()`) and is served at the next iteration; NTP waits at most one WiFi hold (≤ 10 s)
@@ -4315,7 +4312,7 @@ A task that ends raising with nobody awaiting it, a row's or a starter's that di
 supervisor passes, reaches the loop's exception handler: SYSTEM's level-gated report on the board,
 the PC tiers' always-printing one in tests (F.1).
 
-Periodic reads and the read-trigger stagger use `machine.Timer` (default **soft**, no `hard=True`
+Periodic reads use `machine.Timer` (default **soft**, no `hard=True`
 anywhere) whose callback only `.set()`s a `ThreadSafeFlag` or event — never `time.sleep()` or
 business logic inside a callback; re-arming runs in the task it wakes, and every flag has exactly
 one waiter; the reset timer's one-shot sets the flag its reset task waits on. **A timer whose fire must not be lost
@@ -4325,14 +4322,11 @@ The WiFi hotspot window is one, ended by its first delivered fire, which deinits
 silicon 2026-09-25: back in STA after the 8-minute window with no reboot); in the silent mode (A.4)
 the same timer runs on, armed through the one arm path `_arm_hotspot_timer()`, each delivered fire
 one connect attempt, so a dropped fire delays that attempt by one period. Each
-remaining `ONE_SHOT` states why a dropped fire is acceptable or backstopped: the stagger wait
-(C.9.1) and the reset timer — `ONE_SHOT` by the owner's choice (owner, 2026-07-18: 'brittle wrt.
-wdt timeout settings'), with nothing fed once it is armed — by the watchdog; the NTP retry by
-`_refresh_loop()`'s due check, which starts the next sync once its check ticks count `NTPInterval`, so a
-dropped fire loses only that retry. The storage auto-unpause is no timer: `mempause` stores a
+remaining `ONE_SHOT` states why a dropped fire is acceptable or backstopped: the reset timer —
+`ONE_SHOT` by the owner's choice (owner, 2026-07-18: 'brittle wrt. wdt timeout settings'), with
+nothing fed once it is armed — by the watchdog. The storage auto-unpause is no timer: `mempause` stores a
 deadline that the uptime pass tests once a second, so no dropped fire can leave storage paused and
-the pause ends at most one pass late; a reset that paused storage meanwhile keeps it paused. With the
-uptime tick refused (refuted in normal operation) no pass runs, so a pause lasts until the reboot. A driver needing more than one rate
+the pause ends at most one pass late; a reset that paused storage meanwhile keeps it paused. A driver needing more than one rate
 (BMP3XX, ISL29125: 1 Hz base tick divided down) runs `SensorReader`'s shared trigger divider
 (`_trigger_loop()`, G.2) rather than reprogramming the Timer's period at runtime. A read-trigger arm
 failure prints `Could not start timer:` at the arm and leaves that reader untriggered: the alarm
@@ -4341,13 +4335,12 @@ a pool of 16, F.1), and a shortage at each boot is a malformed firmware the test
 2026-10-21: "a - if the shortage came each boot, this would be a malformed firmware, which would
 already be seen in the tests - nothing which would happen by itself as a surprise."). Any
 other failed arm is re-armed at the task's next opportunity and
-persisted on a second failure, then the task ends for the supervisor: the WiFi uptime tick at the
-connection loop's next iteration; NTP's check and sync-age timers print their refusal and stay
-unarmed, as before the refactor (their pool exhaustion is refuted in normal operation); a failed hotspot-timer arm persists `TIMER`, is retried on the next cycle
+persisted on a second failure, then the task ends for the supervisor:
+a failed hotspot-timer arm persists `TIMER`, is retried on the next cycle
 and counts toward the WiFi task's hardware streak (C.7): in the silent mode it leaves no attempt
-due, in the hotspot mode no end to the window. The 1 s tick timers (system uptime, WiFi uptime, NTP
-sync age) share `arm_tick_timer()`; they start with the timer starters and never take a stagger
-slot, and every refused arm prints its line. System uptime, WiFi uptime, NTP sync age and the LED pause are measured in ticks
+due, in the hotspot mode no end to the window. The system and WiFi uptime ticks (1 s) and NTP's check (10 s)
+are deadline sleeps on a fixed grid (`TickGrid`: start + k × period, a late wake coalesced), so no
+timer to refuse or drop. System uptime, WiFi uptime, NTP sync age and the LED pause are measured in ticks
 (`TickSeconds`, G.2), never counted wake-ups. Wall-clock consumers survive an RTC step, pinned by
 `tests/test_asy_base_classes.py`'s `test_utc_now_follows_a_clock_step_while_tickseconds_does_not`,
 `tests/test_asy_fram_manager.py`'s `test_a_read_after_the_rtc_stepped_back_returns_a_negative_age`,
@@ -4380,15 +4373,13 @@ are added and can itself become a multiple of some sensor's own period.
 
 **The mechanism**:
 - `SystemService.start_timers(triggers, timers)` runs in task context, once per boot. It first runs
-  every timer starter in order, unstaggered: the three 1 s ticks (C.9) and SCD30's 500 ms tick.
+  every timer starter in order, unstaggered: SCD30's 500 ms tick.
   Then only the read-trigger starters (`get_trigger_starters()`: BMP3XX, ISL29125, SGP40) start,
   each against one shared start `t0`: trigger `k` at `t0 + k·slot` with `slot = 1000 //
-  (len(triggers) + 1)` ms (`_TIMER_BASE_PERIOD`), so callback latency never accumulates and every
-  offset lands in `[0, 1000)` ms. Each wait arms the one preallocated `ONE_SHOT` stagger timer,
-  whose callback only sets a flag the task waits on, with no software timeout (the watchdog is the
-  backstop; owner, 2026-07-18); if the arm raises, the failure is persisted (`TIMER`) and a plain
-  `asyncio.sleep_ms()` of the same length replaces it, so every trigger still starts. A raising
-  starter is persisted (`TASK_STARTER_RAISED`) and the sequence continues.
+  (len(triggers) + 1)` ms (`_TIMER_BASE_PERIOD`), so wake latency never accumulates and every
+  offset lands in `[0, 1000)` ms. Each wait is a plain `asyncio.sleep_ms()` to that deadline, with no
+  timer to refuse or drop. A raising starter is persisted (`TASK_STARTER_RAISED`) and the sequence
+  continues.
 - The generated `_collect_trigger_starters()` orders the sensor instances so that those sharing a
   bus sit furthest apart: grouped by `bus`, one from each group in turn, largest group first, ties
   in construction order (dev: sgp40 i2c1, bmp3xx i2c0, isl29125 i2c1 → 0, 250, 500 ms; wozi: sgp40,
@@ -4642,9 +4633,8 @@ is ever an `[[instance]]` entry itself.
 **The constructor parameter itself is a direct reference to the producer's own instance** — passed
 positionally/by keyword with the same name as `_WIRING`'s field (e.g. `led_target`'s `ext_led`
 kwarg) — **not a getter or callback function.** The consumer reads the producer's
-own already-concurrency-safe `get_data()` (`SensorReader`'s existing `_data_lock`-guarded namedtuple
-— C.4.2 — is itself the "locked state" value holder here; no new per-field `LockedValue` was
-introduced) directly, inline, wherever the value is needed, so no wrapper function closes over a
+own already-concurrency-safe `get_data()` (`SensorReader`'s namedtuple, replaced whole with no
+await — C.4.2 — is itself the state holder here; no per-field holder was introduced) directly, inline, wherever the value is needed, so no wrapper function closes over a
 producer reference. A module consuming one scalar of another's `get_data()` result takes a value
 reference instead (`ValueRef(source, field)`, L.6.3): the SGP40's `temperature`/`humidity`, resolved
 via `getattr(data, ref.field)` inside `_read_sgp()`, never a whole-object reference fixed to one
@@ -5865,7 +5855,6 @@ and `scd30_extra_write`.
 | `held-i2c-line-silicon` | `held_i2c_line`: a held SCL at power-up (the boot clear pulses nothing and reports the line held) and under a slave at runtime (the clear pulses nothing, then one controller rebuild), and a held SDA at power-up cleared and reported once | L3, L4 | a held SCL needs a driver outside the controller: no bench chip holds SCL past its bounded clock stretch (30 ms, 150 ms once a day: SCD30 Interface Description 1.1), the clear's own open-drain `Pin(..., value=1)` takes back any hold the RP2040 puts on that pin (`ports/rp2/machine_pin.c:287-288`, v1.29.0), no other pin is wired to an SCL and no fault-injection rig will be bought (`bus-fault-injection`); the held SDA's two clears run at L3 (`flash/test_bus_concurrency.py`'s `test_a_held_sda_line_is_cleared_and_every_device_answers`), and so does a held SDA through a `machine.reset()` and a watchdog reset, freed by the production boot, whose console that test also holds to the clear's one report, the first reader's `_init_done()` (its `test_a_held_sda_line_through_a_reset_is_freed_by_the_next_boot`); L4's raw-REPL access stops `main.py` (`flash-only-bus-checks`) | (agent, 2026-10-27; owner-reviewed, 2026-11-06); the reset case and the report (agent, 2026-11-06) | — |
 | `system-commands-instrumented` | `scenarios.erasefram_on_a_silent_chip_stops_short_and_the_device_feeds_on`, `scenarios.reset_errors_while_the_escalation_logs_is_refused_and_clears_nothing` and `scenarios.a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog`: `erasefram` on a silent chip, a `ResetErrors` while the escalation logs, a reboot whose reset fire is dropped | L3, L4 | a silent chip needs the twin runner's test-only instrumentation, which silicon lacks; a `ResetErrors` beside the escalation's entry is a gap until written (`bench/test_reset_reasons.py`'s `entry_held` case holds that entry and sends none); the dropped reset fire is the twin runner's `--test-drop-timer-fire`, and silicon proves each half apart: a soft-Timer fire dropped by a saturated scheduler (`flash/test_bus_electrical_timing.py`, `scheduler_saturation_drop.py`) and a reboot whose reset timer never runs, left to the starved watchdog (`flash/test_watchdog_starvation.py` and `bench/test_reset_reasons.py`, `reboot_fallback_starves_the_watchdog.py`) | (agent, 2026-10-14; owner-reviewed, 2026-11-06); by scenario (owner, 2026-11-06, asked per-scenario or per-family ids: "Option A"); the dropped fire's two halves (agent, 2026-11-06); the command in the boot window runs at L4, a reboot at a boot's first answer (`bench/test_system_commands_over_rest.py`) (agent, 2026-11-06) | — |
 | `hot-replug-manual` | `test_digital_twin_hot_replug` | automated L3, L4 (manual mode only) | an unplug and replug of a live chip needs a human or a switching rig; its manual L4 steps are `manual/manual_bus_electrical.py`'s I2C and FRAM unplug-replug (F.2) | (structural: manual mode, 2026-10-14) | — |
-| `timer-pool-under-graph` | `scenarios.a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog` | L3, L4 | the product's failed-arm paths run at L3 beside the running graph on an emptied alarm pool (`flash/test_task_supervisor.py`, `timer_pool_empty_beside_the_graph.py`; the platform's `ENOMEM` alone: `timer_alarm_pool_exhaustion.py`, F.2); the dropped boot stagger fire is the twin runner's `--test-drop-timer-fire`, and silicon proves each half apart: a soft-Timer fire dropped by a saturated scheduler (`flash/test_bus_electrical_timing.py`, `scheduler_saturation_drop.py`) and a timer start that never ends, left to the watchdog (`bench/test_reset_reasons.py`'s boot phase 4 hang, code 14) | (agent, 2026-10-14; owner-reviewed, 2026-11-06); the dropped stagger fire and the failed arms beside the graph (agent, 2026-11-06) | — |
 | `ntp-responder-modes` | `test_digital_twin_ntp`, and the clock-jump family's first sync from rp2's boot-default clock and next sync after an `NTPOffset` change | L3, L4 | each needs a scriptable NTP server on the unit's network, which the bench lacks: the failing replies, an outage from boot, a returning server and those two syncs (the clock-jump family's other cases run at L3 under a stepped RTC, `flash/test_task_supervisor.py`); the responder's own checks test the twin's instrument | (agent, 2026-10-14); an accepted limitation (owner, 2026-11-06: "almost no added value at a very high cost"); the clock-jump syncs, by that ruling (agent, 2026-11-06) | — |
 | `uart-hazards-under-api-load` | the UART comm hazards and the field sweep under API load, through `PUT /uart`'s `UartHazards` on dev: two initiations on one instance, both ends transmitting and the first-chunk field sweep, while readers GET `/status` | L4's silicon run (owed); L2 and L4 for the two hazards outside the mode | written at L2 (`tests/test_digital_twin_uart_link.py`'s `test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_verdict`: three readers on the driven clock, every verdict read back through `GET /status`, no late feed, no reset) and at L4 (`bench/test_uart_link_under_api_load.py`'s `test_a_hazard_run_under_the_readers_load_reports_every_verdict`: three readers until the run ends, every verdict judged as the twin judges it, the echo resumed, no task ended), the bench test collected only and its silicon run owed; both ends transmitting runs from the initiator alone, a raw GET with a SET right behind it, since the live listen loop holds the responder's transmit; the stalled transmit stays outside the mode, since a UART re-init takes the port and pins anew (`asy_uart_driver.py`'s `init()`) and the driver keeps neither, and so does `clear()` racing a transaction, both at L3 with `main.py` stopped (`flash/test_uart_crossover.py`) | the hazards proven under API load (owner, 2026-10-21, asked "Leave the UART hazards under API load untested?": "b - system shall be proven stable unter max load allover"); the hazard mode as their form and the two hazards left out, decided on the owner's behalf for review (agent, 2026-10-21) | — |
 | `webserver-concurrency-bench` | `scenarios.above_max_connections_all_flaky_survives`, `scenarios.all_flaky_connections_dont_wedge_the_server`, `scenarios.above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds`, `scenarios.mixed_healthy_and_flaky_connections_dont_wedge_the_server`, `scenarios.connection_count_fluctuating_in_real_time_server_stays_healthy`, `scenarios.existing_connections_survive_an_overflow_burst_untouched`, `scenarios.a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection`, `scenarios.realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully`, `scenarios.high_concurrency_burst_at_historical_segfault_repro_scale_survives`, `scenarios.the_accept_queue_is_never_shallower_than_the_admission_ceiling` and `scenarios.a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response`: flaky connections at and past the ceiling, arrivals fluctuating over time, slow connections through an overflow burst, a ceiling of silent connections reclaimed, a tab past the ceiling beside polling, bursts at three times the ceiling, a stalled loop's backlog, a held close | L3, L4 | L3 has no network; the client shapes reach the bench's HTTP and their counterparts are gaps until written (the bench's nearest: twice the ceiling once, `bench/test_end_to_end_timing.py`; one trickled request reclaimed and a misbehaving-client load beside a held console port, `bench/test_network_resilience.py`); the stalled loop and the held close are the twin runner's `--test-stall-loop-ms` and `--test-hold-closing-slot`, which the shipped firmware lacks | (agent, 2026-11-06) | — |
@@ -6047,7 +6036,7 @@ device's generated graph in a twin and drives it over HTTP, reading only the run
 its named `--test-…` flags — each off by default, the runner's one instrumentation exception
 (owner, 2026-09-30), checked by `tests_scripts/test_twin_runner_test_flags.py`; among them
 `--test-loop-lag-ms N` (the `LOOP_LAG` line of F.3's `lag.loop` row) and
-`--test-drop-timer-fire reset|sequencer` (that one-shot's fire lost as rp2's full scheduler queue
+`--test-drop-timer-fire reset` (that one-shot's fire lost as rp2's full scheduler queue
 loses it, F.1). A scenario declares
 its family, the drivers it needs (skipped on a device without them) and whether it may share a
 boot: the shared ones run first on one twin per group, with an idle check between two of them (the
@@ -6585,7 +6574,7 @@ functions raise `ValueError` rather than return `inf`/`nan` (`math.exp(1000)`, `
 **Every measurement source is gated at the driver, not in the response layer** (audited
 2026-09-24): BMP3xx range-checks its compensated output against the datasheet's operating range,
 which a NaN fails; ISL29125 and SGP40 compute from bounded integer counts; every `math_helpers`
-derivation range-checks its inputs first; `ema_step()` gates on `math.isfinite()` so one NaN cannot
+and colour-chain derivation range-checks its inputs first; `ema_step()` gates on `math.isfinite()` so one NaN cannot
 poison a filter's state; and SCD30, whose words are raw IEEE-754 that CRC-valid NaN/inf still
 decodes from, rejects a non-finite word as a failed read (`read_measurement()`). A new source
 decoding floats or computing without a range gate needs the same.
@@ -6788,8 +6777,6 @@ The budget rows, one per stretch:
 | `stall.console` | `print()` at a raised `DebugLevel` while a USB host program holds the port open and does not read (A.5); never without such a host, and the shipped level prints no client-triggered line | 2 s per printed line (about: several writes, each up to 500 ms) | — | `con.uart_reply` (crossed: an accepted debug-mode limitation (owner, 2026-09-30, asked, in paraphrase, how to treat debug logging with a connected USB host that does not read: 'a', to accept it as one; A.5)), `con.led_frame` (crossed), `con.watchdog` (a busy log can still starve it: A.5 names the exits) | `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog` (`tests_hardware/bench/test_network_resilience.py`, behind `--allow-persistence-write`) | — |
 | `stall.wlan_switch` | a STA↔AP mode switch, whose `wlan.active()`/`deinit()` and CYW43 firmware upload run synchronously in the loop | owed: measured on the bench across the role-reversal switch | owed | `con.uart_reply` (`dev`: both link instances stall together, and a crossing is a failed transaction counted against the link); LED ramps (cosmetic) | the bench row in BACKLOG.md | — |
 | `stall.lan_receive` | LAN receive load: the CYW43 host-wake IRQ schedules `cyw43_poll` as a PendSV dispatch (`ports/rp2/mpnetworkport.c:86-100`, v1.29.0), and `cyw43_ll_process_packets()` loops until no frame is left (`lib/cyw43-driver/src/cyw43_ll.c:1126-1128`), so thread mode starves while frames keep coming | unbounded: no code bounds it | 5.9-7.97 s, one watchdog reset (dev silicon, 2026-10-29) | `con.watchdog` (crossed: the watchdog's reset is the recovery, owner, 2026-10-29: "No patching or tinkering."; owner, 2026-11-02: "Live with the udp storm") | — | — |
-| `hold.scd30_command` | one SCD30 bus session per command or register read: write, wait, read (`asy_scd30_driver.py`) | 50 ms per session: `_CMD_RESPONSE_WAIT_MS` (owner, 2026-07-13, `144873f`: owner-tested), plus its transfers | — | the bus siblings (dev `i2c1`: SGP40, ISL29125), none of whose reads carries a deadline that a wait for the bus can expire | `tests_scripts/test_timing_budget.py` | `scd30.cmd_response_wait_ms` |
-| `hold.scd30_snapshot` | `get_config_snapshot()` holds one bus session for every config register read | 300 ms: six reads of 50 ms each, plus their transfers | — | as `hold.scd30_command` | `tests_scripts/test_timing_budget.py` | `scd30.cmd_response_wait_ms` (its six waits) |
 | `hold.i2c_probe` | `_probe_for_device()`'s settles around its zero-byte write, at each `I2CDevice.setup()`, inside the driver's bus session | 200 ms: 2 × 100 ms (`_PROBE_SETTLE_MS`) | — | the bus siblings, as above | `tests_scripts/test_timing_budget.py` | `i2c.probe_settle_ms` |
 | `hold.fram_block` | the FRAM driver's session and bus locks over one block operation: its status-byte pair, a yield, its payload command, a yield, its closing pair; no CRC runs inside it (a write's before its first block, a read's after its session, a cross-check's only on a mismatch beside a whole-block `==`, A.4), so it spans two scheduler rounds whatever the chunk size. The per-block hold was kept (owner, 2026-09-26: 'Probably better to keep') on a 1-byte write and an 8-byte read measured idle, with a second SPI device named its only waiter; that did not hold: every FRAM user waits on it, and it then held one round per CRC byte and per 8-byte compare slice (8-20 s per SGP40 backup under load, bench 2026-11-07). In force since (owner, 2026-11-07): a cost is judged at every level, "function, module, import, integration and upstream and downstream, and full system", at its worst case under load against every party that waits on it, and two unrelated devices never wait on each other ("It's two completely different devices.") | 23,148 µs idle, the longest of three runs (18,089-23,148 µs, dev 2026-09-25; 21,269 µs earlier, F.5.8); under load each of its two yields adds one scheduler round (16-22 ms with three `/status` readers, bench 2026-11-07) | as its value | every other FRAM user, one block each: each FRAM-backed logger's entry, the SGP40 backup, the supervisor through SYSTEM, whose pass awaits its entry before its feed (`con.watchdog`); a second SPI device (none wired on any device, a contract statement); budget 25,000 µs | `test_a_block_operation_holds_the_fram_lock_two_rounds_whatever_the_chunk_size` (`tests/test_asy_fram_manager.py`); a log entry beside a backup write, mock and twin (C.8); `device_scripts/fram_command_hold_timing.py`'s `_BLOCK_HOLD_BUDGET_US`, run by `tests_hardware/flash/test_fram_storage.py` | `l3.fram_command_hold_block_budget_us` |
 | `hold.scd30_coincide` | SCD30's data-ready-driven read may coincide with sibling reads on its bus: the chip's own timing, outside the stagger (owner, 2026-09-26, asked, in paraphrase, whether that read may coincide with other reads on its bus, the chip's own timing: 'a'; A.4) | one SCD30 bus session at most, to a sibling | — | the bus siblings | the cross-device bus-hazard tests at all four levels (C.8) | — |
@@ -6819,7 +6806,9 @@ pattern — `_VOCALGORITHM_<X>` ↔ `GasIndexAlgorithm_<X>` (VOC variants carry 
 `GasIndexAlgorithm_process/init/reset` — but is not the same algorithm: v3.x adds NOx, splits the
 estimator's gamma into mean and variance terms with an 8× mean scaling
 (`sensirion_gas_index_algorithm_fixpoint/sensirion_gas_index_algorithm.c:477-522, 706`,
-`.h:121-123`). The four `fix16_*` helpers wrap to int32 as the C `fix16_t` does and compute the same
+`.h:121-123`). Each `F16()` constant is its fix16 integer with the C expression beside it, and
+`_fix16_mul()`/`_fix16_div()` compute in exact integers with libfixmath's rounding, bit-identical to
+the float forms they replaced (D.8). The four `fix16_*` helpers wrap to int32 as the C `fix16_t` does and compute the same
 int32 results (`fix16_mul` follows embedded-sgp's signed variant from before its `1f80d8e`, where
 gas-index-algorithm uses libfixmath's sign-magnitude one; both give the same int32 results). They are
 pinned against vectors from `Sensirion/gas-index-algorithm` at `2ef9f13`, and the whole index
@@ -7638,18 +7627,19 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `"Failed"`; a callback answering `False` is `"Failed"` too.
 - **REST response envelope construction** — `asy_api_response.py`'s `make_response()` only, never a
   hand-built `{"res", "code", "descr", "result"}` dict.
-- **Task-scoped mutable state shared across coroutines** — `asy_base_classes.py`'s `Lockable`/
-  `LockedCounter`/`LockedFlag`/`LockedValue`, never a bare module-level variable plus an ad hoc
-  lock. `LockedCounter` saturates at `COUNTER_CAP` (2**30 − 1), checked before the step; a value
-  never stepped (an identifier) is a `LockedValue`; kept allocation-free by
+- **Task-scoped mutable state shared across coroutines** — a plain attribute where no step awaits,
+  `asy_base_classes.py`'s `Lockable` where a sequence does, never a bare module-level variable plus
+  an ad hoc lock. A count saturates at `COUNTER_CAP` (2**30 − 1), checked before the step; kept
+  allocation-free by
   `tests_scripts/test_counter_steps.py`, which scans `digital_twin/` too and pins the twin's own copy
   of the cap (`digital_twin/_twin_common.py`, the twin importing nothing from `src/`) equal to it.
 - **Elapsed seconds** — `asy_base_classes.py`'s `TickSeconds`: every value that reports or enforces
   an elapsed time (uptime, WiFi uptime, NTP sync age, the LED pause) accumulates `ticks_diff()`
   deltas of `ticks_ms()`, never counted wake-ups, the RTC or a UTC value (owner, 2026-09-29); up or
   down, saturating at `COUNTER_CAP`. Its user reads it at least once per 2**29 ms (6.2 days,
-  `ticks_diff()`'s horizon): the system uptime, WiFi uptime and NTP sync-age loops read it on every
-  1 s tick while they count, `GET /status` on every poll, the LED pause loop on every round.
+  `ticks_diff()`'s horizon): the system and WiFi uptime loops on every 1 s tick while they count, the
+  NTP check every 10 s while synced, the notification monitor every cycle (at most 3,600 s plus its
+  flashes), `GET /status` on every poll.
 - **Current UTC timestamp** — `asy_base_classes.py`'s `utc_now()`: `None` until the NTP client has
   set the clock this boot (its one writer, `set_utc_valid()`); never computed inside a read's `try`
   (agent, 2026-09-29; owner-reviewed, 2026-10-02).
@@ -7771,7 +7761,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
   value into pieces of at most `chunk_bytes` bytes, each fragment encoded once) and
   `_pieces_response()` (exact Content-Length, the pieces sent as they are), I.3.
   Producers gate their own float values (F.1).
-- **Bounded piece assembly** — `asy_base_classes.py`'s `PieceBuffer` (the webserver's streaming
+- **Bounded piece assembly** — `asy_uart_driver.py`'s `PieceBuffer`, beside its only users, the UART modules (the webserver's streaming
   `_PieceWriter` is its model): a payload whose size the caller did not fix is held as pieces of at
   most `chunk_bytes`, every piece allocated at construction once the caller's cap has admitted the
   size (a `MemoryError` there goes to the caller, which catches it into its own failure result: J.8,
@@ -7812,8 +7802,9 @@ backend-only or frontend-only validation/coercion policy change in this project.
   101.325 kPa only; Magnus dew point −40..50 °C; Magnus absolute and relative humidity over water
   −30..40 °C, its water pair the published 7.5/237.3 (Tetens 1930, Murray 1967) where legacy had
   237.4 (owner, 2026-10-07: 'Adapt the humidity to the verified range');
-  barometric reduction 300..1250 hPa, −40..85 °C (BMP3xx datasheet); McCamy CCT output 2000..12500 K
-  (its measured error: Part M.1.3); EMA off for a coefficient outside (0, 1]. `abs_humidity()` and
+  barometric reduction 300..1250 hPa, −40..85 °C (BMP3xx datasheet); beside their one caller in
+  `asy_isl29125_driver.py`, the colour chain with McCamy CCT output 2000..12500 K (its measured
+  error: Part M.1.3) and the EMA, off for a coefficient outside (0, 1]. `abs_humidity()` and
   `rel_humidity()` stay in `math_helpers.py`, small and completing the functional suite (owner,
   2026-10-02: 'useful, complete the functional suite, small, lightweight').
 - **CRCs** — `asy_crc_checks.py`: CRC8 = Sensirion CRC-8 (poly 0x31, init 0xFF), CRC16 =
@@ -8850,7 +8841,7 @@ without a listed reason, its list holding every such site with the reason this c
 - **Timeouts** — `asyncio.wait_for()`/`wait_for_ms()` make two task objects per call, the awaited
   coroutine promoted to a task and the runner (`extmod/asyncio/funcs.py:24-30`), and a seconds
   timeout adds a boxed float (`extmod/asyncio/core.py:62-63`) that `wait_for_ms()` avoids:
-  transient, fixed, per webserver call, FRAM presence check and NeoPixel overlay wake; a UDP wait starts
+  transient, fixed, per webserver call and FRAM presence check; a UDP wait starts
   none (F.2).
 - **Views** — a `memoryview` and its slice per I2C register read and start/end transfer, none for a
   whole buffer on SPI or UART, one per partial UART write retry (`py/objarray.c:556`): transient, fixed.
@@ -8869,11 +8860,10 @@ locks and lists, `SensorReaderConfig`'s `ConfigManager`, and the **hourly window
 (`HourlyWindowCounter`): 24 small-int bins, no allocation per event, read or hour change (G.2,
 A.8). `RegionBuffer` (per FRAM chunk operation, transient, fixed by its owner's size; allocated per
 operation by decision, agent, 2026-09-18): its bytearray; a failed allocation prints its text
-through its builder's logger and the buffer reads as `None`. `PieceBuffer` (G.2): every piece of at most
-`piece_bytes` allocated at construction, after the caller's cap admitted the size; its copy-out,
-read and write slice views, transient. `_get_dict_cfg()`/`_set_dict_cfg()`: the result and staging dicts,
+through its builder's logger and the buffer reads as `None`. `_get_dict_cfg()`/`_set_dict_cfg()`: the result and staging dicts,
 per config GET/PUT, transient, bounded by the schema, `schema_dict()` built once per PUT; `_republish()`:
-the changed sample, per republish, replacing the last. `arm_tick_timer()`: one closure per arm, boot list.
+the changed sample, per republish, replacing the last. `TickGrid`: one per 1 s or 10 s cadence,
+construction, long-lived.
 
 **`asy_bmp3xx_driver.py`** — construction, long-lived, fixed: the reader and its `BMP3XX_I2C`. Per read:
 the 6-byte data burst's copy, one `BMP3XX` sample namedtuple (replacing the last), about 35 float
@@ -8945,10 +8935,9 @@ tuple and the derived floats, transient; after a counted failed write, the 3-byt
 snapshot's copy.
 Calibration only: `_cal_recent`, at most `_CAL_CONVERGE_N` ratios, cleared at the run's end.
 
-**`asy_neopixel_driver.py`** — construction, long-lived, fixed: the `NeoPixel`, its events and lock.
-Per LED command stored in the slot: the `[r, g, b, t]` list, kept in `_rgbt` until the next one replaces
-it; per ramp step a 3-tuple pixel value; per overlay wake (`_overlay_loop()`, on a request) the pixel tuple,
-kept in `_overlay_rgb` until the next wake replaces it.
+**`asy_neopixel_driver.py`** — construction, long-lived, fixed: the `NeoPixel`, its event, lock and one
+3-element frame list every write reuses. Per external command taken the `(r, g, b, t)` tuple, held in
+`_rgbt` until the next one replaces it; per ramp step nothing (integer steps into the frame list).
 
 **`asy_notification_service.py`** — construction, long-lived, fixed: the signals and their
 `TickSeconds`. Per monitoring cycle: each signal's float comparison, transient, bounded by the device TOML's signal count.
@@ -9014,6 +9003,8 @@ naturally aligned window always fits, never reallocated by a task restart; `dev`
 driver-default 512-byte ring, hold 2 × 1,024 B, and the boot contiguity
 test asserts where they land (I.4(f.1)). A larger ring costs twice its size, which is why `dev` keeps
 the default ring rather than one for the bench's continuous-sender window (J.6).
+`PieceBuffer` (G.2): every piece of at most `piece_bytes` allocated at construction, after the
+caller's cap admitted the size; its copy-out, read and write slice views, transient.
 `readline_until_complete()` is capped by `max_transfer_bytes` and assembles a `PieceBuffer`, never
 growing by concatenation, a heap too short for its pieces answering `None` with the caught text
 through its user's logger (owner, 2026-10-27); `read_until_complete()` is bounded by its `n`.
@@ -9038,7 +9029,7 @@ and its pending-fragment group, transient, bounded. Per connection: the stream p
 `Request` and the response, transient, client-controlled and bounded before dispatch — the head at
 2,048 B (`web.max_head_bytes`), the body at `max_content_length` (I.6) — and the connection ceiling
 bounds how many are live (H.7.1). A heap failure parsing a body answers it as malformed (A.5).
-Construction, long-lived, fixed: the route tables, `LockedCounter` and the hourly window counter.
+Construction, long-lived, fixed: the route tables and the hourly window counter.
 
 **`asy_wifi_service.py`** — construction, long-lived, fixed: the `WLAN` (a static object:
 `extmod/network_cyw43.c:96-103` returns `&network_cyw43_wl_sta`/`_ap`, no heap), its `CaptiveDNS`,
@@ -9051,9 +9042,10 @@ Per status pass: one `WIFI` sample; no `network.WLAN.scan()` call anywhere.
 transient.
 
 **`voc_algorithm.py`** — construction: the parameter object and `_fix16_exp()`'s eight constants;
-every other constant is converted where it is used (`_f16()`), per sample. Per sample (1 s): about 80 `_fix16_mul()`, 13 `_fix16_div()`, 8
-`_fix16_exp()` and 2 `_fix16_sqrt()` calls (a CPython count, 2026-10-20), whose 32-bit intermediates
-past ±2**30 are heap ints on rp2 only — the Unix port's 63-bit small ints show none; the board's
+every other constant is its fix16 integer, folded in the source. Per sample (1 s): about 80 `_fix16_mul()`, 13 `_fix16_div()`, 8
+`_fix16_exp()` and 2 `_fix16_sqrt()` calls (a CPython count, 2026-10-20), all integer arithmetic,
+whose intermediates past ±2**30 are heap ints on rp2 only: a 64-bit Unix port allocates nothing
+per sample, a 32-bit one 8,727 B (34,200 B before the fold, 2026-11-09); the board's
 per-sample figure is owed to the bench. The state codec packs into and unpacks from the caller's
 buffer (`struct.pack_into()`/`unpack_from()`), a `MemoryError` propagating to the SGP40 read path
 (G.2).
@@ -10224,8 +10216,8 @@ before any code, never followed silently (CLAUDE.md's owner-question rule).
    the real PDF under `datasheets/<name>/` if it isn't there yet; every hardware-interaction claim
    in code comments cites a page number against it, same as every existing driver.
 2. **Check Part G's shared-primitive catalog before writing anything new** — numeric validation/
-   coercion, callback dispatch guarding, response envelopes, locked state, logging, the one shared
-   EMA (`math_helpers.ema_step`, added for ISL29125 but not ISL29125-specific), and anything
+   coercion, callback dispatch guarding, response envelopes, locked state, logging (the EMA and
+   colour chain live beside their one caller, `asy_isl29125_driver.py`), and anything
    website-facing needs its `src/`↔`js/` mirror obligation honored too (Part G.3). Re-run the
    grep-for-the-shape check as part of this same pass.
 3. **Find the closest existing driver and read it in full**, not just its shape. `asy_scd30_driver
@@ -10371,7 +10363,8 @@ verifiable — see below), out-of-range on both sides of every bound, exact boun
 **If the driver pulls in or extends a *shared* module** (Part G's own catalog, or `math_helpers`
 specifically), **that module needs its own direct, dedicated tests too — exercising it only
 incidentally through the new driver's own fixture values is not enough** (`tests/
-test_math_helpers.py` holds one suite per `math_helpers.py` function). Where possible, check new
+test_math_helpers.py` holds one suite per `math_helpers.py` function and per ISL29125 colour-chain
+function). Where possible, check new
 formula code against an independently-known reference value, not just "returns not None" —
 `rgb_to_xyz(1,1,1)` → the D65 white point → chromaticity → ~6500K round-trip is the model: each step
 is a real, checkable number from outside this codebase, not a self-referential assertion.
@@ -10910,7 +10903,6 @@ when the key is absent.
 | `[instance.wiring] sgp40` | `humidity_source` | yes | `{source, field}` naming a `get_data()` field, or `{default = true, ...}` | `humidity=` |
 | `[instance.wiring] bmp3xx` | `fram_target` | no | a `fram` instance | `log=` |
 | `[instance.wiring] isl29125` | `fram_target` | no | a `fram` instance | `log=` |
-| `[instance.wiring] neopixel` | `fram_target` | no | a `fram` instance | `log=` |
 | `[instance.wiring] notification` | `signal_sink` | yes | a `neopixel` instance, or `{default = true}` (L.6.2) | `request_signal_cb=` |
 | `[instance.wiring] notification` | `fram_target` | no | a `fram` instance | `log=` |
 | `[instance.wiring] notification` | `warn_co2` | no | `{source, field}` naming a `get_data()` field; the signal from `buildgen/signals.py`'s `WARN_SIGNALS` | one notification signal |
@@ -10994,7 +10986,9 @@ needs CPython 3.11 (`tomllib`, `datetime.UTC`).
 - **Notification signal catalog**: each signal's threshold default/range, flash colour, label and
   unit is a fixed, generator-owned catalog, `buildgen/signals.py`'s `WARN_SIGNALS`, read by codegen
   and the definitions generator alike; a `warn_*` key outside it, or on any instance but the
-  notification, fails the build. Every real device uses identical values, and the schema has no
+  notification, fails the build, and so does a catalog whose signal names repeat or meet the
+  notification's own schema fields (`wiring.warn-collision`), so the service refuses nothing at run
+  time. Every real device uses identical values, and the schema has no
   per-device override for them today.
 - **Error catalog**: `buildgen/error_catalog.json`, host-side data never frozen into the firmware -
   every code's number, owner, name and meaning (C.7.1). A buildgen input with one consumer,
@@ -11214,7 +11208,7 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   `wiring.default-class-missing`, `wiring.default-key-missing`, `wiring.default-key-unknown`,
   `wiring.field-missing`, `wiring.field-unknown`, `wiring.source-shape`, `wiring.source-unresolved`,
   `wiring.target-class`, `wiring.target-type`, `wiring.target-unresolved`,
-  `wiring.warn-unknown`; a driver's source: `source.name-missing`,
+  `wiring.warn-collision`, `wiring.warn-unknown`; a driver's source: `source.name-missing`,
   `source.name-not-literal`, `source.syntax-error`; a `src/` fact the build reads:
   `src.const-missing`, `src.default-missing`, `src.schema-missing`, `src.unreadable`; the driver
   registry: `driver.ambiguous-reader-class`, `driver.module-missing`, `driver.no-build-recipe`,
@@ -11628,7 +11622,7 @@ carry extra weight: there is no reference to differential-test against. (3) **RI
 scaling truncates** (`65535 / 375` is 174 in integer arithmetic, not 174.76); the named
 `fraction_to_counts()` and its `..._does_not_truncate_like_the_riot_driver` test keep that out.
 
-**Colour chain (`math_helpers.py`)** — three decisions that look like defects:
+**Colour chain (`asy_isl29125_driver.py`)** — three decisions that look like defects:
 - The **sRGB/Rec.709 D65 matrix is pinned as literals**: two published roundings differ in the 6th
   decimal and both pass a `1e-6` tolerance, so
   `test_rgb_to_xyz_coefficients_are_the_pinned_literals()` asserts the literals exactly.
@@ -11678,10 +11672,9 @@ switch-down point is derived (owner, 2026-09-14, `90e5ebb`).
   `isl29125_real_irq_edge.py`). The driver arms its deadline once the write has returned, so two
   cycles cover a restart at the write as well as a conversion that simply continues. No scene, light
   level or resolution makes another value right. A passed deadline is moved up to now, so the stored
-  tick never ages past `ticks_diff()`'s horizon. A cycle still unsettled past the bound is
-  discarded: nothing is published and the streak does not step; it has already consumed `RGBTHF`
-  and the INT flag, so its interrupt-led credit is lost, and the chip re-raises the flag after `PRST`
-  cycles if green is still outside its window.
+  tick never ages past `ticks_diff()`'s horizon. A read waits until the deadline has passed, with no
+  round cap, however often a push moves it meanwhile: the deadline is the datasheet's, and the wait is
+  on the driver's own state.
 - **The dead-line detector keys on the INT edge, not the flag.** `RGBTHF` is raised by the chip, so
   it is set just the same when the INT line is open — requirement 17's fault. The driver records the
   pin edge itself (`_irq_fired`, set in the handler and consumed once per cycle) and counts a
@@ -11762,13 +11755,14 @@ board (owner, 2026-09-13, `05f4746`: 'Do not re-raise it as actionable').
 |---|---|---|---|---|
 | register read, write → read | 50 ms (`scd30.cmd_response_wait_ms`) | > 3 ms (Interface Description 1.4.4, 1.4.5) | ×16.7 | owner-tested for stable operation (owner, 2026-07-13, `144873f`) |
 | command → next access | 50 ms (`scd30.cmd_response_wait_ms`) | > 3 ms | ×16.7 | legacy value kept (agent; `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:399`) |
-| soft reset → first access | 2.5 s (`scd30.soft_reset_wait_ms`) | boot-up < 2 s (Interface Description 1.1) | ×1.25 | agent: the full bound, since it also runs on every task restart |
+| soft reset → first access | 2 s and one tick (`_BOOT_UP_MAX_MS`) | boot-up < 2 s (Interface Description 1.1) | the tick an asyncio sleep may wake early by | the datasheet's bound (agent, 2026-11-09) |
 | ASC enable → next command | 10 ms (`scd30.asc_enable_wait_ms`) | none documented (1.4.6 names no wait) | — | legacy value kept (agent; `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:286`) |
 | data-ready fallback tick | 500 ms (`scd30.start_trigger_period_ms`) | — | — | owner, 2026-09-26 (the tick stays as it is) |
 
 The SCD30 has no repeated start (Interface Description 1.1), so every read is a write, the wait,
-then a separate read; the 50 ms is inside the device-session hold. Each read-task (re)start,
-supervisor restarts included, sends a soft reset and waits 2.5 s and never a start-continuous
+then a separate read; the 50 ms is inside the device-session hold, with the bus free across it for
+the siblings (bench check owed). Each read-task (re)start,
+supervisor restarts included, sends a soft reset and waits 2 s and never a start-continuous
 command (owner, 2026-09-26). The soft reset (0xD304) puts the sensor into its power-up state
 (Interface Description 1.4.10); a power loss within ASC's first 7 days aborts its parameter search
 (1.4.6), and whether the soft reset counts as one is not stated; the firmware sends it at every
@@ -11880,18 +11874,17 @@ it can move the VOC index, and its warning, before the algorithm settles (SGP40 
 
 ## M.4 BMP3XX (`asy_bmp3xx_driver.py`)
 
-**Command waits** (each value is its Part N row):
+**Command waits**:
 
 | Wait | Value in the driver | Datasheet bound | Margin | Source |
 |---|---|---|---|---|
 | soft reset → ERR read | 2 ms | none documented for 0xB6 (BMP388 DS001 4.3.22) | — | Bosch reference sequence `bmp3_soft_reset()` (agent) |
-| conversion → STATUS ready | STATUS polled every 2 ms (`bmp3xx.status_poll_ms`) from the forced-mode write on, bounded by 300 ms (`bmp3xx.meas_timeout_ms`) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum about 15 % above typical (Table 22) | ×2.0 against the maximum | agent |
-| `cmd_rdy` before a command | 50 ms (`bmp3xx.cmd_rdy_timeout_ms`) | none documented (DS001 4.3.3) | — | agent: bounds a bus fault |
+| forced-mode write → data read | one sleep of `_conversion_wait_ms()`: 3.9.2's typical time at the configured oversampling × 6/5, whole ms rounded up, plus one tick (158 ms at ×32/×32) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum at most 1.183× typical (Table 22) | ×1.2 against typical, at or above every Table 22 maximum | the datasheet (agent, 2026-11-09; bench check owed) |
 
 AN006 5.2 verifies each trimming parameter against bounds it does not publish; the driver rejects an
-all-0x00/0xFF trim block, which catches the same memory fault class. The data burst is the six
-bytes from PRESSUREDATA (0x04); a pressure outside 300-1250 hPa fails the read like any other
-(`READ`).
+all-0x00/0xFF trim block, which catches the same memory fault class. The data burst is the seven
+bytes from STATUS (0x03); a burst whose STATUS lacks both data-ready bits, or a pressure outside
+300-1250 hPa, fails the read like any other (`READ`).
 
 `MeanAtmTemp` is bounded to −40..50 °C so every accepted value lies inside the barometric formula's
 domain. A `PresOffset` that moves the pressure outside 300-1250 hPa still publishes the sample, with
@@ -12078,15 +12071,12 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `dns_server.recv_backoff_mult` | 2 | `src/asy_captive_dns.py` — `2` | the doubled and quadrupled gap bands of `tests/test_asy_captive_dns.py` | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket, L2 | unknown until measured | the serve loop's receive path changes |
 | `dns_server.error_retry_wait_s` | 3 s | `src/asy_captive_dns.py` — `3` | `tests/test_asy_captive_dns.py`'s 1000 ms no-backoff bound stays well under it; its 5000 ms backoff wait covers it | legacy `legacy/firmware/python/CommonDrivers/captive_dns.py:37` | unknown until measured | the serve loop's error path changes |
 | `led.min_signal_s` | 0.1 s | `src/asy_neopixel_driver.py` — `0.1` | the shortest ramp a signal runs | estimated (agent, `454f6a2`) — measurement owed: none for the value, a floor for malformed input; the ramp's visible smoothness, L3 | unknown until measured | the ramp's step rate changes |
-| `led.refresh_hz` | 20 Hz | `src/asy_neopixel_driver.py` — `20` | the default of `NeopixelDriver`'s `neopixel_freq` (tests pass their own); the ramp's step count per signal; the frame period `_frame_ms` (derived, an int 50 ms), also `request_signal()`'s poll interval while it waits for a running signal; the loop-lag scenario's at-rest bound, one frame period (`con.led_frame`, `scripts/_digital_twin_scenarios.py`), which the window after the one straddling the load's stop stays under at its p99 | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | unknown until measured | the LED driver's refresh path changes |
+| `led.refresh_hz` | 20 Hz | `src/asy_neopixel_driver.py` — `20` | the default of `NeopixelDriver`'s `neopixel_freq` (tests pass their own); the ramp's step count per signal; the frame period `_frame_ms` (derived, an int 50 ms); the loop-lag scenario's at-rest bound, one frame period (`con.led_frame`, `scripts/_digital_twin_scenarios.py`), which the window after the one straddling the load's stop stays under at its p99 | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | unknown until measured | the LED driver's refresh path changes |
 | `led.overlay_brightness` | 50 | `src/asy_neopixel_driver.py` — `50` | the default of `NeopixelDriver`'s `led_overl_bri`; the overlay colour's brightness | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | of 255 | the overlay's appearance is reviewed |
-| `led.signal_wait_ms` | 120000 ms | `src/asy_neopixel_driver.py` — `120000` | `request_signal()` waits at most this long for a running signal, then queues anyway (A.4); twice the REST ceiling of `t` (60 s, `_LIGHT_CMD_FIELDS`) | chosen (agent, 2026-10-06; owner-reviewed, 2026-11-06), no measurement owed | choice; 2× the nominal 60 s | the REST ceiling of `t` changes, or the signal task's restart path changes |
-| `notify.loop_tick_s` | 1 s | `src/asy_notification_service.py` — `1` | `_pause_loop()`'s round: a measured pause ends at most one round late (the L1 override test reads its end in virtual time, at the pause plus one round); the bench override test's ten 1 s polls over its 3 s countdown; the unit test's 2 s override leaves one full round with the override active | estimated (agent, `da9b4ab`) — measurement owed: none for the value, the pause's lateness bound; the loop share, L2 | unknown until measured | the pause loop changes |
 | `notify.min_sleep_ms` | 100 ms | `src/asy_notification_service.py` — `100` | the monitor loop's shortest sleep | estimated (agent, `454f6a2`) — measurement owed: the monitor loop's cycle cost, L2 | unknown until measured | the monitor loop changes |
 | `notify.cfg_fail_interval_s` | 600 s | `src/asy_notification_service.py` — `600` | the interval used while its config reads fail | estimated (agent, `da9b4ab`) — measurement owed: none: a fallback while the config is unreadable | twice the `FlashInterval` default | the `FlashInterval` range changes |
 | `scd30.cmd_response_wait_ms` | 50 ms | `src/asy_scd30_driver.py` — `50` | every command-and-read exchange | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | 16.7× the > 3 ms between write and read (Interface Description 1.4.4, 1.4.5; M.2) | the bus speed or the chip's firmware changes |
 | `scd30.asc_enable_wait_ms` | 10 ms | `src/asy_scd30_driver.py` — `10` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:286` | datasheet margin owed | the chip's firmware changes |
-| `scd30.soft_reset_wait_ms` | 2500 ms | `src/asy_scd30_driver.py` — `2500` | — | estimated (agent, `7267509`) — measurement owed: the chip's ready time after a soft reset on the dev bench, L3 (the Interface Description's boot time is the floor) | 1.25× the boot-up time < 2 s (Interface Description 1.1; M.2) | the chip's firmware changes |
 | `scd30.start_trigger_period_ms` | 500 ms | `src/asy_scd30_driver.py` — `500`; `tests/test_asy_scd30_driver.py` — `500` | the measurement start's retry cadence | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:77` | unknown until measured | the start sequence changes |
 | `sgp40.measure_wait_ms` | 100 ms | `src/asy_sgp40_driver.py` — `100` | every raw-signal read | owner decision (owner, 2026-07-21, `5ff8c0b`) | more than 3× the datasheet's 30 ms maximum (Table 8) | the chip's measurement command changes |
 | `sgp40.serial_read_wait_ms` | 3 ms | `src/asy_sgp40_driver.py` — `3` | — | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | 3× the datasheet's 1 ms maximum (Table 8; M.3) | the chip's command set changes |
@@ -12094,9 +12084,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `sgp40.general_call_reset_wait_s` | 1 s | `src/asy_sgp40_driver.py` — `1` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:352` | about 1667× the soft-reset time tSR, 0.6 ms maximum (Table 3; M.3) | the reset path changes |
 | `sgp40.fram_verify_mins` | 60 min | `src/asy_sgp40_driver.py` — `60` | the FRAM backup's verify period | estimated (agent, `5ff8c0b`) — measurement owed: none for the value, a design period; FRAM reads per day, L3 | unknown until measured | the backup scheme changes |
 | `sgp40.backup_counter_max` | 100000 | `src/asy_sgp40_driver.py` — `100000` | the backup counter's wrap (one day of 1 s cycles is 86,400) | estimated (agent, `770cf13`) — measurement owed: none: a counter bound above one day of cycles | 86,400 cycles a day under it | the sampling period changes |
-| `bmp3xx.cmd_rdy_timeout_ms` | 50 ms | `src/asy_bmp3xx_driver.py` — `50` | — | estimated (agent, `433e35e`) — measurement owed: none: the datasheet gives no bound, so it bounds a bus fault | unknown until measured | the command path changes |
-| `bmp3xx.meas_timeout_ms` | 300 ms | `src/asy_bmp3xx_driver.py` — `300` | — | estimated (agent, `433e35e`) — measurement owed: none: bounds a stuck STATUS past the datasheet's worst case (3.9.2) | about 2× the ~129-150 ms worst case at x32/x32 | the oversampling range changes |
-| `bmp3xx.status_poll_ms` | 2 ms | `src/asy_bmp3xx_driver.py` — `2` | the STATUS poll's loop share | estimated (agent, `433e35e`) — measurement owed: the poll rounds per conversion on the dev bench, L3 | unknown until measured | the conversion timing changes |
 | `i2c.probe_settle_ms` | 100 ms | `src/asy_i2c_driver.py` — `100` | the two waits around the zero-byte address probe | estimated (agent, `d40853e`) — measurement owed: the bus settle a probe needs on the dev bench, L3 | unknown until measured | the probe sequence changes |
 | `i2c.timeout_max_us` | 200000 µs | `buildgen/validate.py` — `200000` | every `[bus.i2cN].timeout` (the build refuses one outside 1..200000 µs); the SCD30's `@requires bus.timeout>=200000`, whose floor equals the bound, so a bus carrying an SCD30 has exactly one legal timeout; the boot bus clear, unfed under `wdt.timeout_ms` | estimated (agent, 2026-10-07; owner-reviewed, 2026-11-06): the largest timeout any device TOML declares, the SCD30's own floor, far below the 2**29 µs `ticks_diff()` horizon — measurement owed: the longest clock stretch any chip on the buses holds on the dev bench, L3 | bound, measured by `tests_hardware/flash/test_bus_electrical_timing.py`'s clock-stretch soak; worst boot clear per bus is (`_CLEAR_PULSES` + 2) = 11 SCL waits of one timeout plus 2 × (`_CLEAR_PULSES` + 1) half periods: on a real device today at most one bus at 200000 µs and one at the 50000 µs default, about 2750 ms; the largest allowed shape, two buses at the bound, about 4400 ms, under the 8000 ms watchdog | a chip needing a longer stretch joins a bus, `_CLEAR_PULSES` changes, or `wdt.timeout_ms` changes |
 | `fram.verify_lock_timeout_ms` | 1000 ms | `src/asy_fram_driver.py` — `1000` | bounds an accidental lock re-entry to a finite wait | estimated (agent, `5abd1ed`) — measurement owed: a real transaction's lock hold on the dev bench, L3 (low single-digit ms) | unknown until measured | the FRAM transaction path changes |
@@ -12110,7 +12097,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `isl29125.cal_converge_tol` | 0.01 | `src/asy_isl29125_driver.py` — `0.01` | one bench scene measured 28.11/28.01/28.09, a 0.4 % spread | measured 2026-09-14, dev bench, single observation (2026-09-14): one scene's three ratios 28.11/28.01/28.09 (M.1.5) | unknown until measured | a second specimen or a reference meter (M.1.6) |
 | `isl29125.cal_stability_tol` | 0.02 | `src/asy_isl29125_driver.py` — `0.02` | between the sandwich's first and third reading of one range (M.1.5) | estimated (agent, `75d222e`) — measurement owed: re-confirmed on the dev breakout, L3 (M.1's measured behaviour, one specimen) | unknown until measured | a second specimen or a reference meter (M.1.6) |
 | `isl29125.settle_cycles` | 2 | `src/asy_isl29125_driver.py` — `2` | conversions discarded after a range switch (M.1.4) | estimated (agent, `75d222e`) — measurement owed: re-confirmed on the dev breakout, L3 (M.1's measured behaviour, one specimen) | unknown until measured | a second specimen or a reference meter (M.1.6) |
-| `isl29125.settle_wait_max_rounds` | 2 | `src/asy_isl29125_driver.py` — `2` | one extra cycle past the settle deadline (M.1.4) | estimated (agent, `75d222e`) — measurement owed: re-confirmed on the dev breakout, L3 (M.1's measured behaviour, one specimen) | unknown until measured | a second specimen or a reference meter (M.1.6) |
 | `isl29125.periodic_only_warn_at` | 5 | `src/asy_isl29125_driver.py` — `5`; `tests_hardware/device_scripts/isl29125_lighting_scenarios.py` — `5` | consecutive periodic-path switches with no preceding interrupt (M.1.4) | estimated (agent, `75d222e`) — measurement owed: re-confirmed on the dev breakout, L3 (M.1's measured behaviour, one specimen) | unknown until measured | a second specimen or a reference meter (M.1.6) |
 | `gc.threshold_bytes` | 32768 B | `buildgen/codegen.py` — `32768`; `digital_twin/run_generic_integration.py` — `32768`; `scripts/_digital_twin_ci_suite.py` — `32768`; `.github/workflows/ci.yml` — `32768`; `tests/test_digital_twin_run_generic_integration.py` — `32768`; `tests_scripts/test_threshold_runner.py` — `32768` (2 tags); `tests_scripts/test_device_script_gc_threshold.py` — `32768`; `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` — `32768`; `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `32768`; `tests_hardware/device_scripts/heap_under_connection_ceiling.py` — `32768`; `tests_hardware/device_scripts/unretrieved_task_exception_handler.py` — `32768` | the (f) stage of every tier (I.4(f)); the boot placement gain carried into the run phase | owner decision (owner, 2026-09-26), owner direction `887da0e` | defence in depth over a design that passes at -1 (I.4(e)) | a heap-layout measurement at both stages (I.4(f)) |
 | `gc.emergency_exc_buf_bytes` | 100 B | `buildgen/codegen.py` — `100` | the generated boot entry's `micropython.alloc_emergency_exception_buf()` argument (I.4(e)); the Unix port has a static 256 B buffer instead (F.7 row 11) | estimated (agent, 2026-10-08; owner-reviewed, 2026-11-06) from the pinned source: a caught `MemoryError` keeps its "memory allocation failed" text whole from 77 B of buffer (`py/objexcept.c:65-70, 405-409, 485-494, 510-523`, v1.29.0), and 100 B is the size `docs/reference/isr_rules.rst:44` uses — measurement owed: a caught heap-exhaustion `MemoryError` on the dev board printing its full message, L3 | attention; 23 B over the 77 B the message needs | a MicroPython bump touching `py/objexcept.c` |

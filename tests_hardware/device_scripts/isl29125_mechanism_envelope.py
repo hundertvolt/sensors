@@ -149,7 +149,7 @@ async def _main() -> None:
         # TS tells a new sample from a re-read one only once the clock is valid (Part G.2); no NTP runs here.
         asy_base_classes.set_utc_valid()
         reader.start_timer()
-        tasks = [pixel.start_asy_overlay(), pixel.start_asy_signal(), reader.start_asy_trigger(), reader.start_asy_read()]
+        tasks = [pixel.start_asy_signal(), reader.start_asy_trigger(), reader.start_asy_read()]
         try:
             await _envelope(pixel, reader, wdt)
         finally:

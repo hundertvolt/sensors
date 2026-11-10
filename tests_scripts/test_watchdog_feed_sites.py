@@ -320,17 +320,17 @@ def test_a_setup_feed_moved_out_of_its_loop_fails(src_copy: Path) -> None:
 
 
 def test_a_feed_in_a_timer_callback_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._sequencer_flag.set())", "callback=lambda _b: self.feed_watchdog())")
+    _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._reset_due.set())", "callback=lambda _b: self.feed_watchdog())")
     findings = src_findings(src_copy)
     # Both the lambda's own call and the latched feed it reaches.
     assert [f.split(" ", 1)[1] for f in findings] == [
+        "SystemService._reboot(): a feed inside a Timer/IRQ callback",
         "SystemService.feed_watchdog(): a feed inside a Timer/IRQ callback",
-        "SystemService.start_timers(): a feed inside a Timer/IRQ callback",
     ], findings
 
 
 def test_a_function_a_timer_callback_reaches_must_not_feed(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._sequencer_flag.set())", "callback=lambda _b: self.pause_permanent_storage(0))")
+    _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._reset_due.set())", "callback=lambda _b: self.pause_permanent_storage(0))")
     _edit(src_copy / "asy_system_service.py", "    def pause_permanent_storage(self, duration: int) -> bool:\n", "    def pause_permanent_storage(self, duration: int) -> bool:\n        self.feed_watchdog()\n")
     findings = src_findings(src_copy)
     assert len(findings) == 1 and "SystemService.pause_permanent_storage(): a feed inside a Timer/IRQ callback" in findings[0], findings

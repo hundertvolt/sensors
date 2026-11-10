@@ -84,7 +84,7 @@ def base_doc() -> TomlDoc:
                     },
                 },
                 {"driver": "fram", "bus": "spi0", "cs_pin": 1, "max_size": 8192},
-                {"driver": "neopixel", "pin": 15, "wiring": {"fram_target": "fram"}},
+                {"driver": "neopixel", "pin": 15},
                 {
                     "driver": "notification",
                     "wiring": {

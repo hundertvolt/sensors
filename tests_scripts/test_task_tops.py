@@ -245,7 +245,7 @@ def test_a_generated_module_that_creates_a_task_fails(generated: "dict[str, str]
 
 @pytest.mark.parametrize(
     ("name", "cls", "method", "loop"),
-    [("asy_neopixel_driver.py", "NeopixelDriver", "toggle", "_signal_loop"), ("asy_ntp_client.py", "NTPClient", "start_check_timer", "_sync_loop")],
+    [("asy_neopixel_driver.py", "NeopixelDriver", "toggle", "_signal_loop"), ("asy_scd30_driver.py", "SCD30_Reader", "start_timer", "_read_loop")],
     ids=["in-a-plain-method", "in-a-timer-starter"],  # start_timers() discards a timer starter's result: no supervisor watches its task
 )
 def test_a_supervised_loop_started_outside_its_starter_fails(src_copy: Path, name: str, cls: str, method: str, loop: str) -> None:
@@ -278,7 +278,7 @@ def test_a_connection_callback_whose_top_is_removed_fails(src_copy: Path) -> Non
     top = (
         "            except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a\n"
         "                # proxy, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)\n"
-        "                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, decrement() cannot raise\n"
+        "                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, the decrement cannot raise\n"
         '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
     )
     _edit(src_copy, "asy_webserver_service.py", top, "")  # only the cancellation arm is left

@@ -441,7 +441,7 @@ def _closed_while_its_entry_waits(reader: _OneStream, writer: _Writer, *, full: 
         await service.setup()
         fram_free, holding = asyncio.Event(), asyncio.Event()
         if full:
-            await service._open_conns.increment()  # the one slot, taken by no connection a per-call timeout would reclaim
+            service._open_conns += 1  # the one slot, taken by no connection a per-call timeout would reclaim
 
         async def other_write() -> None:  # another module's chunk write, its FRAM session held
             async with manager.fram:
@@ -459,7 +459,7 @@ def _closed_while_its_entry_waits(reader: _OneStream, writer: _Writer, *, full: 
         await served
         await clock.run_until(lambda: store._writer is None, _VIRTUAL_LIMIT_MS)  # a written-behind entry lands too
         if full:
-            await service._open_conns.decrement()
+            service._open_conns -= 1
         return closing, kept, (await _log(service), await service.pr._read(), (service.pr._err_count, tuple(service.pr.history)))
 
     with clock:
@@ -574,8 +574,7 @@ async def _serve_all(service: WebserverService, readers: "list[_Reader]") -> "tu
 
 
 async def _slots(service: WebserverService) -> int:
-    # The open-connection gauge: a LockedCounter reads None only before its first count, and this one starts at 0.
-    value = await service._open_conns.get_value()
+    value = service._open_conns  # the open-connection gauge, a plain int
     assert value is not None
     return value
 
@@ -1003,7 +1002,7 @@ def test_cancelling_a_connection_at_each_await_frees_its_slot() -> None:
         await conn.serve()
 
     def invariants(conn: _StaticConnection) -> None:
-        assert conn.service._open_conns.value == 0, "the connection's slot is still counted"
+        assert conn.service._open_conns == 0, "the connection's slot is still counted"
         assert conn.writer.closed or not conn.started, "the writer left open"
 
     try:

@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from asy_config_manager import FieldSchema
     from asy_fram_manager import FRAMChunkTimestampedBuffer, FRAMManager
     from asy_i2c_driver import I2C
-    from asy_print_log import ErrorLog
 
     # The VOC backup's two parts: the FRAM store its chunk comes from and the NTP clock check that
     # timestamps it (the generated module passes ntp.ntp_clock_valid).
@@ -554,15 +553,11 @@ class SGP40_Reader(SensorReaderConfig):
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_read]
 
-    def get_timer_starters(self) -> "list[TimerStarter]":
-        return []
-
     def get_trigger_starters(self) -> "list[TimerStarter]":
         return [self.start_timer]
 
     def start_asy_read(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._read_loop())
+        return asyncio.create_task(self._read_loop())
 
     def start_timer(self) -> None:  # voc algorithm needs 1s period fixed
         try:
@@ -591,9 +586,6 @@ class SGP40_Reader(SensorReaderConfig):
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
         return make_dict(data, _FIELDS, name=self.name)
-
-    async def get_error_counter(self) -> "ErrorLog":
-        return await self.pr.get_log()
 
     async def get_mem_status(self) -> tuple[int | None, int | None]:
         return self._last_backup, self._restored_from
