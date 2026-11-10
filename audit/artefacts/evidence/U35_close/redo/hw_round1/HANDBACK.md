@@ -43115,3 +43115,20 @@ against F.3: both stalls (975 / 979 ms) are past con.uart_reply's 925 ms; no tra
 note: the first MODE line read sta_conn 1 for 3.5 s after the entry started with the AP already down (the radio's state carried over the soft reset, inferred).
 errcount run 2: WIFI 14 -> 20 (W37, W79: the boot streak and the hotspot), NTP 0 -> 1 (E67 NTP_DNS: the boot's sync with no AP), SGP40 2 -> 10 (W35); 18 sources unchanged. ResetReason after: 21, STA; flash cycles today: 1; logs/day5_20261110/ (w1_*, w2_*)
 status: confirmed as measured; the design reading of run 1 confirmed in the code; "no transfer in flight" inferred.
+
+12:22:15 UTC 2026-11-10 lead 12:03 item 3 under load: probes_20261110/snap58_stack_load.py (snap58_heap_stack.py with a 150 s run, peaks printed every 10 s) driven by stack_load_host.py (heap_probe/status_load.py 6 60 /status from 20 s after BOOT_DONE); HEAP 881562cf; image 2026-11-10T11:02:16Z
+attempt 1, 12:06:20-12:16:20, void: the host read mpremote's output through a pipe in a reader thread; the console went silent at 12:06:25 (just after BOOT_DONE's heap map), the board left USB at 12:08:58 and came back unkicked into its hotspot; my outer timeout (SIGTERM) then killed the host script before its finally, so no stop and no restore. exec_live read the following boot at 12:17:51: ResetReason 2 (_RR_WATCHDOG), uptime 533 s, free 76,848; restore_board_to_serving() at 12:18. No W60 was logged (WEBSERVER unchanged), so the load most likely never met a serving board, and no SYSTEM entry. Reading (inferred, not traced): the host side stopped draining the console, the board's prints blocked on the full USB CDC buffer, and the loop stalled until the watchdog; attempt 2 under the same load with mpremote writing straight to a file ran clean. errcount added: WIFI W38,W79 (the unkicked boot), SGP40 W33. logs: s1_console.txt, s1_after_tail.txt, s1_*_status.json
+attempt 2, 12:18:54-12:21:44, mpremote's stdout a file, the outer timeout SIGINT so the finally runs: load 12:19:19-12:20:21 {200: 106, ConnectionResetError: 39} = 1.77 /status per second; WEBSERVER 41 -> 80 (+39 W60 HTTP_REFUSED, so the refusals reached the log store); DONE 12:21:30, stopped with record 21, restored 12:21:44
+verbatim:
+STACK top_level 1292
+HEAP BOOT_DONE free 72608 alloc 115296 uptime_ms 46179
+ No. of 1-blocks: 2491, 2-blocks: 408, max blk sz: 64, max free sz: 4129
+HEAP RUN_END free 72960 alloc 114944 uptime_ms 197060
+ No. of 1-blocks: 2867, 2-blocks: 399, max blk sz: 64, max free sz: 1421
+STACK peaks [('fram_send_and_read', 5652), ('fram_send_and_write', 5124), ('i2c_read', 3100), ('i2c_writeto', 2876), ('log_store_write', 2444), ('uart_rx_copy', 3076), ('web_flush', 3820)] max 5652
+HEAP RUN_END_COLLECTED free 80912 alloc 106992 uptime_ms 197108
+ No. of 1-blocks: 2439, 2-blocks: 394, max blk sz: 64, max free sz: 1421
+per leaf, the deepest micropython.stack_use() against 7,936 B: FRAM _send_and_read 5,652; FRAM _send_and_write 5,124; webserver _PieceWriter.flush 3,820 (reached at 30 s, under the load); I2C _read_into_scratch 3,100; UART _rx_copy 3,076; I2C writeto 2,876; log store _write 2,444 (reached at 10 s). The deepest stays the FRAM leaf at boot; the load set no new maximum.
+heap under the load (sampled every 10 s): free fell to 16,224 B at 60 s; after the load the largest free block was 22,736 B (1,421 blocks) with 72,960 B free, and still 22,736 B after one gc.collect() (80,912 free), against 66,064 B (4,129 blocks) at BOOT_DONE: the load left the heap split.
+errcount (attempt 2): WEBSERVER +39 W60; SGP40 24 -> 27 (no new kind); 19 sources unchanged. ResetReason after: 21, SysUptime 16 s, STA; flash cycles today: 1; logs/day5_20261110/ (s2_console.txt, s2_console.txt.host, s2_*_status.json)
+status: attempt 2 confirmed as measured; attempt 1's cause inferred.
