@@ -11,8 +11,9 @@ from collections import namedtuple
 
 from micropython import const
 
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
+from asy_uart_driver import PieceBuffer
 
 try:
     from typing import TYPE_CHECKING
@@ -495,9 +496,9 @@ class UARTComm:
         return total
 
     async def _err(self, errno: int, *args: object) -> None:
-        # Every fault persists its errno, a repeat of the newest code collapsed by the central rule; its FRAM write runs
-        # behind, so no exchange or resync waits on another FRAM user's bus hold (C.7.1, J.5).
-        self.pr.err_q("UART error:", *args, errno=errno)
+        # Every fault persists its errno, a repeat of the newest code collapsed by the central rule; its FRAM write is a
+        # bounded synchronous one, RX landing by DMA and TX draining by IRQ meanwhile (C.7.1, F.5.8).
+        self.pr.err_s("UART error:", *args, errno=errno)
 
     async def _fault(self, device: "UART", errno: int, *args: object) -> None:
         # Every fault this module reports also resyncs, without exception - one helper so that is a
@@ -703,7 +704,7 @@ class UARTComm:
     async def _ready(self) -> bool:
         if self.initialized:
             return True
-        await self.pr.err_s("Not initialized", errno=self._init_errno or _ERR_NOT_INIT)
+        self.pr.err_s("Not initialized", errno=self._init_errno or _ERR_NOT_INIT)
         return False
 
     async def _recv_train(
@@ -764,7 +765,7 @@ class UARTComm:
     async def _reject_wrn(self, device: "UART", cmd_id: int) -> None:
         # A declined command persists W56 every time (a run of identical codes spends one slot under the
         # central rule) and, like every refusal, resyncs.
-        self.pr.wrn_q("callback rejected command", cmd_id, wrnno=_WRN_UART_CMD_DECLINED)
+        self.pr.wrn_s("callback rejected command", cmd_id, wrnno=_WRN_UART_CMD_DECLINED)
         await self._resync(device)
 
     async def _resync(self, device: "UART") -> None:
@@ -776,7 +777,7 @@ class UARTComm:
             # A resync is routine and prints; only a drain that hit its bound (a babbling or misconfigured
             # peer) persists W54. Logged after the drain, which decides which one this is.
             if self._drain_bound_hit:
-                self.pr.wrn_q("Resynced the link - drain bound reached, the peer never stopped sending", wrnno=_WRN_UART_DRAIN_BOUND)
+                self.pr.wrn_s("Resynced the link - drain bound reached, the peer never stopped sending", wrnno=_WRN_UART_DRAIN_BOUND)
             else:
                 self.pr.wrn("Resyncing the link, drained", drained, "bytes")
             self._hold_off_writes()
@@ -1000,8 +1001,7 @@ class UARTComm:
         return []  # no machine.Timer anywhere in this module, deliberately
 
     def start_asy_listen(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._listen_loop())
+        return asyncio.create_task(self._listen_loop())
 
     # -- getters -----------------------------------------------------------
 
@@ -1023,7 +1023,7 @@ class UARTComm:
             # The driver's counter is cumulative, so reading it as a flag reported every later
             # cancel - healthy ones included - as un-acknowledged, persisting a warning each time.
             self._cancel_unacked_seen = self._uart.cancel_unacknowledged
-            await self.pr.wrn_s("Driver cancel was not acknowledged", wrnno=_WRN_UART_CANCEL_UNACKED)
+            self.pr.wrn_s("Driver cancel was not acknowledged", wrnno=_WRN_UART_CANCEL_UNACKED)
 
     async def reset_error_counter(self) -> bool:
         # Clears the history and the blind-resync streak; the valid-frame count is link evidence, not error
@@ -1034,14 +1034,14 @@ class UARTComm:
     async def setup(self) -> bool:
         await self.pr.setup()  # without this the FRAM history silently never persists
         if self._init_errno:
-            await self.pr.err_s("Construction failed, not starting", errno=self._init_errno)
+            self.pr.err_s("Construction failed, not starting", errno=self._init_errno)
             return False
         bus = self._uart
         if bus is None:
-            await self.pr.err_s("No bus handle, not starting", errno=_ERR_UART_NO_BUS)
+            self.pr.err_s("No bus handle, not starting", errno=_ERR_UART_NO_BUS)
             return False
         if not bus.setup_rx_ring():  # before the drain: bytes held since boot reach the ring, and the drain drops them
-            await self.pr.err_s("No receive ring, not starting:", bus.rx_ring_refusal, errno=_ERR_UART_NO_BUS)
+            self.pr.err_s("No receive ring, not starting:", bus.rx_ring_refusal, errno=_ERR_UART_NO_BUS)
             return False
         async with bus as device:
             # A peer that outlived this side's reset leaves partial-frame bytes in the receive ring.

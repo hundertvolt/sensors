@@ -108,7 +108,7 @@ def _build_call(spec: InstanceSpec, info: DriverInfo, ctx: _Ctx) -> str:
 
 
 def _bus_crc_class(model: DeviceModel, bus_id: str) -> "str | None":
-    # The CRC the bus's one uart_link instance names, as its asy_crc_checks class; None for no CRC.
+    # The CRC the bus's one uart_link instance names, as its crc_checks class; None for no CRC.
     links = [s for s in model.instances.values() if s.driver == "uart_link" and s.fields.get("bus") == bus_id]
     if not links:
         return None
@@ -403,7 +403,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     names["asy_base_classes"] = ["ValueRef", "utc_now"] if have & {"sgp40", "notification"} else ["utc_now"]
     crc_classes = sorted({c for c in (_bus_crc_class(model, b) for b in _bus_tables(model)) if c is not None})
     if crc_classes:
-        names["asy_crc_checks"] = crc_classes
+        names["crc_checks"] = crc_classes
     if "uart_link" in have:
         names["asy_uart_comm"] = ["TransferLimits"]
     names["asy_print_log"] = ["DEFAULT_LOG", "LogConfig"]

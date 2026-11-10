@@ -123,7 +123,7 @@ def test_an_untabled_task_fails_naming_its_site(src_copy: Path) -> None:
 
 
 def test_a_starter_dropped_from_its_list_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_neopixel_driver.py", "return [self.start_asy_overlay, self.start_asy_signal]", "return [self.start_asy_overlay]")
+    _edit(src_copy, "asy_neopixel_driver.py", "return [self.start_asy_signal]", "return []")
     findings = inventory_findings(src_copy, _spec())
     assert len(findings) == 1 and "NeopixelDriver.start_asy_signal(): a task created outside every task starter" in findings[0], findings
 

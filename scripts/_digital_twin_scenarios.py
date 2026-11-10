@@ -59,7 +59,7 @@ from scripts._twin_process import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-_DEVICE_PROPERTIES = ("any", "stagger_wait")  # what a first_device= scenario may ask its device for (_has_property())
+_DEVICE_PROPERTIES = ("any",)  # what a first_device= scenario may ask its device for (_has_property())
 SRC_DIR = REPO_ROOT / "src"
 GENERATED_SRC_DIR = REPO_ROOT / "build" / "generated_src"
 SITES_DIR = REPO_ROOT / "build" / "generated_html"
@@ -822,9 +822,11 @@ def _escalation_entry_cut(ctx: Context) -> None:
     state = ctx.logs_dir / "state_escalation_cut"
     errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
     busy, repaired = _src_int("asy_fram_manager.py", "_ERR_FRAM_STATUS_BYTE"), _src_int("asy_fram_manager.py", "_WRN_FRAM_BLOCK_INVALID")
-    with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
+    # Armed once serving: the cut write freezes the whole loop, so a boot that met it first would never serve.
+    with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-defer-faults", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
         twin.starves_watchdog = True
         since = twin.mark()
+        twin.trigger("FAULT_ARM")
         _expect(twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S) is not None, "the escalation's entry write never reached its first block's busy mark")
         engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, _WATCHDOG_WINDOW_S + _COMMANDED_RESET_MARGIN_S)
         _expect(twin.run.proc.poll() is None and engaged is not None, "the watchdog did not engage behind the held entry write")
@@ -1000,8 +1002,8 @@ def _has_entry(entry: JSONValue, kind: str, num: "int | None" = None) -> bool:
     return any(isinstance(h, dict) and h.get("type") == kind and num in (None, h.get("num")) for h in (history if isinstance(history, list) else []))
 
 
-def _has_property(device: str, name: str) -> bool:
-    return name == "any" or (name == "stagger_wait" and _stagger_waits(device))
+def _has_property(_device: str, name: str) -> bool:  # every device has "any", the one property left
+    return name == "any"
 
 
 @scenario("high_concurrency_burst_at_historical_segfault_repro_scale_survives", family="webserver_concurrency", shared=True, moves=("WEBSERVER",))
@@ -1828,22 +1830,6 @@ def _sensors_put_scd30(ctx: Context) -> None:
         _expect(answer.status == HTTPStatus.OK and _object(answer).get("result") == {"SCD30": {"MeasInterval": "Valid"}}, f"PUT answered {answer.status} {answer.body!r}")
 
 
-@scenario("a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog", family="timer_pool", first_device="stagger_wait")
-def _sequencer_fire_dropped(ctx: Context) -> None:
-    """The boot's first stagger one-shot fire a full scheduler queue drops: the timer start never ends, nothing feeds, the watchdog engages, the device serves on."""
-    with ctx.boot("--test-drop-timer-fire", "sequencer") as twin:
-        twin.starves_watchdog = True
-        dropped = twin.wait_line("FIRE_DROPPED sequencer", 0, _SERVING_TIMEOUT_S)
-        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", 0, _SERVING_TIMEOUT_S + _WATCHDOG_WINDOW_S)
-        _expect(twin.run.proc.poll() is None, f"the device reset although its timer start stalled ({exit_reason(twin.run.proc.returncode or 0)})")
-        _expect(engaged is not None, "the watchdog did not engage once the stagger one-shot's fire was dropped")
-        _still_serving(twin.port)  # the loss is the timer start's alone: the tasks it followed still run
-        _expect(dropped is not None and int(dropped.split("=")[1]) >= 1, f"the knob dropped nothing before the watchdog engaged: {dropped!r}")
-    line = parse_shutdown_line(read_log(twin.run.log_path))
-    _expect(line is not None and line.would_have_triggered_count >= 1, f"the watchdog never engaged ({line!r})")
-    _expect(parse_machine_reset_line(read_log(twin.run.log_path)) is None, "a reset ran past the stalled timer start")
-
-
 @scenario("a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly", family="webserver_concurrency")
 def _simultaneous_bodies(ctx: Context) -> None:
     """A full ceiling of real writes, then bodies at the cap answered, then one byte over refused with 413 or a reset."""
@@ -1997,15 +1983,6 @@ def _src_int(filename: str, name: str) -> int:
     return module_int_const(SRC_DIR, filename, name)
 
 
-def _stagger_waits(device: str) -> bool:
-    # Whether the device's boot arms a stagger one-shot: its generated module starts two read triggers or more, the
-    # second and later each after a wait (asy_system_service.py start_timers()).
-    tree = ast.parse((GENERATED_SRC_DIR / f"sensortask_{device}.py").read_text(encoding="utf-8"))
-    starter = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_collect_trigger_starters")
-    loop = next(node for node in ast.walk(starter) if isinstance(node, ast.For))
-    return isinstance(loop.iter, ast.Tuple) and len(loop.iter.elts) > 1
-
-
 @scenario("a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection", family="webserver_concurrency", shared=True, moves=("WEBSERVER",))
 def _stale_slot_reclaimed(ctx: Context) -> None:
     """A full ceiling of silent connections refuses the next; once the server's own cap reclaims them it serves again."""
@@ -2057,7 +2034,7 @@ def _statuses(results: "Sequence[object]") -> "list[object]":
     return [r if isinstance(r, (int, str, tuple, list)) else repr(r) for r in results]
 
 
-_HANG_STEPS = (("S1", "reboot"), ("S2", "reboot"), ("S3", "reboot"), ("S4", "reboot"), ("S6", "reboot"), ("S6", "bootloader"), ("S5reset", "resetconfig"), ("S5erase", "erasefram"))
+_HANG_STEPS = (("S1", "reboot"), ("S2", "reboot"), ("S4", "reboot"), ("S6", "reboot"), ("S6", "bootloader"), ("S5reset", "resetconfig"), ("S5erase", "erasefram"))
 
 
 def _still_serving(port: int, timeout_s: float = _STILL_SERVING_S) -> None:

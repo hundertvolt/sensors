@@ -33,7 +33,7 @@ class NeoPixel:
     def __len__(self) -> int:
         return self.n
 
-    def __setitem__(self, i: int, v: "tuple[int, ...]") -> None:
+    def __setitem__(self, i: int, v: "list[int] | tuple[int, ...]") -> None:
         # The library's store, one component at a time: a bytearray store wraps an int out of 0-255 (py/binary.c) and
         # raises TypeError on a float, the earlier components already written; a short tuple raises IndexError.
         offset = i * self.bpp

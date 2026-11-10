@@ -27,12 +27,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from asy_config_manager import WriteValidity
-    from asy_crc_checks import CRCBase
     from asy_print_log import ErrorLog
+    from crc_checks import CRCBase
 
 
 _CFG_FAIL_INTERVAL_MS: int = src_int("src/asy_notification_service.py", "_CFG_FAIL_INTERVAL_S") * 1000
-_LOOP_TICK_MS: int = src_int("src/asy_notification_service.py", "_LOOP_TICK_S") * 1000
 _ELAPSED_STIMULUS_MS = 50
 _OVERRIDE_SECS = 2
 _NEXT_SLEEP_MIN_MS = 59000
@@ -139,13 +138,14 @@ def _newest_wrn(service: NotificationService) -> "tuple[int, int]":
 
 
 async def _one_cycle(ticks: DrivenTime, service: NotificationService, task: "asyncio.Task[None]", flashes: int = 0) -> None:
-    # One monitor cycle in virtual time, by the service's own rule: 2 x FlashDur after each triggered flash, so the last
+    # One monitor cycle in virtual time, by the service's own rule: FlashDur after each triggered flash (an instant one
+    # here: the fake returns at once, a real one at its ramp's end), so the last
     # settle still runs 1 ms before that end; then the loop parks on its next cycle, FlashInterval after this one's start.
     cfg = (await service.get_dict_cfg())["NOTIFY"]
     flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
     assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
     start = ticks.now
-    end = start + flashes * round(flash_dur * 2000)
+    end = start + flashes * round(flash_dur * 1000)
     if end > start:
         await ticks.elapse(end - 1 - start)
         assert ticks.wakes() == [end], f"at virtual t={ticks.now} ms the loop waits for {ticks.wakes()}, not its last settle"
@@ -179,36 +179,6 @@ def test_signals_are_accepted_in_tuple_order() -> None:
     assert service._registered == (a, b)
 
 
-def test_a_signal_colliding_with_an_accepted_one_is_refused() -> None:
-    a, _ = _make_signal("WarnCO2")
-    b, _ = _make_signal("WarnCO2")  # same field name
-    service, _clock, _cb = _make_service((a, b))
-    assert service._registered == (a,)
-    assert _newest_wrn(service) == (1, code("W", "NOTIFY_NAME_COLLISION"))
-
-
-def test_a_signal_colliding_with_the_own_schema_is_refused() -> None:
-    bad, _ = _make_signal("AutoOn")  # collides with the service's own static field
-    service, _clock, _cb = _make_service((bad,))
-    assert service._registered == ()
-    assert _newest_wrn(service) == (1, code("W", "NOTIFY_NAME_COLLISION"))
-
-
-def test_a_signal_schema_with_zero_fields_is_refused() -> None:
-    notif = NotificationSignal("Empty", ValueRef(_FakeValue(1, field="Empty"), "Empty"), (), (1, 0, 0))
-    service, _clock, _cb = _make_service((notif,))
-    assert service._registered == ()
-    assert _newest_wrn(service) == (1, code("W", "NOTIFY_SCHEMA_SHAPE"))
-
-
-def test_a_signal_schema_with_two_fields_is_refused() -> None:
-    schema = (("A", "int", 1, 0, 10, None), ("B", "int", 1, 0, 10, None))
-    notif = NotificationSignal("TwoFields", ValueRef(_FakeValue(1, field="TwoFields"), "TwoFields"), schema, (1, 0, 0))
-    service, _clock, _cb = _make_service((notif,))
-    assert service._registered == ()
-    assert _newest_wrn(service) == (1, code("W", "NOTIFY_SCHEMA_SHAPE"))
-
-
 def test_construction_builds_the_exact_combined_schema() -> None:
     a, _ = _make_signal("WarnCO2")
     b, _ = _make_signal("WarnVOC")
@@ -216,32 +186,6 @@ def test_construction_builds_the_exact_combined_schema() -> None:
     names = [f[0] for f in service.get_cfg_schema()]
     assert names == ["OnH", "OnM", "OffH", "OffM", "FlashBri", "FlashInterval", "FlashDur", "AutoOn", "WarnCO2", "WarnVOC"]
     assert len(names) == len(set(names))  # no duplicates
-
-
-def test_a_refused_signal_is_printed_at_once_and_persisted_once_by_setup() -> None:
-    a, _ = _make_signal("WarnCO2")
-    clash, _ = _make_signal("WarnCO2")
-    service = NotificationService(_FakeSignalCb(), _FakeClock().get, (a, clash), cfg_path=_tmp_cfg_dir())  # no setup() yet
-    assert len(service._pending_wrn) == 1
-    assert run(service.get_error_counter())["NOTIFY"]["ErrCount"] == 0
-    run(service.setup())
-    assert service._pending_wrn == []
-    assert _newest_wrn(service) == (1, code("W", "NOTIFY_NAME_COLLISION"))
-    run(service.setup())
-    assert _newest_wrn(service)[0] == 1  # a second setup() adds none
-    cfg = run(service.get_dict_cfg())["NOTIFY"]
-    assert cfg["WarnCO2"] == 1600  # answers its config at once, with the kept signal's field
-
-
-def test_the_two_refusal_reasons_keep_distinct_codes() -> None:
-    clash, _ = _make_signal("AutoOn")
-    empty = NotificationSignal("Empty", ValueRef(_FakeValue(1, field="Empty"), "Empty"), (), (1, 0, 0))
-    service = NotificationService(_FakeSignalCb(), _FakeClock().get, (clash, empty), cfg_path=_tmp_cfg_dir())  # no setup() yet
-    assert [wrnno for _msg, wrnno in service._pending_wrn] == [code("W", "NOTIFY_NAME_COLLISION"), code("W", "NOTIFY_SCHEMA_SHAPE")]
-    run(service.setup())
-    log = run(service.get_error_counter())["NOTIFY"]
-    assert log["ErrCount"] == 2
-    assert log["ErrNum"][-2:] == [code("W", "NOTIFY_NAME_COLLISION"), code("W", "NOTIFY_SCHEMA_SHAPE")]
 
 
 # ---------------------------------------------------------------------------
@@ -521,14 +465,14 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
         def get_buffer(self) -> RegionBuffer:
             return self._buffer
 
-        async def write_into(self, buf: RegionBuffer) -> bool:
+        def write_into(self, buf: RegionBuffer) -> bool:
             data = buf.get_data_buf()
             if data is None:
                 return False
             self.buf[:] = data
             return True
 
-        async def read_into(self, buf: RegionBuffer) -> bool:
+        def read_into(self, buf: RegionBuffer) -> bool:
             data = buf.get_data_buf()
             if data is None:
                 return False
@@ -555,7 +499,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
     run(service1.setup())
 
     async def scenario1() -> None:
-        await service1.pr.err_s("boom", errno=1)
+        service1.pr.err_s("boom", errno=1)
 
     run(scenario1())
 
@@ -786,7 +730,7 @@ def test_all_triggered_signals_fire_in_registration_order_sequentially() -> None
     service, _clock, _cb = _make_service((a, b, c), local_time=clock, signal_cb=cb)
 
     async def scenario(ticks: DrivenTime) -> None:
-        # FlashDur's schema minimum 0.5 s: each triggered signal settles 2 x 0.5 s of virtual time.
+        # FlashDur's schema minimum 0.5 s: each triggered signal settles 0.5 s of virtual time after its flash.
         await service._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, service.get_cfg_schema())
         task = service.start_asy_monitor()
         await _one_cycle(ticks, service, task, flashes=3)
@@ -874,7 +818,7 @@ def test_flashes_run_strictly_sequentially_not_interleaved() -> None:
         cb.release()
         await ticks.elapse(0)  # the first flash records; the second waits out its settle
         first = [c[:3] for c in cb.calls]
-        await ticks.elapse(round(0.5 * 2000))  # the first flash's own 2 x FlashDur settle
+        await ticks.elapse(round(0.5 * 1000))  # the first flash's own FlashDur settle
         await cancel(task)
         return stalled, first
 
@@ -1052,67 +996,65 @@ def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:
     assert len(cb.calls) == 0
 
 
-def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
-    # _pause_loop() is _auto_active's only writer; the monitor only reads it. The override ends at the first one-second
-    # round after its measured end.
-    service, _clock, _cb = _make_service(())
+def test_override_active_blocks_checks_and_resumes_at_its_measured_end() -> None:
+    # No task watches the pause: the cycle and the command read it, and it ends exactly at its measured end.
+    service, _clock, _cb = _make_service((), local_time=None)
 
-    async def scenario(ticks: DrivenTime) -> "tuple[bool, bool, bool, int]":
-        pause_task = service.start_asy_pause()
-        await ticks.elapse(0)  # the pause's first round, at t=0
-        before = service._auto_active
+    async def scenario(ticks: DrivenTime) -> "list[bool]":
+        seen = [service._auto_now()]
         await service.set_override_led(_OVERRIDE_SECS)
-        await ticks.elapse(_LOOP_TICK_MS)  # one round after 1 s of measured time: 1 s left -> _auto_active False
-        during = service._auto_active
-        await ticks.run_until(lambda: service._auto_active, _OVERRIDE_SECS * 1000 - _LOOP_TICK_MS)
-        after = service._auto_active
-        await cancel(pause_task)
-        return before, during, after, ticks.now
+        seen.append(service._auto_now())
+        await ticks.elapse(_OVERRIDE_SECS * 1000 - 1)
+        seen.append(service._auto_now())
+        await ticks.elapse(1)
+        seen.append(service._auto_now())
+        return seen
 
-    with _driven() as ticks:
-        before, during, after, ended_at = run(scenario(ticks))
-    assert before is True
-    assert during is False
-    assert after is True
-    assert ended_at == _OVERRIDE_SECS * 1000  # set on a round, so it ends on the round at its measured end
+    with _driven() as ticks, record_prints() as recorder:
+        assert run(scenario(ticks)) == [True, False, False, True]
+    events = [line[1] for line in recorder.lines if line[0] == "NOTIFY" and str(line[1]).startswith("LED Override")]
+    assert events in ([], ["LED Override active.", "LED Override off."]), events  # once each, where the level prints them
 
 
 def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
-    # Regression test: _monitor_loop() used to unconditionally set self._auto_active = True at its start -
-    # harmless on a genuine first boot, already True from __init__, but wrong on a supervisor-driven
-    # restart.
-    #
-    # It would silently clobber an override _pause_loop() had legitimately set active meanwhile, the two tasks, started by
-    # start_tasks(), being independently restartable by supervise_tasks() while sharing one unlocked flag. Fixed by making
-    # _pause_loop() the flag's sole writer.
+    # A supervisor-driven restart of the monitor inside an override: the restarted cycle reads the pause, still
+    # active, and parks on its next cycle without asking the clock.
     service, clock, _cb = _make_service(())
 
-    async def scenario(ticks: DrivenTime) -> "tuple[bool, bool, int, bool]":
-        pause_task = service.start_asy_pause()
-        await ticks.elapse(0)
+    async def scenario(ticks: DrivenTime) -> "tuple[bool, int, bool]":
         await service.set_override_led(_OVERRIDE_SECS)
-        await ticks.elapse(_LOOP_TICK_MS)  # one round after 1 s of measured time: 1 s left -> _auto_active False
-        during_before_restart = service._auto_active
-
-        # Simulate the task supervisor restarting _monitor_loop() (it no longer gives up by itself,
-        # but an uncaught exception still ends it) while the override above is still active.
+        await ticks.elapse(1000)
         monitor_task = service.start_asy_monitor()
         await ticks.elapse(0)  # the restarted monitor's first cycle, inside the override
         during_after_restart = service._auto_active
         interval = (await service.get_dict_cfg())["NOTIFY"]["FlashInterval"]
         assert isinstance(interval, float), interval
         parked = ticks.now + round(interval * 1000) in ticks.wakes()
-
-        await cancel(pause_task)
         await cancel(monitor_task)
-        return during_before_restart, during_after_restart, clock.calls, parked
+        return during_after_restart, clock.calls, parked
 
     with _driven() as ticks:
-        before_restart, after_restart, asked, parked = run(scenario(ticks))
-    assert before_restart is False  # override genuinely active
-    assert after_restart is False  # ...and still active after _monitor_loop()'s restart
+        after_restart, asked, parked = run(scenario(ticks))
+    assert after_restart is False  # the override is still active after _monitor_loop()'s restart
     assert (asked, parked) == (0, True)  # the restarted monitor's cycle ran to its sleep and read the pause as active
 
+
+def test_a_cycle_whose_own_config_fails_still_reads_the_pause() -> None:
+    # The pause's TickSeconds is read at least once per 2**29 ms (G.2): every cycle reads it, a failing one too.
+    service, _clock, _cb = _make_service(())
+
+    async def scenario(ticks: DrivenTime) -> "tuple[bool, bool]":
+        await service.set_override_led(_OVERRIDE_SECS)
+        during = service._auto_active
+        service.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails
+        await ticks.elapse(_OVERRIDE_SECS * 1000)
+        task = service.start_asy_monitor()
+        await ticks.elapse(0)  # one failing cycle, to its sleep
+        await cancel(task)
+        return during, service._auto_active
+
+    with _driven() as ticks:
+        assert run(scenario(ticks)) == (False, True)  # the failing cycle saw the pause end
 
 def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
     # get_override_led()/set_override_led() are the service's public override API and the REST layer's
@@ -1381,7 +1323,7 @@ def test_the_pause_counts_measured_time_not_rounds() -> None:
 def test_get_task_starters_and_get_timer_starters_shape() -> None:
     service, _clock, _cb = _make_service(())
     starters = service.get_task_starters()
-    assert len(starters) == 2
+    assert len(starters) == 1  # the monitor: the override pause is read where it is needed, no task watches it
     for s in starters:
         assert callable(s)
     assert service.get_timer_starters() == []

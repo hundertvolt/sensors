@@ -86,7 +86,7 @@ async def _load_seen(wdt: "WDT") -> bool:
     webserver = device.webserver
     started = time.ticks_ms()
     while webserver is not None and time.ticks_diff(time.ticks_ms(), started) < _LOAD_WAIT_MS:
-        if webserver._open_conns.value:
+        if webserver._open_conns:
             return True
         wdt.feed()
         await asyncio.sleep_ms(_POLL_MS)

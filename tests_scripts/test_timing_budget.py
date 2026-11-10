@@ -117,9 +117,7 @@ def expected_rows(src: Path) -> "dict[str, list[int]]":
     system = "asy_system_service.py"
     task_check_s, reset_s = (module_int_const(src, system, n) for n in ("_TASK_CHECK_TIME", "_RESET_DELAY"))
     gc_ms = module_int_const(src, "asy_uart_comm.py", "_GC_PAUSE_WORST_MS")
-    cmd_ms = module_int_const(src, "asy_scd30_driver.py", "_CMD_RESPONSE_WAIT_MS")
     probe_ms = module_int_const(src, "asy_i2c_driver.py", "_PROBE_SETTLE_MS")
-    reads = _calls_in(src / "asy_scd30_driver.py", "get_config_snapshot", "_read_dev_register")
     settles = _calls_in(src / "asy_i2c_driver.py", "_probe_for_device", "sleep_ms", "_PROBE_SETTLE_MS")
     timeout_us, slacks, bauds = _device_terms(src)
     wifi = "asy_wifi_service.py"
@@ -134,8 +132,6 @@ def expected_rows(src: Path) -> "dict[str, list[int]]":
         "con.routine_stall": [gc_ms * 1000],
         "stall.gc": [gc_ms * 1000],
         "stall.i2c_transfer": [2 * timeout_us, timeout_us, module_int_const(src, "asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")],
-        "hold.scd30_command": [cmd_ms * 1000],
-        "hold.scd30_snapshot": [reads * cmd_ms * 1000, cmd_ms * 1000],
         "hold.i2c_probe": [settles * probe_ms * 1000, probe_ms * 1000],
         "feed.supervisor": [task_check_s * 1_000_000],
         "feed.reset_path": [reset_s * 1_000_000],

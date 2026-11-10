@@ -76,7 +76,6 @@ microtest.after_each(network.reset_test_state)
 _RUN_BOUND_S = 5.0
 _MAIN_RUN_BOUND_S = 15.0
 _PROMPT_BOUND_MS = 100  # an entry, or a released hold, that finishes at once
-_CUT_WAIT_MS = 50  # how long the cut entry is watched not to finish
 _CLEARER_RUN_MS = 20
 _REACHED_LIMIT_MS = 1000  # the bound on the wait for a started task to reach its observable point
 _PROBE_LEAD_MS = 5  # the lag probe's first sleep is under way, its due time passed, when the stall begins
@@ -162,55 +161,101 @@ def test_parse_args_refuses_a_config_dir_without_its_trailing_separator() -> Non
         assert "--config-dir" in said and repr(value) in said and "'/'" in said, said
 
 
-def test_the_cut_system_entry_is_held_after_its_first_blocks_busy_mark_and_never_finishes() -> None:
+def test_the_cut_system_entry_freezes_after_its_first_blocks_busy_mark() -> None:
     said: list[str] = []
     marks: list[int] = []
+    frozen: list[object] = []
+
+    class _FrozenError(Exception):
+        pass
 
     class _Chunk:
         # SYSTEM's FRAM chunk as the cut reaches it: each status pair it marks, a busy mark first, the idle one after.
-        async def _handle_status_bytes(self, _fram: object, _addr: int, val: int, *, check_idle: bool) -> bool:
+        def _handle_status_bytes(self, _addr: int, val: int, *, check_idle: bool) -> bool:
             del check_idle
             marks.append(val)
             return False
 
-    async def scenario() -> None:
-        booted = _Booted(asyncio.create_task(_forever()))
-        logger, chunk = booted.sysfunct.pr, _Chunk()
-        logger.fram = chunk  # type: ignore[attr-defined]
-        written = logger.err_s
+    def freeze(watchdog: object) -> None:
+        frozen.append(watchdog)
+        raise _FrozenError  # the real freeze never returns
 
-        async def entry(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:  # its block's busy, then idle mark
-            await written(*args, errno=errno, sep=sep, end=end)
-            await chunk._handle_status_bytes(None, 0, 0x02, check_idle=False)
-            await chunk._handle_status_bytes(None, 0, 0x01, check_idle=False)
+    booted = _Booted(None)
+    logger, chunk = booted.sysfunct.pr, _Chunk()
+    logger.fram = chunk  # type: ignore[attr-defined]
+    written = logger.err_s
 
-        logger.err_s = entry  # type: ignore[method-assign]
+    def entry(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:  # its block's busy, then idle mark
+        written(*args, errno=errno, sep=sep, end=end)
+        chunk._handle_status_bytes(0, 0x02, check_idle=False)
+        chunk._handle_status_bytes(0, 0x01, check_idle=False)
+
+    logger.err_s = entry  # type: ignore[method-assign]
+    real_freeze = runner._test_freeze
+    runner._test_freeze = freeze
+    try:
         release = runner._test_hold_system_entry(_as_module(booted), 25, said.append, cut=True)
-        await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), _PROMPT_BOUND_MS)  # another errno: not held
+        logger.err_s("Task error counter above", errno=24)  # another errno: not cut
         assert marks == [2, 1] and said == [], (marks, said)
-        cut = asyncio.create_task(logger.err_s("C stack exhausted - reboot triggered", errno=25))
         release()  # no release: ENTRY_RELEASE reaches nothing in this mode
         try:
-            await asyncio.wait_for_ms(cut, _CUT_WAIT_MS)  # the test's own watch: the held write does not end
-        except asyncio.TimeoutError:
+            logger.err_s("C stack exhausted - reboot triggered", errno=25)
+        except _FrozenError:
             pass
         else:
             raise AssertionError("the cut entry's write finished")
-        assert logger.written == [24, 25] and marks == [2, 1, 2] and said == ["ENTRY_HELD"], (logger.written, marks, said)
-        await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
+    finally:
+        runner._test_freeze = real_freeze
+    assert logger.written == [24, 25] and marks == [2, 1, 2] and said == ["ENTRY_HELD"], (logger.written, marks, said)
+    assert frozen == [booted.sysfunct._watchdog]
 
-    run_timed(scenario(), _RUN_BOUND_S)
 
+def test_a_frozen_write_credits_the_watchdog_once_its_timeout_has_passed() -> None:
+    class _StopError(Exception):
+        pass
+
+    class _Watchdog:
+        def __init__(self) -> None:
+            self.timeout, self._armed_at_ms, self.credited = 0, time.ticks_ms(), 0
+
+        def _record_would_trigger(self) -> None:
+            self.credited += 1
+            raise _StopError  # the real freeze sleeps on until the host's stop
+
+    watchdog = _Watchdog()
+    try:
+        runner._test_freeze(watchdog)  # type: ignore[arg-type]
+    except _StopError:
+        pass
+    assert watchdog.credited == 1
+
+
+
+def test_a_frozen_write_ends_as_an_interrupt_once_the_stop_file_exists() -> None:
+    # The host's stop file, which the frozen loop cannot poll, ends the freeze as SIGINT would, so the shutdown line prints.
+    stop_file = _scratch.dir("freeze") + "/stop"
+    with open(stop_file, "w") as f:
+        f.write("")
+    kept, runner._stop_file = runner._stop_file, stop_file
+    interrupted = False
+    try:
+        runner._test_freeze(None)
+    except KeyboardInterrupt:
+        interrupted = True
+    finally:
+        runner._stop_file = kept
+        os.remove(stop_file)
+    assert interrupted
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
     assert runner.TestFlags(False, None, None, None, None, False, False, None, None, None, None, False, False, False) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
-        "--test-hold-system-entry", "25", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer", "--test-watchdog-fault", "block",
+        "--test-hold-system-entry", "25", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "reset", "--test-watchdog-fault", "block",
         "--test-defer-faults", "--test-pin-send-buffer", "--test-uart-driven-clock",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), 10, "sequencer", "block", True, True, True)
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, (25, False), 10, "reset", "block", True, True, True)
     assert _parse("--test-hold-system-entry", "25:cut").instrumentation.hold_system_entry == (25, True)
     refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-hold-system-entry", "25:never"), ("--test-hold-system-entry", "0:cut"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"), ("--test-watchdog-fault", "reboot"))
     for flags in refused:
@@ -489,7 +534,7 @@ def _hang_on(step: str, check: "Callable[[_Booted, _KnobChip], Coroutine[object,
     async def scenario() -> None:
         supervised = asyncio.create_task(_forever())
         booted, chip = _Booted(supervised), _KnobChip()
-        started = runner._test_shutdown_hang(_as_module(booted), {"fram": chip}, step)
+        started = runner._test_shutdown_hang(_as_module(booted), step)
         try:
             await check(booted, chip)
         finally:
@@ -512,55 +557,38 @@ class _Logger:
     def __init__(self) -> None:
         self.written: list[int] = []
 
-    async def err_s(self, *_args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
+    def err_s(self, *_args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
         del sep, end
         self.written.append(errno)
 
 
 class _Sysfunct:
-    def __init__(self, task: "asyncio.Task[None]") -> None:
+    def __init__(self, task: "asyncio.Task[None] | None") -> None:
         self._tasks: list[asyncio.Task[None] | None] = [None, task]
         self._config_stores = [_Store()]
         self._reset_timer: object = None
+        self._watchdog: object = object()
         self.logged = 0
+        self.reboots: list[int] = []
         self.pr = _Logger()
 
     async def _log_dead_task(self, _task: object, _n: int) -> None:
         self.logged += 1
 
-
-class _Chunk:
-    def __init__(self) -> None:
-        self._op_lock = asyncio.Lock()
-
-
-class _FramDriver:
-    async def get_size(self) -> int:
-        return 0x2000
-
-    async def report_set_values(self, _status: int) -> bool:
-        return False
+    async def _reboot(self, code: int, _message: str, _action: "Callable[[], None]", *, fed: bool = False) -> None:
+        del fed
+        self.reboots.append(code)
 
 
 class _FramManager:
-    def __init__(self) -> None:
-        self._chunks = [_Chunk()]
-        self.fram = _FramDriver()
-
     async def erase_chip(self, step_done: "Callable[[], None]") -> bool:
-        await self.fram.get_size()
         step_done()
-        return await self.fram.report_set_values(1)  # the first pass-2 unit refused
-
-
-class _Counter:
-    async def get_value(self) -> int:
-        return 3
+        return True
 
 
 class _Webserver:
     def __init__(self) -> None:
-        self._open_conns, self._backlog, self.closed = _Counter(), 7, 0
+        self._open_conns, self._backlog, self.closed = 3, 7, 0
         self.served: list[int] = []  # each served connection's send buffer, as the kernel read it back when serving began
 
     async def _close_writer(self, _writer: object) -> None:
@@ -572,7 +600,7 @@ class _Webserver:
 
 
 class _Booted:
-    def __init__(self, task: "asyncio.Task[None]") -> None:
+    def __init__(self, task: "asyncio.Task[None] | None") -> None:
         self.sysfunct, self.fram, self.webserver = _Sysfunct(task), _FramManager(), _Webserver()
 
 
@@ -606,21 +634,23 @@ def test_the_rebound_report_announces_itself_once_when_first_entered_then_never_
     assert said == ["HUNG S1"]
 
 
-def test_the_held_system_entry_waits_for_its_release_and_lets_every_other_entry_through() -> None:
+def test_the_held_system_entry_lands_and_holds_the_reboot_until_its_release() -> None:
     said: list[str] = []
 
     async def scenario() -> None:
         booted = _Booted(asyncio.create_task(_forever()))
-        logger = booted.sysfunct.pr
+        sysfunct, logger = booted.sysfunct, booted.sysfunct.pr
         release = runner._test_hold_system_entry(_as_module(booted), 25, said.append)
-        await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), _PROMPT_BOUND_MS)  # another errno: not held
-        held = asyncio.create_task(logger.err_s("C stack exhausted - reboot triggered", errno=25))
+        logger.err_s("Task error counter above", errno=24)  # another errno: no hold
+        await asyncio.wait_for_ms(sysfunct._reboot(5, "Reboot triggered", lambda: None), _PROMPT_BOUND_MS)
+        logger.err_s("C stack exhausted - reboot triggered", errno=25)
+        assert logger.written == [24, 25] and said == [], (logger.written, said)  # the entry is written in its call
+        held = asyncio.create_task(sysfunct._reboot(20, "Reboot: C stack exhausted", lambda: None))
         assert await wait_for_value(lambda: said, ["ENTRY_HELD"], _REACHED_LIMIT_MS), said
-        assert logger.written == [24] and not held.done(), logger.written
+        assert sysfunct.reboots == [5] and not held.done(), sysfunct.reboots
         release()
         await asyncio.wait_for_ms(held, _PROMPT_BOUND_MS)
-        await asyncio.wait_for_ms(logger.err_s("again", errno=25), _PROMPT_BOUND_MS)  # released for good
-        assert logger.written == [24, 25, 25] and said == ["ENTRY_HELD", "ENTRY_RELEASED"], (logger.written, said)
+        assert sysfunct.reboots == [5, 20] and said == ["ENTRY_HELD", "ENTRY_RELEASED"], (sysfunct.reboots, said)
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
     run_timed(scenario(), _RUN_BOUND_S)
@@ -636,23 +666,23 @@ def test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs
     fired: list[int] = []
     ticks: list[int] = []
     sysfunct, module = _Holder(), _Holder()
-    sysfunct._reset_timer, sysfunct._sequencer_timer = machine.Timer(), machine.Timer()  # type: ignore[attr-defined]
+    sysfunct._reset_timer = machine.Timer()  # type: ignore[attr-defined]
     module.sysfunct = sysfunct  # type: ignore[attr-defined]
 
     async def drive() -> int:
-        cleared = asyncio.create_task(runner._test_drop_timer_fire(cast("ModuleType", module), "sequencer", said.append))
+        cleared = asyncio.create_task(runner._test_drop_timer_fire(cast("ModuleType", module), "reset", said.append))
         ticker = machine.Timer(period=_TICKER_PERIOD_MS, callback=lambda _t: ticks.append(1))
-        sysfunct._sequencer_timer.init(period=_DROP_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
+        sysfunct._reset_timer.init(period=_DROP_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
         await asyncio.wait_for_ms(cleared, _DROP_CLEAR_BOUND_MS)
         during = len(ticks)
-        sysfunct._sequencer_timer.init(period=_REARM_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
+        sysfunct._reset_timer.init(period=_REARM_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
         await asyncio.sleep_ms(_REARM_RUN_MS)
         ticker.deinit()
         await asyncio.sleep_ms(0)  # the deinit's cancel lands before the run ends
         return len(ticks) - during
 
     after = run_timed(drive(), _RUN_BOUND_S)
-    assert said[0] == "DROP_ARMED sequencer" and said[1].startswith("FIRE_DROPPED sequencer callbacks="), said
+    assert said[0] == "DROP_ARMED reset" and said[1].startswith("FIRE_DROPPED reset callbacks="), said
     assert int(said[1].split("=")[1]) >= 1 and machine.Timer.drop_next_soft_callbacks == 0, (said, machine.Timer.drop_next_soft_callbacks)
     assert fired == [2] and after >= 2, (fired, after)  # the armed fire lost, the next arm's kept, the ticker back
 
@@ -810,19 +840,9 @@ def test_s2_a_stores_flush_never_returns_and_s5reset_holds_its_lock() -> None:
     _hang_on("S5reset", locked)
 
 
-def test_s3_holds_one_fram_chunks_lock() -> None:
+def test_s5erase_the_erase_never_returns() -> None:
     async def check(booted: _Booted, _chip: _KnobChip) -> None:
-        await asyncio.sleep_ms(0)
-        assert booted.fram._chunks[0]._op_lock.locked()
-
-    _hang_on("S3", check)
-
-
-def test_s5erase_arms_at_pass_two_and_the_refused_units_report_never_returns() -> None:
-    async def check(booted: _Booted, chip: _KnobChip) -> None:
-        assert chip.drop_next_wren == 0  # nothing armed before the erase reaches pass 2
         assert await _times_out(booted.fram.erase_chip(lambda: None))
-        assert chip.drop_next_wren == 1
 
     _hang_on("S5erase", check)
 
@@ -844,9 +864,9 @@ def test_a_shutdown_hang_arms_once_every_supervised_task_has_started_and_its_can
     async def scenario() -> None:
         supervised = asyncio.create_task(_forever())
         booted = _Booted(supervised)
-        lock, poll = booted.fram._chunks[0]._op_lock, 3 * runner._READY_POLL_MS
+        lock, poll = booted.sysfunct._config_stores[0]._config_lock, 3 * runner._READY_POLL_MS
         booted.sysfunct._tasks = []  # the supervisor's list before start_tasks()
-        arming = asyncio.create_task(runner._test_arm_shutdown_hang(_as_module(booted), {"fram": _KnobChip()}, "S3"))
+        arming = asyncio.create_task(runner._test_arm_shutdown_hang(_as_module(booted), "S5reset"))
         await asyncio.sleep_ms(poll)
         booted.sysfunct._tasks = [None, supervised]  # start_tasks() mid-way: one task not yet started
         await asyncio.sleep_ms(poll)
@@ -1073,15 +1093,18 @@ def test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_
 
 
 class _IdleBoot:
-    # A booted module that only waits, keeping the keywords its main() was called with: the runner's own boot and
-    # shutdown path is what this boot exercises.
+    # A booted module that only builds, keeping the keywords its main() handed build_system(), and waits: the runner's
+    # own boot and shutdown path is what this boot exercises.
     def __init__(self, module_file: str) -> None:
         self.__file__ = module_file
         self.webserver = object()
         self.boot: dict[str, object] = {}
 
-    async def main(self, **boot: object) -> None:
+    async def build_system(self, **boot: object) -> None:
         self.boot = boot
+
+    async def main(self, **boot: object) -> None:
+        await self.build_system(**boot)
         await asyncio.sleep(3600)
 
 

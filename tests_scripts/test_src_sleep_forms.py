@@ -17,7 +17,7 @@ _SLEEPS = {"asyncio": frozenset({"sleep", "sleep_ms", "wait_for", "wait_for_ms"}
 _SYNC_WAITS = frozenset(
     {
         ("asy_i2c_driver.py", "_clear_bus", "_CLEAR_HALF_PERIOD_US"),
-        ("asy_spi_driver.py", "session_begin", "_CS_SETTLE_US"),
+        ("asy_spi_driver.py", "_begin", "_CS_SETTLE_US"),
         ("asy_spi_driver.py", "session_end", "_CS_SETTLE_US"),
     },
 )
@@ -179,7 +179,7 @@ def test_a_removed_named_wait_is_a_stale_waiver(tmp_path: Path) -> None:
         ("mod.py", "import asyncio\n\n_F = 0.5\n\n\nasync def f():\n    await asyncio.sleep_ms(_F)\n"),
         ("mod.py", "import asyncio\nfrom micropython import const\n\n_HALF = const(0.5)\n\n\nasync def f():\n    await asyncio.sleep(_HALF)\n"),
         ("mod.py", "import asyncio\n\n_N = 2\n\n\nasync def f():\n    await asyncio.sleep(_N)\n"),
-        ("asy_spi_driver.py", "import time\n\n\ndef session_begin():\n    time.sleep_us(3)\n"),
+        ("asy_spi_driver.py", "import time\n\n\ndef _begin():\n    time.sleep_us(3)\n"),
     ],
 )
 def test_a_refused_form_is_named(tmp_path: Path, name: str, source: str) -> None:
@@ -197,7 +197,7 @@ def test_a_refused_form_is_named(tmp_path: Path, name: str, source: str) -> None
         ("mod.py", "import asyncio\n\n\nasync def f(t):\n    await asyncio.sleep_ms(t // 2)\n"),
         ("mod.py", "import asyncio\n\n\nasync def f(aw):\n    await asyncio.wait_for_ms(aw, 500)\n"),
         ("mod.py", "import asyncio\n\n\nclass C:\n    async def f(self):\n        await asyncio.sleep_ms(self._period_ms)\n"),
-        ("asy_spi_driver.py", "import time\n\n\ndef session_begin():\n    time.sleep_us(_CS_SETTLE_US)\n"),
+        ("asy_spi_driver.py", "import time\n\n\ndef _begin():\n    time.sleep_us(_CS_SETTLE_US)\n"),
     ],
 )
 def test_an_accepted_form_passes(tmp_path: Path, name: str, source: str) -> None:

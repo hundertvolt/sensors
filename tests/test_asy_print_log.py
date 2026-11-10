@@ -1,17 +1,15 @@
 """PrintLogHistory and its FRAM store: levels, the bounded history and its count cap, the one-slot repeat rule, the boot
 window and persistence across a reboot."""
 
-import asyncio
 import struct
 from collections import deque
-from time import ticks_add, ticks_ms
 
 import micropython
 from _async_harness import run
 from _error_codes import code
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
-from _src_const import src_const, src_int
+from _src_const import src_const
 from _stack_overflow import stack_overflow
 
 import asy_print_log as print_log_module
@@ -25,9 +23,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
-    from asy_crc_checks import CRCBase
+    from crc_checks import CRCBase
 
 
 class _RaisingFramChunk:
@@ -47,12 +44,12 @@ class _RaisingFramChunk:
             buf._buf = None  # the shape a failed buffer allocation leaves
         return buf
 
-    async def write_into(self, buf: "RegionBuffer") -> bool:
+    def write_into(self, buf: "RegionBuffer") -> bool:
         if self.raise_on_write:
             raise self.error
         return True
 
-    async def read_into(self, buf: "RegionBuffer") -> bool:
+    def read_into(self, buf: "RegionBuffer") -> bool:
         if self.raise_on_read:
             raise self.error
         return True
@@ -106,17 +103,6 @@ def test_set_level_clamps_below_off_and_above_all() -> None:
     pr = PrintLog(2)
     pr.set_level(10)
     assert pr.level == 5
-
-
-def test_the_error_sequence_wraps_from_its_top_to_zero() -> None:
-    # The counted-calls sequence a reset compares by masked difference: it reaches _WRAP_MAX, then wraps to 0.
-    top = src_int("src/asy_print_log.py", "_WRAP_MAX")
-    pr = PrintLogHistory(history_length=4)
-    pr._counted = top - 1
-    pr._count()
-    assert pr._counted == top
-    pr._count()
-    assert pr._counted == 0
 
 
 def test_set_level_valid_value_passes_through() -> None:
@@ -178,19 +164,19 @@ def test_setup_marks_initialized() -> None:
 
 def test_read_stub_always_true_on_the_in_memory_class() -> None:
     hist = PrintLogHistory()
-    assert run(hist._read()) is True  # no persistence to load in the pure in-memory case
+    assert hist._read() is True  # no persistence to load in the pure in-memory case
 
 
 def test_err_s_increments_count_and_records_history() -> None:
     hist = PrintLogHistory(history_length=4)
-    run(hist.err_s("boom", errno=3))
+    hist.err_s("boom", errno=3)
     assert hist._err_count == 1
     assert list(hist.history)[-1] == 3  # _NO_ERR (0) + errno (3)
 
 
 def test_wrn_s_records_in_the_warning_sub_range() -> None:
     hist = PrintLogHistory(history_length=4)
-    run(hist.wrn_s("careful", wrnno=2))
+    hist.wrn_s("careful", wrnno=2)
     assert hist._err_count == 1
     assert list(hist.history)[-1] == 0x80 + 2  # _NO_WRN + wrnno
 
@@ -199,7 +185,7 @@ def test_err_s_default_errno_increments_count_but_not_history() -> None:
     # errno=0 (_NO_ERR, the default) still bumps the counter, but _store_err returns before
     # appending anything to history - a real, easy-to-miss asymmetry worth pinning down.
     hist = PrintLogHistory(history_length=4)
-    run(hist.err_s("just counting"))
+    hist.err_s("just counting")
     assert hist._err_count == 1
     assert list(hist.history) == [0, 0, 0, 0]
 
@@ -207,16 +193,16 @@ def test_err_s_default_errno_increments_count_but_not_history() -> None:
 def test_history_is_bounded_and_drops_oldest() -> None:
     hist = PrintLogHistory(history_length=3)
     for errno in (1, 2, 3, 4):
-        run(hist.err_s("e", errno=errno))
+        hist.err_s("e", errno=errno)
     assert list(hist.history) == [2, 3, 4]  # oldest (1) fell off the bounded deque
 
 
 def test_err_count_saturates_at_max_and_never_wraps() -> None:
     hist = PrintLogHistory(history_length=2)
     hist._err_count = 0xFFFE  # one below _MAX_CNT - whitebox-set to avoid 65534 real calls
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     assert hist._err_count == 0xFFFF  # reaches the cap exactly, a normal step
-    run(hist.err_s("e", errno=2))  # a different code: the ring still takes it
+    hist.err_s("e", errno=2)  # a different code: the ring still takes it
     assert hist._err_count == 0xFFFF  # saturates, does not wrap to 0
     assert list(hist.history) == [1, 2]
 
@@ -225,7 +211,7 @@ def test_errno_beyond_its_sub_range_is_not_recorded() -> None:
     # errno=200 pushed past _MAX_ERR (0x7F) once _NO_ERR is added - out of the valid error
     # sub-range, so the count still increments but nothing is appended to history.
     hist = PrintLogHistory(history_length=2)
-    run(hist.err_s("e", errno=200))
+    hist.err_s("e", errno=200)
     assert hist._err_count == 1
     assert list(hist.history) == [0, 0]
 
@@ -233,7 +219,7 @@ def test_errno_beyond_its_sub_range_is_not_recorded() -> None:
 def test_reset_clears_history_and_count() -> None:
     hist = PrintLogHistory(history_length=3)
     run(hist.setup())
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     assert run(hist.reset()) is True
     assert hist._err_count == 0
     assert list(hist.history) == [0, 0, 0]
@@ -244,7 +230,7 @@ def test_a_ram_only_reset_allocates_nothing() -> None:
     # length. The coroutine is built before the heap is locked, so the lock sees the reset's own body only.
     hist = PrintLogHistory(history_length=64)
     run(hist.setup())
-    run(hist.err_s("e", errno=3))
+    hist.err_s("e", errno=3)
     reset = hist.reset()
     outcome: list[object] = [None]
     micropython.heap_lock()
@@ -261,11 +247,11 @@ def test_a_ram_only_reset_allocates_nothing() -> None:
 
 
 def test_get_log_classifies_error_warning_and_clear_entries() -> None:
-    hist = PrintLogHistory(history_length=3)
-    run(hist.err_s("e", errno=5))  # oldest slot (still the initial _NO_ERR) falls off -> "E", 5
-    run(hist.wrn_s("w", wrnno=2))  # -> "W", 2
+    hist = PrintLogHistory(history_length=3, name="Sensor")
+    hist.err_s("e", errno=5)  # oldest slot (still the initial _NO_ERR) falls off -> "E", 5
+    hist.wrn_s("w", wrnno=2)  # -> "W", 2
     # remaining oldest slot is still the initial _NO_ERR -> "N", 0
-    log = run(hist.get_log("Sensor"))
+    log = run(hist.get_log())
     assert log == {"Sensor": {"ErrCount": 2, "ErrNum": [0, 5, 2], "ErrType": ["N", "E", "W"]}}
 
 
@@ -281,39 +267,36 @@ class _DiagRecordingHistory(PrintLogHistory):
 
 def test_a_negative_code_is_counted_diagnosed_and_takes_no_slot() -> None:
     hist = _DiagRecordingHistory(history_length=2)
-    run(hist.err_s("e", errno=-3))
-    run(hist.wrn_s("w", wrnno=-1))
+    hist.err_s("e", errno=-3)
+    hist.wrn_s("w", wrnno=-1)
     assert hist._err_count == 2
     assert list(hist.history) == [0, 0]
     assert [d[:3] for d in hist.diags if "is invalid!" in d] == [("PrintLog: Error number", -3, "is invalid!"), ("PrintLog: Error number", -1, "is invalid!")]
 
 
 class _CountingFramChunk:
-    # Counts the write-throughs a store makes and keeps the last payload; a read waits on read_gate when set, then
-    # answers read_result (False: blank, None: unreadable, True: `stored` copied into the buffer).
+    # Counts the write-throughs a store makes and keeps the last payload; a read answers read_result (False: blank,
+    # None: unreadable, True: `stored` copied into the buffer).
     def __init__(self, size: int, *, read_result: "bool | None" = False, stored: bytes = b"", write_result: bool = True) -> None:
         self.size = size
         self.writes = 0
         self.read_result = read_result
         self.stored = stored
         self.write_result = write_result
-        self.read_gate: asyncio.Event | None = None
         self.last_payload: bytes | None = None
 
     # Parameter names kept exact for the structural _FramChunk Protocol match (see _RaisingFramChunk).
     def get_buffer(self) -> "RegionBuffer":
         return RegionBuffer(self.size, data_start=0, data_length=self.size)
 
-    async def write_into(self, buf: "RegionBuffer") -> bool:
+    def write_into(self, buf: "RegionBuffer") -> bool:
         self.writes += 1
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         self.last_payload = bytes(dbuf)
         return self.write_result
 
-    async def read_into(self, buf: "RegionBuffer") -> bool | None:
-        if self.read_gate is not None:
-            await self.read_gate.wait()
+    def read_into(self, buf: "RegionBuffer") -> bool | None:
         if self.read_result:
             dbuf = buf.get_data_buf()
             assert dbuf is not None
@@ -325,22 +308,22 @@ def _sustained_identical_code_spends_one_slot(hist: "PrintLogHistory", writes: "
     # Shared body of the per-history-type tests below: the newest-entry rule, SPECIFICATION.md Part C.7.1.
     run(hist.setup())
     writes_before = 0 if writes is None else writes.writes
-    run(hist.err_s("earlier", errno=3))
-    run(hist.wrn_s("earlier", wrnno=2))
+    hist.err_s("earlier", errno=3)
+    hist.wrn_s("earlier", wrnno=2)
     with record_prints() as rec:
         for _ in range(10):
-            run(hist.err_s("sustained", errno=5))
+            hist.err_s("sustained", errno=5)
     assert list(hist.history) == [0, 3, 0x80 + 2, 5]  # the earlier entries intact, one slot for the ten
     assert hist._err_count == 12
     assert [line for line in rec.lines if "sustained" in line] == [(hist.name, "sustained")] * 10  # console unfiltered
     if writes is not None:
         assert writes.writes - writes_before == 12  # one write-through per call, a repeat included
-    run(hist.err_s("other", errno=6))  # a different code between spends a slot
-    run(hist.err_s("again", errno=5))
+    hist.err_s("other", errno=6)  # a different code between spends a slot
+    hist.err_s("again", errno=5)
     assert list(hist.history) == [0x80 + 2, 5, 6, 5]
-    run(hist.err_s("recurring", errno=5))  # recovered (nothing logged), then the same code again: no new slot
+    hist.err_s("recurring", errno=5)  # recovered (nothing logged), then the same code again: no new slot
     assert list(hist.history) == [0x80 + 2, 5, 6, 5]
-    run(hist.wrn_s("same number as a warning", wrnno=5))  # the other kind is a different code
+    hist.wrn_s("same number as a warning", wrnno=5)  # the other kind is a different code
     assert list(hist.history) == [5, 6, 5, 0x80 + 5]
     assert hist._err_count == 16
 
@@ -357,9 +340,9 @@ def test_a_sustained_identical_code_spends_one_slot_in_the_store() -> None:
 
 
 def test_get_log_reports_an_empty_warning_slot_as_no_entry() -> None:
-    hist = PrintLogHistory(history_length=2)
+    hist = PrintLogHistory(history_length=2, name="Sensor")
     hist.history.extend([0x80, 0x80 + 2])  # whitebox: the warning sentinel byte beside a real W2
-    log = run(hist.get_log("Sensor"))
+    log = run(hist.get_log())
     assert log == {"Sensor": {"ErrCount": 0, "ErrNum": [0, 2], "ErrType": ["N", "W"]}}
 
 
@@ -379,40 +362,44 @@ def test_get_log_with_no_argument_uses_self_name() -> None:
     # history_length=1 leaves no initial _NO_ERR slot to survive a single err_s() call, so this assertion
     # does not depend on the "leftover initial slot" shape the classification test above already covers.
     hist = PrintLogHistory(history_length=1, name="SGP40")
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     log = run(hist.get_log())
     assert log == {"SGP40": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
 
 
-def test_get_log_explicit_name_still_overrides_self_name() -> None:
+def test_get_log_takes_no_name_of_its_own() -> None:
+    # The logger's own name is the one it reports under: no src/ caller ever passed another.
     hist = PrintLogHistory(history_length=1, name="SGP40")
-    log = run(hist.get_log("Override"))
-    assert "Override" in log
-    assert "SGP40" not in log
+    refused = False
+    try:
+        run(hist.get_log("Override"))  # type: ignore[call-arg]
+    except TypeError:
+        refused = True
+    assert refused
 
 
 def test_err_s_errno_at_exact_max_err_boundary_is_recorded() -> None:
     hist = PrintLogHistory(history_length=2)
-    run(hist.err_s("e", errno=0x7F))  # _MAX_ERR itself - inclusive boundary
+    hist.err_s("e", errno=0x7F)  # _MAX_ERR itself - inclusive boundary
     assert list(hist.history)[-1] == 0x7F
 
 
 def test_err_s_errno_one_past_max_err_boundary_is_not_recorded() -> None:
     hist = PrintLogHistory(history_length=2)
-    run(hist.err_s("e", errno=0x80))  # one past _MAX_ERR - falls into the warning sub-range instead
+    hist.err_s("e", errno=0x80)  # one past _MAX_ERR - falls into the warning sub-range instead
     assert hist._err_count == 1
     assert list(hist.history) == [0, 0]
 
 
 def test_wrn_s_wrnno_at_exact_max_boundary_is_recorded() -> None:
     hist = PrintLogHistory(history_length=2)
-    run(hist.wrn_s("w", wrnno=0x7F))  # _NO_WRN + 0x7F == _MAX_WRN, inclusive boundary
+    hist.wrn_s("w", wrnno=0x7F)  # _NO_WRN + 0x7F == _MAX_WRN, inclusive boundary
     assert list(hist.history)[-1] == 0xFF
 
 
 def test_wrn_s_wrnno_one_past_max_boundary_is_not_recorded() -> None:
     hist = PrintLogHistory(history_length=2)
-    run(hist.wrn_s("w", wrnno=0x80))  # _NO_WRN + 0x80 == 0x100, past _MAX_WRN (0xFF)
+    hist.wrn_s("w", wrnno=0x80)  # _NO_WRN + 0x80 == 0x100, past _MAX_WRN (0xFF)
     assert hist._err_count == 1
     assert list(hist.history) == [0, 0]
 
@@ -422,7 +409,7 @@ def test_history_length_zero_never_records_but_still_counts() -> None:
     # under the real MicroPython interpreter that append()/extend() on it are silent no-ops, not
     # a crash.
     hist = PrintLogHistory(history_length=0)
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     assert hist._err_count == 1
     assert list(hist.history) == []
 
@@ -431,7 +418,7 @@ def test_history_length_negative_is_clamped_to_zero_not_a_raise() -> None:
     # deque(maxlen=…) raises ValueError on a negative maxlen (pinned interpreter); the constructor clamps it to zero.
     hist = PrintLogHistory(history_length=-5)
     assert list(hist.history) == []
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     assert hist._err_count == 1
 
 
@@ -445,7 +432,7 @@ def test_history_length_huge_is_capped_instead_of_crashing_the_interpreter() -> 
     # pins that the cap holds, not just that construction does not raise.
     hist = PrintLogHistory(history_length=2**62)
     assert len(hist.history) <= 0xFFFF
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     assert hist._err_count == 1
 
 
@@ -473,7 +460,7 @@ def test_a_failed_history_allocation_prints_its_text_and_keeps_a_zero_ring() -> 
     assert len(hist.history) == 0
     assert [line for line in rec.lines if any("injected for the history ring" in str(a) for a in line)] == [rec.lines[0]]
     assert len(rec.lines) == 1  # the one diagnostic line, carrying the failure's own text
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     assert hist._err_count == 1  # counting still works even though history recording can't
     assert run(hist.get_log()) == {"H": {"ErrCount": 1, "ErrNum": [], "ErrType": []}}  # no slot reported
 
@@ -496,7 +483,7 @@ def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
     # down at the base-class level too (PrintLogHistoryStore's own FRAM-visible version follows below).
     hist = PrintLogHistory(history_length=4, level=0)
     assert hist.initialized is False
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     assert hist._err_count == 1  # counting still happens
     assert list(hist.history)[-1] == 1  # in-memory recording still happens
 
@@ -505,7 +492,7 @@ def test_reset_before_setup_still_clears_even_with_logging_off() -> None:
     # The in-memory base has nothing to persist, so reset() is unconditional here either way -
     # what this pins down is that it never depends on the logging level to do its job.
     hist = PrintLogHistory(history_length=3, level=0)
-    run(hist.err_s("e", errno=1))
+    hist.err_s("e", errno=1)
     assert hist.initialized is False
     assert run(hist.reset()) is True
     assert hist._err_count == 0
@@ -534,15 +521,15 @@ def test_printloghistorystore_out_of_memory_leaves_fram_none_and_never_raises() 
     manager, _chip = make_fram_manager(max_size=1)  # too small for any real chunk
     store = PrintLogHistoryStore(manager, history_length=4)
     assert store.fram is None
-    assert run(store._write()) is False
-    assert run(store._read()) is None  # nothing was read
+    assert store._write() is False
+    assert store._read() is None  # nothing was read
 
 
 def test_printloghistorystore_read_before_any_write_fails_cleanly() -> None:
     manager, _chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
-    assert run(store._read()) is False  # chunk allocated but never written yet - not "all zero"
+    assert store._read() is False  # chunk allocated but never written yet - not "all zero"
 
 
 def test_printloghistorystore_setup_first_time_falls_back_to_writing_defaults() -> None:
@@ -568,7 +555,7 @@ def test_printloghistorystore_setup_is_idempotent_once_initialized() -> None:
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     assert store.initialized is True
-    run(store.err_s("boom", errno=1))
+    store.err_s("boom", errno=1)
     assert store._err_count == 1
     run(store.setup())  # second call must be a no-op, not re-read stale state over the live count
     assert store.initialized is True
@@ -580,7 +567,7 @@ def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
-    run(store.err_s("boom", errno=3))
+    store.err_s("boom", errno=3)
     assert store._err_count == 1
 
     # Simulate a reboot: a fresh manager/store pair attached to the SAME underlying chip memory,
@@ -602,74 +589,16 @@ def test_a_reset_while_storage_is_paused_clears_nothing_and_the_history_survives
     manager = _CountingFramManager(chunk)
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
-    run(store.err_s("first", errno=3))
-    run(store.err_s("second", errno=4))
+    store.err_s("first", errno=3)
+    store.err_s("second", errno=4)
     writes = chunk.writes
     manager.paused, chunk.write_result = True, False
     assert run(store.reset()) is False
     assert (chunk.writes, store._err_count) == (writes, 2)
     assert list(store.history)[-2:] == [3, 4]
     manager.paused, chunk.write_result = False, True
-    run(store.err_s("after the pause", errno=5))
+    store.err_s("after the pause", errno=5)
     assert chunk.last_payload == bytes((3, 0, 0, 3, 4, 5))  # count 3, then the ring with every entry
-
-
-async def _reset_paused_behind(store: "PrintLogHistoryStore", lock: "asyncio.Lock", pause: "Callable[[], None]") -> bool:
-    # Holds `lock` while the reset starts, lands the pause while the reset's write waits on it, then lets go.
-    await lock.acquire()
-    reset = asyncio.create_task(store.reset())
-    for _ in range(3):
-        await asyncio.sleep(0)
-    pause()
-    lock.release()
-    return await reset
-
-
-def test_a_pause_landing_while_the_resets_write_waits_on_the_write_lock_clears_nothing() -> None:
-    # The pause lands after the up-front check, while the reset waits on the write lock, and its write is refused (the
-    # fake's refusal, the real chunk's in the test below): nothing is cleared, and the next entry's write carries it all.
-    chunk = _GatedFramChunk(2 + 4)
-    manager = _CountingFramManager(chunk)
-    store = PrintLogHistoryStore(manager, history_length=4)
-    run(store.err_s("first", errno=3))  # before setup(): its one write carries both
-    run(store.err_s("second", errno=4))
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    chunk.failing_writes = (len(chunk.payloads) + 1,)  # the reset's write is refused
-
-    def pause() -> None:
-        manager.paused = True
-
-    assert run(_reset_paused_behind(store, store._write_lock, pause)) is False
-    assert store._err_count == 2
-    assert list(store.history) == [0, 0, 3, 4]
-    manager.paused = False
-    run(store.err_s("after the pause", errno=5))
-    assert chunk.payloads[-1] == bytes((3, 0, 0, 3, 4, 5)), chunk.payloads
-
-
-def test_a_pause_landing_while_the_resets_write_waits_on_the_chunks_op_lock_clears_nothing() -> None:
-    # On the real chunk: the reset's write waits on the chunk's op lock when the pause lands, and the chunk refuses it
-    # there (owner, 2026-10-13); the chip keeps what it held, and the next entry's write carries the whole kept history.
-    manager, chip = make_fram_manager()
-    run(manager.setup())
-    store = PrintLogHistoryStore(manager, history_length=4)
-    run(store.err_s("first", errno=3))  # before setup(): its one write carries both
-    run(store.err_s("second", errno=4))
-    run(store.setup())
-    assert store.initialized is True
-    chunk = store.fram
-    assert isinstance(chunk, FRAMChunk)  # whitebox: the real chunk's op lock and block layout
-    stored = bytes(chip.memory)
-    assert run(_reset_paused_behind(store, chunk._op_lock, lambda: manager.set_pause(value=True))) is False
-    assert store._err_count == 2
-    assert list(store.history) == [0, 0, 3, 4]
-    assert bytes(chip.memory) == stored, "the refused write changed the chip"
-    manager.set_pause(value=False)
-    run(store.err_s("after the pause", errno=5))
-    block = chunk._block_addr[0]
-    assert bytes(chip.memory[block : block + 6]) == bytes((3, 0, 0, 3, 4, 5))
 
 
 def test_a_reset_whose_write_the_chip_refuses_clears_ram_and_answers_false() -> None:
@@ -679,7 +608,7 @@ def test_a_reset_whose_write_the_chip_refuses_clears_ram_and_answers_false() -> 
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=3, level=1, name="S")
     with record_prints(store):
-        run(store.err_s("e", errno=3))
+        store.err_s("e", errno=3)
     chip.drop_wren = True  # every write-enable latch stays clear: the chip refuses each write
     with record_prints(store) as rec:
         assert run(store.reset()) is False
@@ -687,27 +616,26 @@ def test_a_reset_whose_write_the_chip_refuses_clears_ram_and_answers_false() -> 
     assert rec.lines == [("S", "PrintLog: History reset write failed!")], rec.lines
 
 
-def test_the_resets_image_packs_without_allocating() -> None:
-    # The image reset() writes goes byte by byte into the chunk's own buffer, no tuple of the ring and no list: the
-    # entries since the reset began (here one) in the newest slots, their count in the header, every other byte cleared.
+def test_the_written_image_packs_without_allocating() -> None:
+    # Every write, a reset's cleared image included, packs byte by byte into the chunk's own buffer, no tuple of the ring
+    # and no list: the count in the header, the slots oldest first.
     chunk = _CountingFramChunk(2 + 64)
     store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=64)
     run(store.setup())
-    run(store.err_s("before", errno=3))
-    kept, counted = store._kept, store._counted
-    run(store.err_s("since", errno=4))
+    store.err_s("before", errno=3)
+    store.err_s("since", errno=4)
     dbuf = chunk.get_buffer().get_data_buf()
     assert dbuf is not None
     allocated = [False]
     micropython.heap_lock()
     try:
-        store._pack_reset(dbuf, kept, counted, 1)  # a bit no repeat marked
+        store._pack(dbuf)
     except MemoryError:  # the locked heap's refusal, never printed: its text is what the memory gates match
         allocated[0] = True
     finally:
         micropython.heap_unlock()
     assert allocated == [False]
-    assert bytes(dbuf) == bytes((1, 0)) + bytes(63) + bytes((4,))
+    assert bytes(dbuf) == bytes((2, 0)) + bytes(62) + bytes((3, 4))
 
 
 def test_setup_initialises_a_ram_only_history_but_no_unusable_chunk() -> None:
@@ -729,16 +657,16 @@ def test_a_restored_0x80_byte_reads_back_as_no_entry() -> None:
     # A 0x80 byte in the stored ring (the warning sentinel, or a foreign image) is an empty slot, never ErrNum 128.
     manager, chip = make_fram_manager()
     run(manager.setup())
-    store = PrintLogHistoryStore(manager, history_length=3)
+    store = PrintLogHistoryStore(manager, history_length=3, name="Sensor")
     run(store.setup())
     store.history.extend([0x80, 5, 0x80])
-    assert run(store._write()) is True
+    assert store._write() is True
     manager2, _chip2 = make_fram_manager()
     manager2.fram._spidev.spi._spi = chip  # same chip image - models a reboot
     run(manager2.setup())
-    rebooted = PrintLogHistoryStore(manager2, history_length=3)
+    rebooted = PrintLogHistoryStore(manager2, history_length=3, name="Sensor")
     run(rebooted.setup())
-    log = run(rebooted.get_log("Sensor"))
+    log = run(rebooted.get_log())
     assert log == {"Sensor": {"ErrCount": 0, "ErrNum": [0, 5, 0], "ErrType": ["N", "E", "N"]}}
 
 
@@ -753,7 +681,7 @@ def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4, level=None)  # level=None -> _LOG_OFF
     assert store.initialized is False
-    run(store.err_s("boom", errno=3))
+    store.err_s("boom", errno=3)
     assert store._err_count == 1  # in-memory state still updates
     assert chip.memory == bytearray(len(chip.memory))  # but nothing was ever written to FRAM
 
@@ -779,7 +707,7 @@ def test_printloghistorystore_reset_during_the_boot_window_is_not_undone_by_the_
     run(manager.setup())
     seeded = PrintLogHistoryStore(manager, history_length=3)
     run(seeded.setup())
-    run(seeded.err_s("e", errno=7))
+    seeded.err_s("e", errno=7)
     assert list(seeded.history)[-1] == 7
 
     manager2, _chip2 = make_fram_manager()
@@ -817,10 +745,10 @@ def test_printloghistorystore_zero_length_history_survives_write_and_read() -> N
     store = PrintLogHistoryStore(manager, history_length=0)
     run(store.setup())
     assert store.initialized is True
-    run(store.err_s("e", errno=1))
+    store.err_s("e", errno=1)
     assert store._err_count == 1
     assert list(store.history) == []
-    assert run(store._read()) == (1, ())  # the stored count and its (empty) entries
+    assert store._read() == (1, ())  # the stored count and its (empty) entries
 
 
 def test_printloghistorystore_write_uses_explicit_little_endian_layout() -> None:
@@ -833,7 +761,7 @@ def test_printloghistorystore_write_uses_explicit_little_endian_layout() -> None
     store._err_count = 0x1234
     store.history.extend([5, 6])
     assert store._history_fmt == "<BB"  # explicit little-endian, like the header's "<H"
-    run(store._write())
+    store._write()
     assert isinstance(store.fram, FRAMChunk)  # whitebox: narrows to the real chunk's own block layout
     addr0 = store.fram._block_addr[0]
     raw = bytes(chip.memory[addr0 : addr0 + 4])
@@ -845,7 +773,7 @@ def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> 
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=3)
     run(store.setup())
-    run(store.err_s("e", errno=1))
+    store.err_s("e", errno=1)
     assert run(store.reset()) is True
 
     manager2, _chip2 = make_fram_manager()
@@ -857,431 +785,15 @@ def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> 
     assert list(rebooted_store.history) == [0, 0, 0]
 
 
-class _GatedFramChunk(_CountingFramChunk):
-    # Holds every write_into() on a test-held gate, then records the payload it was handed; the write
-    # numbered in failing_writes (counted from 1) reports failure.
-    def __init__(self, size: int) -> None:
-        super().__init__(size)
-        self.gate = asyncio.Event()
-        self.payloads: list[bytes] = []
-        self.failing_writes: tuple[int, ...] = ()
-
-    async def write_into(self, buf: "RegionBuffer") -> bool:
-        await self.gate.wait()
-        dbuf = buf.get_data_buf()
-        assert dbuf is not None
-        self.payloads.append(bytes(dbuf))
-        self.writes += 1
-        return len(self.payloads) not in self.failing_writes
-
-
-class _ResultRecordingStore(PrintLogHistoryStore):
-    # Records what each _write() call returned, in completion order.
-    def __init__(self, fram: "_CountingFramManager", history_length: int) -> None:
-        super().__init__(fram, history_length=history_length)
-        self.results: list[bool] = []
-
-    async def _write(self, kept: int = -1, counted: int = 0, bit: int = 0) -> bool:
-        ok = await PrintLogHistoryStore._write(self, kept, counted, bit)
-        self.results.append(ok)
-        return ok
-
-
-def test_concurrent_writes_land_newest_last() -> None:
-    chunk = _GatedFramChunk(2 + 3)  # the "<H" header plus three history bytes
-    store = _ResultRecordingStore(_CountingFramManager(chunk), history_length=3)
-    chunk.gate.set()
-    run(store.setup())  # a blank chunk: setup() writes the empty state through the open gate
-    assert store.initialized is True
-    chunk.gate.clear()
-    chunk.payloads.clear()
-    store.results.clear()
-
-    async def scenario() -> None:
-        tasks = [asyncio.create_task(store.err_s("e", errno=n)) for n in (1, 2, 3)]
-        for _ in range(5):  # every call stores its entry and reaches its write before the gate opens
-            await asyncio.sleep(0)
-        chunk.gate.set()
-        await asyncio.gather(*tasks)
-
-    run(scenario())
-    # The first call's write and the newest one's; the middle call was superseded and skipped.
-    assert chunk.payloads == [b"\x01\x00\x00\x00\x01", b"\x03\x00\x01\x02\x03"], chunk.payloads
-    assert store.results == [True, True, True], store.results  # a superseded call reports success: a newer write carries its state
-
-
-def test_a_cancelled_newest_write_leaves_no_entry_unwritten() -> None:
-    # The newest caller's task is cancelled while it waits for the write (a connection's outer cap does
-    # exactly this): the call queued before it must still write every entry, not skip on its account.
-    chunk = _GatedFramChunk(2 + 3)
-    store = _ResultRecordingStore(_CountingFramManager(chunk), history_length=3)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    chunk.gate.clear()
-    chunk.payloads.clear()
-    store.results.clear()
-
-    async def scenario() -> None:
-        tasks = [asyncio.create_task(store.err_s("e", errno=n)) for n in (1, 2, 3)]
-        for _ in range(5):
-            await asyncio.sleep(0)
-        tasks[2].cancel()
-        for _ in range(5):
-            await asyncio.sleep(0)
-        chunk.gate.set()
-        await asyncio.gather(tasks[0], tasks[1])
-        try:
-            await tasks[2]
-        except asyncio.CancelledError:
-            pass
-        else:
-            raise AssertionError("the cancelled call completed")
-
-    run(scenario())
-    assert chunk.payloads == [b"\x01\x00\x00\x00\x01", b"\x03\x00\x01\x02\x03"], chunk.payloads
-    assert store.results == [True, True], store.results
-
-
-def test_a_failed_write_leaves_the_next_queued_call_to_write() -> None:
-    # The second write fails: the call queued behind it writes the same state again rather than skipping,
-    # so a skipped call's True always means its entry landed.
-    chunk = _GatedFramChunk(2 + 3)
-    store = _ResultRecordingStore(_CountingFramManager(chunk), history_length=3)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    chunk.gate.clear()
-    chunk.payloads.clear()
-    store.results.clear()
-    chunk.failing_writes = (2,)
-
-    async def scenario() -> None:
-        tasks = [asyncio.create_task(store.err_s("e", errno=n)) for n in (1, 2, 3)]
-        for _ in range(5):
-            await asyncio.sleep(0)
-        chunk.gate.set()
-        await asyncio.gather(*tasks)
-
-    run(scenario())
-    # The third call writes the full state again.
-    assert chunk.payloads == [b"\x01\x00\x00\x00\x01", b"\x03\x00\x01\x02\x03", b"\x03\x00\x01\x02\x03"], chunk.payloads
-    assert store.results == [True, False, True], store.results
-
-
-def test_an_entry_logged_during_a_resets_write_survives_in_ram_and_fram_with_its_count() -> None:
-    # The reset's write is in flight when an entry repeating the newest pre-reset code arrives, then a warning: they are
-    # held against the ring the reset clears to, so both keep their slots and their count, and their write lands after.
-    chunk = _GatedFramChunk(2 + 4)
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    run(store.err_s("first", errno=3))
-    run(store.err_s("second", errno=4))
-    chunk.gate.clear()
-    chunk.payloads.clear()
-
-    async def scenario() -> bool:
-        reset = asyncio.create_task(store.reset())
-        for _ in range(3):  # the reset's write now waits at the gate
-            await asyncio.sleep(0)
-        logged = [asyncio.create_task(store.err_s("again", errno=4)), asyncio.create_task(store.wrn_s("w", wrnno=2))]
-        for _ in range(3):
-            await asyncio.sleep(0)
-        chunk.gate.set()
-        await asyncio.gather(*logged)
-        return await reset
-
-    assert run(scenario()) is True
-    assert (store._err_count, list(store.history)) == (2, [0, 0, 4, 0x80 + 2])
-    assert chunk.payloads == [bytes(6), bytes((2, 0, 0, 0, 4, 0x80 + 2))], chunk.payloads
-    assert run(store.reset()) is True  # a reset with no repeat in flight keeps no extra slot
-    assert (store._err_count, list(store.history)) == (0, [0, 0, 0, 0])
-
-
-def test_a_repeat_logged_while_a_refused_resets_write_was_in_flight_takes_no_slot() -> None:
-    # The pause refuses the reset's write while an entry repeating the newest code arrives: the ring stays as it was,
-    # with no second slot for that code, and the entry's own write carries its count.
-    chunk = _GatedFramChunk(2 + 4)
-    manager = _CountingFramManager(chunk)
-    store = PrintLogHistoryStore(manager, history_length=4)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    run(store.err_s("first", errno=3))
-    run(store.err_s("second", errno=4))
-    chunk.gate.clear()
-    chunk.failing_writes = (len(chunk.payloads) + 1,)  # the reset's write is refused
-
-    async def scenario() -> bool:
-        reset = asyncio.create_task(store.reset())
-        for _ in range(3):  # the reset's write now waits at the gate
-            await asyncio.sleep(0)
-        repeat = asyncio.create_task(store.err_s("again", errno=4))
-        await asyncio.sleep(0)
-        manager.paused = True
-        chunk.gate.set()
-        ok = await reset
-        manager.paused = False
-        await repeat
-        return ok
-
-    assert run(scenario()) is False
-    assert (store._err_count, list(store.history)) == (3, [0, 0, 3, 4])
-    assert chunk.payloads[-1] == bytes((3, 0, 0, 0, 3, 4)), chunk.payloads
-
-
-class _PausingFramChunk(_GatedFramChunk):
-    # A write numbered in failing_writes lands the manager's pause as it arrives and is refused under it, as the real
-    # chunk refuses a write the pause reaches at its op lock; the store then reads the refusal as the pause's.
-    def __init__(self, size: int) -> None:
-        super().__init__(size)
-        self.manager = _CountingFramManager(self)
-
-    async def write_into(self, buf: "RegionBuffer") -> bool:
-        if len(self.payloads) + 1 in self.failing_writes:
-            self.manager.paused = True
-        return await super().write_into(buf)
-
-
-async def _two_resets(store: "PrintLogHistoryStore", chunk: "_GatedFramChunk", between: "tuple[int, ...]") -> "tuple[bool, bool]":
-    # The earlier reset's write waits at the gate, the codes in `between` are logged, then the later reset starts.
-    earlier = asyncio.create_task(store.reset())
-    for _ in range(3):
-        await asyncio.sleep(0)
-    logged = [asyncio.create_task(store.err_s("between", errno=errno)) for errno in between]
-    for _ in range(3):
-        await asyncio.sleep(0)
-    later = asyncio.create_task(store.reset())
-    for _ in range(3):
-        await asyncio.sleep(0)
-    chunk.gate.set()
-    await asyncio.gather(*logged)
-    return await earlier, await later
-
-
-def _overlapping_resets(between: "tuple[int, ...]", *, refuse_later: bool) -> "tuple[tuple[bool, bool], int, list[int], list[bytes]]":
-    # Codes 3 then 4 stored, then two resets at once; the later reset's write is the third and, when asked, the pause's.
-    chunk = _PausingFramChunk(2 + 4)
-    store = PrintLogHistoryStore(chunk.manager, history_length=4)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    run(store.err_s("first", errno=3))
-    run(store.err_s("second", errno=4))
-    chunk.gate.clear()
-    chunk.payloads.clear()
-    chunk.failing_writes = (3,) if refuse_later else ()  # 1: the earlier reset's write, 2: the first logged code's
-    outcome = run(_two_resets(store, chunk, between))
-    return outcome, store._err_count, list(store.history), chunk.payloads
-
-
-def test_a_later_reset_refused_by_a_pause_leaves_the_repeat_the_earlier_reset_kept() -> None:
-    # Two resets at once on one store, the newest code repeating between their starts, a pause refusing the later
-    # reset's write: the earlier keeps the repeated slot with its count, and the refused later one clears nothing.
-    outcome, count, ring, payloads = _overlapping_resets((4,), refuse_later=True)
-    assert (outcome, count, ring) == ((True, False), 1, [0, 0, 0, 4]), (outcome, count, ring)
-    assert payloads[:2] == [bytes(6), bytes((1, 0, 0, 0, 0, 4))], payloads
-
-
-def test_a_later_reset_begun_after_a_new_code_leaves_the_earlier_resets_repeat_kept() -> None:
-    # The same with a new code logged after the repeat, so something was kept between the starts: the earlier reset
-    # still keeps the repeated slot beside the new one.
-    outcome, count, ring, payloads = _overlapping_resets((4, 5), refuse_later=True)
-    assert (outcome, count, ring) == ((True, False), 2, [0, 0, 4, 5]), (outcome, count, ring)
-    assert payloads[:2] == [bytes(6), bytes((2, 0, 0, 0, 4, 5))], payloads
-
-
-def test_a_later_reset_that_lands_clears_the_repeat_logged_before_it_began() -> None:
-    # Both resets land: the repeat came before the later one began, so the later clears it, slot and count.
-    outcome, count, ring, payloads = _overlapping_resets((4,), refuse_later=False)
-    assert (outcome, count, ring) == ((True, True), 0, [0, 0, 0, 0]), (outcome, count, ring)
-    assert payloads == [bytes(6), bytes((1, 0, 0, 0, 0, 4)), bytes(6)], payloads
-
-
-def test_a_repeat_of_a_code_new_since_the_reset_began_keeps_no_older_slot() -> None:
-    # A new code and its repeat arrive while the reset's write is in flight: the new code's one slot and both counts
-    # stay, and the slot that was newest when the reset began is cleared, since nothing repeated it.
-    chunk = _GatedFramChunk(2 + 4)
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    run(store.err_s("before", errno=4))
-    chunk.gate.clear()
-
-    async def scenario() -> bool:
-        reset = asyncio.create_task(store.reset())
-        for _ in range(3):  # the reset's write now waits at the gate
-            await asyncio.sleep(0)
-        logged = [asyncio.create_task(store.err_s("new", errno=5)), asyncio.create_task(store.err_s("again", errno=5))]
-        for _ in range(3):
-            await asyncio.sleep(0)
-        chunk.gate.set()
-        await asyncio.gather(*logged)
-        return await reset
-
-    assert run(scenario()) is True
-    assert store._err_count == 2, store._err_count
-    assert list(store.history) == [0, 0, 0, 5], list(store.history)
-
-
-def _resets_bound() -> int:
-    # How many resets one store holds in flight at once: one per bit of the module's mask.
-    mask, n = src_const("src/asy_print_log.py", "_RESETS_ALL"), 0
-    assert isinstance(mask, int), mask
-    while mask:
-        n, mask = n + (mask & 1), mask >> 1
-    return n
-
-
-def _bound_store() -> "PrintLogHistoryStore":
-    chunk = _GatedFramChunk(2 + 4)
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    run(store.err_s("first", errno=3))
-    return store
-
-
-def test_a_reset_past_the_bound_in_flight_at_once_is_refused_and_clears_nothing() -> None:
-    # Each reset in flight holds one bit: one past the bound is refused at once with nothing cleared, the rest land.
-    limit, store = _resets_bound(), _bound_store()
-
-    async def scenario() -> "tuple[object, list[int], list[object]]":
-        await store._write_lock.acquire()
-        resets = [asyncio.create_task(store.reset()) for _ in range(limit)]
-        extra = asyncio.create_task(store.reset())
-        for _ in range(3):
-            await asyncio.sleep(0)
-        refused = await extra if extra.done() else None  # answered with the lock still held, never queued behind it
-        ring = list(store.history)
-        store._write_lock.release()
-        await asyncio.gather(extra, return_exceptions=True)
-        return refused, ring, list(await asyncio.gather(*resets))
-
-    refused, ring, landed = run(scenario())
-    assert (refused, ring) == (False, [0, 0, 0, 3]), (refused, ring)
-    assert (len(landed), all(ok is True for ok in landed), list(store.history)) == (limit, True, [0, 0, 0, 0]), landed
-
-
-def test_a_cancelled_reset_frees_its_place_for_a_later_reset() -> None:
-    # As many resets as the bound holds are cancelled while their writes wait on the lock: each frees its bit, so a
-    # later reset still lands.
-    limit, store = _resets_bound(), _bound_store()
-
-    async def scenario() -> bool:
-        await store._write_lock.acquire()
-        resets = [asyncio.create_task(store.reset()) for _ in range(limit)]
-        for _ in range(3):
-            await asyncio.sleep(0)
-        for task in resets:
-            task.cancel()
-        await asyncio.gather(*resets, return_exceptions=True)
-        store._write_lock.release()
-        return await store.reset()
-
-    assert run(scenario()) is True
-    assert list(store.history) == [0, 0, 0, 0]
-
-
-def test_an_entry_logged_while_a_reset_waits_on_the_write_lock_rides_its_write() -> None:
-    # A write holds the lock when the reset starts; an entry logged while the reset waits is in the image the reset
-    # writes, so that entry's own queued write finds its state landed and skips.
-    chunk = _GatedFramChunk(2 + 3)
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    chunk.gate.clear()
-    chunk.payloads.clear()
-
-    async def scenario() -> bool:
-        holder = asyncio.create_task(store.err_s("before", errno=1))
-        await asyncio.sleep(0)  # its write waits at the gate, holding the write lock
-        reset = asyncio.create_task(store.reset())
-        await asyncio.sleep(0)
-        entry = asyncio.create_task(store.err_s("during", errno=5))
-        await asyncio.sleep(0)
-        chunk.gate.set()
-        await asyncio.gather(holder, entry)
-        return await reset
-
-    assert run(scenario()) is True
-    assert chunk.payloads == [bytes((1, 0, 0, 0, 1)), bytes((1, 0, 0, 0, 5))], chunk.payloads
-    assert (store._err_count, list(store.history)) == (1, [0, 0, 5])
-
-
-def _queue_last(waiter: "asyncio.Task[None]") -> None:
-    # Moves a task waiting on a lock behind every later waiter: a hand-off order the store must not rely on, though
-    # v1.29.0's lock queue hands over first come, first served (py/pairheap.h:89). A waiting task's data is that queue.
-    queue = waiter.data
-    queue.remove(waiter)
-    queue.push(waiter, ticks_add(ticks_ms(), 1000))
-    waiter.data = queue
-
-
-def test_a_write_queued_before_a_reset_skips_when_the_reset_lands_first() -> None:
-    # A pre-reset entry's write is still queued when the reset's write lands: the reset's own step outdates it, so it
-    # skips rather than writing again.
-    chunk = _GatedFramChunk(2 + 3)
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    chunk.gate.clear()
-    chunk.payloads.clear()
-
-    async def scenario() -> bool:
-        holder = asyncio.create_task(store.err_s("holds the lock", errno=1))
-        await asyncio.sleep(0)
-        queued = asyncio.create_task(store.err_s("queued", errno=2))
-        await asyncio.sleep(0)  # its write waits on the lock
-        reset = asyncio.create_task(store.reset())
-        await asyncio.sleep(0)
-        _queue_last(queued)
-        chunk.gate.set()
-        await asyncio.gather(holder, queued)
-        return await reset
-
-    assert run(scenario()) is True
-    assert chunk.payloads == [bytes((1, 0, 0, 0, 1)), bytes(5)], chunk.payloads
-    assert (store._err_count, list(store.history)) == (0, [0, 0, 0])
-
-
-def test_queued_calls_behind_a_failed_write_leave_the_next_write_to_land_the_newest_state() -> None:
-    chunk = _GatedFramChunk(2 + 4)
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4)
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    chunk.gate.clear()
-    chunk.payloads.clear()
-    chunk.failing_writes = (1,)
-
-    async def scenario() -> None:
-        tasks = [asyncio.create_task(store.err_s("e", errno=n)) for n in (1, 2, 3)]
-        for _ in range(5):
-            await asyncio.sleep(0)
-        chunk.gate.set()
-        await asyncio.gather(*tasks)
-
-    run(scenario())
-    # The failed first write, then one write of the newest state; the third call skips.
-    assert chunk.payloads == [b"\x01\x00\x00\x00\x00\x01", bytes((3, 0, 0, 1, 2, 3))], chunk.payloads
-
-
 def test_read_answers_the_stored_entries_false_or_none_and_mutates_nothing() -> None:
     blank = PrintLogHistoryStore(_CountingFramManager(_CountingFramChunk(2 + 3)), history_length=3)
-    assert run(blank._read()) is False
+    assert blank._read() is False
     unreadable = PrintLogHistoryStore(_CountingFramManager(_CountingFramChunk(2 + 3, read_result=None)), history_length=3)
-    assert run(unreadable._read()) is None
+    assert unreadable._read() is None
     chunk = _CountingFramChunk(2 + 3, read_result=True, stored=b"\x05\x00\x01\x02\x03")
     stored = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
-    run(stored.err_s("pre", errno=9))
-    assert run(stored._read()) == (5, (1, 2, 3))
+    stored.err_s("pre", errno=9)
+    assert stored._read() == (5, (1, 2, 3))
     assert list(stored.history) == [0, 0, 9]  # the read itself applies nothing
     assert stored._err_count == 1
 
@@ -1294,27 +806,6 @@ def test_a_clean_read_of_a_valid_store_sets_up_without_writing() -> None:
     assert store.initialized is True
     assert store._err_count == 2
     assert chunk.writes == 0
-
-
-def test_a_reset_landing_during_setups_read_leaves_ram_and_the_chunk_cleared() -> None:
-    chunk = _CountingFramChunk(2 + 3, read_result=True, stored=b"\x02\x00\x00\x03\x07")
-    gate = asyncio.Event()
-    chunk.read_gate = gate
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
-
-    async def scenario() -> None:
-        setup = asyncio.create_task(store.setup())
-        await asyncio.sleep(0)  # setup() now waits inside its read
-        assert await store.reset() is True
-        gate.set()
-        await setup
-
-    run(scenario())
-    assert store.initialized is True
-    assert store._err_count == 0
-    assert list(store.history) == [0, 0, 0]
-    assert chunk.writes == 1  # the reset's write only: setup() applied and wrote nothing
-    assert chunk.last_payload == bytes(5)
 
 
 def test_a_blank_store_is_reinitialised() -> None:
@@ -1331,7 +822,7 @@ def test_an_unreadable_store_keeps_its_bytes_and_stays_ram_only() -> None:
     store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3, name="U")
     run(store.setup())
     assert store.initialized is False
-    run(store.err_s("later", errno=4))
+    store.err_s("later", errno=4)
     assert chunk.writes == 0  # nothing ever reached the chunk: the stored history stays for the next boot
     assert list(store.history) == [0, code("E", "LOG_RAM_ONLY"), 4]
     assert store._err_count == 2
@@ -1373,23 +864,23 @@ def test_printloghistorystore_get_chunk_raising_leaves_fram_none() -> None:
     # store RAM-only: no chunk, every write and read refused without raising.
     store = PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True), history_length=4)
     assert store.fram is None
-    assert run(store._write()) is False
-    assert run(store._read()) is None
+    assert store._write() is False
+    assert store._read() is None
 
 
 def test_printloghistorystore_read_into_raising_is_caught() -> None:
     chunk = _RaisingFramChunk(raise_on_read=True)
     store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
-    assert run(store._read()) is None  # unreadable, not blank: setup() must not overwrite the store
+    assert store._read() is None  # unreadable, not blank: setup() must not overwrite the store
 
 
 def test_a_none_data_buffer_fails_write_and_read_without_raising() -> None:
     chunk = _RaisingFramChunk(none_buffer=True)
     store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
-    assert run(store._write()) is False
-    assert run(store._read()) is None
+    assert store._write() is False
+    assert store._read() is None
     run(store.reset())
-    run(store.err_s("e", errno=1))
+    store.err_s("e", errno=1)
     assert store._err_count == 1  # the entry still counts in RAM
 
 
@@ -1405,7 +896,7 @@ def test_each_caught_chunk_allocation_failure_prints_its_text_at_level_1_and_not
             err = MemoryError(text)
             store = PrintLogHistoryStore(_RaisingFramManager(_RaisingFramChunk(error=err, **kwargs)), history_length=4, level=level, name="B")
             with record_prints() as rec:
-                results = [run(store._read() if "raise_on_read" in kwargs else store._write()) for _ in range(2)]
+                results = [store._read() if "raise_on_read" in kwargs else store._write() for _ in range(2)]
             assert results == ([None, None] if "raise_on_read" in kwargs else [False, False]), (text, results)
             what = "read" if "raise_on_read" in kwargs else "write"
             assert rec.lines == [("B", "PrintLog: FRAM history " + what + " failed:", err)] * 2 * level, (level, text, rec.lines)
@@ -1428,7 +919,7 @@ def test_a_non_allocation_failure_from_a_chunk_propagates() -> None:
         chunk = _RaisingFramChunk(error=RuntimeError("not an allocation failure"), **kwargs)
         store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
         try:
-            run(store._write() if "raise_on_write" in kwargs else store._read())
+            store._write() if "raise_on_write" in kwargs else store._read()
         except RuntimeError:
             continue
         raise AssertionError(f"a RuntimeError from the chunk was swallowed ({kwargs})")
@@ -1436,13 +927,13 @@ def test_a_non_allocation_failure_from_a_chunk_propagates() -> None:
 
 class _RefusingFramChunk(_RaisingFramChunk):
     # A chunk whose every write reports failure, as the real one does for a chip it cannot reach.
-    async def write_into(self, buf: "RegionBuffer") -> bool:
+    def write_into(self, buf: "RegionBuffer") -> bool:
         return False
 
 
 def test_a_store_whose_reset_cannot_write_returns_false() -> None:
     store = PrintLogHistoryStore(_RaisingFramManager(_RefusingFramChunk()), history_length=4)
-    run(store.err_s("e", errno=1))
+    store.err_s("e", errno=1)
     assert run(store.reset()) is False
     assert store._err_count == 0  # cleared in RAM; only the persisting failed
     assert store.initialized is False
@@ -1456,7 +947,7 @@ def test_printloghistorystore_write_into_returns_false_is_surfaced() -> None:
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
     chip.drop_wren = True
-    assert run(store._write()) is False
+    assert store._write() is False
 
 
 def test_printloghistorystore_read_into_returns_false_is_surfaced() -> None:
@@ -1466,14 +957,14 @@ def test_printloghistorystore_read_into_returns_false_is_surfaced() -> None:
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
-    run(store._write())  # something real is persisted first
+    store._write()  # something real is persisted first
     assert isinstance(store.fram, FRAMChunk)  # whitebox: narrows to the real chunk's own block layout
     addr0, addr1 = store.fram._block_addr
     status_offset = 2 + len(store.history) + 1  # _HDR_SIZE("<H") + history bytes + CRC8's 1 byte
     for addr in (addr0, addr1):
         chip.memory[addr + status_offset] = 0x02  # _STATUS_BUSY, mirrors a torn write on both copies
         chip.memory[addr + status_offset + 1] = 0x02
-    assert run(store._read()) is False
+    assert store._read() is False
 
 
 def test_printloghistorystore_self_heals_from_a_single_corrupted_copy_across_a_reboot() -> None:
@@ -1488,8 +979,8 @@ def test_printloghistorystore_self_heals_from_a_single_corrupted_copy_across_a_r
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
-    run(store.err_s("boom", errno=3))
-    run(store.err_s("bang", errno=7))
+    store.err_s("boom", errno=3)
+    store.err_s("bang", errno=7)
     assert store._err_count == 2
 
     assert isinstance(store.fram, FRAMChunk)  # whitebox: narrows to the real chunk's own block layout
@@ -1532,7 +1023,7 @@ def test_printloghistorystore_err_s_survives_a_write_failure_without_raising() -
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     chip.drop_wren = True
-    run(store.err_s("boom", errno=3))
+    store.err_s("boom", errno=3)
     assert store._err_count == 1  # the entry, kept in RAM; the failed write adds none
     assert list(store.history)[-1] == 3
 
@@ -1589,267 +1080,14 @@ def test_report_if_fatal_allocates_and_prints_nothing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# err_q()/wrn_q(): the entry, its count and its line at once; the FRAM write in one background writer per store
-# ---------------------------------------------------------------------------
-
-
-class _WriterStore(PrintLogHistoryStore):
-    # Counts the background writer's starts and records the internal-failure prints instead of gating them.
-    def __init__(self, fram: "_CountingFramManager", history_length: int = 3) -> None:
-        super().__init__(fram, history_length=history_length)
-        self.starts = 0
-        self.diags: list[tuple[object, ...]] = []
-
-    async def _write_behind(self) -> None:
-        self.starts += 1
-        await PrintLogHistoryStore._write_behind(self)
-
-    def _diag(self, *args: object) -> None:
-        self.diags.append(args)
-
-
-def _set_up_writer_store(chunk: "_GatedFramChunk") -> "_WriterStore":
-    # A store set up over a blank gated chunk, the gate closed again and its setup write forgotten.
-    store = _WriterStore(_CountingFramManager(chunk))
-    chunk.gate.set()
-    run(store.setup())
-    assert store.initialized is True
-    chunk.gate.clear()
-    chunk.payloads.clear()
-    chunk.writes = 0
-    return store
-
-
-async def _writer_ended(store: "PrintLogHistoryStore") -> None:
-    while store._writer is not None:  # bounded by run()'s own limit
-        await asyncio.sleep(0)
-
-
-def _image(store: "PrintLogHistoryStore") -> bytes:  # the RAM state as the store packs it: the "<H" count, then the ring
-    return struct.pack("<H", store._err_count) + bytes(store.history)
-
-
-def test_err_q_and_wrn_q_record_count_and_print_before_any_await() -> None:
-    chunk = _GatedFramChunk(2 + 3)
-    store = _set_up_writer_store(chunk)
-    store.set_level(2)
-    store.name = "Q"
-
-    async def scenario() -> "tuple[object, list[tuple[object, ...]], int]":
-        with record_prints() as rec:
-            store.err_q("e", 1, errno=3)
-            store.wrn_q("w", wrnno=2)
-        log = await store.get_log()  # reads without yielding: the writer has not run
-        writes = chunk.writes
-        chunk.gate.set()
-        await _writer_ended(store)
-        return log, rec.lines, writes
-
-    log, lines, writes = run(scenario())
-    assert log == {"Q": {"ErrCount": 2, "ErrNum": [0, 3, 2], "ErrType": ["N", "E", "W"]}}, log
-    assert lines == [("Q", "e", 1), ("Q", "w")], lines
-    assert writes == 0
-    assert chunk.payloads == [b"\x02\x00\x00\x03\x82"], chunk.payloads  # once the writer has run
-
-
-def test_an_err_q_entry_survives_a_simulated_reboot_once_its_writer_has_run() -> None:
-    manager, chip = make_fram_manager()
-    run(manager.setup())
-    store = PrintLogHistoryStore(manager, history_length=4)
-    run(store.setup())
-
-    async def scenario() -> None:
-        store.err_q("boom", errno=3)
-        await _writer_ended(store)
-
-    run(scenario())
-    manager2, _chip2 = make_fram_manager(chip=chip)
-    run(manager2.setup())
-    rebooted = PrintLogHistoryStore(manager2, history_length=4)
-    run(rebooted.setup())
-    assert rebooted._err_count == 1
-    assert list(rebooted.history) == [0, 0, 0, 3]
-
-
-def test_a_burst_starts_one_writer_and_an_entry_logged_during_its_write_lands_too() -> None:
-    chunk = _GatedFramChunk(2 + 3)
-    store = _set_up_writer_store(chunk)
-
-    async def scenario() -> None:
-        store.err_q("e", errno=1)
-        store.err_q("e", errno=2)
-        for _ in range(3):  # the writer starts; its write packs both entries and waits at the gate
-            await asyncio.sleep(0)
-        store.wrn_q("w", wrnno=3)  # during that write
-        chunk.gate.set()
-        await _writer_ended(store)
-
-    run(scenario())
-    assert store.starts == 1
-    assert chunk.payloads == [b"\x02\x00\x00\x01\x02", b"\x03\x00\x01\x02\x83"], chunk.payloads
-    assert chunk.payloads[-1] == _image(store)
-
-
-def test_an_uninitialised_store_records_a_q_entry_but_starts_no_writer() -> None:
-    chunk = _GatedFramChunk(2 + 3)
-    chunk.gate.set()
-    store = _WriterStore(_CountingFramManager(chunk))
-
-    async def scenario() -> None:
-        store.err_q("e", errno=3)
-        for _ in range(3):
-            await asyncio.sleep(0)
-
-    run(scenario())
-    assert (store._err_count, store.starts, chunk.writes) == (1, 0, 0)
-    assert list(store.history) == [0, 0, 3]
-    assert ("PrintLog: Uninitialized, call setup first!",) in store.diags
-
-
-def test_a_failed_background_write_is_diagnosed() -> None:
-    chunk = _GatedFramChunk(2 + 3)
-    store = _set_up_writer_store(chunk)
-    chunk.failing_writes = (1,)
-    chunk.gate.set()
-
-    async def scenario() -> None:
-        store.wrn_q("w", wrnno=2)
-        await _writer_ended(store)
-
-    run(scenario())
-    assert store.diags == [("PrintLog: History write failed!",)], store.diags
-    assert list(store.history) == [0, 0, 0x82]  # the entry stays in RAM for the next write
-
-
-def test_a_reset_racing_a_pending_background_write_leaves_fram_and_ram_agreeing() -> None:
-    # Before the writer runs: the reset writes and clears first, then the writer writes the cleared state.
-    chunk = _GatedFramChunk(2 + 3)
-    store = _set_up_writer_store(chunk)
-    chunk.gate.set()
-
-    async def before() -> bool:
-        store.err_q("e", errno=3)
-        ok = await store.reset()
-        await _writer_ended(store)
-        return ok
-
-    assert run(before()) is True
-    assert (store._err_count, list(store.history)) == (0, [0, 0, 0])
-    assert chunk.payloads[-1] == _image(store), chunk.payloads
-    # During the writer's write: the reset queues behind it, and an entry logged meanwhile is kept by both.
-    chunk.gate.clear()
-
-    async def during() -> bool:
-        store.err_q("e", errno=3)
-        for _ in range(3):  # the writer's write waits at the gate
-            await asyncio.sleep(0)
-        reset = asyncio.create_task(store.reset())
-        for _ in range(3):
-            await asyncio.sleep(0)
-        store.err_q("e", errno=4)
-        chunk.gate.set()
-        ok = await reset
-        await _writer_ended(store)
-        return ok
-
-    assert run(during()) is True
-    assert store._err_count == 1
-    assert list(store.history) == [0, 0, 4]
-    assert chunk.payloads[-1] == _image(store), chunk.payloads
-
-
-class _NoTasks:
-    # Stands in for asy_print_log's asyncio: any task start fails the test.
-    @staticmethod
-    def create_task(_coro: object) -> None:
-        raise AssertionError("a RAM-only history started a task")
-
-
-def test_a_ram_only_history_starts_no_writer() -> None:
-    hist = PrintLogHistory(history_length=2)
-    run(hist.setup())
-    real = print_log_module.asyncio
-    print_log_module.asyncio = _NoTasks()  # type: ignore[assignment]
-    try:
-        hist.err_q("e", errno=3)
-        hist.wrn_q("w", wrnno=2)
-    finally:
-        print_log_module.asyncio = real
-    assert (hist._err_count, list(hist.history)) == (2, [3, 0x82])
-
-
-class _FullHeapTasks:
-    # Stands in for asy_print_log's asyncio: a task start meets a full heap; every other name is the real module's.
-    def __getattr__(self, name: str) -> object:
-        return getattr(asyncio, name)
-
-    @staticmethod
-    def create_task(_coro: object) -> None:
-        raise MemoryError("injected for the writer task")  # worded clear of the memory gates' markers
-
-
-def test_an_err_q_whose_writer_cannot_start_returns_and_the_next_entry_writes_it() -> None:
-    # A full heap at the writer's start never reaches the caller: the entry stays in RAM, its failure prints from level 1
-    # up, and the next entry's writer packs both into one write.
-    chunk = _GatedFramChunk(2 + 3)
-    store = _set_up_writer_store(chunk)
-    chunk.gate.set()
-    store.set_level(1)
-    print_log_module.asyncio = _FullHeapTasks()  # type: ignore[assignment]
-    try:
-        with record_prints() as rec:  # recorded, never printed: the injected text stays off this file's output
-            store.err_q("e", errno=3)
-    finally:
-        print_log_module.asyncio = asyncio
-    heads = [line[:2] for line in rec.lines]
-    assert heads == [("", "e"), ("", "PrintLog: FRAM history writer failed:")], rec.lines
-    assert (chunk.writes, store._writer, list(store.history)) == (0, None, [0, 0, 3])
-
-    async def scenario() -> None:
-        store.err_q("e", errno=4)
-        await _writer_ended(store)
-
-    with record_prints():
-        run(scenario())
-    assert chunk.payloads == [b"\x02\x00\x00\x03\x04"], chunk.payloads
-
-
-class _RaisingOnceChunk(_CountingFramChunk):
-    # Its first write raises a non-allocation error (a defect the chunk's contract rules out); later writes land.
-    async def write_into(self, buf: "RegionBuffer") -> bool:
-        if self.writes == 0:
-            self.writes += 1
-            raise ValueError("injected chunk defect")
-        return await _CountingFramChunk.write_into(self, buf)
-
-
-def test_a_writer_whose_write_raises_logs_it_and_the_next_entry_starts_a_writer() -> None:
-    chunk = _RaisingOnceChunk(2 + 3)
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
-    store.initialized = True  # whitebox: set up, with no setup write to spend the chunk's one raise
-
-    async def scenario() -> None:
-        store.err_q("e", errno=3)
-        await _writer_ended(store)
-        store.err_q("e", errno=4)
-        await _writer_ended(store)
-
-    run(scenario())
-    assert list(store.history) == [3, code("E", "UNEXPECTED"), 4], list(store.history)
-    assert chunk.last_payload == _image(store)
-
-
-# ---------------------------------------------------------------------------
 # DebugLevel 0 prints nothing, ever; a C-stack overflow handed to any entry point is recorded at every level
 # ---------------------------------------------------------------------------
 
-_ENTRIES = ("err", "wrn", "one", "evt", "all", "err_s", "wrn_s", "err_q", "wrn_q")  # every logging entry point
+_ENTRIES = ("err", "wrn", "one", "evt", "all", "err_s", "wrn_s")  # every logging entry point
 
 
 def _call(pr: PrintLogHistory, method: str, *args: object) -> None:
-    result = getattr(pr, method)(*args)
-    if method.endswith("_s"):
-        run(result)
+    getattr(pr, method)(*args)
 
 
 def test_level_0_prints_nothing_for_a_caught_memory_error() -> None:
@@ -1867,7 +1105,7 @@ def test_level_1_prints_a_caught_memory_errors_text_under_the_loggers_name() -> 
     run(pr.setup())
     with record_prints() as rec:
         pr.err("context:", err)
-        run(pr.err_s("persisted:", err, errno=3))
+        pr.err_s("persisted:", err, errno=3)
         pr.wrn("below its level:", err)
     assert rec.lines == [("P", "context:", err), ("P", "persisted:", err)], rec.lines
 
@@ -1893,7 +1131,7 @@ class _FlagAtWriteChunk(_RaisingFramChunk):
         super().__init__()
         self.flag_at_write: list[bool] = []
 
-    async def write_into(self, buf: "RegionBuffer") -> bool:
+    def write_into(self, buf: "RegionBuffer") -> bool:
         self.flag_at_write.append(fatal_reported())
         return True
 
@@ -1905,9 +1143,25 @@ def test_err_s_and_wrn_s_record_the_overflow_ahead_of_their_fram_write() -> None
         store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4, level=0, name="S")
         run(store.setup())
         chunk.flag_at_write.clear()
-        run(store.err_s("handler caught:", error, errno=3) if method == "err_s" else store.wrn_s("handler caught:", error, wrnno=3))
+        store.err_s("handler caught:", error, errno=3) if method == "err_s" else store.wrn_s("handler caught:", error, wrnno=3)
         assert chunk.flag_at_write == [True], (method, chunk.flag_at_write)
         print_log_module._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def test_a_log_call_records_prints_and_writes_its_entry_before_it_returns() -> None:
+    # One form, a plain call that never suspends: the entry is counted, printed and on the chip when the call returns,
+    # the persisted image the RAM state (SPECIFICATION.md C.7.1).
+    chunk = _CountingFramChunk(2 + 4)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4, level=2, name="S")
+    run(store.setup())
+    before = chunk.writes
+    with record_prints() as rec:
+        store.err_s("first", errno=3)
+        assert chunk.writes == before + 1 and rec.lines == [("S", "first")]
+        store.wrn_s("second", wrnno=2)
+    assert chunk.writes == before + 2
+    assert chunk.last_payload == struct.pack("<H", 2) + bytes([0, 0, 3, 0x80 + 2])
+    assert not hasattr(store, "err_q") and not hasattr(store, "wrn_q")
 
 
 if __name__ == "__main__":

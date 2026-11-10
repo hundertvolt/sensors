@@ -235,7 +235,7 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
         seeking, silent, established = _wifi_const("_PHASE_STA_SEEKING"), _wifi_const("_PHASE_SILENT"), _wifi_const("_PHASE_STA_ESTABLISHED")
         to_hotspot, unknown, silent_entry = ("W", code("W", "WLAN_TO_HOTSPOT")), ("W", code("W", "WLAN_STATIONS_UNKNOWN")), ("W", code("W", "WLAN_SILENT"))
         set_access_point_up(up=False)
-        tasks = [pixel.start_asy_overlay(), conn.start_asy_hotspot_timeout(), conn.start_asy_connect()]
+        tasks = [conn.start_asy_hotspot_timeout(), conn.start_asy_connect()]
         ap: WLAN | None = None
         try:
             await _first_attempt(clock, conn)

@@ -11,7 +11,6 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
-from _held_log import held_logger, until
 from _schema_cases import declared_fields, domain_cases, special_alone
 from _src_const import src_float, src_int, src_strs
 from _stack_overflow import stack_overflow
@@ -1123,9 +1122,12 @@ def test_read_loop_calls_error_check_exactly_once_per_cycle() -> None:
             seed(i2c, _REG_CONFIG1, bytes(3))
             task = reader.start_asy_read()
             for _ in range(3):
-                reader._read_event.set()
-                for _ in range(40):
+                for _ in range(40):  # the read task's setup, then each cycle's own awaits
                     await asyncio.sleep(0)
+                reader._isl._settle_until_ms = time.ticks_ms()  # its deadline now: no wall clock passes in this test
+                reader._read_event.set()
+            for _ in range(40):
+                await asyncio.sleep(0)
             await cancel(task)
 
     run(scenario())
@@ -1280,7 +1282,7 @@ def test_a_dark_room_never_increments_the_error_counter() -> None:
             for _ in range(10):
                 reader._isl._settle_until_ms = time.ticks_ms()  # the switch down's settle: no wall clock passes here
                 results = await reader._read_isl()
-                assert await reader._error_check(results, condition=results[0] is None and not reader._unsettled_cycle) is True  # the read loop's condition
+                assert await reader._error_check(results, condition=results[0] is None) is True  # the read loop's condition
                 await reader._store_isl(results)
         return await reader.get_error_counter()
 
@@ -1594,26 +1596,26 @@ def test_no_sample_is_reported_during_the_settle_window() -> None:
     assert slept  # the cycle really did wait rather than reading straight through
 
 
-def test_the_settle_wait_is_bounded_against_a_stream_of_config_writes() -> None:
-    # The bound keeps the loop from starving; past it the cycle is discarded (see test_an_unsettled_cycle_is_no_failure).
-    _i2c, reader = ready_reader("settle_bound")
+def test_the_settle_wait_runs_until_the_last_own_write_has_settled_with_no_round_cap() -> None:
+    # Only the device's own CONFIG1 writes move the deadline: three writes landing mid-wait extend it three times,
+    # and the wait ends once the last one's settle has passed, never cut short by a round count.
+    _i2c, reader = ready_reader("settle_until")
     rounds = []
     real_sleep_ms = asyncio.sleep_ms
 
     async def extending(ms: int) -> None:
         check_sleep_ms(ms)
-        rounds.append(1)
-        run_extend = reader._isl
-        run_extend._settle_until_ms = __import__("time").ticks_add(__import__("time").ticks_ms(), 500)
+        rounds.append(ms)
+        reader._isl._settle_until_ms = time.ticks_add(time.ticks_ms(), 500) if len(rounds) < 4 else time.ticks_ms()
         await real_sleep_ms(0)
 
     asyncio.sleep_ms = extending  # type: ignore[assignment]
     try:
-        reader._isl._settle_until_ms = __import__("time").ticks_add(__import__("time").ticks_ms(), 500)
+        reader._isl._settle_until_ms = time.ticks_add(time.ticks_ms(), 500)
         run(reader._settle_wait())
     finally:
         asyncio.sleep_ms = real_sleep_ms
-    assert len(rounds) == 2  # _SETTLE_WAIT_MAX_ROUNDS, not an unbounded loop
+    assert len(rounds) == 4 and reader._isl.time_to_settle_ms() <= 0, rounds
 
 
 # ---------------------------------------------------------------------------
@@ -1746,32 +1748,6 @@ def test_a_failed_threshold_write_and_a_failed_range_write_each_log_chip_set() -
     assert err_count(counters) == 2  # one count per failure, one slot for the repeated code
     assert errors(counters)[-1] == code("E", "CHIP_SET")
     assert reader._active_range == _RANGE_HIGH_LUX
-
-
-def test_a_failed_switch_never_holds_the_threshold_lock_across_its_entry() -> None:
-    # A failed threshold burst, then a failed range write, each entry's chunk write held: each switch ends within rounds
-    # with its entry in RAM, so a threshold push never waits on FRAM behind it (SPECIFICATION.md C.8).
-    i2c, reader = ready_reader("switch_held")
-    reader.pr, gate = held_logger(reader.name)
-
-    async def failing_configure(**_kwargs: object) -> None:
-        raise OSError(errno_mod.EIO, "injected")
-
-    async def scenario() -> "list[tuple[bool, int]]":
-        seen = []
-        with FastAsyncSleep():
-            for fails_range in (False, True):
-                if fails_range:
-                    reader._isl.configure = failing_configure  # type: ignore[method-assign]
-                else:
-                    fail_register_writes(i2c, times=1)
-                switch = asyncio.create_task(reader._switch_range(_RANGE_LOW_LUX))
-                ended = await until(switch.done) and not reader._threshold_lock.locked()
-                seen.append((ended, reader.pr._err_count))
-        gate.set()
-        return seen
-
-    assert run(scenario()) == [(True, 1), (True, 2)]
 
 
 def test_the_periodic_path_switches_range_when_the_interrupt_never_fires() -> None:
@@ -2020,12 +1996,12 @@ def test_brownout_does_not_feed_the_leaky_bucket_beyond_its_own_lost_cycle() -> 
         with FastAsyncSleep():
             seed_cycle(i2c, 20000, 20000, 20000, status=_STATUS_BOUTF)
             lost = await reader._read_isl()
-            await reader._error_check(lost, condition=lost[0] is None and not reader._unsettled_cycle)  # the read loop's condition
+            await reader._error_check(lost, condition=lost[0] is None)  # the read loop's condition
             after_brownout = reader._err_cnt_internal
             seed_cycle(i2c, 20000, 20000, 20000, status=0x00)
             reader._isl._settle_until_ms = time.ticks_ms()  # the re-apply's settle: no wall clock passes here
             good = await reader._read_isl()
-            await reader._error_check(good, condition=good[0] is None and not reader._unsettled_cycle)
+            await reader._error_check(good, condition=good[0] is None)
         assert after_brownout == 1
         return reader._err_cnt_internal
 
@@ -2623,7 +2599,7 @@ def test_pushing_the_sample_interval_re_derives_the_transient_rejection() -> Non
     assert reader._isl._persist == 2  # derived at init from the 1s default
     with FastAsyncSleep():
         assert run(_push(reader._push_callbacks["SampleInterval"], 7)) is True
-    assert run(reader._trigger_period.get_value()) == 7
+    assert reader._trigger_period == 7
     assert reader._isl._persist == 8
     writes = register_writes(i2c)
     assert any(w[0] == _REG_CONFIG2 and w[1][1] & 0x0C == 0x0C for w in writes), "the new PRST has to reach CONFIG3"
@@ -2735,7 +2711,7 @@ def test_set_trigger_s_refuses_bad_values_with_bad_arg_and_never_raises() -> Non
     # One event per rejected value, one slot: a non-number, +inf, and both out-of-range ends.
     assert err_count(counters) == 4
     assert errors(counters)[-1] == code("E", "BAD_ARG")
-    assert run(reader._trigger_period.get_value()) == 30
+    assert reader._trigger_period == 30
 
 
 def test_every_hardware_setter_logs_chip_set_on_a_bus_fault() -> None:
@@ -3110,7 +3086,6 @@ def test_the_read_loop_stores_healthy_samples_and_gives_up_once_the_budget_is_sp
             return  # the timer divider and the INT pin are both tested on their own
 
         async def two_good_then_broken() -> "ISLResults":
-            reader._unsettled_cycle = False  # as the real _read_isl() starts every cycle
             if healthy[0] < 2:
                 healthy[0] += 1
                 reader._isl._settle_until_ms = time.ticks_ms()  # no wall clock passes in this test
@@ -3195,49 +3170,6 @@ def test_a_raising_reapply_burst_logs_one_chip_set_and_no_recovery_warning() -> 
     assert errors(counters)[-1] == code("E", "CHIP_SET")
     assert warnings(counters) == []
     assert _threshold_bursts(i2c) == []
-
-
-def test_an_unsettled_cycle_is_no_failure() -> None:
-    # A stream of CONFIG1 writes holding the settle open past the bound: the cycle is discarded - nothing published,
-    # no streak step (max_module_error=1 would end the task on a second count) - and the next completed cycle publishes.
-    i2c, reader = _make_reader("unsettled", max_module_error=1)
-    seed_cycle(i2c, 20000, 20000, 20000)
-    keep_extending = [True]
-    real_sleep_ms = asyncio.sleep_ms
-
-    async def extending(ms: int) -> None:
-        check_sleep_ms(ms)
-        if keep_extending[0]:
-            reader._isl._settle_until_ms = time.ticks_add(time.ticks_ms(), 500)
-        await real_sleep_ms(0)
-
-    async def scenario() -> "tuple[bool, ISL29125]":
-        with FastAsyncSleep():
-            asyncio.sleep_ms = extending  # type: ignore[assignment]  # _FastAsyncSleep restores the real one
-            seed(i2c, _REG_CONFIG1, bytes(3))
-            task = reader.start_asy_read()
-            for _ in range(40):
-                await asyncio.sleep(0)
-            for _ in range(3):
-                reader._isl._settle_until_ms = time.ticks_add(time.ticks_ms(), 500)
-                reader._read_event.set()
-                for _ in range(40):
-                    await asyncio.sleep(0)
-            running = not task.done()
-            discarded = await reader.get_data()
-            keep_extending[0] = False
-            reader._isl._settle_until_ms = time.ticks_ms()
-            reader._read_event.set()
-            for _ in range(40):
-                await asyncio.sleep(0)
-            await cancel(task)
-        return running, discarded
-
-    running, discarded = run(scenario())
-    assert running is True
-    assert discarded.Lux is None, "a cycle past the settle bound published a sample"
-    assert reader._err_cnt_internal == 0
-    assert run(reader.get_data()).Lux is not None, "the settled cycle did not publish"
 
 
 def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raising() -> None:
@@ -3469,7 +3401,7 @@ def test_a_fractional_setting_is_rejected_rather_than_silently_truncated() -> No
     counters = run(scenario())
     assert err_count(counters) == 1  # the accepted values prove which one was refused
     assert errors(counters)[-1] == code("E", "BAD_ARG")
-    assert run(reader._trigger_period.get_value()) == 30
+    assert reader._trigger_period == 30
     assert reader._ar_dwell_s == 10.0
     assert reader._ar_thresh == 85.0
 

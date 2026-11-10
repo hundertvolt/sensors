@@ -51,25 +51,25 @@ async def _main() -> None:
     await store.reset()
     fact("baseline", (await store.get_log())[_LOG_NAME])
     for seed in _SEED:
-        await store.err_s("seeded", errno=seed)
+        store.err_s("seeded", errno=seed)
     fact("seeded", (await store.get_log())[_LOG_NAME])
     wdt.feed()
     transfers = [0]
     driver = fram.fram
-    write_sync = driver.set_values_sync
+    write = driver.set_values
 
-    def counting(buf: "bytes | bytearray | memoryview", addr_start: int) -> int:
+    def counting(buf: "bytes | bytearray | memoryview", addr_start: int) -> bool:
         # The chunk write's own transfers, counted on this script's driver instance: the reset lands right after SEAM.
-        status = write_sync(buf, addr_start)
+        ok = write(buf, addr_start)
         transfers[0] += 1
         if transfers[0] == BENCH["SEAM"]:
             print("LANDED seam=" + str(BENCH["SEAM"]))
             machine.reset()
-        return status
+        return ok
 
-    driver.set_values_sync = counting  # type: ignore[method-assign]  # an instance attribute of this script's driver
+    driver.set_values = counting  # type: ignore[method-assign]  # an instance attribute of this script's driver
     print("SEEDED")
-    await store.err_s("raced", errno=_RACED)
+    store.err_s("raced", errno=_RACED)
     fact("not_reset_after_transfers", transfers[0])
     done()
 

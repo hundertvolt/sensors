@@ -25,7 +25,6 @@ from _async_harness import cancel, run, run_timed, track_starts
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
-from _held_log import held_logger, until
 from _recording_print import record_prints
 from _shared_rest_roundtrip import drain_json_response_body
 from _src_const import src_int
@@ -222,7 +221,7 @@ class _FakeLogger:
             },
         }
 
-    async def err_s(self, *_args: object, errno: int = 0, **_kwargs: object) -> None:
+    def err_s(self, *_args: object, errno: int = 0, **_kwargs: object) -> None:
         self.err_count += 1
         if errno:
             self.history.append((errno, "E"))
@@ -233,7 +232,7 @@ class _FakeLogger:
         self.history = []
         return True
 
-    async def wrn_s(self, *_args: object, wrnno: int = 0, **_kwargs: object) -> None:
+    def wrn_s(self, *_args: object, wrnno: int = 0, **_kwargs: object) -> None:
         self.err_count += 1
         if wrnno:
             self.history.append((wrnno, "W"))
@@ -1199,7 +1198,7 @@ def test_status_get_sensors_subkey_empty_when_no_maintenance_sensors_registered(
 def test_status_put_empty_and_false_reset_errors_are_both_noops() -> None:
     # Only {"ResetErrors": true} resets (SPEC A.8); any other value of the key answers Invalid.
     mod = _FakeModule("SGP40")
-    run(mod.pr.err_s("boom", errno=1))
+    mod.pr.err_s("boom", errno=1)
     _service, app = _make_service(error_sources=[mod])
     for body_in, result in (({}, {}), ({"ResetErrors": False}, {"ResetErrors": "Invalid"})):
         res = run(app.dispatch_request(_make_request(app, "PUT", "/status", body_in)))
@@ -1221,7 +1220,7 @@ def test_status_put_answers_unknown_keys() -> None:
 
 def test_status_put_reset_errors_true_resets_every_module_counter_and_history() -> None:
     mod = _FakeModule("SGP40")
-    run(mod.pr.err_s("boom", errno=1))
+    mod.pr.err_s("boom", errno=1)
     _service, app = _make_service(error_sources=[mod])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert res.status_code == 200
@@ -1242,7 +1241,7 @@ def test_a_failing_source_reset_answers_failed_and_the_others_still_reset() -> N
     good_a, bad, good_b = _FakeModule("A"), _FakeModule("B"), _FakeModule("C")
     bad.pr = _RefusingLogger("B")
     for m in (good_a, bad, good_b):
-        run(m.pr.err_s("x", errno=1))
+        m.pr.err_s("x", errno=1)
     _service, app = _make_service(error_sources=[good_a, bad, good_b])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert _at(_json(res.body), "result") == {"ResetErrors": "Failed"}
@@ -1353,17 +1352,22 @@ def test_reset_errors_is_refused_and_clears_nothing_once_a_command_owns_the_rese
     assert seen == dict.fromkeys(seen, (refused, (1, 1, 1))), seen
 
 
-def test_reset_errors_is_refused_while_the_supervisors_escalation_writes_its_entry() -> None:
-    # A ResetErrors landing inside the task-budget escalation's own entry write is refused and clears nothing: the
+def test_reset_errors_is_refused_once_the_supervisors_escalation_logs_its_entry() -> None:
+    # A ResetErrors landing right after the task-budget escalation's own entry is refused and clears nothing: the
     # logs that explain the supervisor's reboot survive it (owner, 2026-10-13: "2 b").
     bench = _seeded_bench()
     answers: list[dict[str, object]] = []
     real_err_s = bench.svc.pr.err_s
 
-    async def err_s_meeting_a_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
+    spawned: list[asyncio.Task[None]] = []
+
+    async def reset() -> None:
+        answers.append(await bench.put("/status", {"ResetErrors": True}))
+
+    def err_s_meeting_a_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
         if errno == code("E", "TASK_BUDGET_REBOOT"):
-            answers.append(await bench.put("/status", {"ResetErrors": True}))
-        await real_err_s(*args, errno=errno, sep=sep, end=end)
+            spawned.append(asyncio.create_task(reset()))  # it runs at the escalation's next await
+        real_err_s(*args, errno=errno, sep=sep, end=end)
 
     bench.svc.pr.err_s = err_s_meeting_a_reset  # type: ignore[method-assign]
 
@@ -1424,7 +1428,7 @@ def test_reset_errors_follows_the_reset_decision_and_the_storage_pause() -> None
         assert mod.pr.reset_calls == calls + 1, result
     for flags in ((True, False), (False, True)):
         decided[0], paused[0] = flags
-        run(mod.pr.err_s("x", errno=1))
+        mod.pr.err_s("x", errno=1)
         assert _put_result(app, "/status", {"ResetErrors": True}) == {"ResetErrors": "Failed"}, flags
     assert (mod.pr.reset_calls, mod.pr.err_count) == (3, 2)
 
@@ -1863,7 +1867,7 @@ def test_d_status_errcount_includes_one_entry_per_module_and_per_configmanager()
 
 def test_d_counter_always_present_history_present_for_both_populated_and_zero_cases() -> None:
     quiet = _FakeModule("QUIET")
-    run(quiet.pr.err_s("boom", errno=3))
+    quiet.pr.err_s("boom", errno=3)
     noisy_free = _FakeModule("FREE")
     _service, app = _make_service(error_sources=[quiet, noisy_free])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
@@ -1897,7 +1901,7 @@ def test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller() -
     sources = service.get_error_sources()
     assert len(sources) == 1 and sources[0] is service
     # The entry it offers answers as every other error source does: its name and its own log.
-    run(service.pr.err_s("x", errno=1))
+    service.pr.err_s("x", errno=1)
     source = sources[0]
     assert source.name == "WEBSERVER", source.name
     assert run(source.get_error_counter()) == run(service.pr.get_log())
@@ -1906,7 +1910,7 @@ def test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller() -
 def test_d_reset_errors_calls_reset_error_counter_on_every_registered_module() -> None:
     mods = [_FakeModule(n) for n in ("SGP40", "BMP3XX", "NEOPIXEL", "DNS", "CFGMGR_SGP40")]
     for m in mods:
-        run(m.pr.err_s("x", errno=1))
+        m.pr.err_s("x", errno=1)
     _service, app = _make_service(error_sources=mods)
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     for m in mods:
@@ -1933,8 +1937,8 @@ def test_d_own_errcount_entry_reflects_real_logged_warnings_and_resets_with_the_
 def test_d_reset_on_one_module_never_affects_another() -> None:
     a = _FakeModule("A")
     b = _FakeModule("B")
-    run(a.pr.err_s("x", errno=1))
-    run(b.pr.err_s("y", errno=2))
+    a.pr.err_s("x", errno=1)
+    b.pr.err_s("y", errno=2)
     _service, app = _make_service(error_sources=[a, b])
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     # Both reset together by this global action (owner, 2026-09-26: global only, permanently) -
@@ -2070,7 +2074,7 @@ def test_f1_client_sends_nothing_ever_is_reclaimed_by_the_per_call_timeout() -> 
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_HEADROOM_S)
     writer = _ScriptedWriter()
     run_timed(service._serve(_HangingReader(), writer), timeout_s=_SERVE_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
     assert writer.close_called
 
 
@@ -2078,7 +2082,7 @@ def test_f1_client_opens_then_immediately_closes_before_any_bytes() -> None:
     service, _app = _make_service()
     writer = _ScriptedWriter()
     run_timed(service._serve(_ClosedReader(), writer), _RUN_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_f1_rapid_connect_disconnect_churn_keeps_counter_accurate() -> None:
@@ -2089,7 +2093,7 @@ def test_f1_rapid_connect_disconnect_churn_keeps_counter_accurate() -> None:
             await service._serve(_ClosedReader(), _ScriptedWriter())
 
     run_timed(churn(), timeout_s=_RUN_LONG_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_closed_and_logged() -> None:
@@ -2101,14 +2105,14 @@ def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_closed_and_logged(
         held_tasks = [
             asyncio.get_event_loop().create_task(service._serve(_HangingReader(), w)) for w in held_writers
         ]
-        assert await wait_for_value(lambda: service._open_conns.value, 2, _ADMIT_LIMIT_MS)
+        assert await wait_for_value(lambda: service._open_conns, 2, _ADMIT_LIMIT_MS)
 
         # A third, well-formed connection arrives while at the ceiling.
         extra_writer = _ScriptedWriter()
         extra_reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
         await service._serve(extra_reader, extra_writer)
         assert extra_writer.written == b""  # never accepted - no response ever written
-        assert await service._open_conns.get_value() == 2  # unchanged by the rejection
+        assert service._open_conns == 2  # unchanged by the rejection
         entry = (await service.get_error_counter())["WEBSERVER"]  # awaited: a nested run() here would segfault
         assert entry["ErrCount"] == 1, entry
         assert (entry["ErrNum"][-1], entry["ErrType"][-1]) == (code("W", "HTTP_REFUSED"), "W"), entry
@@ -2125,7 +2129,7 @@ def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() ->
 
     async def scenario() -> None:
         await service._serve(_HangingReader(), _ScriptedWriter())  # reclaimed by per-call timeout
-        assert await service._open_conns.get_value() == 0
+        assert service._open_conns == 0
         second_reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
         second_writer = _ScriptedWriter()
         await service._serve(second_reader, second_writer)
@@ -2163,7 +2167,7 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
                 await asyncio.sleep(_CLOSE_POLL_S)
             assert closing.wait_closed_called, "the connection never reached its close"
             assert closing.written.startswith(b"HTTP/1.") and b"\r\n\r\n" in closing.written, closing.written
-            held = await service._open_conns.get_value()
+            held = service._open_conns
             assert held == 1, f"the response is out but the close is not; the slot must still count, got {held}"
 
             refused = _ScriptedWriter()
@@ -2175,7 +2179,7 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
         finally:
             gate.set()
             await task
-        assert await service._open_conns.get_value() == 0
+        assert service._open_conns == 0
         admitted = _ScriptedWriter()
         await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), admitted)
         assert admitted.written.startswith(b"HTTP/1."), admitted.written
@@ -2204,7 +2208,7 @@ def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per
     clock = _VirtualClock()  # the lines' pacing moves this clock, so the cap fires on the third line on any host
     writer = _ScriptedWriter()
     _on_virtual_clock(clock, service._serve(_ScriptedReader(chunks, clock=clock), writer), outer_cap * _SERVE_BACKSTOP_CAP_MULT)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
     assert writer.written == b""  # reclaimed before a response could ever be produced
 
 
@@ -2213,7 +2217,7 @@ def test_f2_malformed_request_line_degrades_safely_via_microdots_own_blanket_cat
     reader = _ScriptedReader([(0, b"NOT A VALID REQUEST LINE AT ALL\r\n\r\n")])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), _RUN_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0  # no exception escaped _serve()
+    assert service._open_conns == 0  # no exception escaped _serve()
 
 
 class _BodyEnteredReader(_ScriptedReader):
@@ -2244,7 +2248,7 @@ def test_f2_content_length_larger_than_body_sent_then_silence_times_out() -> Non
         await served
 
     _on_virtual_clock(clock, scenario())
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
     assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
 
 
@@ -2254,7 +2258,7 @@ def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:
     reader = _ScriptedReader([(0, _request_bytes("PUT", "/networking", body))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=_SERVE_LONG_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
     assert b"413" in writer.written
 
 
@@ -2267,7 +2271,7 @@ def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blan
     reader = _ScriptedReader([(0, headers.encode() + b'{"Interval": 1}')], eof=True)  # then a clean EOF, not silence
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=_SERVE_LONG_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
     assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
 
 
@@ -2362,7 +2366,7 @@ def test_f2b_none_above_the_cap_every_body_is_buffered_and_applied() -> None:
         assert reader.max_body_read == size, (size, reader.body_reads)
         # Accepted means APPLIED: the real field next to the padding reached the module.
         assert mod.set_calls[-1]["Interval"] == 10 + n, (size, mod.set_calls[-1])
-        assert run(service._open_conns.get_value()) == 0
+        assert service._open_conns == 0
 
 
 def test_f2b_all_above_the_cap_are_rejected_without_the_body_ever_being_read() -> None:
@@ -2373,7 +2377,7 @@ def test_f2b_all_above_the_cap_are_rejected_without_the_body_ever_being_read() -
         # The whole point: not "read then discarded", but never read. body_reads stays empty
         # because Request.create() takes its `else` branch and hands over the stream instead.
         assert reader.body_reads == [], (size, reader.body_reads)
-        assert run(service._open_conns.get_value()) == 0
+        assert service._open_conns == 0
     assert mod.set_calls == []  # nothing was applied: every one was refused before any handler ran
 
 
@@ -2394,7 +2398,7 @@ def test_f2b_a_mixed_stream_handles_each_request_on_its_own_merits() -> None:
             assert b"413" in writer.written, (size, writer.written[:80])
             assert reader.body_reads == [], (size, reader.body_reads)
         assert len(mod.set_calls) == applied, (size, mod.set_calls)  # no rejected one slipped through
-        assert run(service._open_conns.get_value()) == 0
+        assert service._open_conns == 0
 
 
 def test_f2b_a_body_arriving_with_its_head_is_served_from_both_reads_and_applied() -> None:
@@ -2445,7 +2449,7 @@ def test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes() -> 
     assert sum(r.max_body_read for r in readers) == sum(s for s in sizes if s <= _BODY_CAP)
     assert all(r.max_body_read <= _BODY_CAP for r in readers)
     assert len(mod.set_calls) == sum(1 for s in sizes if s <= _BODY_CAP)  # every under-cap one applied
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
@@ -2453,7 +2457,7 @@ def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
     readers = _hammer_mixed_bodies(service, [_BODY_CAP * 6] * 40)
     assert all(r.body_reads == [] for r in readers)
     assert mod.set_calls == []
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 
@@ -2465,7 +2469,7 @@ def test_f5_normal_close_decrements_counter_exactly_once() -> None:
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), _RUN_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
     assert writer.close_called
 
 
@@ -2483,7 +2487,7 @@ def test_f5_double_close_paths_dont_raise_or_double_decrement() -> None:
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), _RUN_BOUND_S)  # our own finally + Microdot's own aclose() both run
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 # Connection lifecycle: concurrency and the connection ceiling
@@ -2495,7 +2499,7 @@ def test_f6_n_simultaneous_wedged_connections_are_each_independently_reclaimed()
     async def scenario() -> None:
         writers = [_ScriptedWriter() for _ in range(3)]
         await asyncio.gather(*(service._serve(_HangingReader(), w) for w in writers))
-        assert await service._open_conns.get_value() == 0
+        assert service._open_conns == 0
         for w in writers:
             assert w.close_called
 
@@ -2509,7 +2513,7 @@ def test_f6_no_cooldown_gap_between_a_reclaim_and_the_next_accept() -> None:
         start = 0
         for _ in range(5):  # repeated reclaim/accept cycles, no artificial grace period between them
             await service._serve(_HangingReader(), _ScriptedWriter())
-            assert await service._open_conns.get_value() == 0
+            assert service._open_conns == 0
             start += 1
         assert start == 5
 
@@ -2524,7 +2528,7 @@ def test_f6_pathological_repeated_rewedging_stays_bounded_never_escalates() -> N
             await service._serve(_HangingReader(), _ScriptedWriter())
         # Worst case bounded to "ceiling slots occupied for at most one outer-cap duration,
         # repeatedly" - never an unbounded backlog, never a _TASK_FAIL_MAX-style escalation.
-        assert await service._open_conns.get_value() == 0
+        assert service._open_conns == 0
 
     run_timed(scenario(), timeout_s=_REWEDGE_RUN_BOUND_S)
 
@@ -2533,7 +2537,7 @@ def test_f6_a_hanging_cleanup_close_path_still_lets_the_connection_task_end() ->
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_SHORT_OUTER_CAP_S)
     writer = _ScriptedWriter(hang_close=True)  # wait_closed() itself never returns
     run_timed(service._serve(_HangingReader(), writer), timeout_s=_SERVE_LONG_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0  # the connection task still ended
+    assert service._open_conns == 0  # the connection task still ended
 
 
 class _RaisingCloseWriter(_ScriptedWriter):
@@ -2608,7 +2612,7 @@ def test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot() -> No
     # itself raise MemoryError; the slot must be freed anyway, or every later connection is refused.
     service, _app = _make_service(max_connections=1)
 
-    async def out_of_heap(*_args: object, **_kwargs: object) -> None:
+    def out_of_heap(*_args: object, **_kwargs: object) -> None:
         raise MemoryError("simulated exhausted heap")
 
     service.pr.wrn_s = out_of_heap  # type: ignore[method-assign]  # deliberate monkeypatch
@@ -2617,7 +2621,7 @@ def test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot() -> No
             run_timed(service._serve(_ClosedReader(), _RaisingCloseWriter()), _RUN_BOUND_S)
         except MemoryError:
             pass  # escaping is acceptable here; keeping the slot is not
-        assert run(service._open_conns.get_value()) == 0
+        assert service._open_conns == 0
 
 
 class _HangingWriter(_ScriptedWriter):
@@ -2634,7 +2638,7 @@ def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
     entry = next(iter(run(service.get_error_counter()).values()))
     assert entry["ErrCount"] == 1, entry
     assert _newest_entry(service) == (code("W", "HTTP_CALL_TIMEOUT"), "W")
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_a_read_phase_per_call_timeout_logs_the_call_timeout_code() -> None:
@@ -2676,7 +2680,7 @@ def test_a_read_timeout_then_a_capped_400_write_logs_the_call_timeout_code_twice
     entry = run(service.get_error_counter())["WEBSERVER"]
     assert entry["ErrCount"] == 2, entry
     assert entry["ErrNum"][-1] == code("W", "HTTP_CALL_TIMEOUT") and entry["ErrNum"].count(code("W", "HTTP_CALL_TIMEOUT")) == 1, entry
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_every_bound_is_asked_in_whole_milliseconds() -> None:
@@ -2711,7 +2715,7 @@ def test_nothing_is_written_to_a_peer_whose_read_saw_a_reset() -> None:
     assert writer.close_called is True
     assert service.pr._err_count == 1, service.pr._err_count
     assert _newest_entry(service) == (code("W", "HTTP_PEER_RESET"), "W")
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream() -> None:
@@ -2736,7 +2740,7 @@ def test_an_eoferror_from_handle_request_is_an_unexpected_error() -> None:
 
     app.handle_request = _raise_eof  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
     assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
     assert _newest_entry(service) == (code("E", "UNEXPECTED"), "E")
 
@@ -2751,7 +2755,7 @@ def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
 
     app.handle_request = _raise_os  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request() -> None:
@@ -2762,7 +2766,7 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
 
     app.handle_request = _raise_boom  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
     log = run(service.get_error_counter())
     entry = next(iter(log.values()))
     assert entry["ErrNum"][-1] == code("E", "UNEXPECTED")  # err_s, not wrn_s - a genuinely unexpected bug
@@ -2789,7 +2793,7 @@ def test_a_fault_building_a_connection_proxy_is_logged_and_the_connection_closed
     assert "injected for the proxy" in recorder.text(), recorder.text()
     assert "Connection task failed:" in recorder.text(), recorder.text()  # the top's line, not the request arm's
     assert writer.close_called and writer.wait_closed_called
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_a_fault_in_the_refusal_trace_is_logged_and_the_refused_connection_closed() -> None:
@@ -2798,7 +2802,7 @@ def test_a_fault_in_the_refusal_trace_is_logged_and_the_refused_connection_close
     async def _faulting_uptime() -> int:  # the drop window's clock, the refusal trace's first read
         raise ValueError("injected for the refusal trace")
 
-    run(service._open_conns.set_value(1))  # a held connection fills the one slot
+    service._open_conns = 1  # a held connection fills the one slot
     service._uptime_s = _faulting_uptime
     writer = _ScriptedWriter()
     with record_prints(service.pr) as recorder:
@@ -2809,7 +2813,7 @@ def test_a_fault_in_the_refusal_trace_is_logged_and_the_refused_connection_close
     assert "injected for the refusal trace" in recorder.text(), recorder.text()
     assert "Connection task failed:" in recorder.text(), recorder.text()  # the top's line, not the request arm's
     assert writer.written == b"" and writer.close_called and writer.wait_closed_called
-    assert run(service._open_conns.get_value()) == 1  # the refused connection's count released, the holder's kept
+    assert service._open_conns == 1  # the refused connection's count released, the holder's kept
 
 
 # Connection lifecycle: adversarial and malformed input
@@ -2837,7 +2841,7 @@ def test_f7_extremely_long_url_path_is_handled_cleanly_not_a_crash() -> None:
     reader = _ScriptedReader([(0, _request_bytes("GET", long_path))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=_SERVE_LONG_BOUND_S)
-    assert run(service._open_conns.get_value()) == 0  # reclaimed or 404'd, never an escaped exception
+    assert service._open_conns == 0  # reclaimed or 404'd, never an escaped exception
 
 
 def test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_slots_reused() -> None:
@@ -2852,7 +2856,7 @@ def test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_sl
     async def scenario() -> None:
         writers = [_ScriptedWriter() for _ in range(3)]
         await asyncio.gather(*(service._serve(trickle_reader(), w) for w in writers))
-        assert await service._open_conns.get_value() == 0
+        assert service._open_conns == 0
         # A fresh, well-formed connection right after confirms slots are reusable, not permanently
         # poisoned by the Slowloris attempt.
         fresh_reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
@@ -2936,7 +2940,7 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
         else:
             reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
             await service._serve(reader, _ScriptedWriter())
-        assert await service._open_conns.get_value() == 0
+        assert service._open_conns == 0
 
     def free_after(cycles: range) -> int:
         for i in cycles:
@@ -3553,23 +3557,6 @@ def test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_str
     assert log["WEBSERVER"]["ErrType"][log["WEBSERVER"]["ErrNum"].index(code("E", "CALLBACK"))] == "E"
 
 
-def test_a_failing_status_source_and_error_log_never_hold_the_status_lock_across_their_entries() -> None:
-    # Their entries' chunk writes held: each build ends with its entries in RAM, the lock free for the next
-    # /status reader within rounds (SPECIFICATION.md C.8).
-    service, app = _make_service(status_sources={"networking": _raising_source}, error_sources=[_RaisingErrorCounterModule("BMP3XX")])
-    service.pr, gate = held_logger("WEBSERVER")
-
-    async def scenario() -> "tuple[bool, int]":
-        build = asyncio.create_task(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-        ended = await until(build.done)
-        count = service.pr._err_count
-        gate.set()
-        await build
-        return ended and not service._status_lock.locked(), count
-
-    assert run(scenario()) == (True, 2)
-
-
 def test_h2_stream_both_marker_sites_send_the_one_spelling() -> None:
     # Guard: a failed status source and a failed error log send the same compact text, built from asy_base_classes.UNAVAILABLE.
     _service, app = _make_service(status_sources={"networking": _raising_source}, error_sources=[_RaisingErrorCounterModule("BMP3XX")], history_length=0)
@@ -3611,7 +3598,7 @@ def test_h2_stream_own_webserver_errcount_source_failure_yields_an_error_marker(
     async def _raise() -> "ErrorLog":
         raise RuntimeError("simulated own-log read failure")
 
-    service.pr.get_log = _raise  # type: ignore[assignment]
+    service.pr.get_log = _raise  # type: ignore[method-assign]
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = _obj(_at(_json(status_body(res)), "errcount"))
     assert errcount["WEBSERVER"] == {"error": "unavailable"}
@@ -4077,7 +4064,7 @@ def _seeded_bench() -> "_CommandBench":
     # A set-up bench whose reader log holds one entry and whose webserver holds one entry and one dropped connection.
     bench = _CommandBench()
     run(bench.setup())
-    run(bench.reader.pr.err_s("x", errno=code("E", "CALLBACK")))
+    bench.reader.pr.err_s("x", errno=code("E", "CALLBACK"))
     run(bench.service._note_drop(code("W", "HTTP_REFUSED"), "seeded"))
     return bench
 
@@ -4201,7 +4188,7 @@ def test_an_explicit_backlog_is_honoured_when_it_covers_the_ceiling() -> None:
 
 
 def test_a_backlog_below_the_ceiling_is_clamped_up_never_left_short() -> None:
-    # Clamped rather than raised, matching LockedCounter's own out-of-range convention. buildgen
+    # Clamped rather than raised. buildgen
     # rejects the same mistake in config, where it can be named against the device that made it.
     service, _app = _make_service(max_connections=6, backlog=2)
     assert service._backlog == 6
@@ -4286,7 +4273,7 @@ def test_serve_never_swallows_its_own_tasks_cancellation_and_still_frees_the_slo
 
     assert run_timed(scenario(), _RUN_BOUND_S) is True, "the cancellation was swallowed"
     assert writer.close_called is True
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_a_body_that_never_arrives_is_logged_as_a_read_phase_timeout() -> None:
@@ -4297,7 +4284,7 @@ def test_a_body_that_never_arrives_is_logged_as_a_read_phase_timeout() -> None:
     run_timed(service._serve(_ScriptedReader([(0.0, request)]), _ScriptedWriter()), timeout_s=_SERVE_BOUND_S)
     entry = next(iter(run(service.get_error_counter()).values()))
     assert entry["ErrCount"] == 1, entry
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 class _ResetDuringBodyReader(_ScriptedReader):
@@ -4314,7 +4301,7 @@ def test_nothing_is_written_to_a_peer_that_reset_while_its_body_was_read() -> No
     assert writer.written == b"", writer.written
     assert service.pr._err_count == 1, service.pr._err_count
     assert _newest_entry(service) == (code("W", "HTTP_PEER_RESET"), "W")
-    assert run(service._open_conns.get_value()) == 0
+    assert service._open_conns == 0
 
 
 def test_a_readable_field_named_error_is_never_taken_for_the_unavailable_marker() -> None:

@@ -369,7 +369,7 @@ _ROWS: "dict[str, Row]" = {
     "instance.uart-timeout-max": Row("generate", f"[{_DEVICE}/uart_link_init] ", doc=_paired(), edits=(("asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS = const(1000)", "_DEFAULT_TIMEOUT_MS = const(100000000)"),)),
     "instance.requires-without-bus": Row(
         "generate", f"[{_DEVICE}/neopixel] ",
-        edits=(("asy_neopixel_driver.py", "# @wiring fram_target FRAMManager log optional kwarg", "# @requires bus.timeout>=1\n# @wiring fram_target FRAMManager log optional kwarg"),),
+        edits=(("asy_neopixel_driver.py", '_NAME = const("NEOPIXEL")', '# @requires bus.timeout>=1\n_NAME = const("NEOPIXEL")'),),
     ),
     "instance.no-buildspec-row": Row(
         "generate", f"[{_DEVICE}/bogus2] ", doc=_doc_extra_instance({"driver": "bogus2", "name_ext": ""}),
@@ -411,6 +411,10 @@ _ROWS: "dict[str, Row]" = {
     "wiring.default-attr-missing": Row(
         "generate", f"[{_DEVICE}/notification.signal_sink] ", doc=_set("@notification", "wiring", "signal_sink", {"default": True}),
         copy_src=True, patch=_signal_sink_default_without_request_signal,
+    ),
+    "wiring.warn-collision": Row(
+        "generate", f"[{_DEVICE}/notification] ",
+        edits=(("asy_notification_service.py", '_VAL_AUTO_ON = const((("AutoOn", "bool",', '_VAL_AUTO_ON = const((("WarnCO2", "bool",'),),
     ),
     "wiring.warn-unknown": Row("generate", f"[{_DEVICE}/notification.warn_radon] ", doc=_set("@notification", "wiring", "warn_radon", {"source": "scd30", "field": "CO2"})),
     "wiring.field-unknown": Row("generate", f"[{_DEVICE}/scd30.led_target] ", doc=_set("@scd30", "wiring", "led_target", "neopixel")),

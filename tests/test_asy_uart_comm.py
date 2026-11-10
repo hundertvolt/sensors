@@ -40,8 +40,7 @@ from rp2 import DMA
 import asy_base_classes
 import asy_print_log
 import asy_uart_comm
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
-from asy_crc_checks import CRC16
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_framing_codecs import FramingCOBS
 from asy_print_log import LogConfig, PrintLogHistoryStore, fatal_reported, make_logger
 from asy_uart_comm import (
@@ -53,7 +52,8 @@ from asy_uart_comm import (
     TransferLimits,
     UARTComm,
 )
-from asy_uart_driver import UART
+from asy_uart_driver import UART, PieceBuffer
+from crc_checks import CRC16
 
 try:
     from typing import TYPE_CHECKING
@@ -885,9 +885,8 @@ def _second_set_while_the_fram_bus_is_held(set_cb: "CommCallback") -> "tuple[boo
         held, released = asyncio.Event(), asyncio.Event()
 
         async def hold_the_bus() -> None:
-            async with manager.fram:
-                held.set()
-                await released.wait()
+            held.set()
+            await released.wait()
 
         holder = asyncio.create_task(hold_the_bus())
         await held.wait()

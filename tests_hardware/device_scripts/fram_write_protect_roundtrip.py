@@ -5,8 +5,8 @@ FRAM entry). The finally clears protection, then zeroes the chunk, so neither ou
 import asyncio
 
 import asy_spi_driver
-from asy_crc_checks import CRC8
 from asy_fram_manager import FRAMManager
+from crc_checks import CRC8
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -31,20 +31,20 @@ PATTERN_B = bytes((i * 5 + 2) % 256 for i in range(CHUNK_SIZE))
 
 
 async def _after_clearing(fram: FRAMManager, chunk: "FRAMChunk") -> "str | None":
-    if not await fram.fram.set_write_protected(value=False):
+    if not fram.fram.set_write_protected(value=False):
         return "set_write_protected(False) failed against the real chip"
-    if await fram.fram.get_write_protected():
+    if fram.fram.get_write_protected():
         return "get_write_protected() still reports True after set_write_protected(False)"
 
     # Verified only after clearing protection, for the reason asserted in _while_protected().
     # Clearing protection cannot alter stored bytes, so this still proves the write was blocked.
-    readback = await chunk.read()
+    readback = chunk.read()
     fact("data_survived", readback is not None and bytes(readback) == PATTERN_A)
     if readback is None or bytes(readback) != PATTERN_A:
         return f"data changed despite write protection having been active - the chip itself did not refuse the guard-bypassed write: read {None if readback is None else bytes(readback).hex()}"
-    if not await chunk.write(PATTERN_B):
+    if not chunk.write(PATTERN_B):
         return "write failed after write protection was cleared again"
-    readback = await chunk.read()
+    readback = chunk.read()
     if readback is None or bytes(readback) != PATTERN_B:
         return f"write after un-protecting did not take effect: read {None if readback is None else bytes(readback).hex()}"
     return None
@@ -60,7 +60,7 @@ async def _chip_itself_refuses(fram: FRAMManager, chunk: "FRAMChunk") -> None:
     # bytes must still be PATTERN_A.
     fram.fram._wp = False  # deliberately desynced from the chip, see above
     try:
-        await chunk.write(PATTERN_B)
+        chunk.write(PATTERN_B)
     finally:
         fram.fram._wp = True  # back in sync with the still-protected chip
 
@@ -82,9 +82,9 @@ async def _main() -> None:
     # a stuck-protected chip would silently break every other FRAM-owning module's writes.
     reason: str | None = "the run ended before its phases"
     try:
-        if not await fram.fram.set_write_protected(value=False):  # a known starting state, whatever was set before
+        if not fram.fram.set_write_protected(value=False):  # a known starting state, whatever was set before
             reason = "could not clear write protection to establish a known starting state"
-        elif not await chunk.write(PATTERN_A):
+        elif not chunk.write(PATTERN_A):
             reason = "baseline write (unprotected) failed - the real chip is not writable at all"
         else:
             reason = await _while_protected(fram, chunk)
@@ -92,8 +92,8 @@ async def _main() -> None:
                 await _chip_itself_refuses(fram, chunk)
                 reason = await _after_clearing(fram, chunk)
     finally:
-        fact("left_protected", not await fram.fram.set_write_protected(value=False))
-        fact("cleared_last", await chunk.clear())
+        fact("left_protected", not fram.fram.set_write_protected(value=False))
+        fact("cleared_last", chunk.clear())
     fact("failure", reason)
     done()
 
@@ -101,13 +101,13 @@ async def _main() -> None:
 # Each phase returns a failure reason, or None on success - keeps the phases individually readable
 # and _main() a plain sequence, rather than one function with a dozen early prints.
 async def _while_protected(fram: FRAMManager, chunk: "FRAMChunk") -> "str | None":
-    if not await fram.fram.set_write_protected(value=True):
+    if not fram.fram.set_write_protected(value=True):
         return "set_write_protected(True) failed against the real chip"
-    if not await fram.fram.get_write_protected():
+    if not fram.fram.get_write_protected():
         return "get_write_protected() reports False right after set_write_protected(True)"
 
     # A real write while protected must be rejected (FRAM_SPI._write()'s own get_write_protected() gate).
-    blocked_write = not await chunk.write(PATTERN_B)
+    blocked_write = not chunk.write(PATTERN_B)
     fact("blocked_write", blocked_write)
     if not blocked_write:
         return "chunk.write() succeeded while the real chip was write-protected"
@@ -115,7 +115,7 @@ async def _while_protected(fram: FRAMManager, chunk: "FRAMChunk") -> "str | None
     # And so must a read: _read_chunk() writes a transient busy marker before reading, so the same
     # gate stops it. Intended behavior, asserted here rather than only noted - the mock and twin
     # tiers assert the identical pair (SPECIFICATION.md Part A.4's FRAM entry).
-    read_back = await chunk.read()
+    read_back = chunk.read()
     fact("blocked_read", read_back is None)
     if read_back is not None:
         return f"chunk.read() returned data while the real chip was write-protected: {bytes(read_back).hex()}"

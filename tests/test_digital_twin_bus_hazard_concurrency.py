@@ -36,10 +36,10 @@ from _twin_devices import bus_construction, bus_keywords, devices_with_shared_bu
 import asy_i2c_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_bmp3xx_driver import BMP3XX_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
-from asy_crc_checks import CRC8, CRC32  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_scd30_driver import SCD30_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_sgp40_driver import SGP40_I2C  # noqa: E402 - imported after the prewarm and the UDP shim
+from crc_checks import CRC8, CRC32  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
     from typing import TYPE_CHECKING, cast
@@ -88,8 +88,6 @@ _HOLD_SCD30_CYCLES = 3  # whole SCD30 cycles of real bus load the driven 60 s re
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
 _POLL_MS = int(_POLL_S * 1000)  # the same look on a driven clock
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
-# A 12-byte FRAM log entry's rounds: its CRC's per-byte yields, two per own block, two per block operation queued ahead.
-_ENTRY_ROUNDS = 24
 _I2C_DEFAULT_TIMEOUT_US: int = src_int("src/asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")
 _STA_RETRY_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
@@ -99,7 +97,7 @@ _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # smaller analogue of tests/_bus_hazard_catalog.py's mock-tier adapters (Part C.8); a new driver needs an entry first.
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 # The per-cycle register read a driver makes on its shared bus, each pointer write followed at once by its read.
-_PER_CYCLE_REGISTER = {"bmp3xx": 0x04, "isl29125": 0x09}  # each chip's data burst
+_PER_CYCLE_REGISTER = {"bmp3xx": 0x03, "isl29125": 0x09}  # each chip's data burst (BMP3XX: from STATUS)
 # Every (device, bus, occupants) whose plan puts two or more chips on one bus: the shared-bus cases run on each.
 _SHARED = devices_with_shared_bus()
 # FRAM sits alone on its SPI bus on every device; its same-device hazards run once per distinct FRAM wiring (its SPI
@@ -311,7 +309,7 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", watchdog
         # sensor error-log/backup writes onto it.
         if "fram" in plan["instances"]:
             assert module.fram.fram.initialized is True, f"{device}: FRAM dropped out of the initialized state during concurrent bus load"
-            assert await module.fram.fram.verify_present(), f"{device}: FRAM did not respond to a device-ID re-probe after concurrent bus load"
+            assert module.fram.fram._check_device_id(), f"{device}: FRAM did not respond to a device-ID re-probe after concurrent bus load"
         # The bounded bus log kept the whole window, so a missing entry below is a missing transfer, never an evicted one.
         assert shared_bus_log.dropped == 0, f"{device}: the bus log dropped {shared_bus_log.dropped} entries - the window outran it"
         log = list(shared_bus_log)
@@ -499,22 +497,19 @@ def test_fram_recovers_after_a_write_its_chip_never_enabled() -> None:
         assert fram_spi.initialized is True
 
         chip.drop_next_wren = _DROPPED_WRENS
-        async with fram_spi:
-            ok = await fram_spi.set_values(b"\x01\x02\x03\x04", addr_start=0x100)
+        ok = fram_spi.set_values(b"\x01\x02\x03\x04", addr_start=0x100)
         assert ok is False, "a write whose WREN never latched reported success"
         assert bytes(chip.memory[0x100:0x104]) != b"\x01\x02\x03\x04", "a write whose WREN never latched reached the array"
         chip.drop_next_wren = 0
 
-        # Recovery: the chip was never disturbed, so verify_present() succeeds cleanly. Not wrapped in `async with
-        # fram_spi:` since verify_present() self-acquires that (non-reentrant) lock internally.
-        assert await fram_spi.verify_present(), "verify_present() failed to recover after a write its chip never enabled"
+        # Recovery: the chip was left undisturbed, so it identifies cleanly.
+        assert fram_spi._check_device_id(), "the chip did not identify again after a write it never enabled"
 
         buf = bytearray(4)
-        async with fram_spi:
-            ok = await fram_spi.set_values(b"\x01\x02\x03\x04", addr_start=0x100)
-            assert ok, "set_values() failed on a clean retry after recovery"
-            ok = await fram_spi.get_values(buf, addr_start=0x100)
-            assert ok and bytes(buf) == b"\x01\x02\x03\x04", f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, expected b'\\x01\\x02\\x03\\x04'"
+        ok = fram_spi.set_values(b"\x01\x02\x03\x04", addr_start=0x100)
+        assert ok, "set_values() failed on a clean retry after recovery"
+        ok = fram_spi.get_values(buf, addr_start=0x100)
+        assert ok and bytes(buf) == b"\x01\x02\x03\x04", f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, expected b'\\x01\\x02\\x03\\x04'"
 
     _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
 
@@ -530,26 +525,23 @@ def test_fram_recovers_after_an_injected_spi_read_fault() -> None:
 
         # Seed real, known bytes first, through a clean round trip - so a "recovered" read below
         # can be checked against real prior content, not just "returned without raising".
-        async with fram_spi:
-            ok = await fram_spi.set_values(_SEED, addr_start=0x200)
-            assert ok, "seed write before the fault-injection scenario failed"
+        ok = fram_spi.set_values(_SEED, addr_start=0x200)
+        assert ok, "seed write before the fault-injection scenario failed"
 
         chip.fault.inject_fault("readinto", OSError, errno.EIO)
         buf = bytearray(len(_SEED))  # a DMA-length read: rp2 raises on no shorter one
         raised: BaseException | None = None
-        async with fram_spi:
-            try:
-                await fram_spi.get_values(buf, addr_start=0x200)
-            except OSError as e:
-                raised = e
+        try:
+            fram_spi.get_values(buf, addr_start=0x200)
+        except OSError as e:
+            raised = e
         assert raised is not None, "expected the injected SPI fault to propagate as a raised exception from get_values()"
 
         # Recovery: the fault raises before FRAMChip.readinto() touches any chip state, so the chip was never disturbed.
-        assert await fram_spi.verify_present(), "verify_present() failed to recover after one injected SPI read fault"
+        assert fram_spi._check_device_id(), "the chip did not identify again after one injected SPI read fault"
 
-        async with fram_spi:
-            ok = await fram_spi.get_values(buf, addr_start=0x200)
-            assert ok and bytes(buf) == _SEED, f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, not the pre-fault seeded content"
+        ok = fram_spi.get_values(buf, addr_start=0x200)
+        assert ok and bytes(buf) == _SEED, f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, not the pre-fault seeded content"
 
     _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
 
@@ -569,49 +561,58 @@ def test_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
         chunk = manager.get_chunk(40, crc=CRC8(), owner="HAZARD_OVERRUN")  # 41 B with the CRC byte - over the 32 B DMA threshold
         assert chunk is not None
         payload = bytes(range(40))
-        assert await chunk.write(payload)
+        assert chunk.write(payload)
 
         bus.rx_overrun_remaining = 1  # one transient glitch, then the bus recovers
-        assert await chunk.read() == bytearray(payload), "a single RX overrun should be absorbed by the block-1 copy"
+        assert chunk.read() == bytearray(payload), "a single RX overrun should be absorbed by the block-1 copy"
         assert bus.rx_overrun_remaining == 0, "the injected overrun never actually fired"
 
         bus.rx_overrun = True  # persistent: both copies unreadable
-        assert await chunk.read() is None, "an unrecoverable overrun must degrade, not propagate"
+        assert chunk.read() is None, "an unrecoverable overrun must degrade, not propagate"
         bus.rx_overrun = False
-        assert await chunk.read() is None, "an interrupted read deliberately keeps the chunk unreadable until rewritten"
-        assert await chunk.write(payload), "a write is what clears the stuck BUSY status bytes"
-        assert await chunk.read() == bytearray(payload)
+        assert chunk.read() is None, "an interrupted read deliberately keeps the chunk unreadable until rewritten"
+        assert chunk.write(payload), "a write is what clears the stuck BUSY status bytes"
+        assert chunk.read() == bytearray(payload)
 
     _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
 
 
-def test_a_system_entry_beside_a_backup_write_and_verify_waits_for_no_crc() -> None:
-    # The supervisor's SYSTEM logger on the booted graph, its entry started while a 264-byte CRC32 chunk (the SGP40
-    # backup's shape) writes and verifies: it waits for no CRC, so it lands within its own rounds.
+def test_a_system_entry_and_a_backup_write_from_two_tasks_never_interleave_their_commands() -> None:
+    # The supervisor's SYSTEM logger on the booted graph beside a 264-byte CRC32 chunk (the SGP40 backup's shape) written
+    # and verified from another task: neither suspends inside its FRAM operation, so each is one whole run of CS cycles.
     async def scenario(device: str) -> None:
         module, _watchdog = await _boot(device)
         manager = module.fram
         backup = manager.get_chunk(264, crc=CRC32(), verify=1, owner="HAZARD_BACKUP")
         assert backup is not None
-        rounds = [0]
+        owners: list[str] = []
+        names: dict[int, str] = {}
+        spidev = manager.fram._spidev
+        begin = spidev.session_begin
 
-        async def probe() -> None:
-            while True:
-                rounds[0] += 1
-                await asyncio.sleep(0)
+        def tagged() -> None:
+            owners.append(names.get(id(asyncio.current_task()), "other"))
+            begin()
 
-        counter = asyncio.get_event_loop().create_task(probe())
-        backing_up = asyncio.get_event_loop().create_task(backup.write(bytes(264)))
+        async def backing_up() -> bool:
+            names[id(asyncio.current_task())] = "backup"
+            await asyncio.sleep(0)
+            return bool(backup.write(bytes(264)))
+
+        async def logging() -> None:
+            names[id(asyncio.current_task())] = "entry"
+            await asyncio.sleep(0)
+            module.sysfunct.pr.err_s("beside the backup", errno=code("E", "TEST_SEED_A"))
+
+        spidev.session_begin = tagged
         try:
-            while not manager.fram.session_lock.locked():
-                await asyncio.sleep(0)
-            start = rounds[0]
-            await module.sysfunct.pr.err_s("beside the backup", errno=code("E", "TEST_SEED_A"))
-            taken = rounds[0] - start
-            assert await backing_up is True
+            writing = asyncio.get_event_loop().create_task(backing_up())
+            await asyncio.get_event_loop().create_task(logging())
+            assert await writing is True
         finally:
-            await cancel(counter)
-        assert taken <= _ENTRY_ROUNDS, f"{device}: the SYSTEM entry took {taken} rounds beside the backup"
+            spidev.session_begin = begin
+        runs = [owner for i, owner in enumerate(owners) if i == 0 or owners[i - 1] != owner]
+        assert runs.count("backup") == 1 and runs.count("entry") == 1, f"{device}: {runs}"
 
     _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
 
@@ -652,7 +653,7 @@ def test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_dis
                     data = await getattr(module, _key(attachment)).get_data()
                     assert getattr(data, field) is not None, f"{device}: {attachment['driver']} never produced real data under concurrent bus load + a real wifi disconnect"
             assert module.fram.fram.initialized is True
-            assert await module.fram.fram.verify_present()
+            assert module.fram.fram._check_device_id()
             assert module.conn._wlan.isconnected() is True, "WiFi never recovered from the real established-connection disconnect within the real 60s retry window"
         finally:
             await cancel(flap_task)
@@ -672,16 +673,16 @@ def test_storage_pause_gates_the_real_twin_chip() -> None:
         chunk = manager.get_chunk(16, crc=CRC8(), owner="HAZARD_PAUSE")
         assert chunk is not None
         first, second = bytes(range(16)), bytes(range(100, 116))
-        assert await chunk.write(first)
+        assert chunk.write(first)
 
         manager.set_pause(value=True)
-        assert await chunk.write(second) is False
-        assert await chunk.read() is None
+        assert chunk.write(second) is False
+        assert chunk.read() is None
 
         manager.set_pause(value=False)
-        assert bytes(await chunk.read() or b"") == first, "the refused write still reached the twin chip"
-        assert await chunk.write(second) is True
-        assert bytes(await chunk.read() or b"") == second
+        assert bytes(chunk.read() or b"") == first, "the refused write still reached the twin chip"
+        assert chunk.write(second) is True
+        assert bytes(chunk.read() or b"") == second
 
     _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
 
@@ -697,18 +698,17 @@ def test_a_timed_storage_pause_ends_by_itself_on_the_next_uptime_pass() -> None:
             assert manager.get_pause() is True, "mempause left the storage running"
             assert sysfunct.pause_permanent_storage(0) is True and manager.get_pause() is False
             status = sysfunct.start_asy_status()
-            sysfunct.start_uptime_timer()
             try:
                 assert sysfunct.pause_permanent_storage(2) is True and manager.get_pause() is True
                 before = chip.write_count
-                await _driven(clock, sysfunct.pr.err_s("dropped while paused", errno=code("E", "TEST_SEED_A")))
+                sysfunct.pr.err_s("dropped while paused", errno=code("E", "TEST_SEED_A"))
                 assert chip.write_count == before, "a logger write reached the chip during the pause"
                 waited = 0.0
                 while manager.get_pause():
                     assert waited < _COMMAND_WAIT_S, "the timed pause never ended by itself"
                     await clock.elapse(_POLL_MS)
                     waited += _POLL_S
-                await _driven(clock, sysfunct.pr.err_s("lands after the pause", errno=code("E", "TEST_SEED_B")))
+                sysfunct.pr.err_s("lands after the pause", errno=code("E", "TEST_SEED_B"))
                 assert chip.write_count > before, "the write after the pause did not land"
             finally:
                 await cancel(status)
@@ -729,15 +729,15 @@ def test_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
         chunk = manager.get_chunk(16, crc=CRC8(), owner="HAZARD_WP")
         assert chunk is not None
         payload = bytes(range(16))
-        assert await chunk.write(payload)
+        assert chunk.write(payload)
 
-        assert await manager.fram.set_write_protected(value=True) is True
-        assert await manager.fram.get_write_protected() is True
-        assert await chunk.write(bytes(range(100, 116))) is False
-        assert await chunk.read() is None, "a write-protected chunk read succeeded - the busy-marker write cannot have happened"
+        assert manager.fram.set_write_protected(value=True) is True
+        assert manager.fram.get_write_protected() is True
+        assert chunk.write(bytes(range(100, 116))) is False
+        assert chunk.read() is None, "a write-protected chunk read succeeded - the busy-marker write cannot have happened"
 
-        assert await manager.fram.set_write_protected(value=False) is True
-        assert bytes(await chunk.read() or b"") == payload, "the refusal damaged the stored bytes - it is supposed to be an access gate only"
+        assert manager.fram.set_write_protected(value=False) is True
+        assert bytes(chunk.read() or b"") == payload, "the refusal damaged the stored bytes - it is supposed to be an access gate only"
 
     _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
 
@@ -754,15 +754,15 @@ def test_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_surviv
         chunk = manager.get_chunk(40, crc=CRC8(), owner="HAZARD_PAUSE_FIRST")  # over the 32 B DMA threshold, so an overrun is reachable
         assert chunk is not None
         payload = bytes(range(40))
-        assert await chunk.write(payload)
+        assert chunk.write(payload)
 
         bus.rx_overrun_remaining = 1
         manager.set_pause(value=True)
-        assert await chunk.read() is None  # refused by the gate
+        assert chunk.read() is None  # refused by the gate
         assert bus.rx_overrun_remaining == 1, "the paused read reached the bus and consumed the injected overrun"
 
         manager.set_pause(value=False)
-        assert await chunk.read() == bytearray(payload)  # absorbed by the block-1 copy
+        assert chunk.read() == bytearray(payload)  # absorbed by the block-1 copy
         assert bus.rx_overrun_remaining == 0, "the overrun never fired once the bus was genuinely reachable"
 
     _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
@@ -779,7 +779,7 @@ def test_storage_pause_does_not_survive_a_simulated_reboot() -> None:
         chunk = module.fram.get_chunk(16, crc=CRC8(), owner="HAZARD_REBOOT")
         assert chunk is not None
         payload = bytes(range(16))
-        assert await chunk.write(payload)
+        assert chunk.write(payload)
         module.fram.set_pause(value=True)
         assert module.fram.get_pause() is True
         machine.flush_fram()
@@ -788,7 +788,7 @@ def test_storage_pause_does_not_survive_a_simulated_reboot() -> None:
         assert module.fram.get_pause() is False, "the pause flag survived a reboot - it is supposed to be RAM-only"
         chunk2 = module.fram.get_chunk(16, crc=CRC8(), owner="HAZARD_REBOOT")  # the same owner: its seed must match
         assert chunk2 is not None
-        assert bytes(await chunk2.read() or b"") == payload, "the chunk bytes should survive the same reboot the pause flag does not"
+        assert bytes(chunk2.read() or b"") == payload, "the chunk bytes should survive the same reboot the pause flag does not"
 
     _on_each(_FRAM_DEVICES, scenario, _STATE_RUN_BOUND_S)
 
@@ -807,16 +807,16 @@ def test_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot() -> N
     async def scenario(device: str) -> None:
         cfg_path = _scratch.dir()
         machine.configure_fram_state_path(cfg_path + "fram_state.json")
-        assert await (await chunk_after_boot(device, cfg_path, "HAZARD_OWNER_A")).write(payload)
+        assert (await chunk_after_boot(device, cfg_path, "HAZARD_OWNER_A")).write(payload)
         machine.flush_fram()
 
         foreign = await chunk_after_boot(device, cfg_path, "HAZARD_OWNER_B")  # same address, another owner
-        assert await foreign.read_into(foreign.get_buffer()) is False, "another owner's chunk did not read blank or invalid"
-        assert await foreign.read() is None
+        assert foreign.read_into(foreign.get_buffer()) is False, "another owner's chunk did not read blank or invalid"
+        assert foreign.read() is None
         machine.flush_fram()
 
         own = await chunk_after_boot(device, cfg_path, "HAZARD_OWNER_A")  # control: the bytes were never damaged
-        assert bytes(await own.read() or b"") == payload, "the owner's own history did not survive the foreign read"
+        assert bytes(own.read() or b"") == payload, "the owner's own history did not survive the foreign read"
 
     _on_each(_FRAM_DEVICES, scenario, _STATE_RUN_BOUND_S)
 
@@ -1159,8 +1159,8 @@ async def _wait_established_then_flap_once(conn: "WifiService", chip: "SCD30Chip
 
 
 def test_the_erase_racing_a_logger_write_never_tears_a_chunk() -> None:
-    # A logger write in flight when the erase starts completes; one after it is refused; the erase then zeroes the
-    # whole chip, every unit inside it (no address rollover), and no ring reads back torn.
+    # A logger write just before the erase lands whole (no write is ever in flight); one after it is refused; the erase
+    # then zeroes the whole chip, every unit inside it (no address rollover), and no ring reads back torn.
     async def scenario(device: str) -> None:
         with DrivenTime(*_driven_modules(device), sleeps=True) as clock:  # the boot's waits, released before the race
             module, _watchdog = await _driven(clock, _boot(device, port=_ports.next()))
@@ -1169,14 +1169,13 @@ def test_the_erase_racing_a_logger_write_never_tears_a_chunk() -> None:
             _keep_evidence(chip, "fram_before_erase.bin")
             before = chip.write_count
             units = {addr: chip.writes_at.get(addr, 0) for addr in range(0, chip.size, _ERASE_UNIT)}
-            racing = asyncio.get_event_loop().create_task(sysfunct.pr.err_s("in flight at the erase", errno=code("E", "TEST_SEED_A")))
             try:
+                sysfunct.pr.err_s("just before the erase", errno=code("E", "TEST_SEED_A"))
                 assert await sysfunct.erase_fram() is True
-                await racing
-                assert chip.write_count > before, "the logger write in flight at the erase never landed"
+                assert chip.write_count > before, "the logger write before the erase never landed"
                 await _armed(sysfunct)
                 erased = chip.write_count
-                await sysfunct.pr.err_s("after the erase", errno=code("E", "TEST_SEED_B"))
+                sysfunct.pr.err_s("after the erase", errno=code("E", "TEST_SEED_B"))
                 assert chip.write_count == erased, "a logger write after the erase reached the chip"
             finally:
                 await _tear_down_at_the_armed_reset(sysfunct, supervisor)

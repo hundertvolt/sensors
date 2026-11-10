@@ -1348,3 +1348,8 @@ for such opportunities.)
 ## 2026-11-09 21:57:36 UTC - audit-added timeouts and give-ups as a pattern
 "So the timeout and give up of the LED was just one more example of how overkill grew into the audit, although smart simplicity was the target. Yet another pattern example, be sure to find all of such occurrences."
 (The LED's 120 s give-up is one instance of a pattern: overkill the audit added although smart simplicity was the goal. Find every occurrence of it.)
+
+## 2026-11-09 22:27:31 UTC - the sweep's scope: everything added without consent that kept growing
+"Not "this" specific pattern, rather "similar patterns of what happened in the audit and was added without my consent and kept growing" 
+Not to forget - don't drop real features and don't introduce or reintroduce gaps. Lean, functional, no losses, no gaps, efficient by smart design appropriate for limited devices like the rp2"
+(The sweep is not only about timeouts: find every pattern where the audit added something without the owner's consent and it kept growing. Real features are never dropped, no gap is opened or reopened; the result is lean, functional, lossless, gap-free and efficient by smart design for the rp2.)

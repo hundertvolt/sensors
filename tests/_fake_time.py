@@ -357,7 +357,7 @@ async def _wake_after(wake: _Wake, ms: int) -> None:
     wake.fire()
 
 
-async def tick(flag: "asyncio.ThreadSafeFlag", times: int = 1, clock: "DrivenTime | None" = None, step_ms: int = 1000) -> None:
+async def tick(flag: "asyncio.ThreadSafeFlag | ManualTick", times: int = 1, clock: "DrivenTime | None" = None, step_ms: int = 1000) -> None:
     # One wake-up of a loop waiting on `flag` per time, a given clock advanced by `step_ms` before each; the second
     # yield lets the woken iteration's own awaits settle before the caller checks it.
     for _ in range(times):
@@ -366,3 +366,17 @@ async def tick(flag: "asyncio.ThreadSafeFlag", times: int = 1, clock: "DrivenTim
         flag.set()
         await asyncio.sleep(0)
         await asyncio.sleep(0)
+
+
+class ManualTick(asy_base_classes.TickGrid):
+    # A TickGrid the test steps by hand: each set() releases one wait(), and several sets before a wait release it
+    # once (a ThreadSafeFlag), so a loop's passes run where the test puts them.
+    def __init__(self) -> None:
+        super().__init__(1000)
+        self._flag = asyncio.ThreadSafeFlag()
+
+    def set(self) -> None:
+        self._flag.set()
+
+    async def wait(self) -> None:
+        await self._flag.wait()

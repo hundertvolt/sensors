@@ -1,0 +1,4 @@
+Nothing new without a source (owner, 2026-11-09 22:27:31: "what happened in the audit and was added without my consent
+and kept growing"): a mechanism you add (a state, code, counter, tunable, check, task, test layer or rule) names the
+owner's words for it or its demonstrated need (a reproduced failure, an incident, a datasheet line, legacy behaviour);
+without either it is not added. Real features stay, no gap opens or reopens, and the form is lean for the rp2.

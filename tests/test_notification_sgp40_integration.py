@@ -126,7 +126,6 @@ def _make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, Notification
 
     signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
-    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
     return pixel, notify
 

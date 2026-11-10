@@ -142,8 +142,8 @@ def src_findings(src: Path) -> list[str]:
 
 
 def _own_feed_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, ref: ast.Attribute) -> bool:
-    # A pinned use of self._own_feed inside fn: the sequence's statement call or a step_done handed to its flush, quiesce
-    # or erase; _reboot()'s one call under `if fed:`, directly followed by the arm.
+    # A pinned use of self._own_feed inside fn: the sequence's statement call or a step_done handed to its flush or
+    # erase; _reboot()'s one call under `if fed:`, directly followed by the arm.
     parents = {child: node for node in ast.walk(fn) for child in ast.iter_child_nodes(node)}
     parent = parents.get(ref)
     if fn.name == _SEQUENCE:
@@ -155,7 +155,7 @@ def _own_feed_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, ref: ast.Attribute
         callee = ast.unparse(holder.func)
         if isinstance(parent, ast.keyword):
             return parent.arg == "step_done" and callee == "self._flush_config_stores" and "close=True" in ast.unparse(holder)
-        return callee in ("self._storage.quiesce", "self._storage.erase_chip")
+        return callee == "self._storage.erase_chip"
     if fn.name == "_reboot" and isinstance(parent, ast.Call) and parent.func is ref:
         statement = parents.get(parent)
         guard = parents.get(statement) if statement is not None else None
@@ -169,8 +169,8 @@ def _own_feed_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, ref: ast.Attribute
 
 
 def own_feed_findings(tree: ast.Module) -> list[str]:
-    # _own_feed() is referenced only by the shutdown sequence and once by _reboot(); the sequence hands it to its flush,
-    # quiesce and erase as each step's feed (a hung step is never fed).
+    # _own_feed() is referenced only by the shutdown sequence and once by _reboot(); the sequence hands it to its flush
+    # and erase as each step's feed (a hung step is never fed).
     service = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == _SERVICE[1]), None)
     findings: list[str] = []
     reboot_calls = 0
@@ -320,17 +320,17 @@ def test_a_setup_feed_moved_out_of_its_loop_fails(src_copy: Path) -> None:
 
 
 def test_a_feed_in_a_timer_callback_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._sequencer_flag.set())", "callback=lambda _b: self.feed_watchdog())")
+    _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._reset_due.set())", "callback=lambda _b: self.feed_watchdog())")
     findings = src_findings(src_copy)
     # Both the lambda's own call and the latched feed it reaches.
     assert [f.split(" ", 1)[1] for f in findings] == [
+        "SystemService._reboot(): a feed inside a Timer/IRQ callback",
         "SystemService.feed_watchdog(): a feed inside a Timer/IRQ callback",
-        "SystemService.start_timers(): a feed inside a Timer/IRQ callback",
     ], findings
 
 
 def test_a_function_a_timer_callback_reaches_must_not_feed(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._sequencer_flag.set())", "callback=lambda _b: self.pause_permanent_storage(0))")
+    _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._reset_due.set())", "callback=lambda _b: self.pause_permanent_storage(0))")
     _edit(src_copy / "asy_system_service.py", "    def pause_permanent_storage(self, duration: int) -> bool:\n", "    def pause_permanent_storage(self, duration: int) -> bool:\n        self.feed_watchdog()\n")
     findings = src_findings(src_copy)
     assert len(findings) == 1 and "SystemService.pause_permanent_storage(): a feed inside a Timer/IRQ callback" in findings[0], findings

@@ -32,7 +32,12 @@ A bound needs a source (owner, 2026-11-09 21:57:36: the LED's give-up "was just 
 into the audit"): a timeout, deadline, retry cap, attempt count, expiry or drop exists only where a party outside the
 code can fail to answer (network peer, UART peer, a chip the datasheet bounds), the original firmware had it, or the
 owner ruled it; a wait on the device's own lock, task or queue gets no deadline (FIFO, never dropped); every bound's
-number is derived from its source or named with it, and a give-up is never silent.
+number is derived from its source or named with it, and a give-up is never silent. The tag "owner-reviewed, 2026-11-06" marks an agent decision inside a topic
+the owner reviewed at big-picture level ("Single decision is by far to fine grained"): it is no ruling on a number.
+Nothing new without a source (owner, 2026-11-09 22:27:31: "what happened in the audit and was added without my consent
+and kept growing"): a mechanism you add (a state, code, counter, tunable, check, task, test layer or rule) names the
+owner's words for it or its demonstrated need (a reproduced failure, an incident, a datasheet line, legacy behaviour);
+without either it is not added. Real features stay, no gap opens or reopens, and the form is lean for the rp2.
 
 ## Environment
 - S = `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad`. Your worktree and branch are
@@ -73,6 +78,8 @@ number is derived from its source or named with it, and a give-up is never silen
   behaviour is fixed in the code, never in the test (OR12). A test reproducing a failure the device can really meet
   keeps its fix in the smallest form: say so in the hand-back.
 - The smallest change; no new hardcoded delay check; no module's bytecode grows except by an admitted fix, stated.
+- A catalog code removed before the release leaves no row: no `retired` or reserved entry (owner, 2026-10-28 14:23,
+  "third option accepted"); from the release on a removed code keeps its number unused.
 - Never open anything under `/root/.claude/`. Never read `arduino/` (`':!arduino'` in every git grep and git log). Never
   edit `ext/`. No real hardware, no `mpremote`, `picotool`, `nmcli`, `iw`, `iptables`; `tests_hardware` only with
   `--collect-only` or `--twin`. Never commit credentials; never write the hotspot fallback password's literal; filter every view or grep of repo text (`devices/*.toml`, generated modules, SPECIFICATION.md, `audit/`, `src/asy_wifi_service.py` included) through `grep -v -i -E "hotspot|passw|psk|ssid|wificonfig|credential"`; never view those whole.

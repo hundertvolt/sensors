@@ -759,14 +759,13 @@ every figure it records.
   `0x20040000 − __GcHeapStart` minus the GC's own tables, ~4.3-4.5 KB scaling with heap, §M6.2).
 - **rp2 has no exact end-of-GC signal** — `__del__` never runs on user-class instances and
   `MICROPY_PY_WEAKREF` is off — so a sampler that never collects cannot find the live set (archive
-  §7R.4, §9). Read `_open_conns.value` as a plain int (no coroutine, no allocation); an `await`-less
-  `get_value()` is a coroutine object, always truthy.
+  §7R.4, §9). Read `_open_conns`, a plain int (no coroutine, no allocation).
 
 **Re-derive a tool's printed summary from the raw output when a label looks wrong**, and remember
 a minimum from a 5 s snapshot bounds the true peak from one side only.
 
-**Count on both sides, and treat a gap as a finding.** Wrap `_open_conns.increment` to count every
-increment above the limit — installed as soon as `sensortask_dev.webserver` exists, not at a
+**Count on both sides, and treat a gap as a finding.** Count every `_open_conns`
+step above the limit — installed as soon as `sensortask_dev.webserver` exists, not at a
 `READY` line, or the first seconds of load reach only the host's count. Device allocation lines come
 in pairs per failure (the `MemoryError` and the webserver's `Unhandled exception in route
 handler`), so lines ÷ 2 = host 500s.
@@ -955,7 +954,7 @@ board itself and asserts the half each reset kind sets.
 | 8 | `flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty`; `bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log` | L3, L4 | not yet run |
 | 9 | `bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed`; `flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset` | L4, L3 | not yet run |
 | 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5; 11 after a power-on, a Ctrl-D soft reset with phase 1 marked and no record (`reset_code_invalid_record.py`'s STATE `boot_phase` calls `begin_boot()`): `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
-| 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code; with SYSTEM's FRAM chunk lock held, its entry write never ends and the watchdog's reset, timer bit, reads the recorded 20; mode `escape`: no handler records it, the dead-task entry writes 20 before its held write) | L4 | not yet run |
+| 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code; with SYSTEM's FRAM entry write never returning (the loop with it), the watchdog's reset, timer bit, reads the recorded 20; mode `escape`: no handler records it, the dead-task entry writes 20 before its held write) | L4 | not yet run |
 | 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed`; a harness hard reset of the serving board, whose `mpremote` Ctrl-C ends `main.py` before its `machine.reset()`: `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_a_console_interrupt`; after a power-on, a Ctrl-D soft reset inside the watchdog window: `manual/manual_persistence.py::test_console_soft_reset_keeps_the_reset_record` | L4, manual | not yet run |
 | 22 | `bench/test_reset_reasons.py::test_a_loop_ended_by_an_exception_after_boot_is_attributed`, an `OSError` and a `SystemExit` from the loop core (`reset_code_loop_end.py`: the frozen entry imported again after `mpremote`'s Ctrl-C, under the board's own config, no flash write) | L4 | not yet run |
 
@@ -1365,16 +1364,16 @@ assumption, not at a product bug.
   refuses, not only the driver's guard - with the cached `_wp` desynced from the still-protected chip,
   a real WREN+WRITE lands no byte. Its bench-vs-flash split is SPECIFICATION.md E.6.6 row
   `fram-write-protect-no-rest` (no REST route reaches either method).
-- **FRAM command hold** (`fram_command_hold_timing.py`, flash tier): the longest non-yielding FRAM
-  stretch stays under one UART poll floor (80 B of 8N1 at 115200 baud, 6,944 us, SPECIFICATION.md
-  J.6 and F.5.8); the whole block hold is reported beside it. It writes only its scratch region, the
-  part's top 256 B, never a chunk.
+- **FRAM command hold** (`fram_command_hold_timing.py`, flash tier): one FRAM command stays under one
+  UART poll floor (80 B of 8N1 at 115200 baud, 6,944 us, SPECIFICATION.md J.6 and F.5.8), and one log
+  entry's whole chunk write, its 51 commands, under 5 ms (F.3's `stall.fram_entry`). It writes only its
+  scratch region, the part's top 256 B, never a chunk.
 - **FRAM chip-select fault injection** (`fram_cs_hijack_fault_injection_and_recovery.py`): CS
   deasserted at the driver's synchronous seam, inside a write's payload (the write never reaches the
   chip, measured on the bench, 2026-09-04), a read's payload (it never returns the real data, measured
   on the bench, 2026-09-04) and a
   write's first WREN (the driver's one WREN retry lands the write); each scenario ends with
-  `verify_present()` and a clean write reading back.
+  the chip identifying again (RDID) and a clean write reading back.
 - **FRAM reset inside a write** (`fram_reset_race_during_write_seed_and_race.py` +
   `fram_reset_race_during_write_verify_recovery.py`): a real `machine.reset()` inside a write's
   payload transfer, CS still asserted; phase 2 accepts the original bytes or a prefix of the new ones,

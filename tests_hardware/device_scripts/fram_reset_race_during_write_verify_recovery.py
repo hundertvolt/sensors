@@ -39,8 +39,7 @@ _POST_RECOVERY_PATTERN = bytes(range(0x50, 0x60))
 
 async def _read(fram: FRAM_SPI, addr: int) -> "bytes | None":
     buf = bytearray(16)
-    async with fram:
-        ok = await fram.get_values(buf, addr_start=addr)
+    ok = fram.get_values(buf, addr_start=addr)
     return bytes(buf) if ok else None
 
 
@@ -69,16 +68,14 @@ async def _main() -> None:
         fact("target_state", None if target is None else _target_state(target))
         fact("guard_after_ok", await _read(fram, _GUARD_AFTER_ADDR) == _GUARD_AFTER_PATTERN)
         wdt.feed()
-        present = await fram.verify_present()  # takes the outer lock itself (asyncio.Lock is not reentrant)
-        async with fram:
-            wrote = await fram.set_values(_POST_RECOVERY_PATTERN, addr_start=_POST_RECOVERY_ADDR)
+        present = fram._check_device_id()  # the chip identifies again (RDID)
+        wrote = fram.set_values(_POST_RECOVERY_PATTERN, addr_start=_POST_RECOVERY_ADDR)
         fact("recovered", present and wrote and await _read(fram, _POST_RECOVERY_ADDR) == _POST_RECOVERY_PATTERN)
     finally:
         # Scratch, but the next run's assertion must not meet stale torn bytes: the seed state goes back.
         restored = []
         for addr, pattern in ((_GUARD_BEFORE_ADDR, _GUARD_BEFORE_PATTERN), (_TARGET_ADDR, _ORIGINAL_TARGET_PATTERN), (_GUARD_AFTER_ADDR, _GUARD_AFTER_PATTERN)):
-            async with fram:
-                restored.append(await fram.set_values(pattern, addr_start=addr))
+            restored.append(fram.set_values(pattern, addr_start=addr))
         fact("seed_restored", all(restored))
     done()
 

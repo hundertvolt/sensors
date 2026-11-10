@@ -46,10 +46,10 @@ import asy_uart_comm  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_uart_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_uart_link_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_config_manager import VALID  # noqa: E402 - imported after the prewarm and the UDP shim
-from asy_crc_checks import CRC16  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_print_log import DEFAULT_LOG, LogConfig  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_uart_link_driver import UARTLinkDriver  # noqa: E402 - imported after the prewarm and the UDP shim
+from crc_checks import CRC16  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
     from typing import TYPE_CHECKING, cast
@@ -70,7 +70,8 @@ if TYPE_CHECKING:
     from machine import UART as TwinUART
     from machine import UARTLink as TwinLink
 
-    from asy_base_classes import JsonDict, PieceBuffer
+    from asy_base_classes import JsonDict
+    from asy_uart_driver import PieceBuffer
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
@@ -378,7 +379,7 @@ class _Readers:
 
 def _persisted(role: str) -> "list[tuple[str, int]]":
     # One end's log as its FRAM chunk holds it, what a reboot restores: (ErrType, ErrNum) per used slot, oldest first.
-    stored = _run(_link(role).pr._read())
+    stored = _link(role).pr._read()
     assert isinstance(stored, tuple), f"the {role} end's FRAM log did not read back: {stored}"
     return [("W", entry - _NO_WRN) if entry > _NO_WRN else ("E", entry) for entry in stored[1] if entry not in (0, _NO_WRN)]
 

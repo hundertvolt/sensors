@@ -24,7 +24,7 @@ def _is_self(node: ast.expr) -> bool:
 
 
 def _is_top(stmt: ast.stmt) -> bool:
-    # A top: a `try` with no else/finally whose `except Exception as e:` awaits self.pr.err_s() with e, raising nothing
+    # A top: a `try` with no else/finally whose `except Exception as e:` calls self.pr.err_s() with e, raising nothing
     # (the logger's entry records a C-stack overflow, SPECIFICATION.md F.1).
     if not isinstance(stmt, ast.Try) or stmt.orelse or stmt.finalbody:  # either arm runs outside the handler
         return False
@@ -100,10 +100,10 @@ def _edit(src: Path, name: str, old: str, new: str) -> None:
 
 
 def _logs(stmt: ast.stmt, name: str) -> bool:
-    # `await self.pr.err_s(..., <name>, ...)` as a statement of its own; a logger's own writer task awaits self.err_s().
-    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Await) and isinstance(stmt.value.value, ast.Call)):
+    # `self.pr.err_s(..., <name>, ...)` (or a logger's own `self.err_s(...)`) as a statement of its own.
+    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
         return False
-    call = stmt.value.value
+    call = stmt.value
     func = call.func
     if not (isinstance(func, ast.Attribute) and func.attr == "err_s"):
         return False
@@ -245,7 +245,7 @@ def test_a_generated_module_that_creates_a_task_fails(generated: "dict[str, str]
 
 @pytest.mark.parametrize(
     ("name", "cls", "method", "loop"),
-    [("asy_neopixel_driver.py", "NeopixelDriver", "toggle", "_signal_loop"), ("asy_ntp_client.py", "NTPClient", "start_check_timer", "_sync_loop")],
+    [("asy_neopixel_driver.py", "NeopixelDriver", "toggle", "_signal_loop"), ("asy_scd30_driver.py", "SCD30_Reader", "start_timer", "_read_loop")],
     ids=["in-a-plain-method", "in-a-timer-starter"],  # start_timers() discards a timer starter's result: no supervisor watches its task
 )
 def test_a_supervised_loop_started_outside_its_starter_fails(src_copy: Path, name: str, cls: str, method: str, loop: str) -> None:
@@ -278,8 +278,8 @@ def test_a_connection_callback_whose_top_is_removed_fails(src_copy: Path) -> Non
     top = (
         "            except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a\n"
         "                # proxy, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)\n"
-        "                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, decrement() cannot raise\n"
-        '                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
+        "                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, the decrement cannot raise\n"
+        '                self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
     )
     _edit(src_copy, "asy_webserver_service.py", top, "")  # only the cancellation arm is left
     findings = task_tops(src_copy)[0]

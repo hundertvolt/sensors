@@ -1,8 +1,6 @@
-"""Full-stack FRAM integration for the Neopixel promotion: proves asy_neopixel_driver.py's own
-PrintLogHistoryStore chunk and asy_notification_service.py's single combined one are genuinely independent, non-overlapping allocations off one shared FRAMManager, and both survive a simulated reboot.
-"""
-# The generated wiring gives both modules a FRAM-backed log; the service's one chunk covers its own fields and every
-# signal's check failures. Mocked at the SPI bus, not at FRAMManager's boundary.
+"""Full-stack FRAM integration of the Neopixel and the notification service off one shared FRAMManager: the pixel, which
+has nothing it can fail at, takes no FRAM chunk even with a FRAM store in its config; the service's one chunk is the
+first allocated, and its history survives a simulated reboot. Mocked at the SPI bus, not at FRAMManager's boundary."""
 
 from _async_harness import run
 from _error_codes import code
@@ -68,79 +66,44 @@ def _tmp_cfg_dir() -> str:
     return _scratch.dir()
 
 
-def test_driver_and_notify_service_get_two_independent_non_overlapping_fram_chunks() -> None:
+def test_the_pixel_takes_no_fram_chunk_and_the_service_takes_the_first() -> None:
     manager, _chip = make_fram_manager()
     run(manager.setup())
     pixel = _make_pixel(manager)
     notify = _make_notify(manager, _tmp_cfg_dir())
-
-    async def scenario() -> None:
-        await pixel.setup()
-        await notify.setup()
-
-    run(scenario())
-    assert isinstance(pixel.pr, PrintLogHistoryStore)
+    run(notify.setup())
+    alone, _chip2 = make_fram_manager()
+    run(alone.setup())
+    first = alone.get_chunk(8, owner="probe")
+    assert type(pixel.pr).__name__ == "PrintLog", type(pixel.pr)  # a console printer: no history, no store
     assert isinstance(notify.pr, PrintLogHistoryStore)
-    assert isinstance(pixel.pr.fram, FRAMChunk)
-    assert isinstance(notify.pr.fram, FRAMChunk)
-    assert pixel.pr.fram._block_addr != notify.pr.fram._block_addr
+    assert isinstance(notify.pr.fram, FRAMChunk) and isinstance(first, FRAMChunk)
+    assert notify.pr.fram._block_addr[0] == first._block_addr[0]  # nothing was allocated before it
 
 
-def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
-    manager, _chip = make_fram_manager()
-    run(manager.setup())
-    pixel = _make_pixel(manager)
-    notify = _make_notify(manager, _tmp_cfg_dir())
-
-    async def scenario() -> "tuple[ErrorLog, ErrorLog]":
-        await pixel.setup()
-        await notify.setup()
-        # NeopixelDriver structurally can't fail on any of its own real code paths (see its own
-        # module docstring) - this directly exercises the FRAM-backed history machinery itself,
-        # not a real failure this driver would ever hit.
-        await pixel.pr.err_s("driver-side", errno=_PLANTED)
-        await notify.pr.err_s("notify-side", errno=_PLANTED)
-        pixel_log = await pixel.pr.get_log("NEOPIXEL")
-        notify_log = await notify.pr.get_log("NOTIFY")
-        return pixel_log, notify_log
-
-    pixel_log, notify_log = run(scenario())
-    assert pixel_log["NEOPIXEL"]["ErrCount"] == 1
-    assert notify_log["NOTIFY"]["ErrCount"] == 1
-
-
-def test_both_histories_survive_a_simulated_reboot() -> None:
-    cfg_path = _tmp_cfg_dir()  # same path across the simulated reboot, matching a real device's
-    # config file persisting across a reboot too - the FRAM-side assertions below don't depend on
-    # this, but it's the correct shape to model.
+def test_the_service_history_survives_a_simulated_reboot() -> None:
+    cfg_path = _tmp_cfg_dir()  # same path across the simulated reboot, as a real device's config file
     manager1, chip = make_fram_manager()
     run(manager1.setup())
-    pixel1 = _make_pixel(manager1)
+    _make_pixel(manager1)
     notify1 = _make_notify(manager1, cfg_path)
 
     async def before_reboot() -> None:
-        await pixel1.setup()
         await notify1.setup()
-        await pixel1.pr.err_s("driver before reboot", errno=_PLANTED)
-        await notify1.pr.err_s("notify before reboot", errno=_PLANTED)
+        notify1.pr.err_s("notify before reboot", errno=_PLANTED)
 
     run(before_reboot())
 
     manager2, _chip2 = make_fram_manager(chip=chip)  # same underlying chip, fresh manager/driver/coordinator objects
     run(manager2.setup())
-    pixel2 = _make_pixel(manager2)
+    _make_pixel(manager2)
     notify2 = _make_notify(manager2, cfg_path)  # same registration order/shape as before the reboot
 
-    async def after_reboot() -> "tuple[ErrorLog, ErrorLog]":
-        await pixel2.setup()
+    async def after_reboot() -> "ErrorLog":
         await notify2.setup()
-        pixel_log = await pixel2.pr.get_log("NEOPIXEL")
-        notify_log = await notify2.pr.get_log("NOTIFY")
-        return pixel_log, notify_log
+        return await notify2.pr.get_log()
 
-    pixel_log, notify_log = run(after_reboot())
-    assert pixel_log["NEOPIXEL"]["ErrNum"][-1] == _PLANTED
-    assert notify_log["NOTIFY"]["ErrNum"][-1] == _PLANTED
+    assert run(after_reboot())["NOTIFY"]["ErrNum"][-1] == _PLANTED
 
 
 if __name__ == "__main__":

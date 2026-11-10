@@ -3,12 +3,13 @@ restore."""
 
 import struct
 
+import micropython
 from _async_harness import run
 from _fram_builders import make_fram_manager
 from voc_reference_vectors import DIV, EXP, INDEX_CRC32, INDEX_EVERY_500, MUL, SQRT, SRAW_COUNT, sraw_sequence
 
 import voc_algorithm
-from asy_crc_checks import CRC32
+from crc_checks import CRC32
 from voc_algorithm import VOCAlgorithm
 
 try:
@@ -35,8 +36,9 @@ _PERSISTED_FIELDS = (
 )
 
 
-def _f16(n: int) -> int:
-    return n * 65536
+def _f16(x: float) -> int:
+    # C's F16() (libfixmath fix16.h): x * 65536, rounded half away from zero - the source folds its constants by it.
+    return int(x * 65536.0 + 0.5) if x >= 0 else int(x * 65536.0 - 0.5)
 
 
 # vocalgorithm_init(), then every sraw_sequence() sample: two tests only read this run, so the first to ask builds it
@@ -64,6 +66,21 @@ def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes
 # ---------------------------------------------------------------------------
 # get_params_memsize / initial state
 # ---------------------------------------------------------------------------
+
+
+def test_a_process_step_converts_no_float_on_a_64_bit_port() -> None:
+    # Constants folded to ints and mul/div as exact int products: a step past the 45 s blackout makes no float, so on
+    # this port (every int under 2**62 small) it runs with the heap locked; rp2's 31-bit ints still box the products.
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    for i in range(60):
+        algo.vocalgorithm_process(20000 + (i * 7919) % 33000)
+    micropython.heap_lock()
+    try:
+        for i in range(60):
+            algo.vocalgorithm_process(20000 + (i * 7919) % 33000)
+    finally:
+        micropython.heap_unlock()
 
 
 def test_get_params_memsize_matches_struct_size() -> None:
@@ -451,9 +468,9 @@ def test_fix16_exp_saturates_at_documented_bounds() -> None:
     algo = VOCAlgorithm()
     # Values from the C reference's own overflow guards (x >= f16(10.3972) -> FIX16_MAXIMUM,
     # x <= f16(-11.7835) -> 0).
-    assert algo._fix16_exp(algo._f16(11.0)) == 0x7FFFFFFF
-    assert algo._fix16_exp(algo._f16(-12.0)) == 0
-    assert algo._fix16_exp(algo._f16(0.0)) == algo._f16(1.0)  # e^0 == 1
+    assert algo._fix16_exp(_f16(11.0)) == 0x7FFFFFFF
+    assert algo._fix16_exp(_f16(-12.0)) == 0
+    assert algo._fix16_exp(_f16(0.0)) == _f16(1.0)  # e^0 == 1
 
 
 def test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch() -> None:
@@ -480,7 +497,7 @@ def test_fix16_div_overflow_returns_the_overflow_sentinel() -> None:
 def test_fix16_div_by_a_multiple_of_two_to_the_32_returns_at_once() -> None:
     # Wrapped to int32 the divisor is 0, so the call returns the sentinel instead of shifting forever.
     algo = VOCAlgorithm()
-    assert algo._fix16_div(algo._f16(1.0), -(1 << 32)) == -0x80000000  # _FIX16_MINIMUM
+    assert algo._fix16_div(_f16(1.0), -(1 << 32)) == -0x80000000  # _FIX16_MINIMUM
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +520,7 @@ def test_fix16_helpers_match_the_c_reference_vectors() -> None:
 def test_the_index_sequence_matches_the_c_reference() -> None:
     indices, checkpoints = reference_trajectory()
     assert tuple(voc_index for _i, voc_index, _packed, _state in checkpoints) == INDEX_EVERY_500
-    framed = run(CRC32().add(indices))
+    framed = CRC32().add(indices)
     assert framed is not None
     assert int.from_bytes(framed[-4:], "big") == INDEX_CRC32
 
@@ -531,7 +548,7 @@ def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_rebo
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         assert algo.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
 
@@ -544,7 +561,7 @@ def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_rebo
 
     async def read() -> bytearray:
         buf = chunk2.get_buffer()
-        assert await chunk2.read_into(buf) is True
+        assert chunk2.read_into(buf) is True
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         return bytearray(dbuf)
@@ -583,7 +600,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
         for i in range(20):
             writer.vocalgorithm_process(30000 + i * 13)
         assert writer.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
     addr0, addr1 = chunk._block_addr
@@ -596,7 +613,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
 
     async def read() -> "bool | None":
         buf = chunk.get_buffer()
-        ok = await chunk.read_into(buf)
+        ok = chunk.read_into(buf)
         if ok:
             dbuf = buf.get_data_buf()
             assert dbuf is not None
@@ -626,7 +643,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         assert algo.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
     addr0, _addr1 = chunk._block_addr
@@ -636,7 +653,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
 
     async def read() -> "bool | None":
         buf = chunk.get_buffer()
-        ok = await chunk.read_into(buf)
+        ok = chunk.read_into(buf)
         if ok:
             dbuf = buf.get_data_buf()
             assert dbuf is not None
@@ -689,7 +706,7 @@ def test_set_tuning_parameters_smoke_test_normal_values() -> None:
 def test_both_estimator_uptimes_stop_at_the_uptime_limit() -> None:
     # Checked before the step: one sampling interval below the limit steps onto it, at the limit both stay.
     algo = VOCAlgorithm()
-    limit, step, params = algo._f16(32767 - 1), algo._f16(1), algo.params  # FIX16_MAX less one sampling interval (1 s)
+    limit, step, params = _f16(32767 - 1), _f16(1), algo.params  # FIX16_MAX less one sampling interval (1 s)
     params.m_mean_variance_estimator_uptime_gamma = params.m_mean_variance_estimator_uptime_gating = limit - step
     for _ in range(2):
         algo._vocalgorithm__mean_variance_estimator___calculate_gamma(0)

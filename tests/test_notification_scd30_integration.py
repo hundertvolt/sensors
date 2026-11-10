@@ -24,11 +24,11 @@ from machine import I2C as FakeI2C
 import asy_neopixel_driver
 import asy_notification_service
 from asy_base_classes import ValueRef
-from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService, NotificationSignal
 from asy_scd30_driver import SCD30_Reader
+from crc_checks import CRC8
 
 try:
     from typing import TYPE_CHECKING
@@ -86,7 +86,6 @@ def _make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notifica
 
     signal = NotificationSignal("WarnHum", ValueRef(scd_reader, "Hum"), (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
-    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
     return pixel, notify
 
@@ -108,7 +107,6 @@ def _make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notification
 
     signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
-    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
     return pixel, notify
 
@@ -118,7 +116,7 @@ def _tmp_cfg_dir() -> str:
 
 
 def crc8_byte(data: bytes) -> int:
-    added = run(CRC8().add(bytearray(data)))
+    added = CRC8().add(bytearray(data))
     assert added is not None
     return added[-1]
 

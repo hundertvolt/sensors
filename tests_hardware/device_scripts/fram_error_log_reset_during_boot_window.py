@@ -49,7 +49,7 @@ async def _main() -> None:
         # Cleared at the start (a previous run's ring) and in the finally below (nothing seeded survives).
         await store.reset()
         for seed in _SEEDS:
-            await store.err_s("seeded", errno=seed)
+            store.err_s("seeded", errno=seed)
         fact("seeded_count", (await store.get_log())[_LOG_NAME]["ErrType"].count("E"))
         # The boot window: a fresh logger over the same chunk, its setup() not run yet, as the boot batch leaves it before
         # the server answers; make_logger() hands it back uninitialized, which is exactly that state.

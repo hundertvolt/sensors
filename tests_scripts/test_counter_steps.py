@@ -27,6 +27,8 @@ _EXEMPT: dict[tuple[str, str], str] = {
     ("src/asy_isl29125_driver.py", "ISL29125_Reader._periodic_only_switches"): "returns below its warn threshold and resets to 0 at it",
     ("src/asy_ntp_client.py", "NTPClient._ntp_sec_count"): "resets to 0 once it reaches the resync interval (`due`), which a stored interval bounds",
     ("src/asy_ntp_client.py", "NTPClient._unsynced_wait_s"): "resets to 0 once it reaches the unsynced retry wait (`due`), 60 s at most",
+    ("src/asy_neopixel_driver.py", "NeopixelDriver._pending"): "each accepted signal steps it up once and down once at its end; an external one is refused while it is above 0",
+    ("src/asy_webserver_service.py", "WebserverService._open_conns"): "a gauge: each += pairs with one -= (the `counted` flag), so it stays within the listen backlog",
     ("src/asy_sgp40_driver.py", "SGP40_Reader._voc_init"): "restores the same call's decrement, so it never rises above its starting value",
 }
 

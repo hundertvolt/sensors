@@ -20,3 +20,11 @@
   -> 12.134: weblog merged (int 8f04f2f1); units B (06:00) and fsync (07:00) writing; then T, C, P9.
 - 21:46: int 8f04f2f1 (crceng + weblog); units B (06:00) and fsync (07:00) writing; snapshot 54 next; then T, C, P9.
 - 22:01: owner 21:57 (give-ups are a pattern): rule in common_r1, B/fsync told; giveup passes 1-3 read-only, due 01:30 -> 12.135; P9 gets the Part D line.
+- 22:3x: snapshot 54 red (test race, 12.136) -> fix 6aec784f -> snapshot 55 b4d87294 pushed (next PARENT), CI pending; giveup2 back, 1 and 3 running.
+- 22:4x: giveup 1-3 back (12.137, 12.138; B addendum sent); owner 22:27 widened: consent passes 1-4 read-only, due 03:30; rule 'nothing new without a source' in common_r1; snapshot 55 CI pending.
+- 22:53: snapshot 55 b4d87294 green (run 42711567341, 28/28) = next PARENT; consent 1-4 running (03:30); B 06:00, fsync 07:00.
+- 23:3x: consent 1-4 back (12.139-12.143); ASKs settled by evidence; credit check running (03:30); B told 44/45 leave no row; fsync told get_log(name) goes.
+- 01:0x: container restart; B (69c06662) and fsync (1547690d) resumed; owner question open on pre-audit credits (12.144).
+- 01:2x: fsync handed back (12.145); follow-up asked (boot collects go); B gating under heavy.lock; then merge B, fsync (transform on B's files, drop 6aec784f's writer lines), snapshot, bench relay.
+- 02:4x: ub merged (int ddf77ce8 = 39e18d2a's tree, gate applies); waiting for fsync's follow-up commit, then merge fsync (transform on ub's files, drop the writer waits, UART Class B entry), gate, snapshot 56, bench relay.
+- 03:1x: fsync e1958815 back; mfs merge unit running (S/wt-mfs, due 07:30); then int fast-forward, snapshot 56 (parent b4d87294), bench relay; then G (+ T in parallel).

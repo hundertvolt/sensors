@@ -1,0 +1,848 @@
+src/asy_uart_driver.py:38	cancel-ack deadline comment	REMOVE	REF:442a5594:2026-09-11	NONE(inside wait; legacy Event had none)
+src/asy_uart_driver.py:41	tunable tag cancel_ack_timeout_ms	REMOVE	REF:442a5594:2026-09-11	NONE
+src/asy_uart_driver.py:42	_CANCEL_ACK_TIMEOUT_MS 1000	REMOVE	REF:442a5594:2026-09-11	NONE
+src/asy_uart_driver.py:44	COBS yield cadence comment	NOTBOUND	n/a	CPRIM1.9
+src/asy_uart_driver.py:47	tunable tag delimited_yield_bytes	NOTBOUND	n/a	CPRIM1.9
+src/asy_uart_driver.py:48	_DELIMITED_YIELD_BYTES yield cadence	NOTBOUND	n/a	CPRIM1.9
+src/asy_uart_driver.py:57	_RX_RING_MAX ring size range	KEEP	AUD:cbb65df2:2026-10-07	DS:RP2040-2.5.7
+src/asy_uart_driver.py:110	machine.UART timeout=0	KEEP	LEG	LEG+OR2026-09-11(never block)
+src/asy_uart_driver.py:111	machine.UART timeout_char=1	KEEP	LEG	LEG
+src/asy_uart_driver.py:115	tunable tag poll_wait default	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:116	poll_wait_ms=2 cadence	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:118	poll_idle_ms=50 cadence	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:126	poll_wait_ms attr	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:127	idle cadence comment	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:128	idle cadence comment	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:129	idle cadence comment	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:130	poll_idle_ms attr	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:138	discarded-bytes counter comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:142	codec order comment (delimiter word)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:144	codec comment (delimited word)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:146	_skip_to_delimiter flag	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:147	_frame_consumed comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:157	init() passes timeout/timeout_char	KEEP	LEG	LEG
+src/asy_uart_driver.py:165	ack-on-exit comment (method name)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:166	ack-on-exit comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:180	guard comment (method name)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:195	ring bit-width loop	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:212	overrun drops unread comment	KEEP	AUD:cbb65df2:2026-10-07	PJ.7(ring lap)
+src/asy_uart_driver.py:218	overrun _rx_drop	KEEP	AUD:cbb65df2:2026-10-07	PJ.7
+src/asy_uart_driver.py:229	failed line dropped comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:233	_read_delimited timeouts param	KEEP	REF:442a5594:2026-09-11	PJ.6+OR2026-09-11(caller's timeout)
+src/asy_uart_driver.py:234	_read_delimited timeouts param	KEEP	REF:442a5594:2026-09-11	PJ.6
+src/asy_uart_driver.py:236	comment (delimiter word)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:237	comment (delimiter word)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:239	delimiter lookup	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:240	delimiter None check	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:242	worst-case frame length bound	KEEP	REF:442a5594:2026-09-11	PJ.3(codec max_encoded)
+src/asy_uart_driver.py:243	first-part timeout	KEEP	LEG	LEG+OR2026-09-11
+src/asy_uart_driver.py:246	read loop	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:249	give-up past worst-case frame (counted)	KEEP	REF:442a5594:2026-09-11	PJ.3
+src/asy_uart_driver.py:255	ready() with timeout	KEEP	LEG	LEG+OR2026-09-11
+src/asy_uart_driver.py:258	inter-part timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:263	inter-part timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:265	yield every 16 bytes	NOTBOUND	n/a	CPRIM1.9
+src/asy_uart_driver.py:266	sleep_ms(0) yield	NOTBOUND	n/a	CPRIM1.9
+src/asy_uart_driver.py:267	delimiter compare	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:270	skip fragment flag	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:271	skip fragment flag	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:274	empty-frame comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:307	dropped-line comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:325	lap/receive-error drop comment	KEEP	AUD:cbb65df2:2026-10-07	PJ.7
+src/asy_uart_driver.py:328	_rx_drop on discard	KEEP	AUD:cbb65df2:2026-10-07	PJ.7
+src/asy_uart_driver.py:332	def _rx_drop	KEEP	AUD:cbb65df2:2026-10-07	PJ.7
+src/asy_uart_driver.py:381	TX short-write loop	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:385	txdone poll sleep	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:394	cancel_read_timeout timeout_ms param	REMOVE	REF:442a5594:2026-09-11	NONE
+src/asy_uart_driver.py:405	ack-wait start tick	REMOVE	REF:442a5594:2026-09-11	NONE
+src/asy_uart_driver.py:406	ack-distance poll loop (stays, no deadline)	NOTBOUND	n/a	CPRIM3.3
+src/asy_uart_driver.py:407	ack-wait ticks_diff deadline	REMOVE	REF:442a5594:2026-09-11	NONE
+src/asy_uart_driver.py:411	ack poll sleep (stays)	NOTBOUND	n/a	CPRIM3.3
+src/asy_uart_driver.py:451	init timeout=0	KEEP	LEG	LEG
+src/asy_uart_driver.py:452	init timeout_char=1	KEEP	LEG	LEG
+src/asy_uart_driver.py:457	stale-registration comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:487	machine.UART timeout=	KEEP	LEG	LEG
+src/asy_uart_driver.py:488	machine.UART timeout_char=	KEEP	LEG	LEG
+src/asy_uart_driver.py:496	select.poll()	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:504	read(timeout_ms)	KEEP	LEG	LEG
+src/asy_uart_driver.py:508	ready with caller timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:523	read_until_complete timeouts	KEEP	LEG	LEG
+src/asy_uart_driver.py:532	max_encoded sizing	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:536	is_delimited branch	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:537	delimited read with timeouts	KEEP	REF:442a5594:2026-09-11	PJ.6
+src/asy_uart_driver.py:542	MemoryError copy dropped+counted	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:546	first-part timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:548	read loop	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:549	ready with timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:557	no-byte poll sleep	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:563	inter-part timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:573	readinto(timeout_ms)	KEEP	LEG	LEG
+src/asy_uart_driver.py:577	ready with timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:586	readinto_until_complete timeouts	KEEP	LEG	LEG
+src/asy_uart_driver.py:594	is_delimited branch	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:595	max_encoded buffer check	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:597	delimited read with timeouts	KEEP	REF:442a5594:2026-09-11	PJ.6
+src/asy_uart_driver.py:598	first-part timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:602	read loop	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:603	ready with timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:611	no-byte poll sleep	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:617	inter-part timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:623	readline(timeout_ms)	KEEP	LEG	LEG
+src/asy_uart_driver.py:628	ready with timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:644	readline cap max_bytes + timeouts	KEEP	AUD:B62	PJ.8+B62(E93 logged)
+src/asy_uart_driver.py:647	over-cap line dropped, logged once	KEEP	AUD:B62	PJ.8
+src/asy_uart_driver.py:649	max_bytes<1 refusal	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:652	PieceBuffer(max_bytes)	KEEP	AUD:B62	PJ.8
+src/asy_uart_driver.py:656	first-part timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:657	saturating size comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:658	read loop	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:659	ready with timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:667	no-byte poll sleep	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:671	over-cap check	KEEP	AUD:B62	PJ.8
+src/asy_uart_driver.py:682	inter-part timeout	KEEP	LEG	LEG
+src/asy_uart_driver.py:688	def ready(timeout_ms)	KEEP	LEG	LEG
+src/asy_uart_driver.py:689	ready contract comment	KEEP	LEG	LEG
+src/asy_uart_driver.py:690	cadence comment	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:691	deinit-race comment	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:694	idle-rate comment	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:695	idle-rate comment	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:697	wait_ms choice	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:698	start tick	KEEP	LEG	LEG
+src/asy_uart_driver.py:699	poll loop	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:713	ipoll(0)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:717	ticks_diff deadline	KEEP	LEG	LEG
+src/asy_uart_driver.py:719	poll sleep	NOTBOUND	n/a	CPRIM3.2
+src/asy_uart_driver.py:721	OverflowError comment	NOTBOUND	n/a	PF.1
+src/asy_uart_driver.py:728	sleep_ms(0) yield	NOTBOUND	n/a	OR2026-09-11(no block)
+src/asy_uart_driver.py:733	resync comment (delimiter)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:734	resync comment (delimiter)	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:735	_skip_to_delimiter set	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:747	ring size range check	KEEP	AUD:cbb65df2:2026-10-07	DS:RP2040-2.5.7
+src/asy_uart_driver.py:772	write short-write continuation	NOTBOUND	n/a	n/a
+src/asy_uart_driver.py:788	writefrom short-write continuation	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:5	write hold-off comment	KEEP	LEG	A4+OR2026-09-11/11-03
+src/asy_uart_comm.py:78	_UID_MAX wire range	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:79	_CHUNKS_MAX wire range	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:81	_PAYLOAD_MAX wire range	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:84	1.5x timeout recovery comment	KEEP	LEG	A4+OR2026-09-11/11-03
+src/asy_uart_comm.py:90	tunable tag gc_pause_worst_ms	NOTBOUND	n/a	config floor term; 12.108(3)
+src/asy_uart_comm.py:91	_GC_PAUSE_WORST_MS floor term	NOTBOUND	n/a	config floor term; 12.108(3)
+src/asy_uart_comm.py:94	_FLASH_HOLD_MAX_MS ring floor	KEEP	REF:95410d77:2026-10-05	DS:W25Q16JV(tSE,tPP)+OR2026-10-05
+src/asy_uart_comm.py:95	tunable tag poll_jitter_ms	DERIVE	REF:c63ef97a:2026-09-11	NONE
+src/asy_uart_comm.py:96	_POLL_JITTER_MS 5	DERIVE	REF:c63ef97a:2026-09-11	NONE
+src/asy_uart_comm.py:97	_BACKOFF_MULT 2	KEEP	REF:c63ef97a:2026-09-11	A15(Class A)+OR2026-09-11/11-03
+src/asy_uart_comm.py:98	_BACKOFF_MAX_MULT 5, comment cites captive DNS	DERIVE	REF:c63ef97a:2026-09-11	A15(name it; value bound by ruling)
+src/asy_uart_comm.py:103	_CMD_ID_MAX byte range	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:104	_TICKS_HORIZON_MS platform ceiling	NOTBOUND	n/a	PF.1
+src/asy_uart_comm.py:105	_POLL_WAIT_MAX_MS config ceiling	NOTBOUND	n/a	PJ.6
+src/asy_uart_comm.py:107	_DEFAULT_TIMEOUT_MS 1000	KEEP	LEG	OR2026-09-11+OR2026-11-03
+src/asy_uart_comm.py:109	tunable tag max_transfer_bytes	KEEP	REF:0fe6b57f:2026-10-05	A16+PJ.8(254x48)
+src/asy_uart_comm.py:110	_DEFAULT_MAX_TRANSFER_BYTES	KEEP	REF:0fe6b57f:2026-10-05	A16+PJ.8
+src/asy_uart_comm.py:118	_ERR_TIMEOUT code	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:121	_ERR_UART_TIMEOUT_PARAM code	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:145	limits comment	KEEP	LEG	PJ.6
+src/asy_uart_comm.py:146	limits comment	KEEP	REF:0fe6b57f:2026-10-05	PJ.8
+src/asy_uart_comm.py:154	TransferLimits type	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:156	timeout field	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:158	max_transfer_bytes field	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:162	TransferLimits namedtuple	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:164	DEFAULT_LIMITS	KEEP	LEG	OR2026-09-11+A16
+src/asy_uart_comm.py:187	uid wrap	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:195	limits param	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:208	payload_size assign	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:209	timeout assign	KEEP	LEG	OR2026-09-11
+src/asy_uart_comm.py:210	chunk_bytes assign	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:211	max_transfer_bytes assign	KEEP	REF:0fe6b57f:2026-10-05	A16
+src/asy_uart_comm.py:225	hold-off deadline init	KEEP	LEG	A4+B2
+src/asy_uart_comm.py:236	backoff base	KEEP	REF:c63ef97a:2026-09-11	A15+OR
+src/asy_uart_comm.py:238	backoff initial timeout/2	KEEP	REF:c63ef97a:2026-09-11	A15+OR
+src/asy_uart_comm.py:239	backoff cap 5x timeout	KEEP	REF:c63ef97a:2026-09-11	A15+OR
+src/asy_uart_comm.py:262	answer over cap: fault E93	KEEP	REF:0fe6b57f:2026-10-05	A16
+src/asy_uart_comm.py:291	train over cap: fault E93	KEEP	REF:0fe6b57f:2026-10-05	A16
+src/asy_uart_comm.py:305	callback size sanity	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:335	max_encoded sizing	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:364	declined GET: peer times out (comment)	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:380	write gate: deadline not Timer	KEEP	LEG	A4+B2
+src/asy_uart_comm.py:382	write gate comment	KEEP	LEG	A4+B2
+src/asy_uart_comm.py:384	hold-off remaining ticks_diff	KEEP	LEG	A4
+src/asy_uart_comm.py:385	horizon comment	KEEP	REF:B72	PF.1
+src/asy_uart_comm.py:386	horizon comment	KEEP	REF:B72	PF.1
+src/asy_uart_comm.py:388	remaining within one window	KEEP	REF:B72	A4+PF.1
+src/asy_uart_comm.py:389	sleep out the hold-off	KEEP	LEG	A4
+src/asy_uart_comm.py:430	cmd-id comment (while word)	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:432	cmd-id range	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:453	chunk count range	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:467	def _drain	KEEP	LEG	A4+A5+OR2026-09-11/11-03
+src/asy_uart_comm.py:470	boot drain first-probe comment	DERIVE	REF:eea882d8:2026-09-11	NONE
+src/asy_uart_comm.py:475	quiet window 1.5x timeout	KEEP	LEG	A4
+src/asy_uart_comm.py:476	drain bound 4 windows	KEEP	REF:c63ef97a:2026-09-11	A5(peer babbling)+OR
+src/asy_uart_comm.py:477	first probe wait_ms	DERIVE	REF:eea882d8:2026-09-11	NONE
+src/asy_uart_comm.py:478	drain start tick	KEEP	REF:c63ef97a:2026-09-11	A5
+src/asy_uart_comm.py:480	drain loop	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:481	drain bound compare (W54 logged)	KEEP	REF:c63ef97a:2026-09-11	A5+OR2026-11-06(defer)
+src/asy_uart_comm.py:488	quiet-window read	KEEP	LEG	A4
+src/asy_uart_comm.py:494	wait back to quiet window	KEEP	LEG	A4
+src/asy_uart_comm.py:522	hold-off deadline set	KEEP	LEG	A4+B2
+src/asy_uart_comm.py:527	listen backoff comment	KEEP	REF:c63ef97a:2026-09-11	A15+OR
+src/asy_uart_comm.py:529	backoff init	KEEP	REF:c63ef97a:2026-09-11	A15+OR
+src/asy_uart_comm.py:530	listen loop	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:534	re-listen comment	KEEP	REF:c63ef97a:2026-09-11	A15
+src/asy_uart_comm.py:535	re-listen comment	KEEP	REF:c63ef97a:2026-09-11	A15
+src/asy_uart_comm.py:541	backoff reset	KEEP	REF:c63ef97a:2026-09-11	A15
+src/asy_uart_comm.py:545	backoff sleep	KEEP	REF:c63ef97a:2026-09-11	A15+OR
+src/asy_uart_comm.py:546	backoff doubling to cap	KEEP	REF:c63ef97a:2026-09-11	A15+OR
+src/asy_uart_comm.py:550	listen fault code use	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:559	fault text (while word)	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:569	_max_timeout config ceiling	NOTBOUND	n/a	PF.1
+src/asy_uart_comm.py:570	ceiling comment	NOTBOUND	n/a	PF.1
+src/asy_uart_comm.py:571	ceiling formula	NOTBOUND	n/a	PF.1
+src/asy_uart_comm.py:574	ring floor comment	KEEP	REF:0fe6b57f:2026-10-05	DS:W25Q16JV+OR2026-10-05
+src/asy_uart_comm.py:575	ring floor comment	KEEP	REF:0fe6b57f:2026-10-05	DS:W25Q16JV
+src/asy_uart_comm.py:578	ring floor frame size	KEEP	REF:0fe6b57f:2026-10-05	PJ.5
+src/asy_uart_comm.py:579	ring floor formula	KEEP	REF:95410d77:2026-10-05	DS:W25Q16JV
+src/asy_uart_comm.py:581	power-of-two loop	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:592	rxbuf floor frame size	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:593	rxbuf floor per-poll + jitter	DERIVE	REF:c63ef97a:2026-09-11	NONE(jitter term)
+src/asy_uart_comm.py:596	_min_timeout config floor	NOTBOUND	n/a	PJ.6; 12.108(3)
+src/asy_uart_comm.py:598	floor comment	NOTBOUND	n/a	PJ.6
+src/asy_uart_comm.py:603	floor sum	NOTBOUND	n/a	PJ.6; 12.108(3)
+src/asy_uart_comm.py:612	over-cap compare	KEEP	REF:0fe6b57f:2026-10-05	A16
+src/asy_uart_comm.py:637	header field ranges	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:639	header field ranges	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:675	answer header read, timeout	KEEP	LEG	OR2026-09-11
+src/asy_uart_comm.py:676	no answer: fault E22	KEEP	LEG	OR2026-09-11
+src/asy_uart_comm.py:690	_read_frame(timeout_ms)	KEEP	LEG	OR2026-09-11
+src/asy_uart_comm.py:695	start/inter-part timeouts	KEEP	LEG	OR2026-09-11
+src/asy_uart_comm.py:699	wrong-length frame counted	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:706	err_s log call	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:714	chunk loop	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:716	chunk read, timeout	KEEP	LEG	OR2026-09-11
+src/asy_uart_comm.py:717	train stalled: fault E22	KEEP	LEG	OR2026-09-11
+src/asy_uart_comm.py:784	resync_framing comment	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:799	_resync_window_ms	KEEP	LEG	A4
+src/asy_uart_comm.py:800	1.5x timeout	KEEP	LEG	A4
+src/asy_uart_comm.py:822	ACK not gated comment	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:832	payload too large	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:841	chunk loop	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:879	uid range check	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:889	stale ACK refused	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:919	payload_size range	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:921	codec frame size	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:922	codec size refusal	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:925	timeout range check	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:926	timeout param refusal	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:927	poll_wait range check	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:929	min timeout check	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:930	min timeout refusal	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:938	max_transfer below payload	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:975	ACK read, timeout	KEEP	LEG	OR2026-09-11
+src/asy_uart_comm.py:981	peer-initiated comment	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:1019	clear() cancel call (stays)	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:1026	W55 un-acked cancel warning	REMOVE	REF:442a5594:2026-09-11	NONE
+src/asy_uart_comm.py:1037	err_s log call	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:1041	err_s log call	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:1043	boot drain comment	KEEP	LEG	LEG(clear at start)+B16
+src/asy_uart_comm.py:1044	err_s log call	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:1050	boot drain first probe 2xpoll+jitter	DERIVE	REF:eea882d8:2026-09-11	NONE
+src/asy_uart_comm.py:1056	boot drain print	KEEP	LEG	B16
+src/asy_uart_comm.py:1092	comment counted and dropped	NOTBOUND	n/a	n/a
+src/asy_uart_comm.py:1115	listen drops hold-off	KEEP	LEG	LEG
+src/asy_uart_comm.py:1156	comment (while word)	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:15	import DEFAULT_LIMITS	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:27	import TransferLimits	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:44	tunable tag exercise period	NOTBOUND	n/a	cadence(A.7)
+src/asy_uart_link_driver.py:45	_EXERCISE_PERIOD_MS cadence	NOTBOUND	n/a	cadence(A.7)
+src/asy_uart_link_driver.py:53	reply-budget derivation comment	KEEP	AUD:656fc82f:2026-10-22	PJ.5+PJ.6+OR2026-10-21
+src/asy_uart_link_driver.py:54	reply-budget derivation comment	KEEP	AUD:656fc82f:2026-10-22	PJ.5
+src/asy_uart_link_driver.py:55	_QUIET_TIMEOUTS 3 (2.5 up)	KEEP	AUD:656fc82f:2026-10-22	PJ.6
+src/asy_uart_link_driver.py:56	_WINDOW_TIMEOUTS 8 (2.5+5 up)	KEEP	AUD:656fc82f:2026-10-22	PJ.5+A15
+src/asy_uart_link_driver.py:57	_HAZARD_RECOVERY_ATTEMPTS 2	DERIVE	AUD:656fc82f:2026-10-22	NONE(mirrors bench script)
+src/asy_uart_link_driver.py:80	limits param	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:91	limits forwarded	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:94	frame size	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:95	timeout copy	KEEP	AUD:656fc82f:2026-10-22	OR2026-09-11
+src/asy_uart_link_driver.py:96	quiet window	KEEP	AUD:656fc82f:2026-10-22	PJ.6
+src/asy_uart_link_driver.py:97	reply window	KEEP	AUD:656fc82f:2026-10-22	PJ.5
+src/asy_uart_link_driver.py:98	train size	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:130	comment stale uid	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:134	recover attempts result	DERIVE	AUD:656fc82f:2026-10-22	NONE
+src/asy_uart_link_driver.py:135	recover attempts reported	DERIVE	AUD:656fc82f:2026-10-22	NONE
+src/asy_uart_link_driver.py:141	exercise loop	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:150	exercise period sleep	NOTBOUND	n/a	cadence(A.7)
+src/asy_uart_link_driver.py:157	err_s log call	NOTBOUND	n/a	n/a
+src/asy_uart_link_driver.py:168	raw read window comment	KEEP	AUD:656fc82f:2026-10-22	PJ.5
+src/asy_uart_link_driver.py:173	raw read window/timeout	KEEP	AUD:656fc82f:2026-10-22	PJ.5+PJ.6
+src/asy_uart_link_driver.py:176	recover comment	KEEP	AUD:656fc82f:2026-10-22	PJ.5
+src/asy_uart_link_driver.py:177	attempts counter	DERIVE	AUD:656fc82f:2026-10-22	NONE
+src/asy_uart_link_driver.py:179	attempts cap loop	DERIVE	AUD:656fc82f:2026-10-22	NONE
+src/asy_uart_link_driver.py:180	attempts increment	DERIVE	AUD:656fc82f:2026-10-22	NONE
+src/asy_uart_link_driver.py:181	sleep reply window	KEEP	AUD:656fc82f:2026-10-22	PJ.5
+src/asy_uart_link_driver.py:183	attempts returned	DERIVE	AUD:656fc82f:2026-10-22	NONE
+src/asy_uart_link_driver.py:217	sleep quiet window	KEEP	AUD:656fc82f:2026-10-22	PJ.6
+src/asy_uart_link_driver.py:296	comment (while word)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:2	docstring (delimiter)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:4	comment (delimiter)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:5	comment (delimited)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:20	COBS_DELIMITER	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:22	_COBS_MAX_RUN encoding constant	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:30	max_frame param	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:33	comment (delimiter)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:34	max_frame clamp	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:41	is_delimited	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:51	delimiter()	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:56	comment (delimited)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:62	max_encoded	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:79	comment (delimiter)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:84	comment (delimiter)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:85	max_frame param	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:86	max_frame pass-through	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:87	scratch comment (max_frame)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:89	max_frame check	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:91	scratch sized max_encoded	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:98	encode size cap refusal	KEEP	REF:442a5594:2026-09-11	PJ.3(frame size)
+src/asy_framing_codecs.py:101	decode bound comment	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:102	decode size cap refusal	KEEP	REF:442a5594:2026-09-11	PJ.3(frame size)
+src/asy_framing_codecs.py:104	is_delimited	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:108	comment (delimiter)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:109	comment (delimiter)	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:114	decode loop	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:116	zero code byte check	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:122	run copy loop	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:126	max-run check	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:127	delimiter write	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:129	sleep(0) per run	NOTBOUND	n/a	CPRIM1.9
+src/asy_framing_codecs.py:132	delimiter()	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:133	delimiter return	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:145	delimiter compare	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:149	max-run check	NOTBOUND	n/a	n/a
+src/asy_framing_codecs.py:155	sleep(0) per run	NOTBOUND	n/a	CPRIM1.9
+src/asy_framing_codecs.py:157	delimiter append	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:4	docstring word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:43	_ERR_TIMEOUT code	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:50	_ERR_WLAN_GIVE_UP code	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:65	comment naming connect attempt	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:75	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:126	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:145	tunable tag disconnect iters	KEEP	REF:54c0d42d:2026-07-27	OR2026-10-28(Wi-Fi as built)
+src/asy_wifi_service.py:146	_STA_DISCONNECT_WAIT_ITERS 20	KEEP	REF:54c0d42d:2026-07-27	OR2026-10-28
+src/asy_wifi_service.py:147	comment naming the wait	KEEP	REF:54c0d42d:2026-07-27	OR2026-10-28
+src/asy_wifi_service.py:148	tunable tag disconnect poll	KEEP	LEG	LEG(0.5 s)
+src/asy_wifi_service.py:149	_STA_DISCONNECT_POLL_MS 500	KEEP	LEG	LEG
+src/asy_wifi_service.py:150	tunable tag connect poll	KEEP	LEG	LEG(0.5 s x10)
+src/asy_wifi_service.py:151	_STA_CONNECT_POLL_MS 500	KEEP	LEG	LEG
+src/asy_wifi_service.py:154	tunable tag stations settle	KEEP	LEG	LEG(0.1 s)
+src/asy_wifi_service.py:155	_HOTSPOT_STATIONS_SETTLE_MS 100	KEEP	LEG	LEG
+src/asy_wifi_service.py:156	tunable tag down settle	KEEP	LEG	LEG(2 s)
+src/asy_wifi_service.py:157	_WLAN_DOWN_SETTLE_S 2	KEEP	LEG	LEG
+src/asy_wifi_service.py:158	tunable tag deinit settle	KEEP	LEG	LEG(1 s)
+src/asy_wifi_service.py:159	_WLAN_DEINIT_SETTLE_S 1	KEEP	LEG	LEG
+src/asy_wifi_service.py:160	tunable tag mode settle	KEEP	LEG	LEG(1 s)
+src/asy_wifi_service.py:161	_WLAN_MODE_SETTLE_S 1	KEEP	LEG	LEG
+src/asy_wifi_service.py:162	tunable tag retry after loss	KEEP	LEG	LEG(60 s)
+src/asy_wifi_service.py:163	_STA_RETRY_AFTER_LOSS_S 60	KEEP	LEG	LEG
+src/asy_wifi_service.py:165	LED pattern tag	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:166	LED pattern const	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:167	LED pattern tag	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:168	LED pattern const	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:169	LED pattern tag	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:170	LED pattern const	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:171	LED pattern tag	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:172	LED pattern const	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:173	LED pattern tag	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:174	LED pattern const	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:175	LED pattern tag	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:176	LED pattern const	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:177	tunable tag caller grace	KEEP	LEG	LEG(5 s)
+src/asy_wifi_service.py:178	_RECONNECT_CALLER_GRACE_S 5	KEEP	LEG	LEG
+src/asy_wifi_service.py:179	tunable tag reconnect settle	KEEP	LEG	LEG(3 s)
+src/asy_wifi_service.py:180	_RECONNECT_SETTLE_S 3	KEEP	LEG	LEG
+src/asy_wifi_service.py:193	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:196	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:198	tunable tag refresh	NOTBOUND	n/a	cadence(LEG wifi_refresh_sec)
+src/asy_wifi_service.py:199	_WIFI_REFRESH_S cadence	NOTBOUND	n/a	cadence(LEG)
+src/asy_wifi_service.py:226	tunable tag module.max_error	KEEP	REF	C.7.2+OR2026-10-28
+src/asy_wifi_service.py:227	max_module_error param	KEEP	REF	C.7.2+OR2026-10-28
+src/asy_wifi_service.py:237	max_module_error pass	KEEP	REF	C.7.2+OR2026-10-28
+src/asy_wifi_service.py:257	uptime counter Timer()	IN_B	REF	B item 6
+src/asy_wifi_service.py:258	hotspot Timer()	KEEP	LEG	LEG(hotspot_timer)
+src/asy_wifi_service.py:260	hotspot timeout flag	KEEP	LEG	LEG
+src/asy_wifi_service.py:270	silent-mode attempt due	KEEP	AUD:01032838:2026-10-13	OR(silent mode)+OR2026-10-28
+src/asy_wifi_service.py:272	start_uptime_timer mention	IN_B	REF	B item 6
+src/asy_wifi_service.py:273	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:281	stations settle sleep	KEEP	LEG	LEG
+src/asy_wifi_service.py:318	wrn_s log call	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:322	_arm_hotspot_timer	KEEP	LEG	LEG
+src/asy_wifi_service.py:323	PERIODIC arm comment	KEEP	LEG	LEG+C.9
+src/asy_wifi_service.py:324	hotspot loop comment	KEEP	LEG	LEG
+src/asy_wifi_service.py:329	hotspot flag set	KEEP	LEG	LEG
+src/asy_wifi_service.py:332	arm failure retried next cycle	KEEP	REF	PF.1(Timer.init ENOMEM)
+src/asy_wifi_service.py:333	err_s log call	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:338	def _attempt_sta_connect	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:347	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:382	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:403	connect loop	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:408	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:409	LED pattern call	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:412	uptime tick arm retry	IN_B	REF	B item 6
+src/asy_wifi_service.py:413	arm_tick_timer	IN_B	REF	B item 6
+src/asy_wifi_service.py:415	uptime arm failure log	IN_B	REF	B item 6
+src/asy_wifi_service.py:430	give-up streak log	KEEP	AUD:65a0df3b:2026-10-06	C.7.2+OR2026-10-28
+src/asy_wifi_service.py:431	E66 give-up, task restart	KEEP	AUD:65a0df3b:2026-10-06	C.7.2+OR2026-10-28
+src/asy_wifi_service.py:434	refresh sleep cadence	NOTBOUND	n/a	cadence(LEG)
+src/asy_wifi_service.py:436	def disconnect-and-wait	KEEP	REF:54c0d42d:2026-07-27	OR2026-10-28
+src/asy_wifi_service.py:439	bounded disconnect loop	KEEP	REF:54c0d42d:2026-07-27	OR2026-10-28
+src/asy_wifi_service.py:445	disconnect poll sleep	KEEP	LEG	LEG
+src/asy_wifi_service.py:448	E22 disconnect timed out	KEEP	REF:54c0d42d:2026-07-27	OR2026-10-28
+src/asy_wifi_service.py:453	LED pattern	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:454	LED pattern	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:456	LED loop	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:458	LED on sleep	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:460	LED off sleep	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:462	err_s log call	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:482	caller grace sleep	KEEP	LEG	LEG
+src/asy_wifi_service.py:486	wait for STA disconnect	KEEP	LEG	LEG
+src/asy_wifi_service.py:487	reconnect settle sleep	KEEP	LEG	LEG
+src/asy_wifi_service.py:489	retry-after-loss due	KEEP	LEG	LEG(60 s)
+src/asy_wifi_service.py:496	hotspot window then STA retry	KEEP	LEG	LEG
+src/asy_wifi_service.py:497	arm hotspot timer	KEEP	LEG	LEG
+src/asy_wifi_service.py:503	LED hotspot pattern	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:509	LED hotspot client pattern	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:513	hotspot timeout loop	KEEP	LEG	LEG
+src/asy_wifi_service.py:514	loop	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:515	hotspot flag wait	KEEP	LEG	LEG
+src/asy_wifi_service.py:517	silent attempt due	KEEP	AUD:01032838:2026-10-13	OR2026-10-28
+src/asy_wifi_service.py:548	loop	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:564	wrn_s log call	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:589	retry wait due	KEEP	LEG	LEG
+src/asy_wifi_service.py:593	retry_due	KEEP	LEG	LEG
+src/asy_wifi_service.py:594	retry_due	KEEP	LEG	LEG
+src/asy_wifi_service.py:596	retrying in 1 minute	KEEP	LEG	LEG
+src/asy_wifi_service.py:597	silent: one attempt per period	KEEP	AUD:01032838:2026-10-13	OR2026-10-28
+src/asy_wifi_service.py:602	return retry_due	KEEP	LEG	LEG
+src/asy_wifi_service.py:635	connect poll sleep	KEEP	LEG	LEG
+src/asy_wifi_service.py:637	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:677	loop	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:689	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:690	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:692	silent attempt due	KEEP	AUD:01032838:2026-10-13	OR2026-10-28
+src/asy_wifi_service.py:697	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:736	LED pattern	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:738	LED loop	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:741	LED pattern	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:745	LED pattern	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:746	LED pattern	NOTBOUND	n/a	cadence
+src/asy_wifi_service.py:748	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:749	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:751	arm hotspot timer	KEEP	LEG	LEG
+src/asy_wifi_service.py:752	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:755	silent attempt due	KEEP	AUD:01032838:2026-10-13	OR2026-10-28
+src/asy_wifi_service.py:757	silent attempt due	KEEP	AUD:01032838:2026-10-13	OR2026-10-28
+src/asy_wifi_service.py:760	connect attempt call	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:761	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:762	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:770	connect attempt call	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:771	retry_due	KEEP	LEG	LEG
+src/asy_wifi_service.py:773	retry_due	KEEP	LEG	LEG
+src/asy_wifi_service.py:774	retry_due	KEEP	LEG	LEG
+src/asy_wifi_service.py:775	retry-after-loss sleep	KEEP	LEG	LEG(60 s)
+src/asy_wifi_service.py:799	down settle sleep	KEEP	LEG	LEG
+src/asy_wifi_service.py:802	deinit settle sleep	KEEP	LEG	LEG
+src/asy_wifi_service.py:807	mode settle sleep	KEEP	LEG	LEG
+src/asy_wifi_service.py:823	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:846	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:858	loop	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:875	uptime tick ticks_diff horizon	IN_B	REF	B item 6
+src/asy_wifi_service.py:877	wrn_s log call	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:882	def wait for STA disconnect	KEEP	LEG	LEG
+src/asy_wifi_service.py:885	disconnect-and-wait call	KEEP	REF:54c0d42d:2026-07-27	OR2026-10-28
+src/asy_wifi_service.py:898	comment word	NOTBOUND	n/a	n/a
+src/asy_wifi_service.py:906	hotspot timeout starter	KEEP	LEG	LEG
+src/asy_wifi_service.py:915	hotspot timeout starter	KEEP	LEG	LEG
+src/asy_wifi_service.py:917	hotspot timeout task	KEEP	LEG	LEG
+src/asy_wifi_service.py:923	start_uptime_timer	IN_B	REF	B item 6
+src/asy_wifi_service.py:925	arm_tick_timer	IN_B	REF	B item 6
+src/asy_wifi_service.py:927	stop_uptime_timer	IN_B	REF	B item 6
+src/asy_webserver_service.py:2	docstring hardening	KEEP	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:104	W49 code	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:107	W53 code	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:120	_PAUSE_TIME_MAX input range	NOTBOUND	n/a	LEG range
+src/asy_webserver_service.py:122	comment	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:128	PauseTime schema	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:139	LED busy text	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:144	tunable tag pending fragments	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:145	_MAX_PENDING_FRAGMENTS flush size	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:146	_FLAT_MAX dump size	NOTBOUND	n/a	OR2026-11-06
+src/asy_webserver_service.py:147	comment (Limits word)	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:148	tunable tag max_content_length	KEEP	REF	I.6(derived)
+src/asy_webserver_service.py:149	_DEFAULT_MAX_CONTENT_LENGTH	KEEP	REF	I.6(derived)
+src/asy_webserver_service.py:154	_DEFAULT_MAX_CONNECTIONS 6	KEEP	REF:7cd363d5:2026-08-12	H.7(MEMP_NUM_TCP_PCB-3)+OR2026-08-12
+src/asy_webserver_service.py:155	tunable tag per_call_timeout_s	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12(need); number NONE
+src/asy_webserver_service.py:156	_DEFAULT_PER_CALL_TIMEOUT_S 5.0	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12; number NONE
+src/asy_webserver_service.py:157	tunable tag outer_cap_s	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12; number NONE
+src/asy_webserver_service.py:158	_DEFAULT_OUTER_CAP_S 15.0	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12; number NONE
+src/asy_webserver_service.py:162	tunable tag header lines	KEEP	REF:ddcd17e8:2026-09-30	OR2026-10-28(WS-1 head limits)
+src/asy_webserver_service.py:163	_MAX_HEADER_LINES 32	KEEP	REF:ddcd17e8:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:164	tunable tag head bytes	KEEP	REF:5469a09b:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:165	_MAX_HEAD_BYTES 2048	KEEP	REF:5469a09b:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:203	piece writer comment	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:205	piece writer max_bytes	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:209	piece writer max_bytes	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:213	piece flush size	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:217	fragment flush count	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:245	sleep(0) yield	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:257	pieces loop	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:262	_FLAT_MAX comment	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:264	_FLAT_MAX check	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:265	_FLAT_MAX check	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:309	per-call timeout proxy class	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12; number NONE
+src/asy_webserver_service.py:310	proxy comment	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:312	proxy comment	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:316	timeout_ms param	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:323	timeout_ms attr	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:335	_bounded wait_for_ms	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:338	read-phase log comment	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:339	read-phase log comment	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:341	read wait_for_ms	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:342	TimeoutError catch	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:343	W49 reclaim logged	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:352	head line check	KEEP	REF:ddcd17e8:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:356	line/head size refusal	KEEP	REF:5469a09b:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:361	header line count	KEEP	REF:ddcd17e8:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:414	head read bound comment	KEEP	REF:ddcd17e8:2026-09-30	OR2026-10-28+Microdot max_readline
+src/asy_webserver_service.py:416	Microdot max_readline	KEEP	REF:ddcd17e8:2026-09-30	Microdot
+src/asy_webserver_service.py:418	head read loop	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:419	over-limit refusal	KEEP	REF:ddcd17e8:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:421	bounded head read	KEEP	REF:ddcd17e8:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:428	head line check call	KEEP	REF:ddcd17e8:2026-09-30	OR2026-10-28
+src/asy_webserver_service.py:443	reset refusals field	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:450	ServingLimits type	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:451	body cap field	KEEP	REF	I.6
+src/asy_webserver_service.py:453	connection ceiling field	KEEP	REF:7cd363d5:2026-08-12	H.7+OR2026-08-12
+src/asy_webserver_service.py:454	backlog field	KEEP	REF	H.7
+src/asy_webserver_service.py:455	per_call_timeout_s field	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:456	outer_cap_s field	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:470	ServingLimits namedtuple	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:471	ServingLimits fields	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:505	Cache-Control comment (stale word)	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:518	serving param	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:519	HTTPDropped window clock	KEEP	AUD:b3161299:2026-10-05	OR2026-10-01
+src/asy_webserver_service.py:530	uptime reader	KEEP	AUD:b3161299:2026-10-05	OR2026-10-01
+src/asy_webserver_service.py:541	connection ceiling	KEEP	REF:7cd363d5:2026-08-12	H.7+OR2026-08-12
+src/asy_webserver_service.py:542	connection ceiling	KEEP	REF:7cd363d5:2026-08-12	H.7
+src/asy_webserver_service.py:547	backlog = ceiling+1	KEEP	REF	H.7
+src/asy_webserver_service.py:548	ms conversion comment	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:549	ms conversion comment	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:550	per-call ms	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:551	outer cap ms	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:555	HourlyWindowCounter (24 h)	KEEP	AUD:b3161299:2026-10-05	OR2026-10-01
+src/asy_webserver_service.py:557	body cap	KEEP	REF	I.6
+src/asy_webserver_service.py:559	Microdot body cap	KEEP	REF	I.6
+src/asy_webserver_service.py:566	Microdot body length	KEEP	REF	I.6
+src/asy_webserver_service.py:579	comment (err_s)	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:600	comment (entries)	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:704	wait_for_ms(writer.wait_closed())	REMOVE	REF:884f3ce4:2026-08-12	NONE(wait_closed never waits, v1.29.0 stream.py:19-21)
+src/asy_webserver_service.py:706	W53 on a raised close (stays)	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:724	err_s log call	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:726	LED internal wait bounded comment	IN_B	AUD:2f049a00:2026-10-07	B item 1 (12.133)
+src/asy_webserver_service.py:741	err_s log call	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:757	err_s log call	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:760	_note_drop	KEEP	AUD:f5c82557:2026-10-08	OR2026-09-29+OR2026-10-01
+src/asy_webserver_service.py:762	drop counted in window	KEEP	AUD:f5c82557:2026-10-08	OR2026-10-01
+src/asy_webserver_service.py:814	comment (while word)	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:843	err_s log call	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:853	ceiling compare	KEEP	REF:7cd363d5:2026-08-12	OR2026-08-12+H.7
+src/asy_webserver_service.py:858	refusal at ceiling, W60	KEEP	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:862	reader proxy per-call	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:863	writer proxy per-call	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:867	outer cap wait_for_ms	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:870	TimeoutError catch	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:871	outer cap comment	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:872	outer cap comment	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:874	W49 reclaim logged	DERIVE	REF:7cd363d5:2026-08-12	OR2026-08-12
+src/asy_webserver_service.py:880	drop trace branch	KEEP	AUD:f5c82557:2026-10-08	OR2026-09-29
+src/asy_webserver_service.py:882	head refused drop W61	KEEP	AUD:f5c82557:2026-10-08	OR2026-10-28
+src/asy_webserver_service.py:884	peer reset drop W48	KEEP	AUD:f5c82557:2026-10-08	OR2026-09-29
+src/asy_webserver_service.py:890	err_s log call	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:900	explicit backlog comment	KEEP	REF	H.7
+src/asy_webserver_service.py:901	stub comment (drop word)	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:923	sleep(0) yield	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:956	get_dropped_count	KEEP	AUD:b3161299:2026-10-05	OR2026-10-01
+src/asy_webserver_service.py:957	24 h window comment	KEEP	AUD:b3161299:2026-10-05	OR2026-10-01
+src/asy_webserver_service.py:958	window total	KEEP	AUD:b3161299:2026-10-05	OR2026-10-01
+src/asy_webserver_service.py:975	ResetErrors clears window	KEEP	AUD:b3161299:2026-10-05	OR2026-10-01
+src/asy_webserver_service.py:1002	_FLAT_MAX comment	NOTBOUND	n/a	n/a
+src/asy_webserver_service.py:1003	_FLAT_MAX check	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:9	comment (entries)	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:22	import DNS_LABEL_MAX	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:47	E70 code	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:54	tunable tag check interval	KEEP	LEG	LEG(10 s)
+src/asy_ntp_client.py:56	tunable tag sync retries	KEEP	LEG	LEG(3)
+src/asy_ntp_client.py:57	_NTP_SYNC_RETRIES 3	KEEP	LEG	LEG
+src/asy_ntp_client.py:58	tunable tag retry interval	KEEP	LEG	LEG(15 s)
+src/asy_ntp_client.py:59	_NTP_RETRY_INTERV 15	KEEP	LEG	LEG
+src/asy_ntp_client.py:60	tunable tag retry unsynced	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03(60 s)
+src/asy_ntp_client.py:61	_NTP_RETRY_UNSYNCED_S 60	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:63	timing comment	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:66	dns_timeout_ms field	DERIVE	REF:a6abe134:2026-07-28	NONE
+src/asy_ntp_client.py:67	dns_tries field	ASK	REF:a6abe134:2026-07-28	NONE(value 1, option)
+src/asy_ntp_client.py:68	fetch_timeout_ms field	KEEP	LEG	LEG(5000)
+src/asy_ntp_client.py:71	NtpTiming namedtuple	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:82	plausibility ceiling tag	NOTBOUND	n/a	RFC5905
+src/asy_ntp_client.py:83	plausibility ceiling	NOTBOUND	n/a	RFC5905
+src/asy_ntp_client.py:102	DNSFallback at most three	KEEP	AUD:f1f800e7:2026-10-08	ORV2026-10-02
+src/asy_ntp_client.py:104	_DNS_FALLBACK_MAX 3	KEEP	AUD:f1f800e7:2026-10-08	ORV2026-10-02
+src/asy_ntp_client.py:139	fallback count check	KEEP	AUD:f1f800e7:2026-10-08	ORV2026-10-02
+src/asy_ntp_client.py:146	label length check	NOTBOUND	n/a	RFC1035
+src/asy_ntp_client.py:163	max_module_error=0 (no streak)	KEEP	AUD:c3df14e1:2026-10-06	OR2026-09-24
+src/asy_ntp_client.py:170	dns timeout attr	DERIVE	REF:a6abe134:2026-07-28	NONE
+src/asy_ntp_client.py:171	dns tries attr	ASK	REF:a6abe134:2026-07-28	NONE
+src/asy_ntp_client.py:172	fetch timeout attr	KEEP	LEG	LEG
+src/asy_ntp_client.py:173	unsynced wait	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:174	unsynced wait counter	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:175	attempt in flight flag	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:177	synced retry count	KEEP	LEG	LEG
+src/asy_ntp_client.py:183	check Timer()	IN_B	LEG	B item 6
+src/asy_ntp_client.py:184	retry Timer()	IN_B	LEG	B item 6
+src/asy_ntp_client.py:185	sync-age Timer()	IN_B	LEG	B item 6
+src/asy_ntp_client.py:225	fetch write timeout	KEEP	LEG	LEG(5 s)
+src/asy_ntp_client.py:228	fetch recv timeout	KEEP	LEG	LEG(5 s)
+src/asy_ntp_client.py:237	retry timer deinit	IN_B	LEG	B item 6
+src/asy_ntp_client.py:238	retry when synced comment	KEEP	LEG	LEG
+src/asy_ntp_client.py:240	retries below cap	KEEP	LEG	LEG
+src/asy_ntp_client.py:242	waiting for retry	KEEP	LEG	LEG
+src/asy_ntp_client.py:244	ONE_SHOT comment	IN_B	REF	B item 6
+src/asy_ntp_client.py:245	retry timer init	IN_B	LEG	B item 6
+src/asy_ntp_client.py:246	retry period 15 s	IN_B	LEG	B item 6
+src/asy_ntp_client.py:250	retries increment	KEEP	LEG	LEG
+src/asy_ntp_client.py:251	arm failure branch	IN_B	REF	B item 6
+src/asy_ntp_client.py:253	arm failure log	IN_B	REF	B item 6
+src/asy_ntp_client.py:254	arm failure reset	IN_B	REF	B item 6
+src/asy_ntp_client.py:256	give-up E70 logged	KEEP	LEG	LEG
+src/asy_ntp_client.py:257	retries reset	KEEP	LEG	LEG
+src/asy_ntp_client.py:262	retry timer deinit	IN_B	LEG	B item 6
+src/asy_ntp_client.py:263	retries reset	KEEP	LEG	LEG
+src/asy_ntp_client.py:264	unsynced wait reset	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:269	parse param (_s name)	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:278	timestamp unpack (_s name)	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:279	zero timestamp check	NOTBOUND	n/a	RFC5905
+src/asy_ntp_client.py:282	era arithmetic	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:287	plausibility window check	NOTBOUND	n/a	RFC5905
+src/asy_ntp_client.py:303	refresh loop	IN_B	LEG	B item 6
+src/asy_ntp_client.py:308	err_s log call	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:311	stale after 3 intervals comment	KEEP	LEG	LEG+OR2026-10-27(Q10)
+src/asy_ntp_client.py:323	unsynced wait count	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:324	unsynced due	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:326	retry timer deinit	IN_B	LEG	B item 6
+src/asy_ntp_client.py:327	retries reset	KEEP	LEG	LEG
+src/asy_ntp_client.py:330	unsynced wait reset	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:334	_reset_backoff def (name stale)	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:335	wait back to check interval	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:336	unsynced counter reset	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:340	resolve with dns timeout/tries	DERIVE	REF:a6abe134:2026-07-28	NONE
+src/asy_ntp_client.py:346	attempt name	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:353	skip text	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:378	comment word	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:382	err_s log call	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:387	sync-age 1 Hz loop	IN_B	REF	B item 6
+src/asy_ntp_client.py:395	attempt flag reset	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:397	sync loop	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:401	attempt flag	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:403	attempt call	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:404	attempt flag	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:405	never gives up comment	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03+C.7.2
+src/asy_ntp_client.py:406	never gives up comment	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:408	60 s unsynced wait set	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_ntp_client.py:428	start_check_timer	IN_B	LEG	B item 6
+src/asy_ntp_client.py:439	start_sync_age_timer	IN_B	REF	B item 6
+src/asy_ntp_client.py:440	arm_tick_timer	IN_B	REF	B item 6
+src/asy_ntp_client.py:442	stop_check_timer	IN_B	REF	B item 6
+src/asy_ntp_client.py:445	stop_sync_age_timer	IN_B	REF	B item 6
+src/asy_ntp_client.py:462	get_last_ntp_sync	IN_B	REF	B item 6
+src/asy_ntp_client.py:470	stale comment (owner 10-21)	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:496	staleness comment	NOTBOUND	n/a	n/a
+src/asy_ntp_client.py:504	retry timer deinit	IN_B	LEG	B item 6
+src/asy_ntp_client.py:505	retries reset	KEEP	LEG	LEG
+src/asy_ntp_client.py:506	wait reset (comment says backoff)	KEEP	AUD:25a14b4f:2026-11-03	OR2026-11-03
+src/asy_dns_client.py:6	docstring (servers in order)	NOTBOUND	n/a	n/a
+src/asy_dns_client.py:25	tunable tag dns.timeout_ms	DERIVE	REF:a6abe134:2026-07-28	NONE
+src/asy_dns_client.py:26	_DNS_TIMEOUT_MS 500	DERIVE	REF:a6abe134:2026-07-28	NONE
+src/asy_dns_client.py:28	tunable tag dns.tries	ASK	REF:a6abe134:2026-07-28	NONE(value 1)
+src/asy_dns_client.py:29	_DNS_TRIES 1	ASK	REF:a6abe134:2026-07-28	NONE(value 1)
+src/asy_dns_client.py:30	DNS_UDP_MAX 512	KEEP	AUD:f1f800e7:2026-10-08	RFC1035-4.2.1
+src/asy_dns_client.py:36	octet max	NOTBOUND	n/a	n/a
+src/asy_dns_client.py:37	DNS_LABEL_MAX 63	NOTBOUND	n/a	RFC1035
+src/asy_dns_client.py:48	label length check	NOTBOUND	n/a	RFC1035
+src/asy_dns_client.py:49	label length error	NOTBOUND	n/a	RFC1035
+src/asy_dns_client.py:70	comment word	NOTBOUND	n/a	n/a
+src/asy_dns_client.py:72	stale/spoofed reply refused	NOTBOUND	n/a	n/a
+src/asy_dns_client.py:111	octet check	NOTBOUND	n/a	n/a
+src/asy_dns_client.py:121	timeout_ms param	DERIVE	REF:a6abe134:2026-07-28	NONE
+src/asy_dns_client.py:122	tries param	ASK	REF:a6abe134:2026-07-28	NONE
+src/asy_dns_client.py:138	comment word	NOTBOUND	n/a	n/a
+src/asy_dns_client.py:142	per-server retry loop	ASK	REF:a6abe134:2026-07-28	NONE
+src/asy_dns_client.py:143	query write timeout	DERIVE	REF:a6abe134:2026-07-28	NONE
+src/asy_dns_client.py:144	reply recv timeout	DERIVE	REF:a6abe134:2026-07-28	NONE
+src/asy_udp_socket.py:31	tunable tag retry_backoff_ms	KEEP	LEG	LEG(sleep 0.5 between tries)
+src/asy_udp_socket.py:32	_RETRY_BACKOFF_MS 500	KEEP	LEG	LEG
+src/asy_udp_socket.py:33	tunable tag poll_wait	NOTBOUND	n/a	CPRIM3.6
+src/asy_udp_socket.py:34	_POLL_WAIT_MS cadence	NOTBOUND	n/a	CPRIM3.6
+src/asy_udp_socket.py:35	tunable tag poll_idle	NOTBOUND	n/a	CPRIM3.6
+src/asy_udp_socket.py:36	_POLL_IDLE_MS cadence	NOTBOUND	n/a	CPRIM3.6
+src/asy_udp_socket.py:55	comment word	NOTBOUND	n/a	n/a
+src/asy_udp_socket.py:62	select.poll()	NOTBOUND	n/a	n/a
+src/asy_udp_socket.py:72	setup failure pause	KEEP	LEG	LEG
+src/asy_udp_socket.py:107	comment word	NOTBOUND	n/a	n/a
+src/asy_udp_socket.py:112	ready(timeout_ms)	KEEP	LEG	LEG(caller's bound)
+src/asy_udp_socket.py:113	cadence comment	NOTBOUND	n/a	CPRIM3.6
+src/asy_udp_socket.py:118	wait_ms choice	NOTBOUND	n/a	CPRIM3.6
+src/asy_udp_socket.py:119	start tick	KEEP	LEG	LEG
+src/asy_udp_socket.py:120	poll loop	NOTBOUND	n/a	n/a
+src/asy_udp_socket.py:124	ipoll(0)	NOTBOUND	n/a	n/a
+src/asy_udp_socket.py:128	ticks_diff deadline	KEEP	LEG	LEG
+src/asy_udp_socket.py:130	poll sleep	NOTBOUND	n/a	CPRIM3.6
+src/asy_udp_socket.py:135	recvfrom timeout	KEEP	LEG	LEG
+src/asy_udp_socket.py:136	ready with timeout	KEEP	LEG	LEG
+src/asy_udp_socket.py:138	datagram cut to buf	KEEP	AUD	RFC1035(caller's 512)+lwIP
+src/asy_udp_socket.py:150	sendto timeout	KEEP	LEG	LEG
+src/asy_udp_socket.py:152	ready with timeout	KEEP	LEG	LEG
+src/asy_udp_socket.py:159	write timeout	KEEP	LEG	LEG
+src/asy_udp_socket.py:160	ready with timeout	KEEP	LEG	LEG
+src/asy_captive_dns.py:5	docstring (while word)	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:7	invalid input dropped	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:14	import DNS_UDP_MAX	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:33	W41 code	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:36	recv-fail backoff comment	REMOVE	REF:01699e2e:2026-08-18	NONE(inside failure; OR2026-11-03 form)
+src/asy_captive_dns.py:39	tunable tag backoff initial	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:40	_RECV_FAIL_BACKOFF_INITIAL_MS 500	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:41	tunable tag backoff max	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:42	_RECV_FAIL_BACKOFF_MAX_MS 5000	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:43	tunable tag backoff mult	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:44	_RECV_FAIL_BACKOFF_MULTIPLIER 2	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:45	tunable tag error retry wait	KEEP	LEG	LEG(sleep 3)
+src/asy_captive_dns.py:46	_ERROR_RETRY_WAIT_S 3	KEEP	LEG	LEG
+src/asy_captive_dns.py:81	err_s log call	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:84	backoff init	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:86	serve loop	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:89	lwIP 4-datagram queue comment	NOTBOUND	n/a	lwIP fact
+src/asy_captive_dns.py:90	lwIP queue comment	NOTBOUND	n/a	lwIP fact
+src/asy_captive_dns.py:91	recvfrom 512	KEEP	LEG	RFC1035-4.2.1
+src/asy_captive_dns.py:93	backoff reset	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:94	yield-per-datagram comment	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:95	yield comment	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:96	sleep(0) per datagram	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:110	W41 reply send failed	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:114	W42 receive failed	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:115	backoff sleep	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:116	backoff doubling	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:117	backoff cap	REMOVE	REF:01699e2e:2026-08-18	NONE
+src/asy_captive_dns.py:122	err_s log call	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:123	error pause 3 s	KEEP	LEG	LEG
+src/asy_captive_dns.py:132	err_s log call	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:138	wrn_s log call	NOTBOUND	n/a	n/a
+src/asy_captive_dns.py:159	name decode loop	NOTBOUND	n/a	n/a
+html/index.html:23	nav-backdrop markup	NOTBOUND	n/a	n/a
+html/index.html:39	backdropEl	NOTBOUND	n/a	n/a
+html/style.css:119	.nav-backdrop	NOTBOUND	n/a	n/a
+html/style.css:129	.nav-backdrop	NOTBOUND	n/a	n/a
+html/style.css:154	.nav-backdrop	NOTBOUND	n/a	n/a
+html/style.css:484	comment (entries)	NOTBOUND	n/a	n/a
+js/api-contract.js:12	ERR_COUNT_CAP mirror	NOTBOUND	n/a	n/a
+js/app.js:45	backdropEl	NOTBOUND	n/a	n/a
+js/app.js:51	backdropEl	NOTBOUND	n/a	n/a
+js/app.js:89	backdropEl	NOTBOUND	n/a	n/a
+js/definitions.js:75	MAX_DECIMALS validation	NOTBOUND	n/a	n/a
+js/definitions.js:88	positive-delay check doc	NOTBOUND	n/a	n/a
+js/definitions.js:138	entries()	NOTBOUND	n/a	n/a
+js/definitions.js:162	decimals range	NOTBOUND	n/a	n/a
+js/definitions.js:163	decimals range text	NOTBOUND	n/a	n/a
+js/definitions.js:203	entries()	NOTBOUND	n/a	n/a
+js/definitions.js:331	positive-interval check comment	NOTBOUND	n/a	n/a
+js/definitions.js:342	entries()	NOTBOUND	n/a	n/a
+js/field-format.js:16	tunable tag clock_mismatch_s	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06(/status latency)
+js/field-format.js:17	CLOCK_MISMATCH_S 5	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06
+js/field-format.js:29	clock mismatch threshold	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06
+js/field-format.js:117	comment (limit word)	NOTBOUND	n/a	n/a
+js/main.js:16	backdropEl	NOTBOUND	n/a	n/a
+js/main.js:22	backdropEl	NOTBOUND	n/a	n/a
+js/main.js:36	backdropEl	NOTBOUND	n/a	n/a
+js/mock-server.js:15	LED busy text mirror	NOTBOUND	n/a	n/a
+js/mock-server.js:17	DNS_LABEL_MAX mirror	NOTBOUND	n/a	n/a
+js/mock-server.js:18	octet max	NOTBOUND	n/a	n/a
+js/mock-server.js:19	DNS_FALLBACK_MAX mirror	NOTBOUND	n/a	n/a
+js/mock-server.js:29	host label check	NOTBOUND	n/a	n/a
+js/mock-server.js:32	fallback count check	NOTBOUND	n/a	n/a
+js/mock-server.js:65	octet check	NOTBOUND	n/a	n/a
+js/mock-server.js:123	entries()	NOTBOUND	n/a	n/a
+js/mock-server.js:243	comment (entries)	NOTBOUND	n/a	n/a
+js/mock-server.js:285	mock LED busy emulation doc	NOTBOUND	n/a	n/a
+js/mock-server.js:286	mock LED busy emulation doc	NOTBOUND	n/a	n/a
+js/mock-server.js:337	entries()	NOTBOUND	n/a	n/a
+js/mock-server.js:381	mock fault comment	NOTBOUND	n/a	n/a
+js/mock-server.js:407	entries()	NOTBOUND	n/a	n/a
+js/mock-server.js:510	counter saturation doc	NOTBOUND	n/a	n/a
+js/mock-server.js:537	comment (drops word)	NOTBOUND	n/a	n/a
+js/mock-server.js:655	mock delay setTimeout	NOTBOUND	n/a	n/a
+js/mock-server.js:710	mock doc (attempted word)	NOTBOUND	n/a	n/a
+js/mock-server.js:727	retry hint comment	NOTBOUND	n/a	n/a
+js/mock-server.js:754	entries()	NOTBOUND	n/a	n/a
+js/mock-server.js:777	entries()	NOTBOUND	n/a	n/a
+js/nav.js:16	backdropEl	NOTBOUND	n/a	n/a
+js/nav.js:22	backdropEl	NOTBOUND	n/a	n/a
+js/nav.js:39	comment (drop word)	NOTBOUND	n/a	n/a
+js/nav.js:73	backdrop listener	NOTBOUND	n/a	n/a
+js/poll-manager.js:4	timeout rationale comment	KEEP	REF:9f6f6e15:2026-08-21	H.4(= server outer cap)
+js/poll-manager.js:7	per-request timeout doc	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:8	tunable tag (outer_cap_s)	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:9	DEFAULT_TIMEOUT_MS 15000	KEEP	REF:9f6f6e15:2026-08-21	H.4(= server outer cap)
+js/poll-manager.js:11	backoff cap doc	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06
+js/poll-manager.js:12	tunable tag poll_backoff_max_ms	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06
+js/poll-manager.js:13	POLL_BACKOFF_MAX_MS 60000	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06(1/min vs ~2.2 req/s, H.7)
+js/poll-manager.js:29	timeout rationale comment	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:32	timeoutMs param doc	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:34	queueSignal drop on stop (user)	NOTBOUND	n/a	n/a
+js/poll-manager.js:37	request timeoutMs default	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:42	fetch with timeout	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:68	whole-request timeout doc	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:71	timeoutMs param doc	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:75	fetchTextWithTimeout	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:76	AbortController timeout	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:77	setTimeout abort	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:78	combined abort signal	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:96	comment (dropped word)	NOTBOUND	n/a	n/a
+js/poll-manager.js:98	interrupted-read error	NOTBOUND	n/a	n/a
+js/poll-manager.js:102	timed-out check	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:103	timed-out error (shown)	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:107	clearTimeout	KEEP	REF:9f6f6e15:2026-08-21	H.4
+js/poll-manager.js:116	backoff doc	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06
+js/poll-manager.js:117	hidden-page doc (while word)	NOTBOUND	n/a	n/a
+js/poll-manager.js:128	tick timer handle type	NOTBOUND	n/a	n/a
+js/poll-manager.js:129	tick timer handle	NOTBOUND	n/a	n/a
+js/poll-manager.js:135	clearTimeout on hide	NOTBOUND	n/a	n/a
+js/poll-manager.js:136	handle reset	NOTBOUND	n/a	n/a
+js/poll-manager.js:137	resume on visible	NOTBOUND	n/a	n/a
+js/poll-manager.js:145	clearTimeout on stop	NOTBOUND	n/a	n/a
+js/poll-manager.js:151	handle reset	NOTBOUND	n/a	n/a
+js/poll-manager.js:159	backoff growth	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06
+js/poll-manager.js:168	backoff delay min(cap)	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06
+js/poll-manager.js:169	schedule next tick	KEEP	AUD:9bf22747:2026-10-13	ORV2026-11-06
+js/render.js:82	entries()	NOTBOUND	n/a	n/a
+js/render.js:96	entries()	NOTBOUND	n/a	n/a
+js/render.js:181	fromEntries	NOTBOUND	n/a	n/a
+js/render.js:198	fromEntries	NOTBOUND	n/a	n/a
+js/render.js:295	entries()	NOTBOUND	n/a	n/a
+js/render.js:472	comment (dropdown)	NOTBOUND	n/a	n/a
+js/render.js:479	comment (dropped word)	NOTBOUND	n/a	n/a
+js/render.js:543	doc (while word)	NOTBOUND	n/a	n/a
+js/render.js:592	stop drops queued GETs (user)	NOTBOUND	n/a	n/a
+js/render.js:674	entries()	NOTBOUND	n/a	n/a
+js/shell.js:2	doc (entries)	NOTBOUND	n/a	n/a
+js/shell.js:16	tunable tag watch interval	NOTBOUND	n/a	cadence
+js/shell.js:17	DEVICE_WATCH_INTERVAL_MS cadence	NOTBOUND	n/a	cadence
+js/shell.js:39	doc (while word)	NOTBOUND	n/a	n/a
+js/shell.js:42	backdropEl	NOTBOUND	n/a	n/a
+js/shell.js:92	watch polling start	NOTBOUND	n/a	cadence
+js/templates.js:30	comment (DNS fallback max)	NOTBOUND	n/a	n/a
+js/templates.js:542	entries()	NOTBOUND	n/a	n/a
+js/templates.js:584	comment (entries)	NOTBOUND	n/a	n/a
+js/templates.js:720	doc (entries)	NOTBOUND	n/a	n/a
+js/templates.js:795	entries()	NOTBOUND	n/a	n/a

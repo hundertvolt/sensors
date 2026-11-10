@@ -69,7 +69,7 @@ async def _loads(sysfunct: "SystemService", written: "list[int]", bus_counts: "l
     n = 0
     while not stop[0]:  # set once the reset is armed: the paused chunk layer refuses every write after it
         code = E_TEST_SEED_A if n % 2 else E_TEST_SEED_B
-        await sysfunct.pr.err_s("load", errno=code)
+        sysfunct.pr.err_s("load", errno=code)
         written.append(code)
         if len(written) > _WRITTEN_KEPT:
             written.pop(0)

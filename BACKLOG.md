@@ -64,13 +64,12 @@ gates, traps).
   `flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor` (device
   script `tests_hardware/device_scripts/fram_command_hold_timing.py`, which writes only in its
   scratch region, the part's top 256 bytes above every chunk, and never calls `get_chunk()`, so
-  production's error logs are safe). Its first run on silicon is owed; the 2026-09-25 measurement
-  gave 2.8-3.4 ms per 1-byte write without yielding (~0.6-0.7 ms per CS command, F.5.8). Expected:
-  the longest non-yielding FRAM stretch within one UART poll floor (80 B at 115200 baud, 6,944 µs,
-  SPECIFICATION.md J.6), and the block hold within its 25,000 µs budget (Part F.3's
-  `hold.fram_block` row, which also records that the per-block hold stays: owner, 2026-09-26:
-  'Probably better to keep'). Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM
-  chip models no wire time).
+  production's error logs are safe). Its first run on silicon with the synchronous path is owed.
+  Expected: one command within one UART poll floor (80 B at 115200 baud, 6,944 µs,
+  SPECIFICATION.md J.6), and a log entry's 51 commands within 5,000 µs (Part F.3's
+  `stall.fram_entry`, `l3.fram_entry_budget_us`); the SGP40 backup's 8,000 µs acceptance has no
+  device-script check yet. Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM chip models
+  no wire time).
 - **The two unfed boot stretches, measured** — a `dev` boot log with a `ticks_ms()` stamp at every
   watchdog feed, taken in a hardware session (zero wear): the stretch from `WDT()` to the first
   setup feed, and from the last setup feed to the supervisor's first, each expected well inside the

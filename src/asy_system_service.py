@@ -13,7 +13,6 @@ regions 0/1 - RAM that survives a reset, never flash or FRAM (owner, 2026-09-26)
 # the intent, not a failure.
 
 import asyncio
-import gc
 import random
 import time
 
@@ -22,7 +21,7 @@ from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
 
-from asy_base_classes import UNAVAILABLE, LockedValue, TickSeconds, arm_tick_timer, utc_now
+from asy_base_classes import UNAVAILABLE, TickGrid, TickSeconds, utc_now
 from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg, schema_names
 from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger, report_if_fatal
 
@@ -49,7 +48,6 @@ if TYPE_CHECKING:
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and SYSTEM's bands.
 _ERR_CALLBACK = const(14)
-_ERR_TIMER = const(17)
 _ERR_UNEXPECTED = const(23)
 _ERR_STACK_EXHAUSTED = const(25)
 _ERR_TASK_STARTER_RAISED = const(40)
@@ -188,21 +186,16 @@ class SystemService:
         self.pr = make_logger(log, _NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=/settings=).
-        self._storage = storage  # the FRAM manager a system command quiesces and erases
+        self._storage = storage  # the FRAM manager a system command pauses and erases
         # callback for starting and stopping permanent storage communication
         self._storage_pause: _StoragePause | None = storage.set_pause if storage is not None else None
         self._uptime = TickSeconds()  # measured seconds since construction, saturating at COUNTER_CAP
-        self._uptime_event = asyncio.ThreadSafeFlag()
-        self._uptime_timer = Timer()
+        self._tick = TickGrid(1000)  # the status pass's 1 s cadence
         self._reset_timer = Timer()
-        # Preallocated like the other timers: start_timers() re-.init()s it for each stagger wait rather than constructing a
-        # fresh Timer() each time, which the GC would disarm before it fires (SPECIFICATION.md Part F.1).
-        self._sequencer_timer = Timer()
-        self._sequencer_flag = asyncio.ThreadSafeFlag()  # one waiter: start_timers() runs once per boot
         self._ntp_is_synced = asy_ntp_callback
         self._start_time_set = False
         # None until _status_loop() resolves it (owner, 2026-07-18) - a later change to this value signals a reboot happened.
-        self._boot_signature = LockedValue(init_value=None)
+        self._boot_signature: int | None = None
         self._watchdog = watchdog
         # One-way: set once a reset is armed or cannot be armed; no feed site feeds after it.
         self._force_watchdog_starve = False
@@ -266,7 +259,7 @@ class SystemService:
             try:
                 setter(value)
             except Exception as e:
-                await self.pr.err_s("Level setter failed:", e, errno=_ERR_CALLBACK)
+                self.pr.err_s("Level setter failed:", e, errno=_ERR_CALLBACK)
 
     def _charge_task_budget(self, budget: int) -> int:
         # One task end's charge, checked before the step: past _TASK_FAIL_MAX the reboot is due and the
@@ -289,7 +282,7 @@ class SystemService:
                     async with store.owner_lock:
                         await store.flush_pending()
             except Exception as e:
-                await self.pr.err_s("Config flush before reset failed:", store.name, e, errno=_ERR_CALLBACK)
+                self.pr.err_s("Config flush before reset failed:", store.name, e, errno=_ERR_CALLBACK)
                 ok = False
             ok = not store.unpersisted and ok
             if step_done is not None:
@@ -305,14 +298,14 @@ class SystemService:
         try:
             await task
         except asyncio.CancelledError:
-            await self.pr.err_s("Task", name, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
+            self.pr.err_s("Task", name, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
             report_if_fatal(e)
-            if fatal_reported() and not self._reset_armed:  # an overflow no handler recorded: its code ahead of the entry,
-                write_reset_record(_RR_STACK_EXHAUSTED)  # which a lock the overflow left held can keep from ending (F.1)
-            await self.pr.err_s("Task", name, "ended with exception:", e, errno=_ERR_TASK_RAISED)
+            if fatal_reported() and not self._reset_armed:  # an overflow no handler recorded: its code ahead of the entry
+                write_reset_record(_RR_STACK_EXHAUSTED)  # (F.1)
+            self.pr.err_s("Task", name, "ended with exception:", e, errno=_ERR_TASK_RAISED)
         else:
-            await self.pr.err_s("Task", name, "ended: returned", errno=_ERR_TASK_RETURNED)
+            self.pr.err_s("Task", name, "ended: returned", errno=_ERR_TASK_RETURNED)
 
     async def _ntp_boot_signature(self) -> int | None:
         # None if not synced yet - a failing NTP callback counts as not synced (owner, 2026-07-18);
@@ -321,7 +314,7 @@ class SystemService:
             synced = await self._ntp_is_synced()
         except Exception as e:  # caller-supplied callback, typed as any Callable - guarded broadly
             # since it isn't guaranteed to be a specific, known-safe implementation
-            await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
+            self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
             return None
         if not synced:
             return None
@@ -405,13 +398,13 @@ class SystemService:
             await self._flush_config_stores(close=True)
             action()
         except Exception as e:  # an unsupervised task's top, FRAM paused: nothing feeds after it, so the watchdog resets
-            await self.pr.err_s("Reset task failed:", e, errno=_ERR_UNEXPECTED)
+            self.pr.err_s("Reset task failed:", e, errno=_ERR_UNEXPECTED)
 
     async def _run_timer_starter(self, starter: "TimerStarter", n: int) -> None:
         try:
             starter()
         except Exception as e:  # driver-supplied starter - could misbehave; persisted, and sequencing continues
-            await self.pr.err_s("Timer starter", n, "failed:", e, errno=_ERR_TASK_STARTER_RAISED)
+            self.pr.err_s("Timer starter", n, "failed:", e, errno=_ERR_TASK_STARTER_RAISED)
         else:
             self.pr.evt("Timer started:", n)
 
@@ -437,7 +430,7 @@ class SystemService:
             flushed = await self._flush_config_stores(close=True, step_done=self._own_feed)
             self.pr.evt("Shutdown: config stores closed and flushed")
             if self._storage is not None:
-                await self._storage.quiesce(self._own_feed)
+                self._storage.set_pause(value=True)  # no chunk operation is ever in flight: each one runs whole (C.8)
             self.pr.evt("Shutdown: storage quiesced")
             for t in self._tasks:
                 if t is not None and not t.done():
@@ -473,20 +466,20 @@ class SystemService:
             await self._reboot(code, message, system_bootloader if purpose == _BOOTLOADER else system_reset, fed=True)
         except Exception as e:  # an unsupervised task's top: no reset is armed and nothing feeds, so the watchdog resets
             # with the record the sequence left; past the quiesce FRAM is paused, so the entry stays in RAM.
-            await self.pr.err_s("Shutdown sequence failed:", e, errno=_ERR_UNEXPECTED)
+            self.pr.err_s("Shutdown sequence failed:", e, errno=_ERR_UNEXPECTED)
 
     async def _start_task(self, starter: "TaskStarter", n: int) -> asyncio.Task[None] | None:
         try:
             return starter()
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
-            await self.pr.err_s("Task starter", self._task_names[n], "failed to start:", e, errno=_ERR_TASK_STARTER_RAISED)
+            self.pr.err_s("Task starter", self._task_names[n], "failed to start:", e, errno=_ERR_TASK_STARTER_RAISED)
             return None
 
     async def _status_loop(self) -> None:
         # Uptime is measured, never counted, so a restart of this task keeps it and the boot signature. Each pass
-        # waits on the 1 s tick (SPECIFICATION.md Part C.9).
+        # waits for the next 1 s grid instant (SPECIFICATION.md Part C.9).
         while True:
-            await self._uptime_event.wait()
+            await self._tick.wait()
             uptime = self._uptime.read()
             self.pr.all("System uptime:", uptime)
             if self._unpause_at is not None and time.ticks_diff(time.ticks_ms(), self._unpause_at) >= 0:
@@ -499,13 +492,13 @@ class SystemService:
                 continue
             utc = await self._ntp_boot_signature()
             if utc is not None:
-                await self._boot_signature.set_value(utc)
+                self._boot_signature = utc
                 self.pr.one("System boot signature set by NTP.")
                 self._start_time_set = True
             elif uptime >= _NTP_WAIT_TIME:
                 # get_rand_32()-seeded (pico-sdk pico_rand, real ring-oscillator entropy) - unique
                 # per boot, not a fixed/repeatable seed.
-                await self._boot_signature.set_value(random.getrandbits(32))
+                self._boot_signature = random.getrandbits(32)
                 self.pr.one("System boot signature set by random number.")
                 self._start_time_set = True
 
@@ -549,13 +542,13 @@ class SystemService:
                     write_reset_record(escalate)
                     stack = escalate == _RR_STACK_EXHAUSTED
                     message = "Reboot: C stack exhausted" if stack else "Reboot triggered"
-                    # Awaited plainly: a write that never ends (a lock an overflow left held) stops the feed, and the
-                    # watchdog's reset reads the code recorded above.
+                    # Written inside the call, ahead of the feed: a write that never ended would stop the feed, and the
+                    # watchdog's reset would read the code recorded above.
                     try:
                         if stack:
-                            await self.pr.err_s("C stack exhausted - reboot triggered", errno=_ERR_STACK_EXHAUSTED)
+                            self.pr.err_s("C stack exhausted - reboot triggered", errno=_ERR_STACK_EXHAUSTED)
                         else:
-                            await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
+                            self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
                     except MemoryError as e:  # the entry found no room: the reset arms, unless this line finds none too
                         self.pr.err("Reboot entry not written:", e)
                     # One feed after the entry, then starve one-way: the reset arms below and nothing feeds until it
@@ -574,27 +567,21 @@ class SystemService:
                 await asyncio.sleep(_TASK_CHECK_TIME)
         except Exception as e:  # the loop's own fault: recorded and persisted once; it ends unfed, so the watchdog resets
             self._reset_decided = True  # a reset follows, so ResetErrors is refused as for every reset decision
-            await self.pr.err_s("Supervisor ended with exception:", e, errno=_ERR_SUPERVISOR_RAISED)
+            self.pr.err_s("Supervisor ended with exception:", e, errno=_ERR_SUPERVISOR_RAISED)
 
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_status]
 
     def get_timer_starters(self) -> "list[TimerStarter]":
-        return [self.start_uptime_timer]
+        return []  # its 1 s cadence is the status task's own deadline sleep
 
     def start_asy_status(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._status_loop())
+        return asyncio.create_task(self._status_loop())
 
-    def start_uptime_timer(self) -> None:
-        # A failed arm (refuted in normal operation) degrades rather than reboots: the passes it wakes stop, so a storage
-        # pause lasts until the reboot, and uptime reads right only while something reads it at least every 2**29 ms.
-        arm_tick_timer(self._uptime_timer, self._uptime_event, self.pr, "uptime")
-
-    async def get_boot_signature(self) -> int | float | None:
+    async def get_boot_signature(self) -> int | None:
         # None until resolved; then a UTC timestamp if NTP synced, else random after _NTP_WAIT_TIME -
         # stable for the rest of this boot, so a later change means a reboot happened.
-        return await self._boot_signature.get_value()
+        return self._boot_signature
 
     def get_cfg_schema(self) -> "ConfigSchema":
         return self._cfg_schema
@@ -651,7 +638,7 @@ class SystemService:
 
     def pause_permanent_storage(self, duration: int) -> bool:
         # Refused while a system command shuts down; otherwise True. The pause ends at its deadline, tested on each uptime
-        # pass; with the uptime tick refused (refuted in normal operation) no pass runs and it lasts until the reboot.
+        # pass, whose 1 s grid needs no timer.
         if self._shutdown:
             return False
         if self._storage_pause is not None:
@@ -685,12 +672,10 @@ class SystemService:
 
     async def run_setups(self, setups: "list[SetupFct]") -> None:
         # Fed once after every one-time setup(), so the batch cannot starve the watchdog however many modules a device
-        # wires; the collect comes after the feed - it is the slow part (the boot placement reset, SPECIFICATION.md Part I.4(f.1)).
-        gc.collect()
+        # wires.
         for setup in setups:
             await setup()
             self.feed_watchdog()
-            gc.collect()
         self._config_faults = [store.module_name for store in self._config_stores if store.faulted]
 
     async def setup(self) -> None:
@@ -708,13 +693,9 @@ class SystemService:
                 await self._apply_level(level[0])
 
     async def start_tasks(self, task_starters: "list[TaskStarter]", task_names: list[str]) -> None:
-        # The boot placement reset (SPECIFICATION.md I.4(f.1)): the second of the two one-time boot lists that get a
-        # placement reset between their units - each collect puts the allocator's free-scan index back to zero.
-        # Not hygiene, not compaction, and never in the supervisor.
         self._task_starters = task_starters
         self._task_names = task_names
         self._tasks = [None] * len(task_starters)
-        gc.collect()
         # A task that dies with nobody awaiting it reaches SYSTEM's level-gated report (Part F.1). A handler already
         # set stays: the PC tiers install one that prints at every level, so their memory gates see each death.
         loop = asyncio.get_event_loop()
@@ -723,12 +704,10 @@ class SystemService:
         for n, starter in enumerate(task_starters):
             self._tasks[n] = await self._start_task(starter, n)
             await asyncio.sleep_ms(1000 // len(task_starters))
-            gc.collect()
 
     async def start_timers(self, triggers: "list[TimerStarter]", timers: "list[TimerStarter]") -> None:
         # The unstaggered timer starters in order, then each read trigger k at t0 + k * slot from one shared
-        # start, in task context (SPECIFICATION.md Part C.9.1): a stagger wait is a one-shot that only sets a
-        # flag; its failed arm sleeps instead, so every trigger still starts.
+        # start, in task context, by deadline sleeps (SPECIFICATION.md Part C.9.1).
         for n, starter in enumerate(timers):
             await self._run_timer_starter(starter, n)
         t0 = time.ticks_ms()
@@ -736,13 +715,7 @@ class SystemService:
         for k, starter in enumerate(triggers):
             wait = time.ticks_diff(time.ticks_add(t0, k * slot), time.ticks_ms())
             if wait > 0:
-                try:
-                    self._sequencer_timer.init(period=wait, mode=Timer.ONE_SHOT, callback=lambda _b: self._sequencer_flag.set())
-                except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM)
-                    await self.pr.err_s("Could not arm the stagger timer, using sleep:", e, errno=_ERR_TIMER)
-                    await asyncio.sleep_ms(wait)
-                else:
-                    await self._sequencer_flag.wait()  # no software timeout: the watchdog is the backstop (owner, 2026-07-18)
+                await asyncio.sleep_ms(wait)
             await self._run_timer_starter(starter, len(timers) + k)
         self.pr.one("All timers running.")
 

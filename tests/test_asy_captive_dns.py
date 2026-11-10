@@ -304,7 +304,7 @@ def test_captive_dns_logs_in_memory_without_fram() -> None:
     # No FRAM given: an error lands in the logger's own RAM history as the newest entry, with no store behind it.
     server = CaptiveDNS()
     assert not isinstance(server.pr, PrintLogHistoryStore)
-    run(server.pr.err_s("probe", errno=code("E", "UNEXPECTED")))
+    server.pr.err_s("probe", errno=code("E", "UNEXPECTED"))
     entry = run(server.pr.get_log())["DNSSRV"]
     assert entry["ErrCount"] == 1
     assert run(_used_slots(server)) == [(code("E", "UNEXPECTED"), "E")]
@@ -342,14 +342,14 @@ def test_dns_server_get_error_counter_forwards_to_the_real_print_log() -> None:
 
 def test_dns_server_get_error_counter_reflects_a_real_logged_error() -> None:
     server = CaptiveDNS()
-    run(server.pr.err_s("boom", errno=code("E", "UNEXPECTED")))
+    server.pr.err_s("boom", errno=code("E", "UNEXPECTED"))
     log = run(server.get_error_counter())
     assert log["DNSSRV"]["ErrCount"] == 1
 
 
 def test_reset_error_counter_returns_true_and_clears() -> None:
     server = CaptiveDNS()
-    run(server.pr.err_s("boom", errno=code("E", "UNEXPECTED")))
+    server.pr.err_s("boom", errno=code("E", "UNEXPECTED"))
     assert run(server.reset_error_counter()) is True
     assert run(server.get_error_counter())["DNSSRV"]["ErrCount"] == 0
 

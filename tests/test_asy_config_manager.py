@@ -8,7 +8,6 @@ from collections import namedtuple
 
 from _async_harness import run
 from _error_codes import code
-from _held_log import held_logger, until
 from _littlefs_fake import LittlefsOpen
 from _recording_print import record_prints
 from _tmp_scratch import TmpScratch
@@ -24,7 +23,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine, Sequence
+    from collections.abc import Coroutine, Sequence
     from typing import NoReturn
 
 
@@ -2812,49 +2811,6 @@ def test_self_heals_a_failed_flush_on_the_next_accepted_change() -> None:
         _remove(path)
 
 
-def test_a_change_queued_behind_a_failing_flushs_log_write_heals_it_and_keeps_its_value() -> None:
-    # The failed flush's log write held open as the gate, a second change made meanwhile: it is written once,
-    # the store is persisted again, one error is logged, and the value in effect stays the newer one.
-    mgr, path = _make("c73_flushrace.cfg", cfg_vals=_VAL_INT)
-    try:
-        gate, logging = asyncio.Event(), asyncio.Event()
-        real_err_s = mgr.pr.err_s
-
-        async def gated_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
-            logging.set()
-            await gate.wait()
-            await real_err_s(*args, errno=errno, sep=sep, end=end)
-
-        async def until(what: str, condition: "Callable[[], bool]") -> None:
-            for _ in range(100):  # a bound on scheduler rounds, never a count the scenario relies on
-                if condition():
-                    return
-                await asyncio.sleep(0)
-            raise AssertionError(what + " - not within 100 scheduler rounds")
-
-        async def scenario() -> None:
-            before = mgr.pr._err_count
-            with WriteCountingOpen(cm, fail_writes=True):
-                assert (await mgr.write_config({"Count": 7}))[0] is True
-                await until("the failed flush never reached its log write", logging.is_set)
-            with WriteCountingOpen(cm) as fake:
-                put = asyncio.create_task(mgr.write_config({"Count": 8}))
-                await until("the change neither queued on the lock nor staged", lambda: put.done() or mgr._config_lock.waiting.peek() is not None)  # type: ignore[attr-defined]  # asyncio's Lock queues its waiters there; the stub omits it
-                gate.set()
-                assert (await put)[0] is True
-                await mgr.flush_pending()
-                assert fake.writes == 1, f"the change made during the failed flush was written {fake.writes} times"
-            assert mgr.pr._err_count - before == 1 and not mgr.unpersisted
-            assert await mgr.get_int_values(_VAL_INT) == [8], "the failed snapshot replaced the newer value in effect"
-
-        mgr.pr.err_s = gated_err_s  # type: ignore[method-assign]
-        run(scenario())
-        with open(path) as f:
-            assert json.load(f) == {"Count": 8}
-    finally:
-        _remove(path)
-
-
 class _UnserialisableValue:
     # json.dump() renders an unknown object through its repr(), so a repr() that raises is what an
     # unexpected serialisation failure looks like here (MicroPython writes "<object>" for a plain one).
@@ -3175,83 +3131,6 @@ def test_a_flush_held_at_the_lock_lands_after_close_and_flush_pending() -> None:
         run(scenario())
         with open(path) as f:
             assert json.load(f) == {"Count": 8}
-    finally:
-        _remove(path)
-
-
-def test_a_write_suspended_inside_the_lock_finishes_and_its_flush_is_awaited() -> None:
-    mgr, path = _make("suspendedwrite.cfg", cfg_vals=_VAL_INT)
-    try:
-        gate = asyncio.Event()
-        real_err_s = mgr.pr.err_s
-
-        async def gated_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
-            await gate.wait()
-            await real_err_s(*args, errno=errno, sep=sep, end=end)
-
-        mgr.pr.err_s = gated_err_s  # type: ignore[method-assign]
-
-        async def scenario() -> "tuple[bool, cm.WriteValidity]":
-            writer = asyncio.create_task(mgr.write_config({"Count": 8, "Ghost": 1}))
-            for _ in range(3):
-                await asyncio.sleep(0)  # the writer now waits in its err_s() for "Ghost", inside the lock
-            mgr.close_writes()
-            flusher = asyncio.create_task(mgr.flush_pending())
-            for _ in range(3):
-                await asyncio.sleep(0)
-            gate.set()
-            result = await writer
-            await flusher
-            return result
-
-        assert run(scenario()) == (True, {"Count": "Valid", "Ghost": "Invalid"})
-        with open(path) as f:
-            assert json.load(f) == {"Count": 8}
-    finally:
-        _remove(path)
-
-
-def test_a_write_that_logs_never_holds_the_config_lock_across_its_entries() -> None:
-    # Two refused keys, each entry's chunk write held: write_config() ends within rounds with both entries in RAM, so
-    # the next write never waits on FRAM behind it (SPECIFICATION.md C.8).
-    mgr, path = _make("heldwrite.cfg", cfg_vals=_VAL_INT)
-    try:
-        mgr.pr, gate = held_logger(mgr.pr.name)
-
-        async def scenario() -> "tuple[bool, int, tuple[bool, cm.WriteValidity]]":
-            writer = asyncio.create_task(mgr.write_config({"Count": 11, "Ghost": 1}))
-            ended = await until(writer.done) and not mgr._config_lock.locked()
-            count = mgr.pr._err_count
-            gate.set()
-            result = await writer
-            await mgr.flush_pending()
-            return ended, count, result
-
-        assert run(scenario()) == (True, 2, (True, {"Count": "Invalid", "Ghost": "Invalid"}))
-    finally:
-        _remove(path)
-
-
-def test_a_failed_flush_frees_the_config_lock_before_its_entry_lands() -> None:
-    # The flush's write fails while its entry's chunk write is held: the lock is free for the next write within rounds,
-    # and the flush task, which flush_pending() awaits, ends only once its entry has landed (A.8's shutdown order).
-    mgr, path = _make("heldflush.cfg", cfg_vals=_VAL_INT)
-    try:
-        mgr.pr, gate = held_logger(mgr.pr.name)
-
-        async def scenario() -> "tuple[bool, bool, bool]":
-            with WriteCountingOpen(cm, fail_writes=True):
-                assert (await mgr.write_config({"Count": 7}))[0] is True
-                flushing = mgr._pending_flush
-                assert flushing is not None
-                logged = await until(lambda: mgr.pr._err_count == 1)
-                free = logged and await until(lambda: not mgr._config_lock.locked())
-                waiting = not flushing.done()
-            gate.set()
-            await mgr.flush_pending()
-            return free, waiting, mgr.unpersisted
-
-        assert run(scenario()) == (True, True, True)
     finally:
         _remove(path)
 

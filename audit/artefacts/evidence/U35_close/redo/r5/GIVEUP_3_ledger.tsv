@@ -29,7 +29,7 @@ path:line	construct [identifier]	verdict	origin	source
 .github/actions/playwright-chromium/action.yml:69	measurement, recorded figure or model period [limit_min]	NOTBOUND	-	-
 .github/workflows/ci.yml:32	CI job timeout-minutes [web_changes_timeout_min]	KEEP	refactor e578f127 2026-07-31	Part N ci.* measured 2026-10-20; CLAUDE.md hang backstop; owner 2026-09-26 and 2026-10-20 (Part N runner.per_file_attempts)
 .github/workflows/ci.yml:33	CI job timeout-minutes [timeout]	KEEP	refactor e578f127 2026-07-31	Part N ci.* measured 2026-10-20; CLAUDE.md hang backstop; owner 2026-09-26 and 2026-10-20 (Part N runner.per_file_attempts)
-.github/workflows/ci.yml:50	measurement, recorded figure or model period [last_green_lookup_timeout_s]	NOTBOUND	-	-
+.github/workflows/ci.yml:50	GitHub API lookup bound [last_green_lookup_timeout_s]	DERIVE	audit 2026-10-19	Part N ci.last_green_lookup_timeout_s estimated
 .github/workflows/ci.yml:51	measurement, recorded figure or model period [lookup_s]	NOTBOUND	-	-
 .github/workflows/ci.yml:52	measurement, recorded figure or model period [lookup_s]	NOTBOUND	-	-
 .github/workflows/ci.yml:94	CI job timeout-minutes [devices_timeout_min]	KEEP	refactor e578f127 2026-07-31	Part N ci.* measured 2026-10-20; CLAUDE.md hang backstop; owner 2026-09-26 and 2026-10-20 (Part N runner.per_file_attempts)
@@ -256,7 +256,7 @@ buildgen/validate.py:69	firmware tunable, default or validate rule [poll_wait_ms
 buildgen/validate.py:71	firmware tunable, default or validate rule [poll_wait_ms]	ROUTED pass2	-	pass 2
 buildgen/validate.py:76	size or range rule [max_connections]	ROUTED pass2	-	pass 2
 buildgen/validate.py:80	size or range rule [_max_connections_floor]	ROUTED pass2	-	pass 2
-buildgen/validate.py:83	size or range rule [_hotspot_time_min_max]	ROUTED pass2	-	pass 2
+buildgen/validate.py:83	size or range rule [identifier hidden by the view filter]	ROUTED pass2	-	pass 2
 buildgen/validate.py:84	size or range rule [_i2c_frequency_max_hz]	ROUTED pass2	-	pass 2
 buildgen/validate.py:86	size or range rule [_uart_buffer_max]	ROUTED pass2	-	pass 2
 buildgen/validate.py:87	firmware tunable, default or validate rule [timeout]	ROUTED pass2	-	pass 2
@@ -292,8 +292,8 @@ buildgen/validate.py:398	size or range rule [host_max]	ROUTED pass2	-	pass 2
 buildgen/validate.py:399	size or range rule [host_max]	ROUTED pass2	-	pass 2
 buildgen/validate.py:402	size or range rule [host_max]	ROUTED pass2	-	pass 2
 buildgen/validate.py:404	size or range rule [host_max]	ROUTED pass2	-	pass 2
-buildgen/validate.py:412	size or range rule [_hotspot_time_min_max]	ROUTED pass2	-	pass 2
-buildgen/validate.py:417	size or range rule [_hotspot_time_min_max]	ROUTED pass2	-	pass 2
+buildgen/validate.py:412	size or range rule [identifier hidden by the view filter]	ROUTED pass2	-	pass 2
+buildgen/validate.py:417	size or range rule [identifier hidden by the view filter]	ROUTED pass2	-	pass 2
 buildgen/validate.py:479	fault-injection knob, model counter or text (never a give-up) [drop]	NOTBOUND	-	-
 buildgen/validate.py:537	size or range rule [_i2c_frequency_max_hz]	ROUTED pass2	-	pass 2
 buildgen/validate.py:541	size or range rule [_i2c_frequency_max_hz]	ROUTED pass2	-	pass 2
@@ -650,7 +650,7 @@ digital_twin/machine.py:1780	fault-injection knob, model counter or text (never 
 digital_twin/machine.py:1789	platform/chip model value (datasheet or port source) [poll(]	NOTBOUND	-	-
 digital_twin/network.py:28	platform/chip model value (datasheet or port source) [_connect_delay_s]	NOTBOUND	-	-
 digital_twin/network.py:45	size or value range [_max_stas]	NOTBOUND	-	-
-digital_twin/network.py:46	size or value range [_ap_ssid_max]	NOTBOUND	-	-
+digital_twin/network.py:46	size or value range [identifier hidden by the view filter]	NOTBOUND	-	-
 digital_twin/network.py:47	size or value range [_ap_key_max]	NOTBOUND	-	-
 digital_twin/network.py:50	platform/chip model value (datasheet or port source) [limit]	NOTBOUND	-	-
 digital_twin/network.py:51	platform/chip model value (datasheet or port source) [limit]	NOTBOUND	-	-
@@ -789,7 +789,7 @@ digital_twin/run_generic_integration.py:992	runner hook poll period, model value
 digital_twin/run_generic_integration.py:1013	wait_for on the twin's own build (inside) [_wait_until_built]	REMOVE	refactor 25fc2fec 2026-08-13	none: inside wait; host ready bound backstops
 digital_twin/run_generic_integration.py:1014	runner hook poll period, model value or flag [poll(]	NOTBOUND	-	-
 digital_twin/run_generic_integration.py:1018	runner hook poll period, model value or flag [_ready_poll_ms]	NOTBOUND	-	-
-digital_twin/run_generic_integration.py:1020	runner hook poll period, model value or flag [wait_for]	NOTBOUND	-	-
+digital_twin/run_generic_integration.py:1020	wait_for on the twin's own build (inside) [wait_for]	REMOVE	refactor 25fc2fec 2026-08-13	none: inside wait; host ready bound backstops
 digital_twin/run_generic_integration.py:1027	runner hook poll period, model value or flag [_wire_log_clear_interval_ms]	NOTBOUND	-	-
 digital_twin/run_generic_integration.py:1034	runner hook poll period, model value or flag [poll(]	NOTBOUND	-	-
 digital_twin/run_generic_integration.py:1101	runner hook poll period, model value or flag [_wdt_timeout_ms]	NOTBOUND	-	-
@@ -1030,12 +1030,12 @@ scripts/_digital_twin_ci_suite.py:1823	twin wait, named failure [timeout_s]	KEEP
 scripts/_digital_twin_scenarios.py:32	size or value range [device_max_connections]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:62	twin wait, named failure [stagger_wait]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:79	twin property wait (product timing) [_request_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
-scripts/_digital_twin_scenarios.py:80	twin property wait (product timing) [_serving_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:80	twin wait, named failure [_serving_timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:81	poll step, load shape or recorded figure [_line_poll_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:82	poll step, load shape or recorded figure [_conn_status_interval_ms]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:83	poll step, load shape or recorded figure [_fault_status_interval_ms]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:84	twin property wait (product timing) [_drain_wait_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
-scripts/_digital_twin_scenarios.py:85	twin property wait (product timing) [_still_serving_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:85	twin wait, named failure [_still_serving_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:86	poll step, load shape or recorded figure [_flaky_hold_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:87	poll step, load shape or recorded figure [_slow_put_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:88	poll step, load shape or recorded figure [_stall_ms]	NOTBOUND	-	-
@@ -1043,8 +1043,8 @@ scripts/_digital_twin_scenarios.py:89	twin wait derived from a product constant 
 scripts/_digital_twin_scenarios.py:90	twin wait derived from a product constant [_refusal_feed_s]	KEEP	audit 2026-10	derived in code (src const, watchdog 8000 ms)
 scripts/_digital_twin_scenarios.py:91	twin property wait (product timing) [_commanded_reset_margin_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
 scripts/_digital_twin_scenarios.py:92	twin property wait (product timing) [_pause_countdown_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
-scripts/_digital_twin_scenarios.py:93	twin wait, named failure [_hotspot_wait_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
-scripts/_digital_twin_scenarios.py:94	twin property wait (product timing) [_uart_load_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:93	twin wait, named failure [identifier hidden by the view filter]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
+scripts/_digital_twin_scenarios.py:94	poll step, load shape or recorded figure [_uart_load_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:108	measurement, recorded figure or model period [_loop_lag_load_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:109	measurement, recorded figure or model period [_loop_lag_rest_max_ms]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:110	measurement, recorded figure or model period [_loop_lag_recovered_ms]	NOTBOUND	-	-
@@ -1073,7 +1073,7 @@ scripts/_digital_twin_scenarios.py:253	twin wait, named failure [deadline]	KEEP	
 scripts/_digital_twin_scenarios.py:256	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:258	poll step, load shape or recorded figure [_line_poll_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:289	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
-scripts/_digital_twin_scenarios.py:296	twin property wait (product timing) [_serving_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:296	twin wait, named failure [_serving_timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:299	poll step, load shape or recorded figure [poll(]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:311	size or value range [device_max_connections]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:350	twin wait, named failure [_wait_entry]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -1101,7 +1101,7 @@ scripts/_digital_twin_scenarios.py:542	fault-injection knob, model counter or te
 scripts/_digital_twin_scenarios.py:561	identifier or text containing the pattern [connections_beyond_max_connections_are_rejected_cleanly_not_crashed]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:562	identifier or text containing the pattern [_beyond_max_rejected_cleanly]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:582	identifier or text containing the pattern [entries]	NOTBOUND	-	-
-scripts/_digital_twin_scenarios.py:586	twin property wait (product timing) [_serving_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:586	twin wait, named failure [_serving_timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:595	fault-injection knob, model counter or text (never a give-up) [_note_drop]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:599	identifier or text containing the pattern [_entries_per_failed_cycle]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:634	poll step, load shape or recorded figure [_fault_status_interval_ms]	NOTBOUND	-	-
@@ -1140,7 +1140,7 @@ scripts/_digital_twin_scenarios.py:878	twin property wait (product timing) [_req
 scripts/_digital_twin_scenarios.py:885	poll step, load shape or recorded figure [_conn_status_interval_ms]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:890	twin wait derived from a product constant [_commanded_reset_deadline_s]	KEEP	audit 2026-10	derived in code (src const, watchdog 8000 ms)
 scripts/_digital_twin_scenarios.py:914	poll step, load shape or recorded figure [_fault_status_interval_ms]	NOTBOUND	-	-
-scripts/_digital_twin_scenarios.py:915	twin property wait (product timing) [_serving_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:915	twin wait, named failure [_serving_timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:919	twin property wait (product timing) [_drain_wait_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
 scripts/_digital_twin_scenarios.py:920	twin property wait (product timing) [_drain_wait_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
 scripts/_digital_twin_scenarios.py:921	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -1149,9 +1149,9 @@ scripts/_digital_twin_scenarios.py:944	twin property wait (product timing) [_req
 scripts/_digital_twin_scenarios.py:946	poll step, load shape or recorded figure [_flaky_hold_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:967	twin wait, named failure [timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:1004	twin wait, named failure [stagger_wait]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
-scripts/_digital_twin_scenarios.py:1030	twin wait, named failure [_hotspot_wait_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
+scripts/_digital_twin_scenarios.py:1030	twin wait, named failure [identifier hidden by the view filter]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:1031	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
-scripts/_digital_twin_scenarios.py:1043	twin wait, named failure [_hotspot_wait_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
+scripts/_digital_twin_scenarios.py:1043	twin wait, named failure [identifier hidden by the view filter]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:1044	fault-injection knob, model counter or text (never a give-up) [dropped]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:1048	size or value range [_dns_udp_max]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:1057	fault-injection knob, model counter or text (never a give-up) [dropped]	NOTBOUND	-	-
@@ -1240,15 +1240,15 @@ scripts/_digital_twin_scenarios.py:1831	twin wait, named failure [stagger_wait]	
 scripts/_digital_twin_scenarios.py:1832	fault-injection knob, model counter or text (never a give-up) [_sequencer_fire_dropped]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:1833	fault-injection knob, model counter or text (never a give-up) [drops]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:1834	fault-injection knob, model counter or text (never a give-up) [drop]	NOTBOUND	-	-
-scripts/_digital_twin_scenarios.py:1836	twin property wait (product timing) [_serving_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
-scripts/_digital_twin_scenarios.py:1837	twin property wait (product timing) [_serving_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:1836	twin wait, named failure [_serving_timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
+scripts/_digital_twin_scenarios.py:1837	twin wait, named failure [_serving_timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:1838	poll step, load shape or recorded figure [poll(]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:1839	fault-injection knob, model counter or text (never a give-up) [dropped]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:1841	fault-injection knob, model counter or text (never a give-up) [dropped]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:1855	size or value range [_default_max_content_length]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:1937	twin wait, named failure [attempt]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:1940	twin wait, named failure [attempt]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
-scripts/_digital_twin_scenarios.py:1941	twin wait, named failure [_hotspot_wait_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
+scripts/_digital_twin_scenarios.py:1941	twin wait, named failure [identifier hidden by the view filter]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:1943	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:1945	twin wait, named failure [attempt]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:1946	twin wait, named failure [attempts]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -1261,12 +1261,12 @@ scripts/_digital_twin_scenarios.py:2009	identifier or text containing the patter
 scripts/_digital_twin_scenarios.py:2010	identifier or text containing the pattern [_stale_slot_reclaimed]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:2014	twin property wait (product timing) [_request_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
 scripts/_digital_twin_scenarios.py:2018	twin wait, named failure [_default_outer_cap_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
-scripts/_digital_twin_scenarios.py:2019	twin property wait (product timing) [_still_serving_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:2019	twin wait, named failure [_still_serving_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2040	twin wait, named failure [limit]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2043	twin wait, named failure [limit]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2048	twin property wait (product timing) [_request_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
 scripts/_digital_twin_scenarios.py:2051	twin wait, named failure [timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
-scripts/_digital_twin_scenarios.py:2063	twin property wait (product timing) [_still_serving_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:2063	twin wait, named failure [_still_serving_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2064	twin wait, named failure [retries]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2066	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2067	twin wait, named failure [attempt]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -1278,7 +1278,7 @@ scripts/_digital_twin_scenarios.py:2102	twin wait, named failure [timeout]	KEEP	
 scripts/_digital_twin_scenarios.py:2125	twin wait derived from a product constant [_uart_load_request_s]	KEEP	audit 2026-10	derived in code (src const, watchdog 8000 ms)
 scripts/_digital_twin_scenarios.py:2132	twin wait derived from a product constant [_uart_load_request_s]	KEEP	audit 2026-10	derived in code (src const, watchdog 8000 ms)
 scripts/_digital_twin_scenarios.py:2134	poll step, load shape or recorded figure [_line_poll_s]	NOTBOUND	-	-
-scripts/_digital_twin_scenarios.py:2145	twin property wait (product timing) [_uart_load_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:2145	poll step, load shape or recorded figure [_uart_load_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:2148	twin wait derived from a product constant [_uart_load_request_s]	KEEP	audit 2026-10	derived in code (src const, watchdog 8000 ms)
 scripts/_digital_twin_scenarios.py:2153	size or value range [stall_max]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:2155	twin wait, named failure [timeout]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -1303,12 +1303,12 @@ scripts/_digital_twin_scenarios.py:2223	twin wait, named failure [deadline]	KEEP
 scripts/_digital_twin_scenarios.py:2225	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2226	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2232	poll step, load shape or recorded figure [_line_poll_s]	NOTBOUND	-	-
-scripts/_digital_twin_scenarios.py:2240	twin property wait (product timing) [_serving_timeout_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:2240	twin wait, named failure [_serving_timeout_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2243	twin wait derived from a product constant [_watchdog_window_s]	KEEP	audit 2026-10	derived in code (src const, watchdog 8000 ms)
 scripts/_digital_twin_scenarios.py:2244	poll step, load shape or recorded figure [poll(]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:2245	twin wait derived from a product constant [_watchdog_window_s]	KEEP	audit 2026-10	derived in code (src const, watchdog 8000 ms)
 scripts/_digital_twin_scenarios.py:2255	twin wait, named failure [timeout]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
-scripts/_digital_twin_scenarios.py:2282	twin property wait (product timing) [_still_serving_s]	DERIVE	refactor c20f80ba 2026-09-24 .. audit 311aef80 2026-10-14	product constants (supervisor budget, NTP 60 s retry ruling, outer cap); now magic
+scripts/_digital_twin_scenarios.py:2282	twin wait, named failure [_still_serving_s]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2287	twin wait, named failure [deadline]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 scripts/_digital_twin_scenarios.py:2289	poll step, load shape or recorded figure [_line_poll_s]	NOTBOUND	-	-
 scripts/_digital_twin_scenarios.py:2318	poll step, load shape or recorded figure [_zero_think_writer_period_s]	NOTBOUND	-	-
@@ -1740,11 +1740,11 @@ tests/_async_harness.py:279	run(limit_s)/run_timed wall-clock limit on an in-pro
 tests/_async_harness.py:284	fault-injection knob, model counter or text (never a give-up) [drops]	NOTBOUND	-	-
 tests/_boot_contiguity_probe.py:12	fault-injection knob, model counter or text (never a give-up) [dropped]	NOTBOUND	-	-
 tests/_boot_contiguity_probe.py:46	wall-clock bound on own start_timers/start_tasks [_starter_loop_timeout_ms]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; the host test's subprocess timeout backstops
-tests/_boot_contiguity_probe.py:47	wall-clock bound on own start_timers/start_tasks [_timers_timeout_s]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; the host test's subprocess timeout backstops
+tests/_boot_contiguity_probe.py:47	bound on firing the boot stagger Timer [_timers_timeout_s]	IN B	-	BRIEF_B item 6 (stagger by deadline sleeps)
 tests/_boot_contiguity_probe.py:57	identifier or text containing the pattern [entries]	NOTBOUND	-	-
-tests/_boot_contiguity_probe.py:117	wall-clock bound on own start_timers/start_tasks [_timers_timeout_s]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; the host test's subprocess timeout backstops
-tests/_boot_contiguity_probe.py:118	wall-clock bound on own start_timers/start_tasks [deadline]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; the host test's subprocess timeout backstops
-tests/_boot_contiguity_probe.py:123	wall-clock bound on own start_timers/start_tasks [_timers_timeout_s]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; the host test's subprocess timeout backstops
+tests/_boot_contiguity_probe.py:117	bound on firing the boot stagger Timer [_timers_timeout_s]	IN B	-	BRIEF_B item 6 (stagger by deadline sleeps)
+tests/_boot_contiguity_probe.py:118	bound on firing the boot stagger Timer [deadline]	IN B	-	BRIEF_B item 6 (stagger by deadline sleeps)
+tests/_boot_contiguity_probe.py:123	bound on firing the boot stagger Timer [_timers_timeout_s]	IN B	-	BRIEF_B item 6 (stagger by deadline sleeps)
 tests/_boot_contiguity_probe.py:133	wall-clock bound on own start_timers/start_tasks [_starter_loop_timeout_ms]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; the host test's subprocess timeout backstops
 tests/_boot_contiguity_probe.py:134	wall-clock bound on own start_timers/start_tasks [timeouterror]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; the host test's subprocess timeout backstops
 tests/_boot_contiguity_probe.py:135	wall-clock bound on own start_timers/start_tasks [_starter_loop_timeout_ms]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; the host test's subprocess timeout backstops
@@ -1904,7 +1904,7 @@ tests/_generated_tree.py:12	freshness check of inputs, not a wait [_stale]	NOTBO
 tests/_generated_tree.py:77	freshness check of inputs, not a wait [_stale]	NOTBOUND	-	-
 tests/_generated_tree.py:80	freshness check of inputs, not a wait [_stale]	NOTBOUND	-	-
 tests/_generated_tree.py:82	freshness check of inputs, not a wait [_stale]	NOTBOUND	-	-
-tests/_held_log.py:3	identifier or text containing the pattern [entries]	NOTBOUND	-	-
+tests/_held_log.py:3	held-log gate and rounds wait [entries]	IN fsync	-	BRIEF_FSYNC item 3
 tests/_machine_contract.py:19	fake/contract model value or helper name [_wdt_timeout_max_ms]	NOTBOUND	-	-
 tests/_machine_contract.py:26	fake/contract model value or helper name [timeout]	NOTBOUND	-	-
 tests/_machine_contract.py:121	fake/contract model value or helper name [timer(]	NOTBOUND	-	-
@@ -2052,14 +2052,14 @@ tests/_sensortask_scenarios.py:2122	round, virtual-time or real-poll bound in a 
 tests/_sensortask_scenarios.py:2123	measurement, recorded figure or model period [_forty_days_ms]	NOTBOUND	-	-
 tests/_sensortask_scenarios.py:2128	measurement, recorded figure or model period [start_s]	NOTBOUND	-	-
 tests/_sensortask_scenarios.py:2131	measurement, recorded figure or model period [start_s]	NOTBOUND	-	-
-tests/_sensortask_scenarios.py:2133	round, virtual-time or real-poll bound in a scenario, raises [start_uptime_timer(]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
+tests/_sensortask_scenarios.py:2133	timer standing in for a deadline sleep [start_uptime_timer(]	IN B	-	BRIEF_B item 6 (12.107 (4), 12.129)
 tests/_sensortask_scenarios.py:2140	round, virtual-time or real-poll bound in a scenario, raises [stall_ms]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
 tests/_sensortask_scenarios.py:2146	measurement, recorded figure or model period [pass_ms]	NOTBOUND	-	-
 tests/_sensortask_scenarios.py:2150	measurement, recorded figure or model period [_hour_ms]	NOTBOUND	-	-
 tests/_sensortask_scenarios.py:2163	clock arithmetic (the deadline it forms is judged at its bound line) [ticks_diff]	NOTBOUND	-	-
 tests/_sensortask_scenarios.py:2167	round, virtual-time or real-poll bound in a scenario, raises [stall_ms]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
-tests/_sensortask_scenarios.py:2172	round, virtual-time or real-poll bound in a scenario, raises [start_uptime_timer(]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
-tests/_sensortask_scenarios.py:2173	round, virtual-time or real-poll bound in a scenario, raises [start_sync_age_timer(]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
+tests/_sensortask_scenarios.py:2172	timer standing in for a deadline sleep [start_uptime_timer(]	IN B	-	BRIEF_B item 6 (12.107 (4), 12.129)
+tests/_sensortask_scenarios.py:2173	timer standing in for a deadline sleep [start_sync_age_timer(]	IN B	-	BRIEF_B item 6 (12.107 (4), 12.129)
 tests/_sensortask_scenarios.py:2178	measurement, recorded figure or model period [_forty_days_ms]	NOTBOUND	-	-
 tests/_sensortask_scenarios.py:2184	round, virtual-time or real-poll bound in a scenario, raises [stall_ms]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
 tests/_sensortask_scenarios.py:2194	measurement, recorded figure or model period [_hour_ms]	NOTBOUND	-	-
@@ -2075,7 +2075,7 @@ tests/_sensortask_scenarios.py:2257	identifier or text containing the pattern [_
 tests/_sensortask_scenarios.py:2258	fault-injection knob, model counter or text (never a give-up) [dropped]	NOTBOUND	-	-
 tests/_sensortask_scenarios.py:2260	round, virtual-time or real-poll bound in a scenario, raises [deadline]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
 tests/_sensortask_scenarios.py:2276	measurement, recorded figure or model period [start_s]	NOTBOUND	-	-
-tests/_sensortask_scenarios.py:2278	round, virtual-time or real-poll bound in a scenario, raises [start_uptime_timer(]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
+tests/_sensortask_scenarios.py:2278	timer standing in for a deadline sleep [start_uptime_timer(]	IN B	-	BRIEF_B item 6 (12.107 (4), 12.129)
 tests/_sensortask_scenarios.py:2282	round, virtual-time or real-poll bound in a scenario, raises [timeout]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
 tests/_sensortask_scenarios.py:2283	round, virtual-time or real-poll bound in a scenario, raises [deadline]	KEEP	refactor/audit	deterministic oracle or owner 2026-11-04 11:23 (test waits keep literals in code)
 tests/_sensortask_scenarios.py:2287	fault-injection knob, model counter or text (never a give-up) [drop]	NOTBOUND	-	-
@@ -2344,7 +2344,7 @@ tests_hardware/bench/_load.py:464	bench wait on the board (outside) [retries]	KE
 tests_hardware/bench/_load.py:465	bench wait on the board (outside) [attempt]	KEEP	audit 2026-10	owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench/_load.py:466	bench wait on a product timing [_ntp_resync_after_reset_timeout_s]	DERIVE	audit a47a1e69 2026-10-07; 165effaf 2026-11-06	NTP 60 s retry (owner 11-03), SGP40 backup interval; now magic
 tests_hardware/bench/_load.py:467	bench wait on the board (outside) [_ntp_retry_chain_s]	KEEP	audit 2026-10	owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/bench/_load.py:477	bench wait on the board (outside) [arm_tick_timer(]	KEEP	audit 2026-10	owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/bench/_load.py:477	timer standing in for a deadline sleep [arm_tick_timer(]	IN B	-	BRIEF_B item 6 (12.107 (4), 12.129)
 tests_hardware/bench/_load.py:478	bench wait on a product timing [_sync_age_slack_s]	DERIVE	audit a47a1e69 2026-10-07; 165effaf 2026-11-06	NTP 60 s retry (owner 11-03), SGP40 backup interval; now magic
 tests_hardware/bench/_load.py:480	bench wait on the board (outside) [retry]	KEEP	audit 2026-10	owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench/_load.py:484	bench wait on the board (outside) [timeouterror]	KEEP	audit 2026-10	owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -2382,7 +2382,7 @@ tests_hardware/bench_control.py:28	board/network/USB/host-tool wait, named failu
 tests_hardware/bench_control.py:29	board/network/USB/host-tool wait, named failure [_nmcli_short_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:30	board/network/USB/host-tool wait, named failure [_cmd_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:31	board/network/USB/host-tool wait, named failure [_udp_capture_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/bench_control.py:32	board/network/USB/host-tool wait, named failure [_join_hotspot_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/bench_control.py:32	board/network/USB/host-tool wait, named failure [identifier hidden by the view filter]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:33	board/network/USB/host-tool wait, named failure [_tcpdump_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:34	board/network/USB/host-tool wait, named failure [_capture_wait_floor_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:54	board/network/USB/host-tool wait, named failure [_nmcli_short_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -2402,7 +2402,7 @@ tests_hardware/bench_control.py:173	measurement, recorded figure or model period
 tests_hardware/bench_control.py:174	measurement, recorded figure or model period [delay_ms]	NOTBOUND	-	-
 tests_hardware/bench_control.py:175	board/network/USB/host-tool wait, named failure [jitter_ms]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:176	board/network/USB/host-tool wait, named failure [jitter_ms]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/bench_control.py:188	board/network/USB/host-tool wait, named failure [_join_hotspot_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/bench_control.py:188	board/network/USB/host-tool wait, named failure [identifier hidden by the view filter]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:191	board/network/USB/host-tool wait, named failure [retry]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:199	board/network/USB/host-tool wait, named failure [timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/bench_control.py:211	freshness check of inputs, not a wait [stale]	NOTBOUND	-	-
@@ -2436,9 +2436,9 @@ tests_hardware/conformance.py:36	measurement, recorded figure or model period [h
 tests_hardware/conformance.py:41	board/network/USB/host-tool wait, named failure [_twin_probe_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conformance.py:78	board/network/USB/host-tool wait, named failure [_twin_probe_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:24	board/network/USB/host-tool wait, named failure [wait_for_boot]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/conftest.py:37	board/network/USB/host-tool wait, named failure [_hotspot_scan_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/conftest.py:38	board/network/USB/host-tool wait, named failure [_hotspot_scan_poll_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/conftest.py:39	board/network/USB/host-tool wait, named failure [_join_hotspot_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/conftest.py:37	board/network/USB/host-tool wait, named failure [identifier hidden by the view filter]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/conftest.py:38	board/network/USB/host-tool wait, named failure [identifier hidden by the view filter]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/conftest.py:39	board/network/USB/host-tool wait, named failure [identifier hidden by the view filter]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:40	board/network/USB/host-tool wait, named failure [_provision_put_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:41	board/network/USB/host-tool wait, named failure [_dut_ip_exec_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:42	board/network/USB/host-tool wait, named failure [_http_ready_probe_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -2464,10 +2464,10 @@ tests_hardware/conftest.py:514	board/network/USB/host-tool wait, named failure [
 tests_hardware/conftest.py:515	board/network/USB/host-tool wait, named failure [poll_interval_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:526	board/network/USB/host-tool wait, named failure [_end_present_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:527	board/network/USB/host-tool wait, named failure [wait_for_boot]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/conftest.py:543	freshness check of inputs, not a wait [_recover_stale_dut_credentials]	NOTBOUND	-	-
+tests_hardware/conftest.py:543	freshness check of inputs, not a wait [identifier hidden by the view filter]	NOTBOUND	-	-
 tests_hardware/conftest.py:548	freshness check of inputs, not a wait [stale]	NOTBOUND	-	-
-tests_hardware/conftest.py:557	board/network/USB/host-tool wait, named failure [_hotspot_scan_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/conftest.py:558	board/network/USB/host-tool wait, named failure [_join_hotspot_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/conftest.py:557	board/network/USB/host-tool wait, named failure [identifier hidden by the view filter]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/conftest.py:558	board/network/USB/host-tool wait, named failure [identifier hidden by the view filter]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:559	board/network/USB/host-tool wait, named failure [_provision_put_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:561	freshness check of inputs, not a wait [stale]	NOTBOUND	-	-
 tests_hardware/conftest.py:565	freshness check of inputs, not a wait [stale]	NOTBOUND	-	-
@@ -2475,7 +2475,7 @@ tests_hardware/conftest.py:581	measurement, recorded figure or model period [dur
 tests_hardware/conftest.py:586	board/network/USB/host-tool wait, named failure [first_wait_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:587	board/network/USB/host-tool wait, named failure [timeouterror]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:588	freshness check of inputs, not a wait [stale]	NOTBOUND	-	-
-tests_hardware/conftest.py:589	freshness check of inputs, not a wait [_recover_stale_dut_credentials]	NOTBOUND	-	-
+tests_hardware/conftest.py:589	freshness check of inputs, not a wait [identifier hidden by the view filter]	NOTBOUND	-	-
 tests_hardware/conftest.py:592	board/network/USB/host-tool wait, named failure [_ip_and_http_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:594	board/network/USB/host-tool wait, named failure [_dut_ip_exec_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/conftest.py:602	board/network/USB/host-tool wait, named failure [_http_ready_probe_timeout_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
@@ -2748,7 +2748,7 @@ tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:101	board/network
 tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:109	board/network/USB/host-tool wait, named failure [_pause_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:110	board/network/USB/host-tool wait, named failure [_sleep_fed_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:173	size or value range [fram_max_size]	NOTBOUND	-	-
-tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:182	board/network/USB/host-tool wait, named failure [start_uptime_timer(]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:182	timer standing in for a deadline sleep [start_uptime_timer(]	IN B	-	BRIEF_B item 6 (12.107 (4), 12.129)
 tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:203	board/network/USB/host-tool wait, named failure [_sleep_fed_s]	KEEP	refactor/audit	outside party; owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:206	sleep call (a loop's bound is judged at its bound line) [fed_sleep_ms]	NOTBOUND	-	-
 tests_hardware/device_scripts/fram_raw_dump.py:28	size or value range [fram_max_size]	NOTBOUND	-	-
@@ -2767,24 +2767,24 @@ tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:42	size o
 tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:43	size or value range [_max_used]	NOTBOUND	-	-
 tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:84	size or value range [max_used]	NOTBOUND	-	-
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:29	sleep call (a loop's bound is judged at its bound line) [fed_sleep_ms]	NOTBOUND	-	-
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:41	test wait on silicon [_starter_settle_ms]	KEEP	audit 2026-10	owner 2026-11-04 11:23 (test waits keep literals in code)
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:44	silicon mirror of the probe's own-task bounds [_starter_loop_timeout_ms]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; host exec timeout backstops
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:45	silicon mirror of the probe's own-task bounds [_timers_timeout_s]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; host exec timeout backstops
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:41	test wait on silicon (clean return) [_starter_settle_ms]	KEEP	refactor 309857c6 2026-09-21	owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:44	test wait on silicon (clean return) [_starter_loop_timeout_ms]	KEEP	refactor 309857c6 2026-09-21	owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:45	bound on the boot stagger Timer (silicon mirror) [_timers_timeout_s]	IN B	-	BRIEF_B item 6
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:76	clock read [ticks_ms]	NOTBOUND	-	-
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:79	silicon mirror of the probe's own-task bounds [_starter_loop_timeout_ms]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; host exec timeout backstops
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:81	silicon mirror of the probe's own-task bounds [timeouterror]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; host exec timeout backstops
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:79	test wait on silicon (clean return) [_starter_loop_timeout_ms]	KEEP	refactor 309857c6 2026-09-21	owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:81	test wait on silicon (clean return) [timeouterror]	KEEP	refactor 309857c6 2026-09-21	owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:83	measurement, recorded figure or model period [starters_ms]	NOTBOUND	-	-
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:90	clock read [ticks_ms]	NOTBOUND	-	-
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:92	silicon mirror of the probe's own-task bounds [_timers_timeout_s]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; host exec timeout backstops
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:94	silicon mirror of the probe's own-task bounds [timeouterror]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; host exec timeout backstops
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:92	bound on the boot stagger Timer (silicon mirror) [_timers_timeout_s]	IN B	-	BRIEF_B item 6
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:94	test wait on silicon (clean return) [timeouterror]	KEEP	refactor 309857c6 2026-09-21	owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:96	measurement, recorded figure or model period [timers_ms]	NOTBOUND	-	-
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:101	test wait on silicon [_starter_settle_ms]	KEEP	audit 2026-10	owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:101	test wait on silicon (clean return) [_starter_settle_ms]	KEEP	refactor 309857c6 2026-09-21	owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:114	measurement, recorded figure or model period [starter_loop_ms]	NOTBOUND	-	-
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:144	clock read [ticks_ms]	NOTBOUND	-	-
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:150	measurement, recorded figure or model period [build_ms]	NOTBOUND	-	-
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:156	silicon mirror of the probe's own-task bounds [_starter_loop_timeout_ms]	REMOVE	refactor 309857c6 2026-09-21	none: inside wait; host exec timeout backstops
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:156	test wait on silicon (clean return) [_starter_loop_timeout_ms]	KEEP	refactor 309857c6 2026-09-21	owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:159	measurement, recorded figure or model period [build_system_ms]	NOTBOUND	-	-
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:160	test wait on silicon [settle_ms]	KEEP	audit 2026-10	owner 2026-11-04 11:23 (test waits keep literals in code)
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:160	test wait on silicon (clean return) [settle_ms]	KEEP	refactor 309857c6 2026-09-21	owner 2026-11-04 11:23 (test waits keep literals in code)
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:161	measurement, recorded figure or model period [boot_ms]	NOTBOUND	-	-
 tests_hardware/device_scripts/heap_under_connection_ceiling.py:25	sleep call (a loop's bound is judged at its bound line) [fed_sleep_ms]	NOTBOUND	-	-
 tests_hardware/device_scripts/heap_under_connection_ceiling.py:34	measurement, recorded figure or model period [_sample_interval_ms]	NOTBOUND	-	-
@@ -4253,7 +4253,7 @@ tests_scripts/_toml_fixtures.py:159	fixture value or helper name [poll_wait_ms]	
 tests_scripts/conftest.py:34	freshness check of inputs, not a wait [stale]	NOTBOUND	-	-
 tests_scripts/conftest.py:35	freshness check of inputs, not a wait [stale]	NOTBOUND	-	-
 tests_scripts/conftest.py:36	freshness check of inputs, not a wait [stale]	NOTBOUND	-	-
-tests_scripts/conftest.py:41	fixture value or helper name [timeout]	NOTBOUND	-	-
+tests_scripts/conftest.py:41	child _unix_port.sh call bound [timeout]	KEEP	audit 2026-10	hang rule; owner 2026-11-04 11:23 (test waits keep literals in code)
 toolchain/micropython_overrides.py:27	override text, lwIP/tick value (firmware build fact) [retrying]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:162	identifier or text containing the pattern [unix_gc_stack_entries]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:163	identifier or text containing the pattern [unix_gc_stack_entries]	NOTBOUND	-	-
@@ -4308,34 +4308,34 @@ toolchain/micropython_overrides.py:810	measurement, recorded figure or model per
 toolchain/micropython_overrides.py:819	clock read [ticks_ms]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:820	override text, lwIP/tick value (firmware build fact) [micropy_sensors_tick_offset_ms]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:833	size or value range [_max_shift]	NOTBOUND	-	-
-toolchain/micropython_overrides.py:835	120 s bound on the local preprocessor [preprocess_timeout_s]	REMOVE	refactor bcea1108 2026-09-24	none: local compiler
-toolchain/micropython_overrides.py:836	120 s bound on the local preprocessor [_preprocess_timeout_s]	REMOVE	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:835	120 s bound on the local preprocessor [preprocess_timeout_s]	ASK	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:836	120 s bound on the local preprocessor [_preprocess_timeout_s]	ASK	refactor bcea1108 2026-09-24	none: local compiler
 toolchain/micropython_overrides.py:844	sleep call (a loop's bound is judged at its bound line) [sleep_ms]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:882	size or value range [_max_shift]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:883	size or value range [_max_shift]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:926	fault-injection knob, model counter or text (never a give-up) [drops]	NOTBOUND	-	-
-toolchain/micropython_overrides.py:928	120 s bound on the local preprocessor [_preprocess_timeout_s]	REMOVE	refactor bcea1108 2026-09-24	none: local compiler
-toolchain/micropython_overrides.py:929	override text, lwIP/tick value (firmware build fact) [timeoutexpired]	NOTBOUND	-	-
-toolchain/micropython_overrides.py:930	120 s bound on the local preprocessor [_preprocess_timeout_s]	REMOVE	refactor bcea1108 2026-09-24	none: local compiler
-toolchain/micropython_overrides.py:1009	120 s bound on the local preprocessor [_preprocess_timeout_s]	REMOVE	refactor bcea1108 2026-09-24	none: local compiler
-toolchain/micropython_overrides.py:1010	override text, lwIP/tick value (firmware build fact) [timeoutexpired]	NOTBOUND	-	-
-toolchain/micropython_overrides.py:1011	120 s bound on the local preprocessor [_preprocess_timeout_s]	REMOVE	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:928	120 s bound on the local preprocessor [_preprocess_timeout_s]	ASK	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:929	120 s bound on the local preprocessor [timeoutexpired]	ASK	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:930	120 s bound on the local preprocessor [_preprocess_timeout_s]	ASK	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:1009	120 s bound on the local preprocessor [_preprocess_timeout_s]	ASK	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:1010	120 s bound on the local preprocessor [timeoutexpired]	ASK	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:1011	120 s bound on the local preprocessor [_preprocess_timeout_s]	ASK	refactor bcea1108 2026-09-24	none: local compiler
 toolchain/micropython_overrides.py:1028	identifier or text containing the pattern [unix_gc_stack_entries]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:1034	identifier or text containing the pattern [unix_gc_stack_entries]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:1035	identifier or text containing the pattern [unix_gc_stack_entries]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:1057	override text, lwIP/tick value (firmware build fact) [retry]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:1073	identifier or text containing the pattern [entries]	NOTBOUND	-	-
 toolchain/micropython_overrides.py:1074	identifier or text containing the pattern [entries]	NOTBOUND	-	-
-toolchain/micropython_overrides.py:1081	120 s bound on the local preprocessor [_preprocess_timeout_s]	REMOVE	refactor bcea1108 2026-09-24	none: local compiler
-toolchain/micropython_overrides.py:1082	override text, lwIP/tick value (firmware build fact) [timeoutexpired]	NOTBOUND	-	-
-toolchain/micropython_overrides.py:1083	120 s bound on the local preprocessor [_preprocess_timeout_s]	REMOVE	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:1081	120 s bound on the local preprocessor [_preprocess_timeout_s]	ASK	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:1082	120 s bound on the local preprocessor [timeoutexpired]	ASK	refactor bcea1108 2026-09-24	none: local compiler
+toolchain/micropython_overrides.py:1083	120 s bound on the local preprocessor [_preprocess_timeout_s]	ASK	refactor bcea1108 2026-09-24	none: local compiler
 toolchain/micropython_overrides.py:1113	clock read [ticks_ms]	NOTBOUND	-	-
-toolchain/setup_toolchain.py:94	run() mechanics/bridge poll deadline [remote_query_timeout_s]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
-toolchain/setup_toolchain.py:95	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:96	run() mechanics/bridge poll deadline [network_step_timeout_s]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
+toolchain/setup_toolchain.py:94	network step bound (outside party) [remote_query_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
+toolchain/setup_toolchain.py:95	network query bound (outside party) [_remote_query_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.remote_query_timeout_s estimated
+toolchain/setup_toolchain.py:96	network step bound (outside party) [network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:97	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
-toolchain/setup_toolchain.py:98	3600 s bound on a local build/install step [build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:99	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:98	3600 s bound on a local build/install step [build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:99	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
 toolchain/setup_toolchain.py:100	TERM->KILL grace on interrupt [_stop_grace_s]	KEEP	audit 65088dec 2026-10-08	escalation on the run's own stop
 toolchain/setup_toolchain.py:103	network-step retry count [uv_sync_attempts]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
 toolchain/setup_toolchain.py:104	network-step retry count [network_attempts]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
@@ -4343,7 +4343,7 @@ toolchain/setup_toolchain.py:131	network step bound (outside party) [apt_acquire
 toolchain/setup_toolchain.py:132	network step bound (outside party) [apt_acquire_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:135	network-step retry count [attempt]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
 toolchain/setup_toolchain.py:136	toolchain value or text [limit]	NOTBOUND	-	-
-toolchain/setup_toolchain.py:137	run() mechanics/bridge poll deadline [apt_step_timeout_s]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
+toolchain/setup_toolchain.py:137	network step bound (outside party) [apt_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:138	network step bound (outside party) [_apt_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:219	run() mechanics/bridge poll deadline [timeout]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
 toolchain/setup_toolchain.py:224	run() mechanics/bridge poll deadline [timeout]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
@@ -4357,98 +4357,98 @@ toolchain/setup_toolchain.py:256	network step bound (outside party) [node_shasum
 toolchain/setup_toolchain.py:257	network step bound (outside party) [_node_shasums_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:258	network step bound (outside party) [node_tarball_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:259	network step bound (outside party) [_node_tarball_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
-toolchain/setup_toolchain.py:260	toolchain value or text [_curl_slack_s]	NOTBOUND	-	-
-toolchain/setup_toolchain.py:265	toolchain value or text [window_s]	NOTBOUND	-	-
-toolchain/setup_toolchain.py:270	toolchain value or text [window_s]	NOTBOUND	-	-
-toolchain/setup_toolchain.py:273	toolchain value or text [window_s]	NOTBOUND	-	-
-toolchain/setup_toolchain.py:280	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:296	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:304	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:260	network step bound (outside party) [_curl_slack_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
+toolchain/setup_toolchain.py:265	bench bridge dead-man's switch arm/poll [window_s]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
+toolchain/setup_toolchain.py:270	bench bridge dead-man's switch arm/poll [window_s]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
+toolchain/setup_toolchain.py:273	bench bridge dead-man's switch arm/poll [window_s]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
+toolchain/setup_toolchain.py:280	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:296	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:304	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:362	network step bound (outside party) [_node_shasums_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:368	network-step retry count [retry]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
 toolchain/setup_toolchain.py:370	network-step retry count [retry]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
-toolchain/setup_toolchain.py:393	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:393	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:474	run() mechanics/bridge poll deadline [timeoutexpired]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
 toolchain/setup_toolchain.py:475	TERM->KILL grace on interrupt [_stop_grace_s]	KEEP	audit 65088dec 2026-10-08	escalation on the run's own stop
 toolchain/setup_toolchain.py:478	run() mechanics/bridge poll deadline [timeoutexpired]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
 toolchain/setup_toolchain.py:479	TERM->KILL grace on interrupt [_stop_grace_s]	KEEP	audit 65088dec 2026-10-08	escalation on the run's own stop
 toolchain/setup_toolchain.py:503	fault-injection knob, model counter or text (never a give-up) [drops]	NOTBOUND	-	-
-toolchain/setup_toolchain.py:510	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:517	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:542	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:510	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:517	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:542	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:559	bench bridge dead-man's switch arm/poll [_wait_for_bridge_route]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
 toolchain/setup_toolchain.py:562	bench bridge dead-man's switch arm/poll [_bridge_up_poll_s]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
-toolchain/setup_toolchain.py:564	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:565	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:564	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:565	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:568	run() mechanics/bridge poll deadline [deadline]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
 toolchain/setup_toolchain.py:569	bench bridge dead-man's switch arm/poll [_bridge_up_poll_s]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
 toolchain/setup_toolchain.py:570	bench bridge dead-man's switch arm/poll [_bridge_poll_step_s]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
-toolchain/setup_toolchain.py:585	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:585	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:600	toolchain value or text [limit]	NOTBOUND	-	-
 toolchain/setup_toolchain.py:601	run() mechanics/bridge poll deadline [timeout]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
 toolchain/setup_toolchain.py:602	network step bound (outside party) [apt_acquire_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:603	network-step retry count [network_attempts]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
-toolchain/setup_toolchain.py:607	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:632	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:634	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:635	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:684	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:702	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:707	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:607	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:632	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:634	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:635	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:684	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:702	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:707	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:740	toolchain value or text [expire]	NOTBOUND	-	-
-toolchain/setup_toolchain.py:749	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:766	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:749	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:766	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:773	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
-toolchain/setup_toolchain.py:776	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:776	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:783	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
-toolchain/setup_toolchain.py:784	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:786	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:784	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:786	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:835	network-step retry count [attempt]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
 toolchain/setup_toolchain.py:836	network-step retry count [attempt]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
 toolchain/setup_toolchain.py:838	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:839	network-step retry count [before_retry]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
-toolchain/setup_toolchain.py:848	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:864	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:876	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:848	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:864	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:876	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:882	network query bound (outside party) [_remote_query_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.remote_query_timeout_s estimated
-toolchain/setup_toolchain.py:897	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:934	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:897	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:934	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:951	network step bound (outside party) [_apt_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:954	network-step retry count [retry]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
 toolchain/setup_toolchain.py:958	network step bound (outside party) [_apt_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
-toolchain/setup_toolchain.py:959	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
-toolchain/setup_toolchain.py:973	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:977	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:959	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:973	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:977	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:980	bench bridge dead-man's switch arm/poll [_bridge_recovery_arm_s]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
-toolchain/setup_toolchain.py:981	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:982	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:981	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:982	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:983	bench bridge dead-man's switch arm/poll [_wait_for_bridge_route]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
-toolchain/setup_toolchain.py:994	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:994	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:1024	bench bridge dead-man's switch arm/poll [_bridge_recovery_arm_s]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
-toolchain/setup_toolchain.py:1025	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1030	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1035	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1045	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1053	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1056	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1057	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1025	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1030	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1035	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1045	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1053	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1056	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1057	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:1058	bench bridge dead-man's switch arm/poll [_wait_for_bridge_route]	KEEP	audit 65088dec 2026-10-08	CLAUDE.md dead-man's switch rule; B.13 lease ~30 s
-toolchain/setup_toolchain.py:1072	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1073	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1080	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1081	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1121	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1072	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1073	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1080	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1081	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1121	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:1158	network step bound (outside party) [_node_tarball_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:1163	network-step retry count [retry]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
-toolchain/setup_toolchain.py:1164	3600 s bound on a local build/install step [_build_step_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
+toolchain/setup_toolchain.py:1164	3600 s bound on a local build/install step [_build_step_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process; CI timeout-minutes backstops
 toolchain/setup_toolchain.py:1182	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:1190	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
-toolchain/setup_toolchain.py:1208	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
-toolchain/setup_toolchain.py:1216	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1208	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1216	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:1226	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:1235	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:1249	network query bound (outside party) [_remote_query_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.remote_query_timeout_s estimated
-toolchain/setup_toolchain.py:1408	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1408	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:1409	run() mechanics/bridge poll deadline [timeoutexpired]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
 toolchain/setup_toolchain.py:1494	run() mechanics/bridge poll deadline [timeout_s]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
 toolchain/setup_toolchain.py:1495	run() mechanics/bridge poll deadline [timeout_s]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
@@ -4459,9 +4459,9 @@ toolchain/setup_toolchain.py:1521	run() mechanics/bridge poll deadline [timeout]
 toolchain/setup_toolchain.py:1522	run() mechanics/bridge poll deadline [deadline]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
 toolchain/setup_toolchain.py:1528	TERM->KILL grace on interrupt [_stop_grace_s]	KEEP	audit 65088dec 2026-10-08	escalation on the run's own stop
 toolchain/setup_toolchain.py:1530	run() mechanics/bridge poll deadline [timeout_s]	KEEP	audit 65088dec 2026-10-08	carries the caller's bound
-toolchain/setup_toolchain.py:1571	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1571	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:1583	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
-toolchain/setup_toolchain.py:1603	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	REMOVE	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
+toolchain/setup_toolchain.py:1603	120 s 'remote query' bound on a local command [_remote_query_timeout_s]	ASK	audit 65088dec 2026-10-08	none: local process (nmcli/ip/systemctl/git local/--version/sudo)
 toolchain/setup_toolchain.py:1605	network step bound (outside party) [_network_step_timeout_s]	DERIVE	audit 65088dec 2026-10-08	Part N tool.* estimated, measurement owed
 toolchain/setup_toolchain.py:1609	network-step retry count [uv_sync_backoff_step_s]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
 toolchain/setup_toolchain.py:1610	network-step retry count [network_attempts]	KEEP	audit 65088dec 2026-10-08	owner 2026-09-26 (tool.uv_sync_attempts)
@@ -4784,9 +4784,9 @@ tests/_fast_sleep.py:45	sleep/timer (the loop's bound, if any, is a named-consta
 tests/_generated_module.py:50	loop without a bound (read loop, scan, dispatch) [while]	NOTBOUND	-	-
 tests/_generated_module.py:56	loop without a bound (read loop, scan, dispatch) [for]	NOTBOUND	-	-
 tests/_generated_tree.py:58	loop without a bound (read loop, scan, dispatch) [while]	NOTBOUND	-	-
-tests/_held_log.py:34	wait on own child or kernel lock (no deadline) [.wait(]	NOTBOUND	-	-
-tests/_held_log.py:61	loop without a bound (read loop, scan, dispatch) [for]	NOTBOUND	-	-
-tests/_held_log.py:64	sleep/timer (the loop's bound, if any, is a named-constant row) [sleep(]	NOTBOUND	-	-
+tests/_held_log.py:34	held-log gate and rounds wait [.wait(]	IN fsync	-	BRIEF_FSYNC item 3
+tests/_held_log.py:61	held-log gate and rounds wait [for]	IN fsync	-	BRIEF_FSYNC item 3
+tests/_held_log.py:64	held-log gate and rounds wait [sleep(]	IN fsync	-	BRIEF_FSYNC item 3
 tests/_littlefs_fake.py:46	loop without a bound (read loop, scan, dispatch) [loop]	NOTBOUND	-	-
 tests/_schema_cases.py:25	loop without a bound (read loop, scan, dispatch) [while]	NOTBOUND	-	-
 tests/_schema_cases.py:59	loop without a bound (read loop, scan, dispatch) [for]	NOTBOUND	-	-

@@ -340,7 +340,7 @@ EXP = (
 
 SRAW_COUNT = 20000
 # vocalgorithm_init(), then one vocalgorithm_process() per sraw_sequence() sample: the index after samples
-# 0, 500, 1000, ... and CRC-32/MPEG-2 (asy_crc_checks.CRC32) over every index as two little-endian bytes.
+# 0, 500, 1000, ... and CRC-32/MPEG-2 (crc_checks.CRC32) over every index as two little-endian bytes.
 INDEX_EVERY_500 = (
     0, 339, 47, 49, 151, 449, 165, 45, 412, 18, 496, 57, 463, 166, 69, 500, 500, 61, 499, 497, 489, 380, 494, 477, 15,
     144, 492, 500, 443, 444, 202, 499, 498, 499, 486, 22, 492, 424, 132, 171,

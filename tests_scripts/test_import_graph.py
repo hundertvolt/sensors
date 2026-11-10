@@ -300,12 +300,12 @@ def test_the_named_list_mirrors_specification_f1() -> None:
 def test_a_planted_import_in_a_frozen_module_fails_naming_every_device_and_the_site(tmp_path: Path, website: Path) -> None:
     src = tmp_path / "src"
     shutil.copytree(REPO_ROOT / "src", src)
-    planted = src / "asy_crc_checks.py"
+    planted = src / "crc_checks.py"
     planted.write_text(planted.read_text(encoding="utf-8") + "\n_late = __import__('time')\n", encoding="utf-8")
     line = planted.read_text(encoding="utf-8").count("\n")
     (tmp_path / "gen").mkdir()
     hits = {i.device: [s for m in i.modules for s in image_sites(m)] for i in build_images(src, REPO_ROOT / "ext", website, tmp_path / "gen")}
-    assert hits == {device: [("src/asy_crc_checks.py", line, "__import__")] for device in DEVICE_NAMES}
+    assert hits == {device: [("src/crc_checks.py", line, "__import__")] for device in DEVICE_NAMES}
 
 
 @pytest.mark.parametrize(("source", "what"), [("import importlib\n", "import importlib"), ("from importlib import util\n", "from importlib import"), ("exec('x = 1')\n", "exec"), ("eval('1')\n", "eval")])

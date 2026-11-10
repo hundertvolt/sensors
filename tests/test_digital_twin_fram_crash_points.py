@@ -12,10 +12,10 @@ from _async_harness import run
 from _error_codes import code
 from _twin_devices import generated_devices, wiring_plan
 
-from asy_crc_checks import CRC32
 from asy_fram_manager import FRAMManager
 from asy_print_log import LogConfig, PrintLogHistoryStore
 from asy_spi_driver import SPI
+from crc_checks import CRC32
 from voc_algorithm import VOCAlgorithm
 
 try:
@@ -144,7 +144,7 @@ def _erase(board: _Board, marks: "list[int] | None" = None) -> "Callable[[], Cor
 
 
 def _logger_state(store: PrintLogHistoryStore) -> "tuple[int, tuple[int, ...]] | bool | None":
-    return run(store._read())
+    return store._read()
 
 
 def test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_history() -> None:
@@ -154,7 +154,7 @@ def test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_
         store = PrintLogHistoryStore(board.manager, name=_LOGGER)
         run(store.setup())
         assert store.initialized is True
-        run(store.err_s("history A", errno=code("E", "TEST_SEED_A")))
+        store.err_s("history A", errno=code("E", "TEST_SEED_A"))
         old_image, old = board.image(), _logger_state(store)
 
         count = board.transactions(_logger_write(store, "history B", "TEST_SEED_B"))
@@ -178,15 +178,15 @@ def test_a_logger_write_cut_after_every_transaction_restores_the_old_or_the_new_
             # Not at all is allowed only with its trace: two valid but differing copies are never guessed between.
             assert restored in (old, new) or (restored == _blank(store) and _COPIES_DIFFER in traces), f"cut after {k} of {count}: restored {restored} with {traces}, neither the old {old} nor the new {new}"
             assert traces <= _TORN_TRACES, f"cut after {k}: setup logged {traces - _TORN_TRACES}"
-            run(store.err_s("history C", errno=code("E", "TEST_SEED_C")))
+            store.err_s("history C", errno=code("E", "TEST_SEED_C"))
             written = _logger_state(store)
             assert written == (store._err_count, tuple(store.history)) != restored, f"cut after {k}: the next write read back {written}"
 
 
 def _logger_write(store: PrintLogHistoryStore, text: str, seed: str) -> "Callable[[], Coroutine[object, object, None]]":
     # The work a cut interrupts: one logged error, which writes the store's chunk.
-    def work() -> "Coroutine[object, object, None]":
-        return store.err_s(text, errno=code("E", seed))
+    async def work() -> None:  # the entry is written inside the call, so the cut strikes inside it
+        store.err_s(text, errno=code("E", seed))
 
     return work
 
@@ -251,7 +251,7 @@ def test_an_erase_cut_inside_its_blanking_pass_or_its_first_and_last_units_resto
     board = _Board(plan, None)
     stores = _rings(board)
     for i, store in enumerate(stores):
-        run(store.err_s("ring", i, errno=code("E", ("TEST_SEED_A", "TEST_SEED_B", "TEST_SEED_C")[i])))
+        store.err_s("ring", i, errno=code("E", ("TEST_SEED_A", "TEST_SEED_B", "TEST_SEED_C")[i]))
     written = [_logger_state(store) for store in stores]
     old_image = board.image()
     unit = 256  # asy_fram_manager.py's _ERASE_UNIT

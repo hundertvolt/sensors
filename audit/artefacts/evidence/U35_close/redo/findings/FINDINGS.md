@@ -1342,3 +1342,216 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
   task before counting (no bound, no number). Green: six devices at -1, dev and arzi at 32768; lint and mypy clean.
 - Lead slip: the weblog merge check ran five interacting files, not test_sensortask.py, whose scenarios count FRAM
   writes after log calls. The class goes with fsync (entries written inside the call); fsync removes this await then.
+- Snapshot 55 = b4d87294 (parent fb9d8f17), pushed 22:3x; CI pending. Its scan (records only) was clean. The lead's
+  extra count over every changed file matched 4 lines of tests/_sensortask_scenarios.py (since f1f800e7, 2026-10-08):
+  private-range IP literals in the /status networking scenarios, which the pattern also covers; no credential (0
+  matched strings shared with src; lines viewed through the filter). Lead slip: one command would have printed the
+  scan pattern's own line; the permission check refused it, nothing printed. Pattern lines are never printed.
+- giveup pass 2 handed back (GIVEUP_2.md, 1,190 rows); its slip: one pdftotext datasheet read (neither git nor grep).
+
+## 12.137 giveup passes 1 and 2: triage and routing (lead, verified by reading)
+- Pass 1 (848 hits = rows) and pass 2 (1,190 = rows); the counts close. Verified by the lead before routing:
+  (1) v1.29.0 `Stream.wait_closed()` is `self.s.close()` with no yield (`extmod/asyncio/stream.py:19-21`, `aclose` the
+  same, :220): the webserver's per-close `wait_for_ms` and the proxy's two bounded closes bound a call that cannot
+  wait - REMOVE (G). (2) The UART write gate sleeps up to the resync window (1,000 x 3/2 = 1,500 ms) under the bus
+  lock with no ready() round, so `cancel_read_timeout()`'s 1,000 ms gives up on a healthy holder and `clear()` persists
+  W55: an inside wait whose deadline also misfires - REMOVE the deadline, the counter and W55 (code reserved), Class B
+  entry (G). `clear()` stays (the module's own API, OR36.a (3)). (3) ISL29125's settle cap: the deadline moves only on
+  the device's own CONFIG1 writes - REMOVE (B). (4) BMP3XX's cmd_rdy poll: ERR_REG after the reset already catches a
+  refusal, a bus fault raises in the I2C layer - REMOVE (B).
+- Routed to B by message (22:4x): (3), (4), SCD30 reset wait to the datasheet's < 2 s, SGP40 measure wait to Table 8's
+  30 ms + one tick (bench flag), the webserver's false owner credit for the LED wait, NTP's stale doubling names.
+- Unit G (bounds; after B, at most two writing): (1), (2), captive DNS backoff to the legacy fixed 3 s, the config
+  store's `os.remove` retry, DERIVE: HTTP 5 s / 15 s from silicon's longest request, DNS 500 ms against lwIP's own
+  1,000 ms per try, UART `_POLL_JITTER_MS` from one frame's wire time, the link's hazard recovery attempts, the
+  `_BACKOFF_MAX_MULT` comment's source; plus pass 3's.
+- Owner, after pass 3: ISL29125's calibration candidate cleared after 10 min (user-visible, no source); `dns.tries`
+  (1 everywhere, a pre-audit session's knob that never repeats).
+- The "owner-reviewed, 2026-11-06" tag (129 in SPECIFICATION.md, about 13 in code) marks an agent decision inside a
+  topic the owner reviewed at big-picture level; the LED's 120 s carried it. Clarified in common_r1's bound rule.
+
+## 12.138 giveup pass 3 (apparatus) and the owner's widening (22:27:31)
+- Pass 3: 5,153 hits = rows; every apparatus bound was added by a session. Routing: unit T - the unit and twin tiers'
+  wall-clock limits on the code's own coroutines (about 1,100 call-site numbers; the per-file timeout is the owner's
+  hang backstop and names the hung file), the twin harness's product-timing numbers read from `src/` (its 10 s request
+  wait sits below the product's 15 s cap), the async harness's reap limit in rounds; unit C - `build_firmware.py`'s
+  `nm`/`git` timeouts (a silent "git cannot tell"), the toolchain's ~55 local-command bounds (one silently reinstalls
+  Node when `node --version` is slow): they go, CI's job `timeout-minutes` is the backstop for setup (decided under
+  20:43:39; not a test file, so outside the per-file rule), picotool's 5 x 2 s retry derived or named.
+- Owner 22:27:31 widened the sweep: every pattern the audit added without his consent that kept growing, not only
+  bounds; no real feature dropped, no gap opened or reopened, lean and efficient for the rp2. The bound sweep becomes
+  one family of it; BRIEF_CONSENT.md (four read-only passes) covers the rest, building on scan/ and scan2/ (10-28).
+- The two owner questions (ISL calibration candidate expiry, `dns.tries`) wait for the consent sweep, so they come as
+  family-level questions with the rest.
+- Snapshot 55 b4d87294 green: run 42711567341 (pull_request), 28/28 jobs success; the push run 42711553365 cancelled by concurrency.
+
+## 12.139 consent pass 4 (documents and rules) and a lead error it caught
+- Lead error, corrected: BRIEF_B item 7 ("codes 44 and 45 retired, kept reserved in the catalog, never reused") and
+  12.137's "W55 (code reserved)" contradicted the owner's decision 6 (2026-10-28 14:23, "third option accepted": no
+  placeholder rows for numbers retired before the release; SPEC near :3654 says the same). Verified in the record;
+  B told to delete the rows and add none (23:0x), fsync told the same for any code it removes. A decided topic
+  re-decided by the lead from memory: the record is read before a brief states a ruling's consequence.
+- Pass 4: 2,590 items = mapped (873 to 31 mechanisms, 1,717 NOTMECH); 33 rows = KEEP 19 + ROUTED 7 + SIMPLIFY 4 +
+  ASK 2 + REMOVE 1. SIMPLIFY: the 11-06 tag on 235 lines (about 60 files) to the plain "(agent, date)" the decision
+  record rule asks for, plus one sentence that the 11-06 review accepted topics (P9, with code comments after B and
+  fsync merge); I.2's per-module prose that a test demands per module (the owner's rule and the code check stay);
+  A.11's exposure table and its check (A.8 lists every route); the changelog's constants table and its check (the
+  entry rule stays). REMOVE: PAP:203-206's numbering rule (the owner dropped BACKLOG's on 11-06). ASK family F1: C.8's
+  lock table and C.9's task table, each restating code under a test - judged with passes 1-3.
+- Pass 4 slip: a first scratch extraction held unmasked added lines (deleted unviewed, rebuilt filtered; 0 matches).
+
+## 12.140 consent pass 3 (tests and twin)
+- 14,437 items = mapped (9,715 to 75 mechanisms, 4,722 NOTMECH); 75 rows = KEEP 43 + ROUTED 17 + REMOVE 10 +
+  SIMPLIFY 4 + ASK 1. Most new test lines sit under topics the owner asked for (43 KEEP rows, each with a quote or an
+  incident). Grew without consent: tests_scripts checks that pin SPECIFICATION.md tables (every product change edits
+  them too), and 55 planted self-bite tests that survived 95e4fbde's `*_bites` removal under other names (owner,
+  verified: "Planting errors for those straightforward tests would be complete overkill.").
+- REMOVE (unit T, about 1.8k lines): the 55 self-bites; the definitions shape corpus (only with pass 2's validator);
+  the checks pinning F.3's timing rows, I.2, C.9, the readiness-flag layout, A.11, the sleep forms, the suppression
+  form, old legacy paths - each names its remaining catcher. SIMPLIFY: per-handler C-stack pins to one logger check
+  (SCAN2); watchdog feed sites to one rule (feed only in the system service, never in a callback); counter steps to
+  the cap rule; lock order keeps the order check, drops C.8's table match. ASK (C-stack family): the 1,227-line static
+  await-depth analysis and its tunable against the bench measurement plus the approved reboot (image unchanged).
+- KEEP noted: the bench FRAM-log check (it caught a flash script's SGP40 W33 entry in the production log, 11-06).
+- Pass 3 slips: one unfiltered grep of PROJECT_AUDIT_PLAN.md printed OR70.a's line (the accepted fallback named as a
+  limitation, no value); an overflowed output saved by the harness under /root/.claude/ (not opened); a stray
+  /tmp/x1 (row IDs) removed at once.
+
+## 12.141 consent pass 1 (firmware)
+- 1,196 items = mapped (1,046 to 98 mechanisms, 150 NOTMECH); 98 rows = KEEP 72 (64 with the owner's words, 8 with a
+  demonstrated need) + ROUTED 16 + SIMPLIFY 6 + ASK 4 + REMOVE 0. The 11-03 rollback round already removed most of
+  SCAN2's eight patterns. Also confirms 12.139's catch (decision 6 on retired numbers).
+- SIMPLIFY (unit G, after B and fsync): the UART's typing-only guards (owner 2026-10-27 "option b"; range checks and
+  codes stay; Class B line); the 11-06 suffix on 14 code comments; the deferred flash write's per-store Event,
+  `defer=`, `commit()` and hooks to "stage, push, write once" (the consented behaviour, its tests rewritten first;
+  medium risk); the reset flags as one phase value (after fsync); UART discarded-byte accounting by the ring's
+  received total (inferred: verify first).
+- ASK families: A1 agent behaviours inside owner-specified sensor features (SCD30 FRC temperature guard, SCD30
+  range gate E27, ISL29125 INT parking; with GIVEUP's ISL 10 min candidate expiry and `dns.tries`); A2 functions with
+  no caller (`_rx_line_len`, `get_log(name)`, the definitions CLI; `UARTComm.clear()` stays, OR36.a (3)).
+- Pass 1 slips: one `python3 -I -c` read of a JSON's keys; a scratch copy briefly held 9 unfiltered Wi-Fi timing rows
+  (deleted, unprinted). Part N mislabels about ten legacy-sourced values as "estimated" (P9).
+
+## 12.142 consent pass 2 (website and build chain); the owner-credit check
+- 2,091 items = mapped (2,011 to 92 mechanisms, 80 NOTMECH); 92 rows = KEEP 72 + SIMPLIFY 7 + REMOVE 1 + ASK 1 +
+  ROUTED 11. The website's growth is owner-asked (OR94/54/78/100/121/138, review "ok"s, B7/B8).
+- SIMPLIFY: the page's background /status check skips while a section already polls /status (one request a minute per
+  tab); the browser's per-hint re-validation of generated definitions to the pre-audit scope (~135 JS lines, +593 B gz
+  per image; with pass 3's shape corpus); one shared errcount code table per page (~206 B gz per frozen page); the
+  boot oracle out of `generate_device()` into the test generator (its third FRAM-consumer table goes); the stager's
+  500-line JS lexer to about the pre-audit form (a duplicate name then fails at page load in the staged tiers); one
+  module-to-file table in `buildspec.py`. REMOVE: `trigger_spread()` (one bench test, no device's order). Routing:
+  W/S rows to unit C, website rows to C with the JS mirror rule, G rows to C.
+- ASK candidate S18: the gc policy checker's per-test-function allowance table (38 rows; OR39's rule). Lead: the
+  per-function grain is the guarantee (a new test propping a result in an allowed file is caught), so the form may
+  lean (the allowance beside the site) but the grain stays - no owner question.
+- Authority labels: 56 "(owner, date)" credits in this scope against 2 at the audit start; of 2 checked, one has no
+  owner record ("never bundled with a suite runner", 09-26). With the webserver's LED credit (12.137) that makes two
+  unbacked credits: every owner credit in the repo is now checked against the records (BRIEF_CREDIT.md, read-only).
+
+## 12.143 The consent sweep's ASK items settled by evidence (lead, under the owner's 20:43:39 direction)
+- SCD30 FRC temperature guard: KEEP. Its 2.5 ppm/degC is the datasheet's "Temperature stability +/- 2.5 ppm / degC
+  (T = 0 ... 50 degC)" (Sensirion SCD30 datasheet, CO2 table, read 23:2x): a source.
+- SCD30 range gate (E27): KEEP. Its bounds are the datasheet's I2C range "0 - 40'000 ppm", -40 to 70 degC, 0-100 %RH;
+  BMP3XX's pre-audit Table 2 gate is its sibling; the non-finite half guards F.1's page break.
+- ISL29125 INT parking: KEEP. The datasheet's flag is HIGH while green is outside the window and LOW once inside, with
+  persistence control: left armed it re-asserts every persistence window (ISL29125 datasheet, CONFIG3 and the
+  threshold-assignment text, read 23:3x).
+- ISL29125 calibration candidate's 10 min expiry: REMOVE (the bound rule: no source; the owner ruled the run bounded,
+  09-13, not the candidate): it stays until the next run starts or a reboot. Nothing lost (unit G).
+- `_rx_line_len`: KEEP - `readline()` (:633) and `readline_until_complete()` (:669) call it (pass 1's no-caller row is
+  wrong at 6aec784f); readline is driver API (OR36.a (3)). The definitions CLI: KEEP - `scripts/build_website.sh:61`
+  runs `python3 -m buildgen.definitions` (SIMPLER_4 #4's no-caller claim is wrong).
+- `get_log(name)`: the parameter goes - every `src/` call passes none; only tests set it (OR36.a (1), owner-ruled).
+  Sent to fsync (its file).
+- `dns.tries`: no question - unit G derives the DNS numbers from the platform's own resolver (lwIP, which legacy's
+  getaddrinfo used: 1,000 ms per try, up to 4 tries), weighing C.8's NTP hold under the Wi-Fi mode lock; the knob
+  stays only if the derivation gives more than one try.
+- C-stack static analysis (pass 3's ASK): KEEP. The margin is near critical: limit 7,936 B (F.1), ~200 B per await
+  level, depth 32 failed on silicon and depth 28 left three calls (2026-10-29), the longest static chain is held to
+  25 and runs through the FRAM log path - fsync's flattening should widen it (re-measure at fsync's merge).
+- C.8/C.9 tables (pass 4's F1): the checks stay; their per-lock and per-task data move beside the checks, the
+  specification states each rule once (lossless, unit T with P9). S18: the per-function grain stays (12.142).
+- No owner question remains from the consent sweep; the credit check (BRIEF_CREDIT.md) may add some (03:30).
+
+## 12.144 The credit check: 1,456 owner credits, 146 not backed as written
+- 2,265 hits = rows = BACKED 1,054 + TOPIC 256 + STRETCHED 37 + UNBACKED 109 + NOTCREDIT 809; 1,456 credits (1,402
+  added in the audit, 54 pre-audit). By the credit's own date: 29 audit-era (STRETCHED 23, UNBACKED 6) - corrected by
+  the record, no question (the backed quote, or "(agent, date)"); 117 dated July to September (STRETCHED 14,
+  UNBACKED 103: 66 mechanisms, 10 numbers, 15 rules, 12 other) rest only on a session's commit message ("Per explicit
+  direction ...", e.g. 90ced2b for the SGP40 reset, verified) or on nothing - put to the owner as one question.
+- Verified by the lead: the SGP40 reset credit cites 90ced2b (2026-07-22), whose message says "Per explicit direction";
+  no record file holds it. The webserver's LED credit is STRETCHED (the owner said internal LED commands are bounded in
+  number and frequency, not the wait). Scratch check: ftmp_credit and ftmp_consent4 hold only IPv4 literals under the
+  scan pattern (counts by class, nothing printed); all hand-backs and ledgers 0.
+- Credit slips: raw grep lines (57 filter-matching) written to scratch before masking; raw record copies written and
+  deleted in one command; chained `rm`s; an overflowed output saved under /root/.claude/ (not opened).
+- Container restart ~00:57-01:00 UTC: units stopped; B committed 69c06662 (waiting for the gate lock), fsync committed 1547690d (gate2b rc=0 at 00:54, npm step killed; lock 'fsync' held); both resumed by message 01:0x. Owner question open: the 117 pre-audit-dated credits (12.144).
+
+## 12.145 fsync handed back (1547690d); one follow-up commit asked
+- Done: SPI configures only when another device took the bus; FRAM commands plain calls (WEL/RDSR kept); chunk ops
+  synchronous (`_op_lock`, yields, `quiesce()`/`wait_idle()` gone; two-block recovery, stored format, pause, stepped
+  boot load and erase kept); one log pair writes its entry inside the call (err_q/wrn_q, writer, windows, generations
+  gone; flush_pending/ResetErrors answers kept); CRC plain functions, `crc_checks.py`, run_inc/check_inc and
+  verify_present gone (E19's row deleted, none reserved); get_log lost its name. Gate: test.sh 5,418/0 at both
+  stages, tests_scripts 6,975 + 1 failed (below), twin dev suite and harness PASS at both, npm 1,276. src -310 lines,
+  -4,755 B mpy (only `asy_spi_driver.py` +84 B, admitted); imageFreeBytes dev 64,356 B (weblog head 60,068).
+  Unix-port: entry 8.7 ms, SGP40 backup 8.6 ms, read 7.9 ms; counts 51/51/46 - the bench targets reachable by count.
+- The red test: the boot-placement control arm (survivors must land high without the per-unit collects) fails - they
+  land 659,040 B low without them. The collects' premise is gone: by the owner's 19:11:51 goal they go (decided under
+  20:43:39; the owner's 09-18 approval gets its record line); the main arm stays; bench re-checks placement on silicon.
+- Settled, no change: ResetErrors' 21 writes in one stretch (a user command below a config flush's stall: F.3 lists
+  it among command stalls); endurance (no rate bound; FRAM effectively unbounded per CLAUDE.md; worst case continuous
+  back-to-back 37 y on the 64 Kbit part, 370 on the 2 Mbit). Twin Run 3's 627 ms ceiling -> T.
+- Open for the owner (after the credit question): the status pair written as one 2-byte write (51 -> 31 commands per
+  entry, same crash states per both datasheets p.9) against his 2026-09-18 byte-at-a-time ruling - record to read.
+- fsync slips: one test file and one rebuild outside run.sh; one unfiltered view of `_digital_twin_scenarios.py`
+  818-862 (masked placeholders only).
+
+## 12.146 ub handed back (39e18d2a) and merged: int ddf77ce8 (tree = 39e18d2a's)
+- Gate on 39e18d2a: test.sh -1 and 32768 (121 files, 5,442 tests), tests_scripts 6,981, twin dev suite and harness at
+  both stages (on 69c06662, only a test changed since), npm, lint, three mypy passes. Its run 1 hit the same NTP
+  no-reply race as 12.136 on grkizi: ub's form (an attempt ends once the writer is idle) kept, int's await dropped at
+  the merge, so the merged tree equals the gated one. Both go with fsync's synchronous log.
+- Read by the lead for self-inflicted growth: the LED is one lock (overlay task, its lock, the 120 s wait and its
+  tunable gone; integer ramp into one reused frame; no logger, LED FRAM chunk and wiring gone); TickGrid (15 lines,
+  one form for three services' cadences, brief item 6) replaces their timer mechanisms; BMP3XX's wait is the
+  datasheet's 3.9.2 formula x 6/5 (covering every Table 22 maximum) + one tick. src -407 lines, -6,737 B mpy; dev
+  imageFreeBytes 65,740 B. VOC: bit-identical, 34,200 -> 8,727 B allocated per sample on the 32-bit port.
+- Kept, with evidence: captive DNS strings (their decode is today's malformed-label refusal - not debug-only; 12.105
+  #10's premise wrong); SGP40 100 ms (backed: DP A22 on 5ff8c0b, 12.144's ledger).
+- Bench owed on the next image: SCD30 bus release, BMP3XX computed wait, FRAM layout shift (LED chunk gone: read
+  errcount before the reflash), plus fsync's acceptance figures and boot placement.
+- UART changelog: ub moved PieceBuffer into asy_uart_driver.py and touched asy_uart_comm/link (no wire change): one
+  Class B entry owed, written at the fsync merge (after fsync's B99). Brief error: BRIEF_B said "UART changelog
+  untouched (no UART change)" while item 8 moved code into the UART driver.
+- ub slips: python3 edit scripts outside run.sh; unfiltered Read-tool views of SPECIFICATION.md and device-script
+  ranges (checked after: no filtered line among them); test batches 23:53-00:30 ran beside fsync's gate.
+
+## 12.147 fsync's follow-up (e1958815) and the merge unit
+- e1958815: no `gc.collect()` in `src/` (run_setups/start_tasks lose their per-unit collects; `asy_system_service`
+  -8 lines, -58 B); the site checker's src and probe rows, the suppressed control arm and `_ProbeGc` gone; the main arm
+  passes on all six devices with margin (setup batch median >= 645,408 B below its seam, bound 307,200; whole boot
+  830,304 B, bound 262,144). F.3 gains `stall.reset_errors` among command stalls and the wear worst case in one line.
+  Gate pieces under the lock (02:30-03:05): tests_scripts 6,962 + 1 (a stale citation allowlist line, deleted, 15/15,
+  amended), dev twin suite at both stages. fsync left CLAUDE.md's exception paragraph and the work-routines skill line
+  111 unedited (a message is no authority for CLAUDE.md): the lead decided the removal (12.145) and gives both edits to
+  the merge unit under CLAUDE.md's own stale-doc rule. Slip: the lock's `rm` shared a shell call with a grep.
+- Lead trial merge of e1958815 over ddf77ce8: 18 files, 27 hunks; aborted, int unchanged. Unit mfs (BRIEF_MFS.md,
+  worktree S/wt-mfs, branch audit/mfs at ddf77ce8) merges, applies fsync's transform to ub's files, drops the writer
+  conditions, adds the UART Class B entry, fixes the two stale docs, gates; due 07:30.
+
+## 12.148 Merge unit mfs: a293d6f9 = int (fast-forward), gate green
+- 18 files, 27 hunks resolved, both intents kept (ub's deletions stand over fsync's conversions; ub's added calls take
+  fsync's form); the transform over ub's 72 files made 2 rewrites (the SCD30 helpers), a second pass none; residue grep
+  found one defect (the NTP scenario's `_writer` condition), removed; B100 Class B in the UART changelog.
+- Docs the merge left stale, fixed: CLAUDE.md's exception paragraph and skill line 111 now state that the firmware
+  calls no `gc.collect()` (read by the lead: accurate, minimal - kept), HEAP_FRAGMENTATION_MEASUREMENTS.md's two lines,
+  F.3/C.7 (ResetErrors on dev is 19 writes, counted on the merged tree), I.2's timeout row, C.8's SCD30 reset 2 s.
+- Gate (03:26-04:25, lock as mfs, removed): test.sh -1 PASS 121 files 5,354 tests + tests_scripts 6,964; 32768 PASS
+  5,354; dev twin suite (329 + 15; NEOPIXEL's persistence check went with its logger) and harness at both; npm 1,276;
+  lint and three mypy passes clean. Sizes vs 8f04f2f1 (armv6m): src -725 lines, -11,533 B mpy; dev imageFreeBytes
+  59,836 -> 70,292 B (both built by mfs).
+- Left: `tests_hardware/bench/_load.py:477`'s comment names `arm_tick_timer()` (ub's leftover) -> T. mfs slips: one
+  unfiltered grep printed two lines with WifiConfig test-fixture arguments (fixture values, not the hotspot password;
+  to be checked by count); helper scripts with python3 outside run.sh.

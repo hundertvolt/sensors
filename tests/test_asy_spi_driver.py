@@ -224,18 +224,8 @@ def test_async_write_readinto_inside_a_session_fills_the_buffer() -> None:
 
 
 # ---------------------------------------------------------------------------
-# configure() - programmer-error guard, applied fresh on every session
+# configure() - programmer-error guard, applied when another device configured the bus last
 # ---------------------------------------------------------------------------
-
-
-def test_configure_raises_if_lock_not_held() -> None:
-    spi = _make_spi()
-    try:
-        spi.configure()
-        message = ""
-    except RuntimeError as e:
-        message = str(e)
-    assert message == "acquire the bus lock first"
 
 
 def test_configure_raises_if_bus_deinitialized_even_with_lock_held() -> None:
@@ -377,19 +367,19 @@ def test_aenter_returns_the_device_itself() -> None:
     run(scenario())
 
 
-def test_configure_is_applied_fresh_on_every_aenter() -> None:
+def test_an_async_session_configures_only_a_bus_another_device_configured_last() -> None:
     spi = _make_spi()
     device = _make_device(spi)
+    other = _make_device(spi, cs_pin=6)
 
     async def scenario() -> None:
-        async with device:
-            pass
-        async with device:
-            pass
+        for each in (device, device, other, device):
+            async with each:
+                pass
 
     run(scenario())
     inits = [entry for entry in _fake(spi).log if entry[0] == "init"]
-    assert len(inits) == 2  # configure() re-applied every session, not cached
+    assert len(inits) == 3  # the second session of the same device finds the bus as it left it
 
 
 # ---------------------------------------------------------------------------
@@ -899,8 +889,7 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
 
 
 # The synchronous session: the same CS/settle/configure sequence as `async with`, without the lock
-# operations, the coroutines or the awaited settle. The caller holds the bus lock - configure()'s
-# own guard enforces that contract.
+# operations or the coroutines, for a caller that runs it whole; refused while an async session holds the bus.
 
 
 def test_session_begin_raises_if_setup_was_never_called() -> None:
@@ -908,34 +897,15 @@ def test_session_begin_raises_if_setup_was_never_called() -> None:
     device = _make_device(spi, call_setup=False)
 
     async def scenario() -> None:
-        await spi.bus_lock.acquire()
+        raised = False
         try:
-            raised = False
-            try:
-                device.session_begin()
-            except RuntimeError:
-                raised = True
-            assert raised
-            assert device._cs_pin.value() == 0  # never driven: setup() is what makes it an output
-        finally:
-            spi.bus_lock.release()
+            device.session_begin()
+        except RuntimeError:
+            raised = True
+        assert raised
+        assert device._cs_pin.value() == 0  # never driven: setup() is what makes it an output
 
     run(scenario())
-
-
-def test_session_begin_without_the_bus_lock_raises() -> None:
-    # The synchronous session deliberately does not take the lock, so the caller-holds-it contract
-    # is enforced by configure()'s own pre-existing programmer-error guard rather than by trust.
-    spi = _make_spi()
-    device = _make_device(spi)
-    raised = False
-    try:
-        device.session_begin()
-    except RuntimeError:
-        raised = True
-    assert raised
-    assert device._cs_pin.value() == 1  # deasserted again by session_begin's own cleanup
-    assert not spi.bus_lock.locked()
 
 
 def test_synchronous_session_brackets_cs_around_the_transfers() -> None:
@@ -943,38 +913,16 @@ def test_synchronous_session_brackets_cs_around_the_transfers() -> None:
     device = _make_device(spi)
 
     async def scenario() -> None:
-        await spi.bus_lock.acquire()
-        try:
-            assert device._cs_pin.value() == 1
-            device.session_begin()
-            assert device._cs_pin.value() == 0  # asserted (active low) for the whole session
-            device.write_sync(b"\x06")
-            assert device._cs_pin.value() == 0
-            device.session_end()
-            assert device._cs_pin.value() == 1
-        finally:
-            spi.bus_lock.release()
+        assert device._cs_pin.value() == 1
+        device.session_begin()
+        assert device._cs_pin.value() == 0  # asserted (active low) for the whole session
+        device.write_sync(b"\x06")
+        assert device._cs_pin.value() == 0
+        device.session_end()
+        assert device._cs_pin.value() == 1
 
     run(scenario())
     assert _fake(spi).log[-1] == ("write", b"\x06")
-
-
-def test_synchronous_session_leaves_the_callers_lock_hold_untouched() -> None:
-    spi = _make_spi()
-    device = _make_device(spi)
-
-    async def scenario() -> None:
-        await spi.bus_lock.acquire()
-        try:
-            device.session_begin()
-            assert spi.bus_lock.locked()  # still the caller's hold, not re-acquired
-            device.session_end()
-            assert spi.bus_lock.locked()
-        finally:
-            spi.bus_lock.release()
-        assert not spi.bus_lock.locked()
-
-    run(scenario())
 
 
 def test_session_end_deasserts_cs_after_an_exception_in_the_callers_body() -> None:
@@ -982,18 +930,14 @@ def test_session_end_deasserts_cs_after_an_exception_in_the_callers_body() -> No
     device = _make_device(spi)
 
     async def scenario() -> None:
-        await spi.bus_lock.acquire()
+        device.session_begin()
         try:
-            device.session_begin()
-            try:
-                raise ValueError("boom")
-            except ValueError:
-                pass
-            finally:
-                device.session_end()
-            assert device._cs_pin.value() == 1
+            raise ValueError("boom")
+        except ValueError:
+            pass
         finally:
-            spi.bus_lock.release()
+            device.session_end()
+        assert device._cs_pin.value() == 1
 
     run(scenario())
 
@@ -1006,47 +950,21 @@ def test_session_begin_deasserts_cs_if_configure_raises_mid_session() -> None:
     run(device.setup())
 
     async def scenario() -> None:
-        await spi.bus_lock.acquire()
+        raised = False
         try:
-            raised = False
-            try:
-                device.session_begin()  # configure() refuses LSB-first, as rp2 does
-            except NotImplementedError:
-                raised = True
-            assert raised
-            assert device._cs_pin.value() == 1
-            assert spi.bus_lock.locked()  # the caller's hold survives: session_begin never touches it
-        finally:
-            spi.bus_lock.release()
+            device.session_begin()  # configure() refuses LSB-first, as rp2 does
+        except NotImplementedError:
+            raised = True
+        assert raised
+        assert device._cs_pin.value() == 1
+        assert spi.configured_for is None  # a refused configure is no device's: the next session configures again
 
     run(scenario())
-
-
-
-
-def test_configure_is_applied_fresh_on_every_synchronous_session() -> None:
-    spi = _make_spi()
-    device = _make_device(spi, cs_pin=1)
-    chip = _fake(spi)
-
-    async def scenario() -> None:
-        await spi.bus_lock.acquire()
-        try:
-            for _ in range(3):
-                device.session_begin()
-                device.session_end()
-        finally:
-            spi.bus_lock.release()
-
-    run(scenario())
-    inits = [entry for entry in chip.log if entry[0] == "init"]
-    assert len(inits) == 3
-    assert all(entry == ("init", 1000000, 0, 0, 8, 1) for entry in inits)
 
 
 def test_two_devices_sharing_a_bus_never_have_cs_simultaneously_asserted_in_synchronous_sessions() -> None:
     # What "future multi-device SPI compatibility" means at the signal level for the synchronous
-    # path: with the bus lock held by the caller across both, the two sessions cannot overlap, and
+    # path: each session runs whole, so the two cannot overlap, and
     # each device's CS is provably deasserted while the other's is asserted.
     spi = _make_spi()
     device_a = _make_device(spi, cs_pin=1)
@@ -1055,16 +973,12 @@ def test_two_devices_sharing_a_bus_never_have_cs_simultaneously_asserted_in_sync
 
     async def scenario() -> None:
         nonlocal both_asserted_observed
-        await spi.bus_lock.acquire()
-        try:
-            for device, other in ((device_a, device_b), (device_b, device_a)):
-                device.session_begin()
-                if other._cs_pin.value() == other._cs_active_value:
-                    both_asserted_observed = True
-                device.write_sync(b"\x05")
-                device.session_end()
-        finally:
-            spi.bus_lock.release()
+        for device, other in ((device_a, device_b), (device_b, device_a)):
+            device.session_begin()
+            if other._cs_pin.value() == other._cs_active_value:
+                both_asserted_observed = True
+            device.write_sync(b"\x05")
+            device.session_end()
 
     run(scenario())
     assert not both_asserted_observed
@@ -1081,15 +995,11 @@ def test_synchronous_transfers_forward_to_the_bus() -> None:
     exchanged = bytearray(2)
 
     async def scenario() -> None:
-        await spi.bus_lock.acquire()
-        try:
-            device.session_begin()
-            device.write_sync(b"\x03\x00")
-            device.readinto_sync(buf)
-            device.write_readinto_sync(b"\x01\x02", exchanged)
-            device.session_end()
-        finally:
-            spi.bus_lock.release()
+        device.session_begin()
+        device.write_sync(b"\x03\x00")
+        device.readinto_sync(buf)
+        device.write_readinto_sync(b"\x01\x02", exchanged)
+        device.session_end()
 
     run(scenario())
     assert bytes(buf) == b"\xaa\xbb"
@@ -1102,13 +1012,9 @@ def test_readinto_sync_default_write_value_is_zero() -> None:
     device = _make_device(spi)
 
     async def scenario() -> None:
-        await spi.bus_lock.acquire()
-        try:
-            device.session_begin()
-            device.readinto_sync(bytearray(3))
-            device.session_end()
-        finally:
-            spi.bus_lock.release()
+        device.session_begin()
+        device.readinto_sync(bytearray(3))
+        device.session_end()
 
     run(scenario())
     assert ("readinto", 3, 0x00) in _fake(spi).log
@@ -1124,17 +1030,13 @@ def test_readinto_sync_propagates_rx_overrun_and_the_callers_finally_still_deass
 
     async def scenario() -> None:
         nonlocal raised
-        await spi.bus_lock.acquire()
+        device.session_begin()
         try:
-            device.session_begin()
-            try:
-                device.readinto_sync(bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
-            except OSError as exc:
-                raised = exc
-            finally:
-                device.session_end()
+            device.readinto_sync(bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
+        except OSError as exc:
+            raised = exc
         finally:
-            spi.bus_lock.release()
+            device.session_end()
 
     run(scenario())
     assert raised is not None
@@ -1207,6 +1109,46 @@ def test_a_burst_of_async_sessions_lets_another_task_run_once_per_session() -> N
         assert passes - passes_before >= 20, f"only {passes - passes_before} scheduler passes across 20 sessions"
 
     run(scenario())
+
+def test_the_bus_configures_once_for_its_sole_device_and_again_whenever_another_device_took_it() -> None:
+    # Configured only when its last configured device differs: a sole device once, a second device served with its
+    # own settings each time it takes the bus, and a re-initialised bus configured afresh.
+    spi = _make_spi()
+    fram = SPIDevice(spi, 1, baudrate=8_000_000)
+    other = SPIDevice(spi, 6, phase=1)
+    run(fram.setup())
+    run(other.setup())
+    for device in (fram, fram, fram, other, other, fram):
+        device.session_begin()
+        device.session_end()
+    inits = [entry for entry in _fake(spi).log if entry[0] == "init"]
+    assert inits == [("init", 8_000_000, 0, 0, 8, 1), ("init", 1000000, 0, 1, 8, 1), ("init", 8_000_000, 0, 0, 8, 1)], inits
+    spi.init(0, 2, 3, 4)
+    fram.session_begin()
+    fram.session_end()
+    assert [entry for entry in _fake(spi).log if entry[0] == "init"] == [("init", 8_000_000, 0, 0, 8, 1)]
+
+
+def test_a_synchronous_session_is_refused_while_an_async_session_holds_the_bus() -> None:
+    # An async session may keep its CS asserted across a suspension; a synchronous one never waits, so it is refused
+    # with its CS never asserted, and runs once the bus is free.
+    spi = _make_spi()
+    held = _make_device(spi, cs_pin=6)
+    device = _make_device(spi, cs_pin=1)
+
+    async def scenario() -> bool:
+        async with held:
+            try:
+                device.session_begin()
+            except RuntimeError:
+                return device._cs_pin.value() == 1
+        return False
+
+    assert run(scenario())
+    device.session_begin()
+    assert device._cs_pin.value() == 0
+    device.session_end()
+
 
 if __name__ == "__main__":
     import microtest

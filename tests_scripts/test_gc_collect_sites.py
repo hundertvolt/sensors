@@ -361,6 +361,10 @@ def test_every_row_names_its_category(checker: ModuleType) -> None:
     assert all(call in ("collect", "threshold") for _path, _owner, call in checker.ALLOWED), "disable() and enable() are allowed nowhere"
 
 
+def test_the_firmware_has_no_gc_site_at_all(checker: ModuleType) -> None:
+    # src/ calls no gc policy function: the boot's survivors land low without a collect since FRAM became synchronous.
+    assert not [row for row in checker.ALLOWED if row[0].startswith("src/")], "a src/ row is back in the allowance table"
+
 def test_the_live_tree_passes_the_command_with_its_generated_modules(repo_root: Path) -> None:
     # The command lint.sh runs: exit 0 on the real tree, every scope and every derived device's module and entries checked.
     done = subprocess.run([sys.executable, str(repo_root / "scripts" / "_check_gc_collect_sites.py")], cwd=repo_root, capture_output=True, text=True, check=False, timeout=120)

@@ -9,8 +9,8 @@ import pytest
 
 _CHUNK_CALLS = frozenset({"get_chunk", "get_timestamped_chunk"})
 _REAL_CRCS = frozenset({"CRC8", "CRC16", "CRC32"})
-_CRC_MODULE = "asy_crc_checks"
-_BITE_HEAD = "from asy_crc_checks import CRC8, CRC16 as C16, CRCPass\nimport asy_crc_checks\n"
+_CRC_MODULE = "crc_checks"
+_BITE_HEAD = "from crc_checks import CRC8, CRC16 as C16, CRCPass\nimport crc_checks\n"
 
 
 def _is_real_crc(value: ast.expr, imported: "set[str]") -> bool:
@@ -27,7 +27,7 @@ def _chunk_calls(tree: ast.Module) -> "list[ast.Call]":
 
 
 def _crc_names_imported(tree: ast.Module) -> "set[str]":
-    # The local names this module binds to asy_crc_checks' real CRC classes (an alias counts as its class).
+    # The local names this module binds to crc_checks' real CRC classes (an alias counts as its class).
     return {alias.asname or alias.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == _CRC_MODULE for alias in n.names if alias.name in _REAL_CRCS}
 
 
@@ -61,7 +61,7 @@ def test_every_fram_chunk_in_src_is_created_with_a_real_crc(repo_root: Path) -> 
     [
         "fram.get_chunk(8, crc=CRC8(), owner='X')",
         "fram.get_chunk(8, crc=C16(), owner='X')",
-        "fram.get_timestamped_chunk(8, synced, crc=asy_crc_checks.CRC32(), owner='X')",
+        "fram.get_timestamped_chunk(8, synced, crc=crc_checks.CRC32(), owner='X')",
     ],
 )
 def test_the_crc_check_passes_a_real_crc(call: str) -> None:
