@@ -1,6 +1,6 @@
 """The JS coverage report lands in a directory at the repo root, and its default name - `coverage`
 - is importable as a namespace package, shadowing the real `coverage` distribution and turning
-scripts/typecheck.sh red after a web-coverage run. This pins the name and ci.yml's two uses of it."""
+scripts/typecheck.sh red after a coverage run of the web suite. This pins the name and ci.yml's two uses of it."""
 
 import ast
 import re

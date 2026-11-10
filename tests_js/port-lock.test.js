@@ -1,5 +1,5 @@
 // tests_js/_port_lock.js holds a product-fixed port for one runner at a time under scripts/_port_lock.sh's contract:
-// the same directory, files, message and inherited owner chain, so either language's holder refuses the other's taker.
+// the same flock(2) file, its lines, message and inherited owner chain, so either language's holder refuses the other's taker.
 // Each case runs real node and bash processes over a private lock root (the probePortLock command).
 import { commands } from "vitest/browser";
 import { describe, expect, it } from "vitest";
@@ -32,7 +32,7 @@ describe("the JS port lock", () => {
     it.each(/** @type {[Lang, Lang][]} */ ([["node", "node"], ["node", "bash"], ["bash", "node"], ["bash", "bash"]]))("a live %s holder refuses a %s taker, naming the holder the same way", async (holder, taker) => {
         const probe = await commands.probePortLock({ holder: actor(holder, 53, `holder-${holder}`), taker: actor(taker, 53, `taker-${taker}`) });
         expect([probe.code, probe.stderr.trim()]).toEqual([1, heldBy(`holder-${holder}`, probe.holderPid)]);
-        expect(probe.lock).toEqual({ runner: `holder-${holder}\n`, pid: `${probe.holderPid}\n` });
+        expect(probe.lock).toEqual({ runner: `holder-${holder}`, pid: `${probe.holderPid}` });
     });
 
     it("refuses a taker whose inherited chain lists the port but not the holder's pid", async () => {
@@ -44,14 +44,14 @@ describe("the JS port lock", () => {
         const probe = await commands.probePortLock({ taker: actor("node", 53, "fresh"), inherit: { owner: "1", held: "123" } });
         expect(probe.code).toBe(0);
         expect(probe.stdout).toMatch(/^took (?<pid>\d+) held=123 53 owner=1 \k<pid>$/mu);
-        expect(probe.rootAfterTaker).toEqual([]);
+        expect(probe.freeAfterTaker).toBe(true);
     });
 
     it.each(/** @type {[Lang, Lang, Lang][]} */ ([["node", "bash", "node"], ["bash", "node", "bash"]]))("lets a %s holder's child (%s, taking another port) and grandchild (%s) pass on the held port", async (first, second, third) => {
         const probe = await commands.probePortLock({ taker: actor(first, 53, "holder", { then: actor(second, 123, "child", { then: actor(third, 53, "grandchild") }) }) });
         expect([probe.code, probe.stderr]).toEqual([0, ""]);
         expect(probe.stdout.match(/^then 0$/gmu)).toHaveLength(2);
-        expect(probe.rootAfterTaker).toEqual([]);
+        expect(probe.freeAfterTaker).toBe(true);
     });
 
     it("refuses the holder's own descendant once its inherited chain no longer lists the port", async () => {
@@ -66,11 +66,12 @@ describe("the JS port lock", () => {
         expect(probe.stdout).toContain("after inner true after outer false");
     });
 
-    it.each(/** @type {[string, "dead" | ""][]} */ ([["a dead pid", "dead"], ["no pid at all", ""]]))("takes over a lock recording %s, leaving nothing behind", async (_case, pid) => {
+    it.each(/** @type {[string, "dead" | ""][]} */ ([["a dead pid", "dead"], ["no pid at all", ""]]))("takes a lock file recording %s, which no process holds, and frees it on exit", async (_case, pid) => {
         const probe = await commands.probePortLock({ taker: actor("node", 53, "successor"), plant: { port: 53, pid, runner: "gone" } });
         expect([probe.code, probe.stderr]).toEqual([0, ""]);
         expect(probe.stdout).toMatch(/^took \d+ /mu);
-        expect(probe.rootAfterTaker).toEqual([]);
+        expect(probe.lock.runner).toBe("successor");
+        expect(probe.freeAfterTaker).toBe(true);
     });
 
     it.each([[0, "runner"], [65536, "runner"], [53, ""]])("refuses port %j with runner %j as a usage error", async (port, runner) => {

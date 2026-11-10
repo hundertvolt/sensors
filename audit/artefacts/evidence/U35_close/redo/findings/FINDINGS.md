@@ -1570,3 +1570,112 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
   frames), the most parked wakes kept as one number; a deadline or a poll still fails it. Green under coverage and
   at -1 and 32768 (42/42, 0 memory errors); lint and three mypy passes clean. Gap in the units' checks: neither ub's
   nor mfs's gate ran the coverage build, whose test result gates (owner 2026-09-22) - unit briefs name it from now on.
+- Snapshot 57 = e8d48fab (parent 512bb0dc), pushed 04:59; pattern counts unchanged per file. CI pending.
+- Snapshot 57 e8d48fab green: run 42759272501 (pull_request), 28/28 success incl. unit-tests-coverage; push run 42759267380 cancelled by concurrency. Next PARENT = e8d48fab.
+- (12.151) Bench relay 05:45 (bench branch 24278836, [skip ci]): zero-flash work now - errcount read and archived first (the next image moves the FRAM chunks), FRAM timing with mounted .mpy from e8d48fab at addresses above the production layout (entry <= 5 ms, backup <= 8 ms, commands 51/51/46, viper CRC32 264 B), SCD30 bus release and BMP3XX's one wait with mounted drivers; full-image items after G's reflash.
+
+## 12.152 Bench 06:03 (bench 4cd3fc2a): FRAM fails acceptance ~5x on per-command layering; I2C checks pass
+- errcount archived first (errcount_20261110/20261110T055436Z_errcount.json); nothing cleared. Lead correction: the
+  20:32 relay's "the entries stay" was wrong - the FRAM manager's own log is RAM-only (no fram_target), so its E46/W63
+  went with a power-on.
+- FRAM on silicon (e8d48fab's src/ mounted as armv6m .mpy, 125 MHz, idle, chunks from 0x30000, median of 30): entry
+  write 26.3 ms (<= 5 asked), backup 26.9 ms (<= 8), reads 24.7 / 26.2 ms; commands 51/51/46 as counted; viper CRC32
+  264 B 1.27 ms. Cause, measured: 0.46-0.60 ms per command, all Python layering (raw RDSR 61 us): SPIDevice
+  session_begin+end 212 us per command, write_sync/readinto_sync +130 us, the driver's get_values path +250 us. The
+  Unix-port 8.7 ms does not carry over (0.5 ms per command on silicon, not 0.17). The fsync acceptance stated in the
+  brief was not met by the unit: its figures were host-only, and the bench caught it.
+- Fix routed to G as item 13 (06:1x): one bus session per chunk operation (configure-once and the async-session refusal
+  once per operation), per command a CS toggle and bound machine.SPI calls into preallocated buffers, get/set_values at
+  the minimal path; every CS cycle, command order, stored byte, WEL/RDSR check and the crash ordering unchanged (owner
+  2026-09-18); target ~60-80 us per command (entry ~4 ms, backup ~6 ms); G due 15:00. Bench re-measures on the image.
+- I2C: in 38 SCD30 waits (51-59 ms) the ISL29125 completed 10-18 whole transactions each (1,697/1,697 ID reads OK), 6
+  SCD30 samples, 0 faults; BMP3XX x32/x32 10/10 valid, 5 calls each with one 158.5-160.7 ms gap (no STATUS poll).
+  Flash cycles today 0. The lead's reply to the bench session was refused by the bridge again.
+- (12.153) Bench reachability, root-caused (owner 06:15:46): the bench is a Remote Control session on the owner's
+  computer (environment_kind "bridge", CLI 2.1.321, cross_session_inbound available); its messages reach this session.
+  This session's outbound SendMessage is refused by its own credential ("this cloud session cannot message other
+  sessions yet"; container CLI 2.1.282, session from 2026-09-25; ListAgents lists no other session, no Remote Control
+  here; no refusal carried a trust digest). The bench polls the bench branch ("polling lead for new image"), so a
+  relay pushed there reaches it without the owner: relay 06:16 pushed (bench 967e2577). The lead's earlier "please let
+  it know" was the wrong conclusion; the branch is the channel.
+
+## 12.154 The FRAM status-pair ruling read at its source (lead, 06:4x)
+- SPEC A.4's "What each protocol element is for (owner, 2026-09-18)" (SPEC:279-285) was ledgered BACKED via DP L02, but
+  L02 is the bus-lock scope per block operation (8951387, item 6). The account itself is 6811f03 (agent commit,
+  2026-09-18, pre-audit): HEAP_FRAGMENTATION_MEASUREMENTS.md 3B.1 "recorded as the owner gave them" - the same class
+  as the 117 (a session's record of the owner).
+- 3B.1's reason: the pair is written "separately, on purpose: a power loss between them leaves the pair inconsistent
+  ... One 2-byte write would erase that signal". MB85RS2MTA WRITE (ds text :437-439): "When 8 bits of writing data
+  is input, data is written to FRAM memory cell array" - each byte commits on its own, so a 2-byte write torn by
+  power loss leaves the same (new, old) pair, detected the same way; only the window shrinks. The chip needs its
+  WREN/RDSR/WRITE/WRDI/RDSR envelope per WRITE command, not per byte.
+- No later owner decision on the pair. Explicit wording plus a contradicted reason: not settled by the 06:26:36
+  rule; put to the owner (06:4x) as the status-pair question.
+- G slip (G's own report, 06:3x): its targeted batch (FRAM, bus-hazard, twin files, some binding real ports) ran
+  06:23-06:33 while C held heavy.lock (since 06:20:52). A port-collision-looking failure in C's gate in that window
+  is read against this first. G item 13 committed locally (cae371b1), touched files green at both stages and under
+  coverage; G waits for the lock.
+
+## 12.155 cr2 handed back (07:03): the 117 pre-audit-dated credits resolved by the owner's 06:26:36 rule, none left
+- Ledger `S/u35r/r5/CREDIT2_ledger.tsv` (117 rows, 6 columns), hand-back CREDIT2.md (29 lines); scan-pattern and
+  filter counts 0 in both. R0 grew 11, R1 later decision 8, R2 record agrees 24, R3 session-only 8, R4 fits 66, R5 0,
+  LEFT 0. No code consequence from R1-R5: every outcome is credit or wording text (code comments included).
+- R2's new source: the owner's own commit 8c4a73d5 (2026-07-13, improved-quality WIP) by content (SCD30 50 ms, SGP40
+  3 ms, storage pause, VOC state fields, reset never dropped, boot signature); each credit shrinks to what the code
+  shows. Lead note for P9: DP E05 rows read "(owner, 2026-08-12, as recorded in DP E05)" - a deleted plan's record,
+  never re-put to the owner.
+- Lead correction: cr2's "idle-poll-rate still unanswered" is wrong - the page reply answered it and OR141 (owner,
+  2026-10-05, "do all as you suggested") adopted it, OR141.a (5) "its measurement owed" (DR1:390-396). R4 for the
+  20 ms stands.
+- Routing: all 117 text changes -> P9 (code-file comments included, after G and C merge). R0 growths: the bench
+  test's torn-FRAM tolerance, the import-placement rule and its test, the twin's not-loaded notice -> T; the
+  starter-role definition and four doc-only rules -> P9; each judged by common_r1's source rules. The status pair
+  (12.154) is apart: with the owner.
+- cr2 slip: two scratch scripts held the filter pattern line (no source text); deleted by literal path.
+
+## 12.156 C handed back (07:26, 7c4b21e3) and merged: int 26d7f317 (clean merge over c4fc72ac)
+- 115 files, +1,211/-2,844 (tests +570/-1,460). C's gate on 5aebb51e (amend changes one Part N row): test.sh -1 and
+  32768 121 files/5,354 tests, tests_scripts 6,809, twin dev suite + harness both stages, npm lint/typecheck/unit 1,192,
+  coverage 1,192 (real node_modules), zero MemoryError. dev imageFreeBytes 70,292 -> 70,812 B; app.js gz 27,155 ->
+  26,826 B per device.
+- Diff read for added complexity: the generator's whole-tree flock (4 lines, FIFO, no deadline) answers a race #4's
+  own change exposed (parallel website builds renaming each other's .tmp) - smallest fix, kept. The qstr width is a
+  toolchain override with an anchor check and a 300-byte readback; CI's unix-port cache key hashes
+  micropython_overrides, so CI rebuilds. G02 reads validate.py's consumer table (private import) instead of a third
+  copy. Port lock, summary emitter, stager all shrink. Lint on int 26d7f317 clean.
+- For the combined gate: PICO_TOOLCHAIN_DIR=S/tc-c (C's build with the qstr override; toolchain files identical after
+  merge) or rebuild tc-int. Finding (c): web coverage fails with a linked node_modules (a293d6f9 too); the lead's
+  gate runs npm test:unit locally, CI runs coverage with npm ci.
+- Not done, stays (not lossless): SIMPLER_1's one-language twin launcher; SIMPLER_4 #7's two setup images. Queued for
+  the owner (feature rule, after the status pair): buildgen.definitions' CLI main() has no caller since #4.
+- Owner 08:46:45: option (a) - the status pair stays two WRITEs, each byte committed by a CS deselect, not by the
+  per-byte storing within one command. No G item 14. P9: SPEC A.4's 09-18 paragraph takes the 11-10 ruling as the
+  reason and credit (R1: a later clear decision), "one 2-byte write would erase that signal" not restated.
+- Queued item settled by evidence (20:43:39), not asked: buildgen.definitions' main() was at 25caf528 an internal
+  build step whose one caller was build_website.sh (:37); since C's #4 it has none but its tests (OR36.a (1)). The
+  capability stays: `_generate_sensortask_modules.py --device-toml PATH --out-dir DIR` writes one device's
+  definitions/<d>.json. Lossless removal -> T, with its tests.
+
+## 12.157 G handed back (5a4d21f3) and merged: int 81e2ebcd (clean over 26d7f317; SPEC, codegen.py, validate.py and
+## one tests_scripts file auto-merged)
+- G's gate on 5a4d21f3 green: test.sh both stages 121 files/5,347 tests, tests_scripts 6,966, twin dev suite (329+15)
+  and harness both stages, npm lint/typecheck/unit 1,276, lint and mypy clean, zero MemoryError. src -12 lines,
+  -21 B bytecode; growth only item 13 (FRAM driver +350, SPI driver +317, FRAM manager +184 B). dev imageFreeBytes
+  70,524 B (a293d6f9: 70,292).
+- Diff read: item 13 binds CS value(), its level and machine.SPI write/readinto once per operation (begin() over
+  SPIDevice.begin_sync()); an unbound command raises; settle stays blocking. Driver-layer Python calls per entry
+  471 -> 138; Unix-port times unchanged (the fake dominates): silicon decides. Item 8 kept the isinstance halves
+  (bool-as-int and `-> object` callbacks are runtime checks, not typing-only); item 10 partial (stores' close flags
+  kept: a ConfigManager would otherwise see the system service); item 11 not done (DMA ring total would count
+  validation-failed frames: E89 false positives); HTTP 5 s/15 s name their source (ResetErrors' PUT never measured).
+- On int 81e2ebcd: lint clean; mypy main 283, twin 59, host 317 files clean, the conftest and network checks clean.
+  Combined gate started 08:5x under heavy.lock 'lead' with PICO_TOOLCHAIN_DIR=S/tc-c (300-byte qstr readback ok).
+  After it: the coverage-build check over the 24 tests/ files the two merges changed.
+
+## 12.158 The combined gate on int 81e2ebcd green; the coverage-build check green; snapshot 58 (lead, 09:4x)
+- gate_mg (09:41): unit tier 121 files, 5,347 tests passed at -1 and at 32768, tests_scripts 6,808 passed, zero
+  MemoryError; twin suite and harness green at both stages; npm lint, typecheck, unit green. The port-53 listing
+  printed "ss: command not found" on this host only (CONSENT_2 S36 kept it; CI has ss): no change.
+- cov58 (09:48): the 23 tests/ files changed since c4fc72ac (24 counted earlier: the 23 test files plus a helper),
+  26 jobs with the PER_DEVICE file's four devices, every one under build-settrace rc 0 with no memory marker.
+- heavy.lock released 09:48. Snapshot 58 from int 81e2ebcd, parent e8d48fab.

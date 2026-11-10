@@ -1,45 +1,36 @@
 // Node side of scripts/_port_lock.sh: one runner per product-fixed port at a time, the holder's own process and its
-// descendants pass, a dead holder's lock is taken over - the same lock directory, files, message and owner chain.
+// descendants pass - the same flock(2) on the same file, its runner and pid lines, message and owner chain.
 // probePortLock() is the Commands API probe behind tests_js/port-lock.test.js; no runner calls it.
 
 import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, closeSync, constants, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-// @tunable runner.port_lock_attempts = 10
-const ATTEMPTS = 10;
-// A holder writes its pid right after its mkdir: a lock without one is waited for this long before it reads as dead.
-const PID_WAITS = 20;
-const PID_WAIT_MS = 50;
 const PROBE_WAIT_MS = 10000;
-const SLEEPER = new Int32Array(new SharedArrayBuffer(4));
-/** @type {Map<string, number>} each lock this process took, by directory, with its count of unreleased takes */
-const holds = new Map();
-let exitHookArmed = false;
 
 // The probe's two actors: take one port, print what the lock and the chain say, then hold, run a child actor, or exit;
 // a node actor with dropHeld first forgets the ports its chain lists.
 const NODE_ACTOR = `
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import path from "node:path";
 const { acquirePortLock } = await import(process.env.LOCK_MODULE_URL);
 const spec = JSON.parse(process.env.LOCK_ACTOR);
 if (spec.dropHeld) {
     delete process.env.SENSORS_PORT_LOCKS_HELD;
 }
-const dir = path.join(process.env.XDG_RUNTIME_DIR, "sensors-port-" + spec.port + ".lock");
+const file = path.join(process.env.XDG_RUNTIME_DIR, "sensors-port-" + spec.port + ".flock");
+const held = () => spawnSync("flock", ["-n", file, "true"]).status !== 0;
 try {
     const release = acquirePortLock(spec.port, spec.runner);
     console.log("took " + process.pid + " held=" + process.env.SENSORS_PORT_LOCKS_HELD + " owner=" + process.env.SENSORS_PORT_LOCK_OWNER);
     if (spec.twice) {
         acquirePortLock(spec.port, spec.runner)();
-        const afterInner = existsSync(dir);
+        const afterInner = held();
         release();
-        console.log("after inner " + afterInner + " after outer " + existsSync(dir));
+        console.log("after inner " + afterInner + " after outer " + held());
     }
     if (spec.then) {
         const then = spec.then;
@@ -75,23 +66,6 @@ fi
 `;
 
 /**
- * Whether `pid` names a live process; kill(pid, 0) fails with EPERM on another user's, which /proc still shows.
- * @param {string} pid
- * @returns {boolean}
- */
-function isAlive(pid) {
-    if (!/^[1-9][0-9]*$/u.test(pid)) {
-        return false;
-    }
-    try {
-        process.kill(Number(pid), 0);
-        return true;
-    } catch {
-        return existsSync(`/proc/${pid}`);
-    }
-}
-
-/**
  * @param {string} item
  * @param {string | undefined} list a space-separated list, as the chain variables hold them
  * @returns {boolean}
@@ -124,108 +98,19 @@ function actorEnv(root, inherit) {
 }
 
 /**
- * Only the taker whose mkdir of <lock>/takeover succeeds moves a dead holder's lock away, and only once its pid is
- * still dead after the wait; the rename makes the lock vanish at once rather than file by file.
- * @param {string} dir
- */
-function clearStale(dir) {
-    try {
-        mkdirSync(path.join(dir, "takeover"));
-    } catch {
-        sleepMs(PID_WAIT_MS);
-        return;
-    }
-    if (isAlive(pidOf(dir))) {
-        try {
-            rmdirSync(path.join(dir, "takeover"));
-        } catch {
-            // Gone with its lock already: nothing left to back off from.
-        }
-        return;
-    }
-    const stale = `${dir}.stale.${process.pid}`;
-    try {
-        renameSync(dir, stale);
-    } catch {
-        return; // another taker moved it first
-    }
-    rmSync(stale, { recursive: true, force: true });
-}
-
-/**
- * The pid a lock records, waited for while its holder may still be writing it; "" for none.
- * @param {string} dir
- * @returns {string}
- */
-function pidOf(dir) {
-    for (let tries = 0; ; tries += 1) {
-        const pid = readText(path.join(dir, "pid")) ?? "";
-        if (/^[1-9][0-9]*$/u.test(pid) || !existsSync(dir) || tries >= PID_WAITS) {
-            return pid;
-        }
-        sleepMs(PID_WAIT_MS);
-    }
-}
-
-/**
- * A plant for the probe: a lock left by a holder that died, recording a dead pid or none.
- * @param {string} root
- * @param {{port: number, pid: "dead" | "", runner: string}} plant
- */
-function plantLock(root, plant) {
-    const dir = path.join(root, `sensors-port-${plant.port}.lock`);
-    mkdirSync(dir);
-    writeFileSync(path.join(dir, "runner"), `${plant.runner}\n`);
-    writeFileSync(path.join(dir, "pid"), plant.pid === "dead" ? `${spawnSync("true").pid}\n` : "");
-}
-
-/**
- * A file's exact text, or null when it cannot be read.
+ * The lock file's runner and pid lines, "" for either it lacks.
  * @param {string} file
- * @returns {string | null}
+ * @returns {[string, string]}
  */
-function readRaw(file) {
+function holderOf(file) {
+    /** @type {string[]} */
+    let lines = [];
     try {
-        return readFileSync(file, "utf8");
+        lines = readFileSync(file, "utf8").split("\n");
     } catch {
-        return null;
+        // Unreadable: no holder named.
     }
-}
-
-/**
- * A file's text without its trailing newlines, as bash's $(cat) reads it, or null when it cannot be read.
- * @param {string} file
- * @returns {string | null}
- */
-function readText(file) {
-    try {
-        return readFileSync(file, "utf8").replace(/\n+$/u, "");
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Removes one lock this process holds once its last take is released; the rename makes it vanish at once.
- * @param {string} dir
- */
-function release(dir) {
-    const count = holds.get(dir) ?? 0;
-    if (count > 1) {
-        holds.set(dir, count - 1);
-        return;
-    }
-    holds.delete(dir);
-    if (readText(path.join(dir, "pid")) !== String(process.pid)) {
-        return; // never this process's, or already taken over
-    }
-    const released = `${dir}.released.${process.pid}`;
-    try {
-        renameSync(dir, released);
-    } catch {
-        return;
-    }
-    rmSync(released, { recursive: true, force: true });
+    return [lines[0] ?? "", lines[1] ?? ""];
 }
 
 /**
@@ -261,14 +146,6 @@ function settle(proc, enough) {
 }
 
 /**
- * Blocks for `ms`: the lock is taken synchronously, as bash's sleep would, and only while a holder writes its pid.
- * @param {number} ms
- */
-function sleepMs(ms) {
-    Atomics.wait(SLEEPER, 0, 0, ms);
-}
-
-/**
  * Starts one probe actor in its own process group, so stopping it also stops whatever it started.
  * @param {{lang: "node" | "bash", port: number, runner: string, twice?: boolean, dropHeld?: boolean, then?: object}} spec
  * @param {NodeJS.ProcessEnv} env
@@ -297,8 +174,9 @@ function stopGroup(proc) {
 }
 
 /**
- * Holds `port` for `runner` until the returned release (or this process's exit), or throws naming the live holder.
- * Its own process and any process whose inherited chain lists the holder and the port pass without taking it.
+ * Holds `port` for `runner` until the returned release (or this process's exit), or throws naming the holder: flock(2)
+ * through a `flock` child given the descriptor, so the lock stays with this process's open file. Its own process and
+ * any process whose inherited chain lists the holder and the port pass without taking it.
  * @param {number} port
  * @param {string} runner
  * @returns {() => void} the release: a no-op for a lock this process did not take
@@ -316,60 +194,40 @@ export function acquirePortLock(port, runner) {
     } catch {
         throw new Error(`acquirePortLock: the lock root ${root} is not a writable directory`);
     }
-    const dir = path.join(root, `sensors-port-${port}.lock`);
+    const file = path.join(root, `sensors-port-${port}.flock`);
     const own = String(process.pid);
-    for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
-        try {
-            mkdirSync(dir);
-        } catch {
-            const pid = pidOf(dir);
-            if (isAlive(pid)) {
-                if (pid === own) {
-                    holds.set(dir, (holds.get(dir) ?? 0) + 1);
-                    return () => release(dir);
-                }
-                if (isListed(pid, process.env.SENSORS_PORT_LOCK_OWNER) && isListed(String(port), process.env.SENSORS_PORT_LOCKS_HELD)) {
-                    return () => { /* the ancestor that took it releases it */ };
-                }
-                throw new Error(`port ${port} is held by ${readText(path.join(dir, "runner")) ?? "an unnamed runner"} (pid ${pid}) - run the suites one after the other (CLAUDE.md)`);
-            }
-            if (existsSync(dir)) {
-                clearStale(dir);
-            }
-            continue;
-        }
-        try {
-            writeFileSync(path.join(dir, "runner"), `${runner}\n`);
-            writeFileSync(path.join(dir, "pid"), `${own}\n`);
-        } catch {
-            continue; // the lock moved away while it was written: take it again
-        }
-        if (readText(path.join(dir, "pid")) !== own) {
-            continue;
-        }
-        process.env.SENSORS_PORT_LOCKS_HELD = isListed(String(port), process.env.SENSORS_PORT_LOCKS_HELD) ? process.env.SENSORS_PORT_LOCKS_HELD : [process.env.SENSORS_PORT_LOCKS_HELD, port].filter(Boolean).join(" ");
-        process.env.SENSORS_PORT_LOCK_OWNER = isListed(own, process.env.SENSORS_PORT_LOCK_OWNER) ? process.env.SENSORS_PORT_LOCK_OWNER : [process.env.SENSORS_PORT_LOCK_OWNER, own].filter(Boolean).join(" ");
-        holds.set(dir, 1);
-        if (!exitHookArmed) {
-            exitHookArmed = true;
-            process.on("exit", () => {
-                for (const held of [...holds.keys()]) {
-                    holds.set(held, 1);
-                    release(held);
-                }
-            });
-        }
-        return () => release(dir);
+    const fd = openSync(file, constants.O_RDWR | constants.O_CREAT);
+    const took = spawnSync("flock", ["-n", "3"], { stdio: ["ignore", "ignore", "pipe", fd] });
+    if (took.error !== undefined) {
+        closeSync(fd);
+        throw new Error(`flock (util-linux) is not on PATH - tests_js/_port_lock.js holds ${file} with it`, { cause: took.error });
     }
-    throw new Error(`port ${port}: its lock ${dir} could not be taken in ${ATTEMPTS} attempts - if no runner holds the port, remove that directory`);
+    if (took.status !== 0) {
+        closeSync(fd);
+        const [holder, pid] = holderOf(file);
+        if (pid === own || (isListed(pid, process.env.SENSORS_PORT_LOCK_OWNER) && isListed(String(port), process.env.SENSORS_PORT_LOCKS_HELD))) {
+            return () => { /* its own process, or the ancestor that took it, releases it */ };
+        }
+        throw new Error(`port ${port} is held by ${holder || "an unnamed runner"} (pid ${pid || "unknown"}) - run the suites one after the other (CLAUDE.md)`);
+    }
+    writeSync(fd, `${runner}\n${own}\n`, 0); // in place, as the shell library writes it
+    process.env.SENSORS_PORT_LOCKS_HELD = isListed(String(port), process.env.SENSORS_PORT_LOCKS_HELD) ? process.env.SENSORS_PORT_LOCKS_HELD : [process.env.SENSORS_PORT_LOCKS_HELD, port].filter(Boolean).join(" ");
+    process.env.SENSORS_PORT_LOCK_OWNER = isListed(own, process.env.SENSORS_PORT_LOCK_OWNER) ? process.env.SENSORS_PORT_LOCK_OWNER : [process.env.SENSORS_PORT_LOCK_OWNER, own].filter(Boolean).join(" ");
+    let open = true;
+    return () => {
+        if (open) {
+            open = false;
+            closeSync(fd);
+        }
+    };
 }
 
 /**
  * The Commands API probe: on a private lock root, optionally plants a dead holder's lock or starts a live holder,
- * runs the taker to its end, and reports its exit, output, the lock it left and the root's entries afterwards.
+ * runs the taker to its end, and reports its exit, output, the lock file's holder and whether the lock is free afterwards.
  * @param {unknown} _context Vitest's injected command context (unused)
  * @param {{holder?: Parameters<typeof startActor>[0], taker: Parameters<typeof startActor>[0], inherit?: {owner: string, held: string}, plant?: {port: number, pid: "dead" | "", runner: string}}} args
- * @returns {Promise<{holderPid: number | null, code: number | null, stdout: string, stderr: string, lock: {runner: string | null, pid: string | null} | null, rootAfterTaker: string[]}>}
+ * @returns {Promise<{holderPid: number | null, code: number | null, stdout: string, stderr: string, lock: {runner: string, pid: string}, freeAfterTaker: boolean}>}
  */
 export async function probePortLock(_context, { holder, taker, inherit, plant }) {
     const root = mkdtempSync(path.join(tmpdir(), "sensors-port-lock-"));
@@ -377,7 +235,7 @@ export async function probePortLock(_context, { holder, taker, inherit, plant })
     let held;
     try {
         if (plant !== undefined) {
-            plantLock(root, plant);
+            writeFileSync(path.join(root, `sensors-port-${plant.port}.flock`), `${plant.runner}\n${plant.pid === "dead" ? `${spawnSync("true").pid}\n` : ""}`);
         }
         let holderPid = null;
         if (holder !== undefined) {
@@ -389,9 +247,9 @@ export async function probePortLock(_context, { holder, taker, inherit, plant })
             }
         }
         const ran = await settle(startActor(taker, actorEnv(root, inherit), false));
-        const dir = path.join(root, `sensors-port-${taker.port}.lock`);
-        const lock = existsSync(dir) ? { runner: readRaw(path.join(dir, "runner")), pid: readRaw(path.join(dir, "pid")) } : null;
-        return { holderPid, ...ran, lock, rootAfterTaker: readdirSync(root).sort() };
+        const file = path.join(root, `sensors-port-${taker.port}.flock`);
+        const [runner, pid] = holderOf(file);
+        return { holderPid, ...ran, lock: { runner, pid }, freeAfterTaker: spawnSync("flock", ["-n", file, "true"]).status === 0 };
     } finally {
         if (held !== undefined) {
             stopGroup(held);

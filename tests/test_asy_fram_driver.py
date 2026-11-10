@@ -245,6 +245,7 @@ def test_a_write_and_read_near_the_top_of_the_256kb_part_round_trip_with_a_3_byt
 
     async def scenario() -> "tuple[bool, bool, bytearray]":
         out = bytearray(4)
+        fram.begin()  # one operation, so the recording write is the one its commands call
         wrote = fram.set_values(b"top!", 0x3FFF0)
         read = fram.get_values(out, 0x3FFF0)
         return wrote, read, out
@@ -810,13 +811,14 @@ def test_construction_with_an_out_of_range_spi_cs_raises_uncaught_at_boot() -> N
 
 
 def test_bus_deinit_mid_operation_raises_uncaught_runtimeerror() -> None:
-    # A bus deinitialized under a set-up FRAM_SPI: SPIDevice.session_begin()'s configure() raises RuntimeError, uncaught
+    # A bus deinitialized under a set-up FRAM_SPI: the next operation's begin() raises configure()'s RuntimeError, uncaught
     # here (asy_spi_driver.py's contract: the caller's responsibility). No runtime path calls deinit() (C.3).
     fram, _chip = _make_fram()
     run(_setup_fram(fram))
     fram._spidev.spi.deinit()
 
     async def scenario() -> bool:
+        fram.begin()
         return fram.get_values(bytearray(1), 0)
 
     try:

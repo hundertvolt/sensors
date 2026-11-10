@@ -1,8 +1,7 @@
-"""The product-fixed port lock (scripts/_port_lock.sh, its CPython reader scripts/_port_lock.py): a live runner's port
-refuses every other runner at once, naming the holder; a dead holder's lock is taken over; the holder's descendants pass
-in either language; a runner removes only its own locks. Every lock lives under tmp_path, never a real runner's."""
+"""The product-fixed port lock (scripts/_port_lock.sh, its CPython reader scripts/_port_lock.py): flock(2) on one file
+per port. A live runner's port refuses every other runner, naming the holder; a dead holder's lock is free; the holder's
+descendants pass in either language; a runner frees only its own locks. Every lock lives under tmp_path."""
 
-import errno
 import os
 import shlex
 import shutil
@@ -23,6 +22,7 @@ _LOCK_LIB = REPO_ROOT / "scripts" / "_port_lock.sh"
 _PY_LIB = REPO_ROOT / "scripts" / "_port_lock.py"
 _CHAIN_VARS = ("SENSORS_PORT_LOCK_OWNER", "SENSORS_PORT_LOCKS_HELD")
 _RACERS = 6
+_FLOCK = shutil.which("flock") or "/usr/bin/flock"
 # Each runner's arguments and the product-fixed ports it holds for its whole run, in the order it takes them.
 _RUNNERS: dict[str, tuple[tuple[str, ...], tuple[int, ...]]] = {
     "scripts/test.sh": ((), (53,)),
@@ -78,7 +78,7 @@ def _env(runtime_dir: Path) -> dict[str, str]:
     return env
 
 
-def _held(port: int, runner: str, pid: int) -> str:
+def _held(port: int, runner: str, pid: "int | str") -> str:
     return f"port {port} is held by {runner} (pid {pid}) - run the suites one after the other (CLAUDE.md)"
 
 
@@ -94,38 +94,31 @@ def _holder(runtime_dir: Path, ports: tuple[int, ...], runner: str) -> Iterator[
         _stop(proc)
 
 
+def _free(runtime_dir: Path, port: int) -> bool:
+    # A fresh descriptor takes the lock at once only while no process holds it.
+    return subprocess.run([_FLOCK, "-n", str(_lock(runtime_dir, port)), "true"], check=False, timeout=10).returncode == 0
+
+
 def _lock(runtime_dir: Path, port: int) -> Path:
-    return runtime_dir / f"sensors-port-{port}.lock"
-
-
-def _open_writer(fifo: Path, reader: subprocess.Popen[str]) -> int:
-    # Opens the FIFO's write end once the reader is blocked on it; ENXIO until then.
-    deadline = time.monotonic() + 10
-    while True:
-        try:
-            return os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
-        except OSError as e:
-            if e.errno != errno.ENXIO or reader.poll() is not None or time.monotonic() > deadline:
-                raise
-            time.sleep(0.01)
+    return runtime_dir / f"sensors-port-{port}.flock"
 
 
 @contextmanager
-def _other_process() -> Iterator[int]:
-    # A live process that is no runner's ancestor or descendant: the holder of a planted lock.
-    proc = subprocess.Popen(["/bin/sleep", "60"], text=True)
+def _other_holder(runtime_dir: Path, port: int, runner: str) -> Iterator[int]:
+    # A live process that is no runner's ancestor or descendant holding the port's lock, as another runner holds it.
+    file = shlex.quote(str(_lock(runtime_dir, port)))
+    script = f'exec {{fd}}>>{file}; flock -n "$fd"; printf "%s\\n%s\\n" {shlex.quote(runner)} "$$" >{file}; echo "took $$"; read -r _ || true'
+    proc = subprocess.Popen(["/bin/bash", "-c", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     try:
-        yield proc.pid
+        assert proc.stdout is not None
+        yield int(proc.stdout.readline().split()[1])
     finally:
         _stop(proc)
 
 
 def _plant(runtime_dir: Path, port: int, pid: int, runner: str) -> None:
-    # A lock exactly as another runner leaves it: the directory with its pid and runner files.
-    lock = _lock(runtime_dir, port)
-    lock.mkdir()
-    (lock / "pid").write_text(f"{pid}\n", encoding="utf-8")
-    (lock / "runner").write_text(f"{runner}\n", encoding="utf-8")
+    # A lock file as a holder that died leaves it: its lines, no process holding it.
+    _lock(runtime_dir, port).write_text(f"{runner}\n{pid}\n", encoding="utf-8")
 
 
 def _py(*args: str) -> list[str]:
@@ -145,8 +138,9 @@ def _py_holder(runtime_dir: Path, port: int, runner: str) -> Iterator[tuple[subp
 
 
 def _recorded(runtime_dir: Path, port: int) -> tuple[str, str]:
-    lock = _lock(runtime_dir, port)
-    return (lock / "pid").read_text(encoding="utf-8").strip(), (lock / "runner").read_text(encoding="utf-8").strip()
+    # The first two lines: a holder writes in place, so a shorter record leaves an earlier one's tail after them.
+    runner, pid = _lock(runtime_dir, port).read_text(encoding="utf-8").splitlines()[:2]
+    return pid, runner
 
 
 def _run(runtime_dir: Path, *lines: str) -> subprocess.CompletedProcess[str]:
@@ -178,7 +172,8 @@ def _runner_tree(tmp_path: Path, runner: str) -> tuple[Path, Path]:
     calls = tmp_path / "uv.calls"
     stub_bin = tmp_path / "stub_bin"
     stub_bin.mkdir()
-    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\necho "uv $* | held: $(LC_ALL=C ls "$XDG_RUNTIME_DIR" | tr "\\n" " ")" >>{shlex.quote(str(calls))}\nexit 1\n', encoding="utf-8")
+    held = 'for f in "$XDG_RUNTIME_DIR"/*.flock; do flock -n "$f" true || printf "%s " "${f##*/}"; done'
+    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\necho "uv $* | held: $({held})" >>{shlex.quote(str(calls))}\nexit 1\n', encoding="utf-8")
     (stub_bin / "uv").chmod(0o755)
     return root, calls
 
@@ -222,75 +217,32 @@ def test_a_second_runner_on_a_held_port_exits_1_naming_the_holder(tmp_path: Path
         assert "proceeded" not in second.stdout
         assert _recorded(tmp_path, 53) == (str(holder_pid), "first-runner")
         assert _end_normally(holder) == 0
-    assert not _lock(tmp_path, 53).exists(), "the holder's EXIT trap left its lock behind"
+    assert _free(tmp_path, 53), "the holder's EXIT trap left its lock held"
 
 
 def test_a_planted_lock_of_a_live_unrelated_process_refuses_the_taker(tmp_path: Path) -> None:
-    with _other_process() as other:
-        _plant(tmp_path, 53, other, "scripts/run_digital_twin_ci.sh")
+    with _other_holder(tmp_path, 53, "scripts/run_digital_twin_ci.sh") as other:
         taker = _run(tmp_path, "port_lock_take 53 scripts/test.sh", "echo proceeded")
         assert (taker.returncode, taker.stderr.strip(), taker.stdout) == (1, _held(53, "scripts/run_digital_twin_ci.sh", other), "")
         assert _recorded(tmp_path, 53) == (str(other), "scripts/run_digital_twin_ci.sh")
 
 
-def test_a_dead_holders_lock_is_taken_over(tmp_path: Path) -> None:
-    dead = _dead_pid()
-    _plant(tmp_path, 53, dead, "crashed-runner")
-    taker = _run(tmp_path, "port_lock_take 53 new-runner", 'cat "$XDG_RUNTIME_DIR/sensors-port-53.lock/pid"; echo "me $$"')
+@pytest.mark.parametrize("left", ["a dead pid", "no pid"])
+def test_a_dead_holders_lock_file_is_free_to_take(tmp_path: Path, left: str) -> None:
+    if left == "a dead pid":
+        _plant(tmp_path, 53, _dead_pid(), "crashed-runner")
+    else:
+        _lock(tmp_path, 53).write_text("", encoding="utf-8")
+    taker = _run(tmp_path, "port_lock_take 53 new-runner", 'sed -n 2p "$XDG_RUNTIME_DIR/sensors-port-53.flock"; echo "me $$"')
     assert taker.returncode == 0, taker
     recorded, me = taker.stdout.split("\n")[:2]
-    assert recorded == me.removeprefix("me "), "the taken-over lock does not record its new holder"
-    assert not _lock(tmp_path, 53).exists(), "the new holder's EXIT trap left the lock behind"
-
-
-def test_a_taker_that_read_a_dead_pid_leaves_a_fresh_live_lock_in_place(tmp_path: Path) -> None:
-    # The taker reads a dead pid, then finds another runner's fresh lock at the path: it refuses rather than remove
-    # it. The pid file is a FIFO, so the lock is swapped while the taker is still inside its read.
-    dead = _dead_pid()
-    lock = _lock(tmp_path, 53)
-    lock.mkdir()
-    (lock / "runner").write_text("crashed-runner\n", encoding="utf-8")
-    os.mkfifo(lock / "pid")
-    with _other_process() as other:
-        script = _script("port_lock_take 53 late-runner", "echo proceeded")
-        taker = subprocess.Popen(["/bin/bash", "-c", script], env=_env(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        try:
-            writer = _open_writer(lock / "pid", taker)
-            os.write(writer, f"{dead}\n".encode())
-            lock.rename(tmp_path / "swapped-out")
-            _plant(tmp_path, 53, other, "fresh-runner")
-            os.close(writer)
-            out, err = taker.communicate(timeout=30)
-        finally:
-            _stop(taker)
-        assert (taker.returncode, err.strip(), out) == (1, _held(53, "fresh-runner", other), "")
-        assert _recorded(tmp_path, 53) == (str(other), "fresh-runner")
-
-
-def test_a_lock_left_without_a_pid_is_taken_over_after_the_bounded_wait(tmp_path: Path) -> None:
-    # A holder killed between its mkdir and its pid write leaves an empty directory behind.
-    _lock(tmp_path, 53).mkdir()
-    taker = _run(tmp_path, "port_lock_take 53 new-runner", 'cat "$XDG_RUNTIME_DIR/sensors-port-53.lock/runner"')
-    assert (taker.returncode, taker.stdout.strip()) == (0, "new-runner"), taker
-
-
-def test_a_pid_written_during_the_wait_is_honoured(tmp_path: Path) -> None:
-    # The holder is between its mkdir and its pid write when the taker looks: the taker waits for the pid.
-    with _other_process() as other:
-        lock = _lock(tmp_path, 53)
-        lock.mkdir()
-        writer = f"sleep 0.2; printf 'slow-runner\\n' > {shlex.quote(str(lock / 'runner'))}; printf '{other}\\n' > {shlex.quote(str(lock / 'pid'))}"
-        late = subprocess.Popen(["/bin/bash", "-c", writer])
-        try:
-            taker = _run(tmp_path, "port_lock_take 53 new-runner")
-        finally:
-            late.wait(timeout=10)
-        assert (taker.returncode, taker.stderr.strip()) == (1, _held(53, "slow-runner", other))
+    assert recorded == me.removeprefix("me "), "the taken lock does not record its new holder"
+    assert _free(tmp_path, 53), "the new holder's EXIT trap left the lock held"
 
 
 def test_a_descendant_of_the_owner_passes_without_retaking(tmp_path: Path) -> None:
     child = _child("port_lock_take 53 child-runner", "echo child-took")
-    done = _run(tmp_path, "port_lock_take 53 parent-runner", child, 'cat "$XDG_RUNTIME_DIR/sensors-port-53.lock/pid"; echo "parent $$"')
+    done = _run(tmp_path, "port_lock_take 53 parent-runner", child, 'sed -n 2p "$XDG_RUNTIME_DIR/sensors-port-53.flock"; echo "parent $$"')
     assert done.returncode == 0, done
     took, recorded, parent = done.stdout.split("\n")[:3]
     assert took == "child-took"
@@ -305,8 +257,7 @@ def test_a_grandchild_passes_after_its_parent_took_a_port_of_its_own(tmp_path: P
 
 
 def test_the_inherited_chain_does_not_open_a_port_an_unrelated_process_holds(tmp_path: Path) -> None:
-    with _other_process() as other:
-        _plant(tmp_path, 53, other, "other-runner")
+    with _other_holder(tmp_path, 53, "other-runner") as other:
         child = _child("port_lock_take 53 child-runner", "echo child-took")
         done = _run(tmp_path, "port_lock_take 18080 parent-runner", child)
         assert (done.returncode, done.stderr.strip(), done.stdout) == (1, _held(53, "other-runner", other), "")
@@ -317,23 +268,20 @@ def test_a_runner_retaking_its_own_port_passes(tmp_path: Path) -> None:
     assert (done.returncode, done.stdout.strip()) == (0, "retook"), done
 
 
-def test_release_removes_only_the_runners_own_locks(tmp_path: Path) -> None:
-    dead = _dead_pid()
-    with _other_process() as other:
-        _plant(tmp_path, 18080, other, "other-runner")
-        _plant(tmp_path, 123, dead, "crashed-runner")
+def test_release_frees_only_the_runners_own_locks(tmp_path: Path) -> None:
+    with _other_holder(tmp_path, 18080, "other-runner"):
         child = _child("port_lock_release_all")
-        done = _run(tmp_path, "port_lock_take 53 own-runner", child, 'test -d "$XDG_RUNTIME_DIR/sensors-port-53.lock" && echo kept-by-child', "port_lock_release_all", "trap - EXIT", 'ls "$XDG_RUNTIME_DIR"')
-        assert done.returncode == 0, done
-        assert done.stdout.split() == ["kept-by-child", "sensors-port-123.lock", "sensors-port-18080.lock"]
+        held = 'flock -n "$XDG_RUNTIME_DIR/sensors-port-53.flock" true || echo kept-by-child'
+        done = _run(tmp_path, "port_lock_take 53 own-runner", child, held, "port_lock_release_all", "trap - EXIT")
+        assert (done.returncode, done.stdout.split()) == (0, ["kept-by-child"]), done
+        assert _free(tmp_path, 53) and not _free(tmp_path, 18080)
 
 
 def test_a_refused_runner_releases_the_ports_it_took_before(tmp_path: Path) -> None:
-    with _other_process() as other:
-        _plant(tmp_path, 53, other, "other-runner")
+    with _other_holder(tmp_path, 53, "other-runner") as other:
         done = _run(tmp_path, "port_lock_take 18080 refused-runner", "port_lock_take 53 refused-runner")
         assert (done.returncode, done.stderr.strip()) == (1, _held(53, "other-runner", other)), done
-        assert not _lock(tmp_path, 18080).exists(), "the refused runner's EXIT trap left its 18080 lock behind"
+        assert _free(tmp_path, 18080), "the refused runner's EXIT trap left its 18080 lock held"
 
 
 def test_a_terminated_holder_releases_its_locks(tmp_path: Path) -> None:
@@ -341,14 +289,14 @@ def test_a_terminated_holder_releases_its_locks(tmp_path: Path) -> None:
         holder.send_signal(signal.SIGTERM)
         # bash runs its EXIT trap on a fatal signal, then dies of that signal.
         assert holder.wait(timeout=10) == -signal.SIGTERM
-    assert not _lock(tmp_path, 53).exists()
-    assert not _lock(tmp_path, 18080).exists()
+    assert _free(tmp_path, 53) and _free(tmp_path, 18080)
 
 
 @pytest.mark.parametrize("stale", [False, True], ids=["free", "stale"])
 def test_racing_takers_leave_exactly_one_holder(tmp_path: Path, *, stale: bool) -> None:
+    dead = _dead_pid()
     if stale:
-        _plant(tmp_path, 53, _dead_pid(), "crashed-runner")
+        _plant(tmp_path, 53, dead, "crashed-runner")
     racers = [_start_holder(tmp_path, (53,), f"racer-{n}") for n in range(_RACERS)]
     try:
         deadline = time.monotonic() + 20
@@ -360,10 +308,11 @@ def test_racing_takers_leave_exactly_one_holder(tmp_path: Path, *, stale: bool) 
         assert winner.stdout is not None
         took = winner.stdout.readline().split()
         assert took[0] == "took", took
-        held = _held(53, f"racer-{alive[0]}", int(took[1]))
+        # A loser reads the winner's lines, or in the instant before the winner writes them, the file's previous ones.
+        named = {_held(53, f"racer-{alive[0]}", int(took[1])), _held(53, "crashed-runner", dead) if stale else _held(53, "an unnamed runner", "unknown")}
         for proc in racers:
             if proc is not winner:
-                assert (proc.returncode, proc.stderr.read().strip() if proc.stderr else "") == (1, held)
+                assert proc.returncode == 1 and (proc.stderr.read().strip() if proc.stderr else "") in named
     finally:
         for proc in racers:
             _stop(proc)
@@ -384,14 +333,13 @@ def test_the_library_refuses_to_run_as_a_script(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(("runner", "port"), _RUNNER_PORTS, ids=[f"{Path(r).name}-{p}" for r, p in _RUNNER_PORTS])
 def test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anything(tmp_path: Path, runner: str, port: int) -> None:
-    with _other_process() as other:
-        (tmp_path / "runtime").mkdir()
-        _plant(tmp_path / "runtime", port, other, "other-runner")
+    (tmp_path / "runtime").mkdir()
+    with _other_holder(tmp_path / "runtime", port, "other-runner") as other:
         done, root, calls = _run_runner(tmp_path, runner)
         assert (done.returncode, done.stderr.strip().splitlines()[-1:]) == (1, [_held(port, "other-runner", other)]), done.stderr
         assert not calls.exists(), f"{runner} got past its lock: {calls.read_text(encoding='utf-8')}"
         assert (root / "tests" / "_tmp" / "in_use").is_file(), f"{runner} swept tests/_tmp before taking its lock"
-        assert sorted(p.name for p in (tmp_path / "runtime").iterdir()) == [f"sensors-port-{port}.lock"], "the refused runner left a lock of its own"
+        assert all(_free(tmp_path / "runtime", other_port) for other_port in _RUNNERS[runner][1] if other_port != port), "the refused runner left a lock of its own"
 
 
 @pytest.mark.parametrize("runner", list(_RUNNERS))
@@ -399,11 +347,11 @@ def test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit(tmp
     # The stub uv fails the first step past the locks: an abort under set -e.
     done, _, calls = _run_runner(tmp_path, runner)
     assert done.returncode == 1, done.stderr
-    held = " ".join(sorted(f"sensors-port-{port}.lock" for port in _RUNNERS[runner][1]))
+    held = " ".join(sorted(f"sensors-port-{port}.flock" for port in _RUNNERS[runner][1]))
     first = calls.read_text(encoding="utf-8").splitlines()[0]
     assert first.startswith(_FIRST_CALLS[runner]), done.stderr
     assert first.endswith(f"| held: {held} "), f"{runner} reached its first step without holding its ports: {first}"
-    assert list((tmp_path / "runtime").iterdir()) == [], "the runner's exit left a lock behind"
+    assert all(_free(tmp_path / "runtime", port) for port in _RUNNERS[runner][1]), "the runner's exit left a lock held"
 
 
 
@@ -414,7 +362,7 @@ def test_the_cpython_reader_refuses_a_port_a_bash_runner_holds(port_lock_py: Mod
         assert str(refused.value) == _held(53, "bash-runner", holder_pid)
         assert _recorded(py_runtime, 53) == (str(holder_pid), "bash-runner")
         assert _end_normally(holder) == 0
-    assert not _lock(py_runtime, 53).exists()
+    assert _free(py_runtime, 53)
 
 
 def test_a_bash_runner_refuses_a_port_the_cpython_reader_holds(tmp_path: Path) -> None:
@@ -423,27 +371,21 @@ def test_a_bash_runner_refuses_a_port_the_cpython_reader_holds(tmp_path: Path) -
         assert (taker.returncode, taker.stderr.strip(), taker.stdout) == (1, _held(53, "py-holder", holder_pid), "")
         assert _recorded(tmp_path, 53) == (str(holder_pid), "py-holder")
         assert _end_normally(holder) == 0
-    assert not _lock(tmp_path, 53).exists(), "the CPython holder left its lock behind"
+    assert _free(tmp_path, 53), "the CPython holder left its lock held"
 
 
-def test_the_cpython_reader_takes_over_a_dead_holders_lock_and_chains_while_it_holds(port_lock_py: ModuleType, py_runtime: Path) -> None:
+def test_the_cpython_reader_takes_a_dead_holders_lock_and_chains_while_it_holds(port_lock_py: ModuleType, py_runtime: Path) -> None:
     _plant(py_runtime, 53, _dead_pid(), "crashed-runner")
     with port_lock_py.port_lock(53, "py-runner"):
         assert _recorded(py_runtime, 53) == (str(os.getpid()), "py-runner")
         assert (os.environ["SENSORS_PORT_LOCKS_HELD"], os.environ["SENSORS_PORT_LOCK_OWNER"]) == ("53", str(os.getpid()))
-    assert not _lock(py_runtime, 53).exists()
+    assert _free(py_runtime, 53)
     assert [name for name in _CHAIN_VARS if name in os.environ] == [], "the chain still lists a released port"
-
-
-def test_a_lock_left_without_a_pid_is_taken_over_by_the_cpython_reader(port_lock_py: ModuleType, py_runtime: Path) -> None:
-    _lock(py_runtime, 53).mkdir()
-    with port_lock_py.port_lock(53, "py-runner"):
-        assert _recorded(py_runtime, 53) == (str(os.getpid()), "py-runner")
 
 
 def test_a_cpython_child_of_a_bash_holder_passes_without_retaking(tmp_path: Path) -> None:
     child = shlex.join(_py("53", "py-child", "/bin/true"))
-    done = _run(tmp_path, "port_lock_take 53 bash-parent", child, 'cat "$XDG_RUNTIME_DIR/sensors-port-53.lock/pid"; echo "parent $$"')
+    done = _run(tmp_path, "port_lock_take 53 bash-parent", child, 'sed -n 2p "$XDG_RUNTIME_DIR/sensors-port-53.flock"; echo "parent $$"')
     assert done.returncode == 0, done
     took, then, recorded, parent = done.stdout.splitlines()
     assert (took.split()[0], then) == ("took", "then 0")
@@ -455,13 +397,12 @@ def test_a_bash_child_of_a_cpython_holder_passes_without_retaking(tmp_path: Path
     done = subprocess.run(_py("53", "py-parent", *bash_child), env=_env(tmp_path), capture_output=True, text=True, check=False, timeout=30)
     assert done.returncode == 0, done
     assert done.stdout.splitlines()[1:] == ["child-took", "then 0"]
-    assert not _lock(tmp_path, 53).exists()
+    assert _free(tmp_path, 53)
 
 
 @pytest.mark.parametrize(("owner_is_holder", "held"), [(True, "18080"), (False, "53")], ids=["port-not-listed", "holder-not-an-ancestor"])
 def test_the_cpython_reader_refuses_an_unrelated_holder_whatever_chain_it_inherited(port_lock_py: ModuleType, py_runtime: Path, monkeypatch: pytest.MonkeyPatch, *, owner_is_holder: bool, held: str) -> None:
-    with _other_process() as other:
-        _plant(py_runtime, 53, other, "other-runner")
+    with _other_holder(py_runtime, 53, "other-runner") as other:
         monkeypatch.setenv("SENSORS_PORT_LOCK_OWNER", str(other) if owner_is_holder else str(_dead_pid()))
         monkeypatch.setenv("SENSORS_PORT_LOCKS_HELD", held)
         with pytest.raises(port_lock_py.PortHeldError) as refused, port_lock_py.port_lock(53, "py-runner"):
@@ -470,31 +411,24 @@ def test_the_cpython_reader_refuses_an_unrelated_holder_whatever_chain_it_inheri
         assert _recorded(py_runtime, 53) == (str(other), "other-runner")
 
 
-def test_a_nested_take_is_re_entrant_and_only_the_outer_release_removes_the_lock(port_lock_py: ModuleType, py_runtime: Path) -> None:
+def test_a_nested_take_is_re_entrant_and_only_the_outer_release_frees_the_lock(port_lock_py: ModuleType, py_runtime: Path) -> None:
     with port_lock_py.port_lock(53, "py-runner"):
         with port_lock_py.port_lock(53, "py-runner"):
             pass
-        assert _recorded(py_runtime, 53) == (str(os.getpid()), "py-runner"), "the inner release removed the outer take's lock"
-    assert not _lock(py_runtime, 53).exists()
+        assert not _free(py_runtime, 53), "the inner release freed the outer take's lock"
+    assert _free(py_runtime, 53)
 
 
-def test_the_cpython_reader_releases_only_a_lock_it_still_holds(port_lock_py: ModuleType, py_runtime: Path) -> None:
-    with _other_process() as other:
-        with port_lock_py.port_lock(53, "py-runner"):
-            (_lock(py_runtime, 53) / "pid").write_text(f"{other}\n", encoding="utf-8")
-        assert _recorded(py_runtime, 53) == (str(other), "py-runner"), "the release removed a lock another runner took over"
-
-
-def test_a_cpython_holder_interrupted_releases_and_one_killed_is_taken_over(tmp_path: Path) -> None:
+def test_a_cpython_holder_interrupted_releases_and_one_killed_is_free_to_take(tmp_path: Path) -> None:
     with _py_holder(tmp_path, 53, "py-holder") as (holder, _):
         holder.send_signal(signal.SIGINT)
         holder.wait(timeout=10)
-    assert not _lock(tmp_path, 53).exists(), "SIGINT ended the CPython holder without its release"
+    assert _free(tmp_path, 53), "SIGINT ended the CPython holder without its release"
     with _py_holder(tmp_path, 53, "py-holder") as (holder, _):
         holder.send_signal(signal.SIGKILL)
         holder.wait(timeout=10)
     taker = _run(tmp_path, "port_lock_take 53 next-runner", "echo took")
-    assert (taker.returncode, taker.stdout) == (0, "took\n"), "a killed CPython holder's lock was not taken over"
+    assert (taker.returncode, taker.stdout) == (0, "took\n"), "a killed CPython holder's lock was still held"
 
 
 def test_bash_and_cpython_takers_racing_leave_exactly_one_holder(tmp_path: Path) -> None:
@@ -512,7 +446,8 @@ def test_bash_and_cpython_takers_racing_leave_exactly_one_holder(tmp_path: Path)
         holder_runner = _recorded(tmp_path, 53)[1]
         for proc in racers:
             if proc is not alive[0]:
-                assert (proc.returncode, proc.stderr.read().strip() if proc.stderr else "") == (1, _held(53, holder_runner, int(took[1])))
+                said = proc.stderr.read().strip() if proc.stderr else ""
+                assert proc.returncode == 1 and said in {_held(53, holder_runner, int(took[1])), _held(53, "an unnamed runner", "unknown")}, said
     finally:
         for proc in racers:
             _stop(proc)

@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expectedDisplay } from "./_expected_display.js";
 import { drainChildOutput } from "./_memory_markers.js";
-import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, makeConfigDir, removeConfigDir, requireInterpreter, sleep, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
+import { HOST, MEMORY_ERROR_MARKERS, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, makeConfigDir, removeConfigDir, requireInterpreter, sleep, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Clear of every fixed port this repo binds - see tests_js/_live_twin_command.js's own PORT comment;
@@ -58,7 +58,7 @@ export function getLiveMatrixConfig() {
 export async function startLiveMatrix({ context }, device) {
     twinConfigDir = makeConfigDir();
     twinProc = spawnTwin({ device, port: PORT, configDir: twinConfigDir });
-    const output = drainChildOutput(twinProc);
+    const output = drainChildOutput(twinProc, MEMORY_ERROR_MARKERS);
     twinOutput = output;
 
     try {

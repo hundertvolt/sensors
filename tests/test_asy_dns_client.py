@@ -431,7 +431,7 @@ def test_resolve_ipv4_success_via_a_real_fake_dns_server() -> None:
         server = _FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.40"), ancount=1)))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS)
             await responder
             return result
         finally:
@@ -441,11 +441,42 @@ def test_resolve_ipv4_success_via_a_real_fake_dns_server() -> None:
         assert run(scenario()) == "10.20.30.40"
 
 
+class _SilentSocket:
+    # Stands in for asy_dns_client's UDPSocket: every query is sent and none answered; each receive's wait is recorded.
+    waits: "list[int]" = []
+
+    def __init__(self, _addr: "tuple[str, int]", mode: str = "client", logger: object = None) -> None:
+        del mode, logger
+
+    async def write(self, data: bytes, timeout_ms: int = -1) -> int:
+        del timeout_ms
+        return len(data)
+
+    async def recvfrom(self, _n: int, timeout_ms: int = -1) -> "tuple[None, None]":
+        _SilentSocket.waits.append(timeout_ms)
+        return None, None
+
+    async def disconnect(self) -> bool:
+        return True
+
+
+def test_resolve_ipv4_asks_each_server_once_for_the_platform_resolvers_resend_interval() -> None:
+    # One query per server, its wait lwIP's own resend interval (DNS_TMR_INTERVAL, 1,000 ms): the server list is the retry.
+    _SilentSocket.waits = []
+    real = asy_dns_client.UDPSocket
+    asy_dns_client.UDPSocket = _SilentSocket  # type: ignore[assignment, misc]
+    try:
+        assert run(resolve_ipv4("pool.ntp.org", dns_servers=("192.0.2.1", "192.0.2.2"))) is None
+    finally:
+        asy_dns_client.UDPSocket = real  # type: ignore[misc]
+    assert _SilentSocket.waits == [1000, 1000], _SilentSocket.waits
+
+
 def test_resolve_ipv4_no_server_reachable_returns_none() -> None:
     port = _make_port()  # nobody listens here: the query is sent and nothing answers
 
     async def scenario() -> "str | None":
-        return await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1)
+        return await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_NO_REPLY_TIMEOUT_MS)
 
     with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
         assert run(scenario()) is None
@@ -458,7 +489,7 @@ def test_resolve_ipv4_garbage_reply_returns_none_not_an_exception() -> None:
         server = _FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda _q: b"\x00\x01not-a-real-dns-reply-at-all"))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_BAD_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_BAD_REPLY_TIMEOUT_MS)
             await responder
             return result
         finally:
@@ -478,7 +509,7 @@ def test_resolve_ipv4_tries_the_callers_servers_in_order() -> None:
         server = _FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("172.16.0.9"), ancount=1)))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(unreachable_ip, _HOST), timeout_ms=_FALLBACK_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(unreachable_ip, _HOST), timeout_ms=_FALLBACK_TIMEOUT_MS)
             await responder
             return result
         finally:
@@ -499,7 +530,7 @@ def test_resolve_ipv4_skips_unset_and_malformed_dns_server_entries() -> None:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("192.0.2.99"), ancount=1)))
             # "0.0.0.0" (DHCP-unset sentinel), "" (empty), and a non-numeric hostname are all
             # skipped without a network attempt, before the one real server.
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=("0.0.0.0", "", "not-an-ip", _HOST), timeout_ms=_FALLBACK_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=("0.0.0.0", "", "not-an-ip", _HOST), timeout_ms=_FALLBACK_TIMEOUT_MS)
             await responder
             return result
         finally:
@@ -513,7 +544,7 @@ def test_resolve_ipv4_skips_unset_and_malformed_dns_server_entries() -> None:
 def test_resolve_ipv4_with_no_servers_returns_none_and_opens_no_socket() -> None:
     # The resolver has no built-in server: an empty list is a total failure that touches no network.
     async def scenario() -> "str | None":
-        return await resolve_ipv4("pool.ntp.org", dns_servers=(), timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1)
+        return await resolve_ipv4("pool.ntp.org", dns_servers=(), timeout_ms=_NO_REPLY_TIMEOUT_MS)
 
     with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as redirect:
         assert run(scenario()) is None  # nothing was asked
@@ -535,7 +566,7 @@ def test_resolve_ipv4_memoryerror_building_the_query_prints_its_text_at_level_1_
             pr = _make_pr()
             pr.set_level(level)
             with record_prints() as recorder:
-                result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=50, tries=1, logger=pr))
+                result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=50, logger=pr))
             assert result is None
             assert len(recorder.lines) == level, recorder.lines
     finally:
@@ -547,7 +578,7 @@ def test_resolve_ipv4_memoryerror_building_the_query_prints_its_text_at_level_1_
 def test_resolve_ipv4_hands_its_logger_to_each_socket() -> None:
     pr = _make_pr()
     with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as redirect:
-        run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST, _HOST), timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1, logger=pr))
+        run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST, _HOST), timeout_ms=_NO_REPLY_TIMEOUT_MS, logger=pr))
     assert redirect.loggers == [pr, pr], redirect.loggers
 
 
@@ -556,7 +587,7 @@ def test_resolve_ipv4_overlong_dns_label_returns_none_not_an_exception() -> None
     # refuses it itself (RFC 1035 SS3.1), before any socket.
     for host in ("a" * 64, "a" * 300, "pool." + "a" * 64 + ".org"):
         with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as redirect:
-            result = run(resolve_ipv4(host, dns_servers=(_HOST,), timeout_ms=50, tries=1))
+            result = run(resolve_ipv4(host, dns_servers=(_HOST,), timeout_ms=50))
         assert result is None, host
         assert redirect.constructed == 0, host
 
@@ -580,7 +611,7 @@ def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None
         server = _FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.40"), ancount=1)))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS)
             await responder
             return result
         finally:
@@ -605,7 +636,7 @@ def test_resolve_ipv4_cname_chain_end_to_end() -> None:
         server = _FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(cname_then_a))
-            result = await resolve_ipv4("time.example.org", dns_servers=(_HOST,), timeout_ms=_CNAME_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("time.example.org", dns_servers=(_HOST,), timeout_ms=_CNAME_REPLY_TIMEOUT_MS)
             await responder
             return result
         finally:
@@ -643,7 +674,7 @@ def test_cancelling_a_resolve_at_each_await_leaves_no_socket_open() -> None:
         return built[-1]
 
     async def start(swept: _SweptResolve) -> None:
-        swept.result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+        swept.result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS)
 
     def invariants(swept: _SweptResolve) -> None:
         ledger.assert_closed()

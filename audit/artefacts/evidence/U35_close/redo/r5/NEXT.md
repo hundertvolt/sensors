@@ -30,3 +30,15 @@
 - 03:1x: fsync e1958815 back; mfs merge unit running (S/wt-mfs, due 07:30); then int fast-forward, snapshot 56 (parent b4d87294), bench relay; then G (+ T in parallel).
 - 04:28: snapshot 56 512bb0dc pushed (CI pending) = int a293d6f9; next: unit G (bounds + firmware simplify) and unit T in parallel; one bench image after G.
 - 04:30: units G (firmware bounds + simplify, S/wt-g) and C (build chain + website, S/wt-c) writing from a293d6f9, due 13:00; T after both; P9 last; one bench image after G (owner's reflash OK needed).
+- 05:25: snapshot 57 e8d48fab green (28/28) = next PARENT; G and C writing (13:00).
+- 05:27: owner meter 26 % since the weekly reset (lead's share estimate 35-40 %: shares overstate ~1/3); remaining G..D ~12-15 % on the meter, ~40 % total, inside the plan's 50-60 %.
+- 05:4x: bench relay 05:45 pushed (bench head 24278836): zero-flash checks now; the reflash after G.
+- 06:02: owner: bench is up on the 05:45 relay.
+- 06:1x: bench 06:03: FRAM 26 ms per entry (5x over) -> G item 13 (command path), G due 15:00; I2C checks pass; image relay after G.
+- 06:2x: bench reachability root-caused (12.153); relay 06:16 pushed (bench 967e2577); the branch is the channel.
+06:3x: owner 06:26:36 ruling recorded (pre-audit credits resolved by rule: later clear decision wins; session-only goes; leftovers to owner). Read-only unit cr2 running (BRIEF_CREDIT2.md, 117 rows, due 09:30); add ftmp_cr2 and ftmp_lead to SNAP_EXCLUDE at snapshot 58. Status-pair question next.
+07:1x: cr2 back (12.155): 117 resolved, LEFT 0; text -> P9, R0 growths -> T/P9. Status-pair question with the owner (gain asked, answered 07:0x).
+07:3x: C merged (12.156), int 26d7f317, lint clean; combined gate after G's hand-back (G holds the lock). Owner: status pair (asked 07:1x). Queued: buildgen.definitions CLI.
+08:4x: owner chose (a) for the status pair (no G item 14; P9 rewords SPEC A.4's reason). Next queued: buildgen.definitions CLI.
+08:5x: G merged (12.157), int 81e2ebcd; lint + mypy clean; combined gate running (lock 'lead', tc-c). Units T (BRIEF_T.md, due 15:00) and P9 (BRIEF_P9.md, due 14:00) started, read/edit only until the lock frees. Add ftmp_t ftmp_p9 ftmp_cr2 ftmp_lead to SNAP_EXCLUDE. After the gate: coverage check over 24 changed tests/ files, snapshot 58 (parent e8d48fab), image relay with the owner's OK.
+- 09:4x: gate_mg green, cov58 green (26 jobs), heavy.lock released; snapshot 58 being built (parent e8d48fab).

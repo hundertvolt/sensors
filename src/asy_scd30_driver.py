@@ -182,7 +182,7 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "FRCState", "FRCWa
 # @wiring fram_target FRAMManager log optional kwarg
 #
 # Stuck-pin fallback reads after 2 * trigger_s ticks of 500 ms: at least one full second, at
-# most the chip's longest measurement interval (agent, 2026-09-29; owner-reviewed, 2026-11-06).
+# most the chip's longest measurement interval (agent, 2026-09-29).
 # @limits trigger_s 1..1800
 
 if TYPE_CHECKING:

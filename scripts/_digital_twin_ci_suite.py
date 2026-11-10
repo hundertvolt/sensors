@@ -131,7 +131,7 @@ _LEFT_OUT = {
 }
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
 # The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
-# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03; owner-reviewed, 2026-11-06).
+# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
 _NTP_UNREACHABLE_FAILURES = 2
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an

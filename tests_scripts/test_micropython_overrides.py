@@ -39,6 +39,8 @@ _FAKE_GC_STACK_ANCHORS = (
 )
 
 _EVERY_GC_STACK_ANCHOR = tuple(anchor for _path, anchors in _FAKE_GC_STACK_ANCHORS for anchor in anchors)
+# The qstr length width's guarded default the variant header's define replaces (py/mpconfig.h:368-370, v1.29.0).
+_FAKE_QSTR_LEN_ANCHOR = "#ifndef MICROPY_QSTR_BYTES_IN_LEN\n#define MICROPY_QSTR_BYTES_IN_LEN (1)\n#endif\n"
 
 
 _REAL_BOARD = "RPI_PICO_W"
@@ -216,7 +218,7 @@ def _fake_firmware_build(root: Path, compiled: "tuple[Path, ...]", *, empty: boo
     return build_dir
 
 
-def _fake_lwip_host_build(tmp_path: Path, *, source: str | None = None, block: str = "kept", stdout: str = _PROBE_OK, exit_code: int = 0, sleep_s: float = 0, stderr: str = "") -> "tuple[Path, Path, Path]":
+def _fake_lwip_host_build(tmp_path: Path, *, source: str | None = None, block: str = "kept", stdout: str = _PROBE_OK, exit_code: int = 0, stderr: str = "") -> "tuple[Path, Path, Path]":
     # (build_dir, micropython_dir, binary): a build-lwip whose modlwip.P names `source` first (the
     # real layout: the target, a continued line, the source), and a binary answering the socket probe.
     micropython_dir = tmp_path / "micropython"
@@ -229,14 +231,14 @@ def _fake_lwip_host_build(tmp_path: Path, *, source: str | None = None, block: s
     (build_dir / "extmod" / "modlwip.P").write_text(f"build-lwip/extmod/modlwip.o: \\\n {named} \\\n ../../py/mpconfig.h\n../../py/mpconfig.h:\n", encoding="utf-8")
     binary = build_dir / "micropython"
     binary.write_text(
-        f"#!{sys.executable}\nimport pathlib, sys, time\npathlib.Path({str(tmp_path / 'probe-argv.txt')!r}).write_text(chr(10).join(sys.argv[1:]))\n"
-        f"time.sleep({sleep_s})\nprint({stdout!r})\nsys.stderr.write({stderr!r})\nsys.exit({exit_code})\n", encoding="utf-8",
+        f"#!{sys.executable}\nimport pathlib, sys\npathlib.Path({str(tmp_path / 'probe-argv.txt')!r}).write_text(chr(10).join(sys.argv[1:]))\n"
+        f"print({stdout!r})\nsys.stderr.write({stderr!r})\nsys.exit({exit_code})\n", encoding="utf-8",
     )
     binary.chmod(0o755)
     return build_dir, micropython_dir, binary
 
 
-def _fake_make(tmp_path: Path, *, pp: str | None = "", exit_code: int = 0, sleep_s: float = 0) -> "tuple[dict[str, str], Path]":
+def _fake_make(tmp_path: Path, *, pp: str | None = "", exit_code: int = 0) -> "tuple[dict[str, str], Path]":
     # A `make` on a PATH of its own that logs its argv and writes `pp` to the last argument (cwd-relative);
     # with pp None it writes nothing, as a rule that stopped producing its target would.
     bindir = tmp_path / "fake-bin"
@@ -244,8 +246,8 @@ def _fake_make(tmp_path: Path, *, pp: str | None = "", exit_code: int = 0, sleep
     argv_log = tmp_path / "make-argv.txt"
     make = bindir / "make"
     make.write_text(
-        f"#!{sys.executable}\nimport pathlib, sys, time\npathlib.Path({str(argv_log)!r}).write_text(chr(10).join(sys.argv[1:]))\n"
-        f"time.sleep({sleep_s})\n" + ("" if pp is None else f"pathlib.Path(sys.argv[-1]).write_text({pp!r})\n") + f"print('PreProcess unix_mphal.c')\nsys.exit({exit_code})\n", encoding="utf-8",
+        f"#!{sys.executable}\nimport pathlib, sys\npathlib.Path({str(argv_log)!r}).write_text(chr(10).join(sys.argv[1:]))\n"
+        + ("" if pp is None else f"pathlib.Path(sys.argv[-1]).write_text({pp!r})\n") + f"print('PreProcess unix_mphal.c')\nsys.exit({exit_code})\n", encoding="utf-8",
     )
     make.chmod(0o755)
     return {"PATH": str(bindir)}, argv_log
@@ -387,6 +389,9 @@ def _write_fake_micropython_tree(root: Path, *, anchor_line: str | None = _REAL_
     for relative, anchors in _FAKE_GC_STACK_ANCHORS:
         (root / relative).parent.mkdir(parents=True, exist_ok=True)
         (root / relative).write_text("".join(anchor for anchor in anchors if anchor != drop), encoding="utf-8")
+    if drop != _FAKE_QSTR_LEN_ANCHOR:
+        with (root / "py" / "mpconfig.h").open("a", encoding="utf-8") as config:
+            config.write(_FAKE_QSTR_LEN_ANCHOR)
     return root
 
 
@@ -1080,16 +1085,6 @@ def test_lwip_build_readback_a_missing_compiler_is_named_not_a_bare_traceback(ov
         overrides.read_lwip_macros_from_build(build_dir, _pinned(), missing)
 
 
-def test_lwip_build_readback_a_hung_compiler_is_named_after_the_timeout(overrides: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    build_dir, _compiler, _argv = _fake_build(tmp_path, stdout="")
-    sleeper = tmp_path / "slow-gcc"
-    sleeper.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(30)\n", encoding="utf-8")
-    sleeper.chmod(0o755)
-    monkeypatch.setattr(overrides, "_PREPROCESS_TIMEOUT_S", 0.2)
-    with pytest.raises(overrides.OverrideError, match=r"compiler .*slow-gcc.* did not finish"):
-        overrides.read_lwip_macros_from_build(build_dir, _pinned(), str(sleeper))
-
-
 def test_lwip_build_readback_the_compiler_cmake_recorded_is_used_when_none_is_passed(overrides: ModuleType, tmp_path: Path) -> None:
     # The build's own compiler, not whichever arm-none-eabi-gcc PATH happens to find first.
     asked = _pinned()
@@ -1401,15 +1396,6 @@ def test_the_kbd_readback_names_a_failed_or_missing_make(overrides: ModuleType, 
         overrides.verify_unix_kbd_intr_in_build(unix_dir, {}, "build-standard", env=env)
 
 
-def test_the_kbd_readback_names_a_hung_make(overrides: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    unix_dir = tmp_path / "ports" / "unix"
-    (unix_dir / "build-standard").mkdir(parents=True)
-    env, _argv = _fake_make(tmp_path, pp=_pp_text(), sleep_s=30)
-    monkeypatch.setattr(overrides, "_PREPROCESS_TIMEOUT_S", 0.2)
-    with pytest.raises(overrides.OverrideError, match=r"did not finish within 0\.2 s"):
-        overrides.verify_unix_kbd_intr_in_build(unix_dir, {}, "build-standard", env=env)
-
-
 # ---------------------------------------------------------------------------
 # unix_gc_stack (SPECIFICATION.md B.14.6): every Unix build's GC mark stack, in the shared variant header.
 # ---------------------------------------------------------------------------
@@ -1451,6 +1437,16 @@ def test_the_rig_variant_header_sets_the_mark_stack_once_after_the_real_header(o
     assert "#undef MICROPY_ALLOC_GC_STACK_SIZE" not in generated
     assert generated.index(f'#include "{real_header}"') < generated.index(define)
     assert generated == overrides._unix_variant_header(real_header.parent)
+
+
+def test_the_rig_variant_header_widens_the_qstr_length_once_and_its_default_is_load_bearing(overrides: ModuleType, tmp_path: Path) -> None:
+    # Two length bytes intern every launch string past 255 bytes (F.7 row 32); the guarded default is what the define replaces.
+    generated = overrides._unix_variant_header(tmp_path)
+    assert generated.count("#define MICROPY_QSTR_BYTES_IN_LEN (2)\n") == 1 and "#undef MICROPY_QSTR_BYTES_IN_LEN" not in generated
+    assert _FAKE_QSTR_LEN_ANCHOR == overrides._UNIX_QSTR_LEN_ANCHOR
+    fake = _write_fake_micropython_tree(tmp_path / "micropython", drop=_FAKE_QSTR_LEN_ANCHOR)
+    with pytest.raises(overrides.OverrideError, match=r"^unix_qstr_len: expected .* in .*py/mpconfig\.h is gone"):
+        overrides.apply_unix_kbd_intr_override(fake, tmp_path / "build_overrides")
 
 
 def test_no_firmware_override_carries_the_mark_stack(overrides: ModuleType, tmp_path: Path) -> None:
@@ -1937,11 +1933,8 @@ def test_the_host_readback_shows_an_lwip_assertion_that_stopped_the_binary(overr
         overrides.verify_unix_lwip_host_in_build(build_dir, micropython_dir, binary, env={"PATH": os.environ["PATH"]})
 
 
-def test_the_host_readback_names_an_uncompiled_modlwip_a_missing_binary_and_a_hung_one(overrides: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    build_dir, micropython_dir, binary = _fake_lwip_host_build(tmp_path / "hung", sleep_s=30)
-    monkeypatch.setattr(overrides, "_PREPROCESS_TIMEOUT_S", 0.2)
-    with pytest.raises(overrides.OverrideError, match=r"did not answer the runtime probe within 0\.2 s"):
-        overrides.verify_unix_lwip_host_in_build(build_dir, micropython_dir, binary, env={"PATH": os.environ["PATH"]})
+def test_the_host_readback_names_an_uncompiled_modlwip_and_a_missing_binary(overrides: ModuleType, tmp_path: Path) -> None:
+    build_dir, micropython_dir, binary = _fake_lwip_host_build(tmp_path / "gone")
     binary.unlink()
     with pytest.raises(overrides.OverrideError, match="cannot run"):
         overrides.verify_unix_lwip_host_in_build(build_dir, micropython_dir, binary, env={"PATH": os.environ["PATH"]})

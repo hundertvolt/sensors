@@ -48,6 +48,8 @@ from asy_spi_driver import SPI
 from asy_system_service import SystemService
 from asy_webserver_service import ROUTES, RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _stream_dict_response, _TimeoutStreamProxy
 
+_PHASE_ARMED = src_int("src/asy_system_service.py", "_PHASE_ARMED")  # the reset phase the system service reaches
+
 # The FRAM a system command quiesces and erases sits on the chip fake: the same one-process-per-test-file swap as
 # test_asy_fram_manager.py's.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -168,7 +170,6 @@ _SERVE_BOUND_S = 2.0  # one _serve() whose reclaim it waits out
 _SERVE_LONG_BOUND_S = 3.0  # one _serve() under a headroom timeout
 _RUN_LONG_BOUND_S = 10.0  # a scenario of many connections
 _REWEDGE_RUN_BOUND_S = 15.0  # the repeated-rewedging scenario
-_PROXY_TIMEOUT_MS = 50  # a stream proxy's per-call bound that a hung wait_closed() waits out
 _PROXY_BOUND_MS = 1000  # a stream proxy's per-call bound on forwards that return at once
 _TINY_PER_CALL_S = 0.01
 _FAST_PER_CALL_S = 0.02
@@ -392,11 +393,10 @@ class _ClosedReader(_OneStream):
 
 
 class _ScriptedWriter(_OneStream):
-    def __init__(self, *, hang_close: bool = False, fail_with: "Exception | None" = None) -> None:
+    def __init__(self, *, fail_with: "Exception | None" = None) -> None:
         self.written = b""
         self.close_called = False
         self.wait_closed_called = False
-        self._hang_close = hang_close
         self._fail_with = fail_with
 
     def get_extra_info(self, name: str) -> object:
@@ -415,8 +415,6 @@ class _ScriptedWriter(_OneStream):
 
     async def wait_closed(self) -> None:
         self.wait_closed_called = True
-        if self._hang_close:
-            await asyncio.Event().wait()
 
 
 class _VirtualClock:
@@ -1044,7 +1042,7 @@ class _CommandBench:
             if self.sequences and self.sequences[-1].done():
                 break
             await asyncio.sleep(0)
-        return self.svc._reset_armed
+        return self.svc._phase >= _PHASE_ARMED
 
     async def setup(self) -> None:
         await self.fram.setup()
@@ -1137,7 +1135,7 @@ def test_a_config_put_mid_write_when_a_command_arrives_is_waited_out_then_flushe
         supervisor = bench.svc._supervisor_task
         held = (
             supervisor is not None and supervisor.done(), bool(bench.sequences) and bench.sequences[-1].done(),
-            bench.svc._reset_armed, counter.writes, _file_or_none(bench.paths[1]),
+            (bench.svc._phase >= _PHASE_ARMED), counter.writes, _file_or_none(bench.paths[1]),
         )
         gate.set()
         sensor = await put
@@ -1381,11 +1379,11 @@ def test_reset_errors_is_refused_once_the_supervisors_escalation_logs_its_entry(
         await bench.svc.start_tasks([dead_starter], task_names=["dead_starter"])
         sup = asyncio.create_task(bench.svc.supervise_tasks())
         for _ in range(_SEQUENCE_YIELDS):
-            if bench.svc._reset_armed:
+            if bench.svc._phase >= _PHASE_ARMED:
                 break
             await asyncio.sleep(0)
         await cancel(sup)
-        return bench.svc._reset_armed
+        return bench.svc._phase >= _PHASE_ARMED
 
     with FastAsyncSleep():
         armed = run(scenario())
@@ -2531,13 +2529,6 @@ def test_f6_pathological_repeated_rewedging_stays_bounded_never_escalates() -> N
         assert service._open_conns == 0
 
     run_timed(scenario(), timeout_s=_REWEDGE_RUN_BOUND_S)
-
-
-def test_f6_a_hanging_cleanup_close_path_still_lets_the_connection_task_end() -> None:
-    service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_SHORT_OUTER_CAP_S)
-    writer = _ScriptedWriter(hang_close=True)  # wait_closed() itself never returns
-    run_timed(service._serve(_HangingReader(), writer), timeout_s=_SERVE_LONG_BOUND_S)
-    assert service._open_conns == 0  # the connection task still ended
 
 
 class _RaisingCloseWriter(_ScriptedWriter):

@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -50,7 +51,7 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
         assert (out_dir / f"sensortask_{device}.py").read_text(encoding="utf-8") == expected.module_source
         assert (out_dir / f"sensortask_{device}_main.py").read_text(encoding="utf-8") == expected.boot_entry_source
         assert (out_dir / f"sensortask_{device}_main_noautostart.py").read_text(encoding="utf-8") == expected.boot_entry_noautostart_source
-        assert json.loads((out_dir / f"sensortask_{device}_expected.json").read_text(encoding="utf-8")) == expected.expected_facts
+        assert json.loads((out_dir / f"sensortask_{device}_expected.json").read_text(encoding="utf-8")) == generate_sensortask_modules.expected_facts(expected.model)
         # compute_twin_wiring() is the plan's one producer, "instances" included: the file is its output unchanged.
         assert json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text(encoding="utf-8")) == compute_twin_wiring(expected.model)
         written = json.loads((out_dir / "definitions" / f"{device}.json").read_text(encoding="utf-8"))
@@ -300,3 +301,33 @@ def test_the_prune_reports_what_it_removed(generate_sensortask_modules: ModuleTy
     (out_dir / "api" / "gone.json").write_text("{}\n", encoding="utf-8")
     assert generate_sensortask_modules.main() == 0
     assert "Pruned 2 stale output(s): api/gone.json, sensortask_gone.py" in capsys.readouterr().out
+
+
+def test_if_stale_generates_only_once_the_stamp_no_longer_holds(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # A current tree costs one hash pass; an edited input, or a listed output gone, regenerates the whole tree.
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    out_dir = _one_device_tree(repo_root, tmp_path)
+    (tmp_path / "devices" / "extra.toml").write_bytes((repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml").read_bytes())
+    assert generate_sensortask_modules.main(["--if-stale"]) == 0
+    module = out_dir / f"sensortask_{DEVICE_NAMES[0]}.py"
+    written = module.stat().st_mtime_ns
+    capsys.readouterr()
+    assert generate_sensortask_modules.main(["--if-stale"]) == 0
+    assert "is current" in capsys.readouterr().out
+    assert module.stat().st_mtime_ns == written
+    (tmp_path / "devices" / "extra.toml").write_text((tmp_path / "devices" / "extra.toml").read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    assert generate_sensortask_modules.main(["--if-stale"]) == 0
+    assert "is current" not in capsys.readouterr().out
+    (out_dir / "definitions" / "extra.json").unlink()
+    assert generate_sensortask_modules.main(["--if-stale"]) == 0
+    assert (out_dir / "definitions" / "extra.json").is_file()
+
+
+def test_whole_tree_runs_at_once_wait_for_each_other(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Two stale-tree runs at once (parallel website builds) renamed each other's .tmp files away; the lock queues the second.
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    out_dir = _one_device_tree(repo_root, tmp_path)
+    with ThreadPoolExecutor(4) as pool:
+        codes = list(pool.map(lambda _i: generate_sensortask_modules.main(["--if-stale"]), range(4)))
+    assert codes == [0, 0, 0, 0]
+    assert (out_dir / "definitions" / f"{DEVICE_NAMES[0]}.json").is_file() and (out_dir / ".inputs_stamp.json").is_file()

@@ -15,8 +15,8 @@ from buildgen.generate import generate_device
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src"
 _SERVICE = ("asy_system_service.py", "SystemService")
-_LATCH = "_force_watchdog_starve"
-_OWNED = "_feed_owned"
+_LATCH = "self._phase < _PHASE_STARVED"
+_OWNED = "self._phase < _PHASE_OWNED"
 _SUPERVISOR = "_supervise"
 _SETUP_RUNNER = "run_setups"
 _OWN_FEED = "_own_feed"
@@ -24,7 +24,7 @@ _SEQUENCE = "_shutdown_sequence"
 # Names the supervisor never reaches: its escalation resets through _reboot() directly, never a command path.
 _SUPERVISOR_FORBIDDEN = ("reboot_system", "reboot_bootloader", "reset_to_defaults", "erase_fram", "_request_shutdown")
 # Each latched .feed() and the conditions its guard tests; each feed_watchdog() caller and its loop nesting and count.
-_LATCHED_FEEDS = {"feed_watchdog": (_LATCH, _OWNED), _OWN_FEED: (_LATCH,)}
+_LATCHED_FEEDS = {"feed_watchdog": (_OWNED,), _OWN_FEED: (_LATCH,)}
 _FEED_CALLERS = {_SUPERVISOR: (("While",), 2), _SETUP_RUNNER: (("For",), 1)}
 _CALLBACK_KEYWORDS = frozenset({"callback", "handler"})
 
@@ -273,22 +273,16 @@ def test_a_fifth_feed_site_fails(src_copy: Path) -> None:
     assert len(findings) == 1 and "SystemService.pause_permanent_storage(): a watchdog feed outside the pinned set" in findings[0], findings
 
 
-def test_a_dropped_latch_test_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and not self._force_watchdog_starve and not self._feed_owned:\n", "        if self._watchdog is not None and not self._feed_owned:\n")
+def test_a_dropped_phase_test_fails(src_copy: Path) -> None:
+    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and self._phase < _PHASE_OWNED:\n", "        if self._watchdog is not None:\n")
     findings = src_findings(src_copy)
-    assert len(findings) == 1 and "SystemService.feed_watchdog(): the latched feed no longer tests _force_watchdog_starve" in findings[0], findings
-
-
-def test_a_dropped_ownership_test_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and not self._force_watchdog_starve and not self._feed_owned:\n", "        if self._watchdog is not None and not self._force_watchdog_starve:\n")
-    findings = src_findings(src_copy)
-    assert len(findings) == 1 and "SystemService.feed_watchdog(): the latched feed no longer tests _feed_owned" in findings[0], findings
+    assert len(findings) == 1 and "SystemService.feed_watchdog(): the latched feed no longer tests self._phase < _PHASE_OWNED" in findings[0], findings
 
 
 def test_an_own_feed_without_the_starve_latch_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and not self._force_watchdog_starve:\n            self._watchdog.feed()", "        if self._watchdog is not None:\n            self._watchdog.feed()")
+    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and self._phase < _PHASE_STARVED:\n            self._watchdog.feed()", "        if self._watchdog is not None:\n            self._watchdog.feed()")
     findings = src_findings(src_copy)
-    assert len(findings) == 1 and "SystemService._own_feed(): the latched feed no longer tests _force_watchdog_starve" in findings[0], findings
+    assert len(findings) == 1 and "SystemService._own_feed(): the latched feed no longer tests self._phase < _PHASE_STARVED" in findings[0], findings
 
 
 def test_an_own_feed_outside_the_sequence_fails(src_copy: Path) -> None:
@@ -344,7 +338,7 @@ def test_a_feed_inside_the_supervisor_scan_fails(src_copy: Path) -> None:
 
 
 def test_a_dropped_escalation_feed_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "                    self.feed_watchdog()\n                    self._force_watchdog_starve = True\n", "                    self._force_watchdog_starve = True\n")
+    _edit(src_copy / "asy_system_service.py", "                    self.feed_watchdog()\n                    # Resets directly", "                    # Resets directly")
     findings = src_findings(src_copy)
     assert findings == ["SystemService._supervise(): 1 `feed_watchdog(` calls where the pinned set has 2"], findings
 

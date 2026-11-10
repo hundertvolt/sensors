@@ -2276,11 +2276,11 @@ def test_set_mgr_cfg_delegates_to_the_real_configmanager() -> None:
 
         async def scenario() -> "tuple[tuple[bool, cm.WriteValidity], int, int]":
             with WriteCountingOpen(asy_config_manager) as counter:
-                result = await reader._set_mgr_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI)
-                for _ in range(3):
-                    await asyncio.sleep(0)
-                held = counter.writes  # deferred: nothing written before the commit
-                reader._commit_mgr_cfg()
+                async with reader._set_lock:  # as _set_dict_cfg() holds it through its pushes
+                    result = await reader._set_mgr_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI)
+                    for _ in range(3):
+                        await asyncio.sleep(0)
+                    held = counter.writes  # staged: nothing written while the PUT holds its lock
                 await reader.cfgmgr.flush_pending()
             return result, held, counter.writes
 
@@ -2303,9 +2303,8 @@ def test_set_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() ->
         evt_calls: list[tuple[object, ...]] = []
         reader.pr.evt = lambda *args, **_kwargs: evt_calls.append(args)  # type: ignore[method-assign]
 
-        async def set_commit_flush() -> None:  # one run: the deferred flush the set stages lives until the flush
+        async def set_commit_flush() -> None:  # one run: the flush the set stages lives until the flush
             await reader._set_mgr_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI)
-            reader._commit_mgr_cfg()
             await reader.cfgmgr.flush_pending()
 
         run(set_commit_flush())

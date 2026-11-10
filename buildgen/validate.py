@@ -17,6 +17,7 @@ from buildgen.buildspec import (
     BUS_ATTACHED_DRIVERS,
     BUS_KIND_BY_DRIVER,
     FIXED_ADDRESS_DRIVERS,
+    MANDATORY_FILES,
     REQUIRED_TOML_FIELDS,
     UART_CRC_MODES,
 )
@@ -91,18 +92,10 @@ _I2C_TIMEOUT_MAX_US = 200000
 # @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000  # codegen's generated WDT(timeout=...), the one the boot clear runs under
 
-# [device.wiring] fields and the mandatory-infra consumers whose @wiring tags they resolve against, as
-# (module file, the consumer's generated name) pairs fixed ahead of time (Part L.3). fram_target has
-# several consumers, and each one's own tag is checked so a missing declaration is caught here.
-_DEVICE_WIRING_CONSUMERS: "dict[str, tuple[tuple[str, str], ...]]" = {
-    "led_target": (("asy_wifi_service.py", "conn"),),
-    "fram_target": (
-        ("asy_system_service.py", "sysfunct"),
-        ("asy_wifi_service.py", "conn"),
-        ("asy_ntp_client.py", "ntp"),
-        ("asy_webserver_service.py", "webserver"),
-    ),
-}
+# [device.wiring] fields and the mandatory-infra consumers whose @wiring tags they resolve against, each by its
+# generated name (its file is buildspec's MANDATORY_FILES row; Part L.3). fram_target has several consumers, and
+# each one's own tag is checked so a missing declaration is caught here.
+_DEVICE_WIRING_CONSUMERS: "dict[str, tuple[str, ...]]" = {"led_target": ("conn",), "fram_target": ("sysfunct", "conn", "ntp", "webserver")}
 
 # The settings groups the generated webserver serves, in order: (section, module variable, fields, hook), the hook
 # written as SettingsGroup's own keyword and callable, or None. Codegen renders the rows; notification's group comes
@@ -462,15 +455,16 @@ def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
     wiring = _device_table(model).get("wiring", {})
     if not isinstance(wiring, dict):
         raise BuildInternalError(f"internal: {model.device}'s [device].wiring reached the wiring check unchecked")
-    schemas = {(f, label): parse_wiring(src_dir / f, model.device, label) for consumers in _DEVICE_WIRING_CONSUMERS.values() for f, label in consumers}
+    schemas = {label: parse_wiring(src_dir / MANDATORY_FILES[label], model.device, label) for consumers in _DEVICE_WIRING_CONSUMERS.values() for label in consumers}
     for toml_field, value in wiring.items():
         consumers = _DEVICE_WIRING_CONSUMERS.get(toml_field)
         if consumers is None:
             raise BuildError(model.device, f"[device.wiring] declares unknown field {toml_field!r}", rule="device.wiring-field-unknown", fix=f"use one of {sorted(_DEVICE_WIRING_CONSUMERS)}", field=toml_field)
         if not isinstance(value, str):
             raise BuildError(model.device, f"[device.wiring].{toml_field} must be a string instance reference, got {value!r}", rule="wiring.target-type", fix="write it as a quoted instance name", field=toml_field)
-        for module_file, consumer_label in consumers:
-            wf = _resolve_wiring_field(schemas[(module_file, consumer_label)], toml_field)
+        for consumer_label in consumers:
+            module_file = MANDATORY_FILES[consumer_label]
+            wf = _resolve_wiring_field(schemas[consumer_label], toml_field)
             if wf is None:
                 raise BuildError(
                     model.device,
@@ -487,8 +481,8 @@ def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
     for toml_field, consumers in _DEVICE_WIRING_CONSUMERS.items():
         if toml_field in wiring:
             continue
-        for module_file, consumer_label in consumers:
-            wf = _resolve_wiring_field(schemas[(module_file, consumer_label)], toml_field)
+        for consumer_label in consumers:
+            wf = _resolve_wiring_field(schemas[consumer_label], toml_field)
             if wf is not None and wf.required:
                 raise BuildError(model.device, f"[device.wiring] is missing required field {toml_field!r}", rule="device.wiring-field-missing", fix=f"add {toml_field} to [device.wiring]", field=toml_field)
 
@@ -840,7 +834,7 @@ def _check_uart_bus(model: DeviceModel, bus_name: str, table: "TomlDoc") -> None
 
 def _check_uart_link_buses(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
     # Refuses the timeout, rxbuf and poll-rate values the protocol would refuse at boot - a config mismatch out of runtime
-    # scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24; owner-reviewed, 2026-11-06).
+    # scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24).
     # Generated code wires no framing (adds 0); the CRC adds the width of the link's crc mode.
     for spec in _uart_links(model):
         bus_name = _checked_str(spec.fields["bus"])
@@ -1338,7 +1332,7 @@ def module_str_const(src_dir: Path, filename: str, name: str) -> str:
 def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> HardConsumer:
     # The device's smallest hard consumer of loop time (Part F.3), read by the twin's loop-lag scenario and the bench lag
     # test: the watchdog's room beside one supervisor sleep, and each uart_link's reply timeout less its two polls, its idle
-    # poll and one GC pause; the first smallest wins (agent, 2026-10-21; owner-reviewed, 2026-11-06).
+    # poll and one GC pause; the first smallest wins (agent, 2026-10-21).
     task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
     consumers = [HardConsumer(_WDT_TIMEOUT_MS - task_check_s * 1000)]
     reply_ms, gc_pause = (module_int_const(src_dir, "asy_uart_comm.py", n) for n in ("_DEFAULT_TIMEOUT_MS", "_GC_PAUSE_WORST_MS"))

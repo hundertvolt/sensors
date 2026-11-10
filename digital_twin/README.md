@@ -1234,17 +1234,13 @@ each bare `machine`/`network`/`neopixel` resolves to one file per run (SPECIFICA
   `os.environ` is missing, so read `os.getenv()`; and `micropython.mem_info()` with any argument
   prints the full block map. Every Unix-port-vs-rp2 difference worked around in test code is listed
   in SPECIFICATION.md F.7.
-- **A launch string over 255 bytes kills the Unix port before its script runs**: every argument
-  from the script on, the script's real directory and every `MICROPYPATH` entry but a `~/` one built
-  from `$HOME` is interned as a qstr, and a longer one raises outside any handler (`FATAL: uncaught
-  NLR`, exit 1), which reads as a twin that exited before ever serving. A deep logs directory or a
-  long scenario name reaches it through the state paths, so `scripts/_twin_process.py`'s `spawn()`,
-  `scripts/test.sh`, `tests_js/_twin_process.js`'s `spawnTwin()`, `tests_hardware/twin_board.py` and
-  `scripts/run_unix_port_integration.sh` refuse such a launch first, naming each string and its size
-  (SPECIFICATION.md F.7 row 32). A module path over 255 bytes, a directory those checks pass plus the
-  imported file's name, is not refused: it fails at that import with a plain
-  `RuntimeError: name too long` traceback naming the import (`py/builtinimport.c:242`), so its cause
-  reads plainly.
+- **The rig interns every launch string**: every argument from the script on, the script's real
+  directory and every `MICROPYPATH` entry but a `~/` one built from `$HOME` becomes a qstr, and one
+  longer than a qstr's length bytes hold raises outside any handler (`FATAL: uncaught NLR`, exit 1),
+  which reads as a twin that exited before ever serving. The rig's build gives qstrs two length
+  bytes (65,535, past `PATH_MAX`; the firmware keeps one), so a deep logs directory or a long
+  scenario name no longer reaches the limit and no launcher checks for it (SPECIFICATION.md F.7 row
+  32).
 
 ## Known gaps / follow-ups for later sessions
 

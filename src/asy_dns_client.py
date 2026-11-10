@@ -22,11 +22,8 @@ if TYPE_CHECKING:
     from asy_print_log import PrintLog
 
 _DNS_PORT = const(53)
-# @tunable dns.timeout_ms = 500
-_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - a standalone default only; real
-# callers are expected to override it explicitly with a value suited to their own timing budget.
-# @tunable dns.tries = 1
-_DNS_TRIES = const(1)  # per-server retry budget - resolve_ipv4() already tries multiple servers.
+# @tunable dns.timeout_ms = 1000
+_DNS_TIMEOUT_MS = const(1000)  # per server: lwIP resends after DNS_TMR_INTERVAL (lib/lwip/src/include/lwip/dns.h:54, v1.29.0)
 DNS_UDP_MAX = const(512)  # RFC 1035 SS4.2.1: a DNS message over UDP is at most 512 octets.
 
 DNS_QTYPE_A = const(b"\x00\x01")
@@ -119,7 +116,6 @@ async def resolve_ipv4(
     host: str,
     dns_servers: tuple[str, ...] = (),
     timeout_ms: int = _DNS_TIMEOUT_MS,
-    tries: int = _DNS_TRIES,
     *,
     logger: "PrintLog | None" = None,
 ) -> str | None:
@@ -137,13 +133,9 @@ async def resolve_ipv4(
         if server == "0.0.0.0" or ipv4_to_int(server) is None:
             continue  # an unset/placeholder or malformed DNS server value - not worth a network attempt
         cli = UDPSocket((server, _DNS_PORT), mode="client", logger=logger)
-        rsp = None
-        try:
-            for _ in range(tries):
-                await cli.write(query, timeout_ms=timeout_ms)
-                rsp, _addr = await cli.recvfrom(DNS_UDP_MAX, timeout_ms=timeout_ms)
-                if rsp is not None:
-                    break
+        try:  # one query per server: the list is the retry, as lwIP's backup-server step (lwip/src/core/dns.c:1091-1100)
+            await cli.write(query, timeout_ms=timeout_ms)
+            rsp, _addr = await cli.recvfrom(DNS_UDP_MAX, timeout_ms=timeout_ms)
         finally:
             await cli.disconnect()  # never raises - see asy_udp_socket.py's own contract
         if rsp is None:

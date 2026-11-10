@@ -567,6 +567,31 @@ describe("renderSection", () => {
         expect(mustQuery(mustQuery(main, ".errcount-row"), ".errcount-row-count").textContent).toBe("1");
     });
 
+    it("describes a history code from the page's one code table, in the Status and the Networking group alike", async () => {
+        /** @type {import("../js/definitions.js").Section} */
+        const section = {
+            key: "networking", label: "Networking", rest: { get: "/networking", put: "/networking" }, pollGroup: "settings",
+            groups: [{ key: "dnsErrors", label: "Captive DNS Error History", kind: "errcount", modules: [{ key: "DNSSRV", label: "Captive DNS" }] }],
+        };
+        const defs = { ...DEFS, errcountCodes: { E: { 2: "no answer" }, W: { 3: "slow answer" } }, sections: [...DEFS.sections, section] };
+        const errcount = { SCD30: { counter: 1, history: [{ num: 2, type: /** @type {const} */ ("E") }] }, DNSSRV: { counter: 1, history: [{ num: 3, type: /** @type {const} */ ("W") }] } };
+        uninstall = installMockFetch(defs, { ...DATA, status: { ...DATA.status, errcount } });
+        /** @param {import("../js/definitions.js").Section} shown */
+        async function firstDescription(shown) {
+            const main = mount();
+            stop = renderSection(defs, shown, main);
+            await waitFor(() => main.querySelector("button.history-entry-num") !== null);
+            mustQuery(main, ".action-button").click(); // "Show flagged"
+            mustQuery(main, "button.history-entry-num").click();
+            const text = mustQuery(main, ".code-description").textContent;
+            stop();
+            main.remove();
+            return text;
+        }
+        expect(await firstDescription(getSection("status"))).toBe("2: no answer");
+        expect(await firstDescription(section)).toBe("3: slow answer");
+    });
+
     it("preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll update", async () => {
         // Every real device's Status section is live and this fixture's is not, so the poll-update path needs a local variant.
         /** @type {import("../js/definitions.js").SiteDefinitions} */

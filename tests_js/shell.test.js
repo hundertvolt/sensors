@@ -405,6 +405,34 @@ describe("startShell", () => {
         await vi.waitFor(() => expect(age()).toBe("2 h ago"));
     });
 
+    it("skips the watch's /status while the open section reads /status each poll, and requests it again once none does", async () => {
+        vi.useFakeTimers();
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defs = {
+            ...DEFS,
+            sections: [
+                {
+                    key: "measurements", label: "Measurements", rest: { get: "/measurements" }, pollGroup: "live",
+                    groups: [{ key: "SYS", label: "System", fields: [{ key: "UnixTime", label: "Clock", kind: "readonly", statusPath: ["system", "UnixTime"] }] }],
+                },
+                { key: "plain", label: "Plain", rest: { get: "/plain" }, pollGroup: "settings", groups: [] },
+            ],
+        };
+        const requests = installFetchStub({ routes: { "/plain": () => Promise.resolve(json({})) } });
+        const { elements: shown } = start({ defs });
+        // The section's /status follows each of its own GETs; every other /status is the watch's.
+        const watchStatus = () => requests.count("/status") - requests.count("/measurements");
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(1));
+        await vi.advanceTimersByTimeAsync(3 * WATCH_INTERVAL_MS);
+        await vi.waitFor(() => expect(requests.read("/system")).toBeGreaterThanOrEqual(4));
+        expect(watchStatus()).toBe(1);
+
+        /** @type {HTMLElement} */ (shown.drawerEl.querySelector('[data-section-key="plain"]')).click();
+        const before = requests.count("/status");
+        await vi.advanceTimersByTimeAsync(2 * WATCH_INTERVAL_MS);
+        await vi.waitFor(() => expect(requests.count("/status") - before).toBeGreaterThanOrEqual(1));
+    });
+
     it("defers a reload for a changed build until the pending Apply has settled", async () => {
         vi.useFakeTimers();
         let version = "1.0.0";

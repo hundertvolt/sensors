@@ -16,7 +16,6 @@ from error_log_helpers import assert_no_task_ended, reset_all_error_logs
 from harness import SRC_DIR, Board, boot_lines, device_toml, kick_then_reset, restore_board_to_serving
 from soak_durations import SOAK_DURATION_SECONDS
 
-from buildgen.codegen import trigger_spread
 from buildgen.driver_registry import class_has_read_triggers
 from buildgen.graph import build_construction_order
 from buildgen.validate import build_model
@@ -153,13 +152,13 @@ def _stamp_console(device: str, stop: threading.Event, log: "list[tuple[float, s
 
 
 def _trigger_plan() -> "tuple[dict[str, str], dict[str, int], float]":
-    # The build's own stagger (buildgen.codegen.trigger_spread()): each timer-triggered reader's bus and slot, and the
+    # The build's own stagger (construction order, buildgen's _emit_trigger_collector()): each timer-triggered reader's bus and slot, and the
     # slot width _TIMER_BASE_PERIOD // (readers + 1) in ms (src/asy_system_service.py start_timers()).
     model = build_model(device_toml(), SRC_DIR)
     position = {node: i for i, node in enumerate(build_construction_order(model))}
     specs = sorted((s for s in model.instances.values() if s.driver_info and s.driver_info.kind == "sensor" and s.resolved_name), key=lambda s: position[s.key])
     readers = [(str(s.resolved_name), str(s.fields["bus"])) for s in specs if s.driver_info is not None and class_has_read_triggers(s.driver_info)]
-    order = trigger_spread(readers)
+    order = [name for name, _bus in readers]
     bus = dict(readers)
     excluded = {str(s.resolved_name) for s in specs if s.driver in _DATA_READY_DRIVERS}
     slots = {name: k for k, name in enumerate(order) if name not in excluded}

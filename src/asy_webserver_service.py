@@ -153,9 +153,9 @@ _DEFAULT_CHUNK_BYTES = const(256)  # chunk_bytes' default: one bound for JSON pi
 # under load that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
 _DEFAULT_MAX_CONNECTIONS = const(6)  # three below the firmware's MEMP_NUM_TCP_PCB (toolchain/versions.toml), Part H.7
 # @tunable web.per_call_timeout_s = 5.0
-_DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)
+_DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)  # bounds a client (owner, 2026-08-12: "never wedge indefinitely"); the number the agent's (2026-08-12)
 # @tunable web.outer_cap_s = 15.0
-_DEFAULT_OUTER_CAP_S = const(15.0)
+_DEFAULT_OUTER_CAP_S = const(15.0)  # the agent's (2026-08-12); silicon's slowest measured request, GET /status, took 2,591 ms (2026-10-29)
 _DEFAULT_STATIC_INDEX = const("index.html")
 
 # The request head's bounds, checked by the reader proxy before Microdot parses a line (SPECIFICATION.md A.5).
@@ -307,7 +307,7 @@ class _HeadRefusedError(OSError):
 
 
 class _TimeoutStreamProxy:
-    # Forwards every stream method ext/microdot.py calls, each bounded by timeout_ms (a plain asyncio.TimeoutError,
+    # Forwards every stream method ext/microdot.py calls, each read and write bounded by timeout_ms (asyncio.TimeoutError,
     # not an OSError subclass - Part F.1), and bounds the request head before Microdot parses it (SPECIFICATION.md A.5).
     # Microdot's read-phase catch swallows a read timeout (Part A.5), so this proxy is the only place it is observable.
     def __init__(
@@ -330,9 +330,6 @@ class _TimeoutStreamProxy:
         self._head_lines = 0  # the request line and headers returned so far
         self._head_bytes = 0
         self._length_seen = False
-
-    async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
-        return await asyncio.wait_for_ms(coro, self._timeout_ms)
 
     async def _bounded_read(self, coro: "Awaitable[_T]") -> "_T":
         # Logged here, and only for reads: a write-phase timeout escapes microdot and reaches
@@ -376,8 +373,8 @@ class _TimeoutStreamProxy:
     def get_extra_info(self, name: str) -> object:
         return self._stream.get_extra_info(name)
 
-    async def aclose(self) -> None:
-        await self._bounded(self._stream.aclose())
+    async def aclose(self) -> None:  # aclose() and wait_closed() unbounded: neither yields at v1.29.0 (stream.py:19-21, 220)
+        await self._stream.aclose()
 
     async def awrite(self, data: bytes) -> None:
         if self._peer_gone[0]:
@@ -391,7 +388,7 @@ class _TimeoutStreamProxy:
             data = b"".join(self._head)
             self._head = None
         try:
-            await self._bounded(self._stream.awrite(data))
+            await asyncio.wait_for_ms(self._stream.awrite(data), self._timeout_ms)
         except OSError:
             # Microdot mutes ECONNRESET/EPIPE from a response write (ext/microdot.py:56-61, 689-705), so a client gone
             # mid-response is recorded here; the early return above then stops further writes.
@@ -429,7 +426,7 @@ class _TimeoutStreamProxy:
         return line
 
     async def wait_closed(self) -> None:
-        await self._bounded(self._stream.wait_closed())
+        await self._stream.wait_closed()
 
 
 # Three config objects the generated module builds whole (every field passed): what the routes
@@ -700,9 +697,9 @@ class WebserverService:
             # silent-failure-masking convention) since a repeatedly-failing close() could leak TCP
             # PCBs under this platform's tiny connection ceiling with no other trace.
             self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
-        try:
-            await asyncio.wait_for_ms(writer.wait_closed(), self._per_call_timeout_ms)
-        except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
+        try:  # unbounded: v1.29.0's Stream.wait_closed() is self.s.close(), no yield (extmod/asyncio/stream.py:19-21)
+            await writer.wait_closed()
+        except Exception as e:
             self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
 
     async def _dispatch_notification_led(self, payload: object) -> tuple[str, bool]:
@@ -815,8 +812,8 @@ class WebserverService:
                 # asked "Clear nothing when ResetErrors answers Failed in mempause?": '1 b').
                 result[key] = FAILED
                 continue
-            # One source after another, no task per source, this service's own entry last (owner, 2026-11-07: the
-            # error-log reset sequential). One store whose write failed answers "Failed"; a raise reaches the catch-all (500).
+            # One source after another (owner, 2026-11-07: the error-log reset sequential), no task per source, this service's
+            # own entry last (agent, 2026-11-07). One store whose write failed answers "Failed"; a raise reaches the catch-all (500).
             ok = True
             for module in self._error_sources.values():
                 ok = await module.reset_error_counter() and ok
@@ -852,8 +849,8 @@ class WebserverService:
                 current = self._open_conns
                 counted = True
                 if current > self._max_connections:
-                    # Reject-when-full (owner, 2026-08-12; SPEC A.8): its slot freed, closed with no response written. Every
-                    # entry is written inside its call, which never suspends, so nothing waits on FRAM (owner, 2026-11-07).
+                    # Reject-when-full (owner, 2026-08-12; SPEC A.8): its slot freed, closed with no response written. Every entry
+                    # is written inside its call, which never suspends (agent, 2026-11-07), so nothing waits on FRAM (owner, 2026-11-07: option B).
                     self._open_conns -= 1
                     counted = False
                     await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")

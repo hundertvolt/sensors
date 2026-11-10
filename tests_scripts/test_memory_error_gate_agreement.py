@@ -1,8 +1,9 @@
 """SPECIFICATION.md Part I.4(e)'s bar is asserted by separate gates - unit, twin, flash, bench, heap map, the
-tests_scripts twin boots and the JS live twins and smoke - each reading the pattern in its own
-language. This keeps them agreeing, and the suite's own injections clear of the wording they grep for."""
+tests_scripts twin boots and the JS live twins and smoke - each reading the pattern from scripts/memory_markers.json.
+This keeps it their one source, and the suite's own injections clear of the wording they grep for."""
 
 import ast
+import json
 import re
 from pathlib import Path
 from types import ModuleType
@@ -29,25 +30,15 @@ def _callee_name(call: ast.Call) -> str | None:
     return call.func.attr if isinstance(call.func, ast.Attribute) else None
 
 
-def test_the_hardware_tier_holds_the_canonical_marker_set(harness: ModuleType) -> None:
-    assert tuple(harness.MEMORY_ERROR_MARKERS) == _CANONICAL, f"tests_hardware/harness.py no longer carries {_CANONICAL} - every gate has to move together"
+_GATE_FILES = ("scripts/_twin_process.py", "scripts/test.sh", "tests_hardware/harness.py", "tests_js/_twin_process.js", "tests_js/_memory_markers.js")
 
 
-def test_the_twin_tier_agrees_with_it(ci_suite: ModuleType, harness: ModuleType) -> None:
-    assert tuple(ci_suite._MEMORY_ERROR_MARKERS) == tuple(harness.MEMORY_ERROR_MARKERS), f"the twin gate matches {ci_suite._MEMORY_ERROR_MARKERS} against the hardware tier's {harness.MEMORY_ERROR_MARKERS}"
-
-
-def test_the_unit_tier_agrees_with_it(repo_root: Path, harness: ModuleType) -> None:
-    # A grep pattern rather than a tuple, so this is the one gate that cannot simply be compared.
-    pattern = "|".join(harness.MEMORY_ERROR_MARKERS)
-    assert f'local pattern="{pattern}"' in (repo_root / "scripts" / "test.sh").read_text(encoding="utf-8"), f"scripts/test.sh's MemoryError gate no longer greps for {pattern!r}"
-
-
-def test_the_js_gate_agrees_with_it(repo_root: Path, harness: ModuleType) -> None:
-    text = (repo_root / "tests_js" / "_memory_markers.js").read_text(encoding="utf-8")
-    match = re.search(r"export const MEMORY_ERROR_MARKERS = \[([^\]]*)\]", text)
-    assert match is not None, "tests_js/_memory_markers.js no longer exports a MEMORY_ERROR_MARKERS array literal"
-    assert tuple(re.findall(r'"([^"]*)"', match.group(1))) == tuple(harness.MEMORY_ERROR_MARKERS), f"the JS gate matches {match.group(1)} against the hardware tier's {harness.MEMORY_ERROR_MARKERS}"
+def test_the_one_definition_holds_the_canonical_pair_and_every_gate_reads_it(repo_root: Path, harness: ModuleType) -> None:
+    # One data file: the Python gates import it through scripts/_twin_process.py, test.sh and the Node frame read it.
+    assert tuple(json.loads((repo_root / "scripts" / "memory_markers.json").read_text(encoding="utf-8"))) == _CANONICAL
+    assert tuple(harness.MEMORY_ERROR_MARKERS) == _CANONICAL
+    copies = [path for path in _GATE_FILES if any(f'"{marker}"' in (repo_root / path).read_text(encoding="utf-8") for marker in _CANONICAL)]
+    assert copies == [], f"{copies} spell a marker literally - read scripts/memory_markers.json instead"
 
 
 # Each JS runner that boots a twin scans its output through the shared module, never a copy.

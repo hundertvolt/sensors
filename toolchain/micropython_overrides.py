@@ -174,22 +174,30 @@ _UNIX_GC_STACK_ANCHORS = (
         "            for (size_t block = 0; block < area->gc_alloc_table_byte_len * BLOCKS_PER_ATB; block++) {\n",
     )),
 )
+# The Unix port interns every launch string (ports/unix/main.c:412, 560, 688); one of 256 bytes or more raises "name
+# too long" (py/qstr.c:319-321) before the script runs. Two length bytes take 65,535, past PATH_MAX; rp2 keeps one.
+UNIX_QSTR_BYTES_IN_LEN = 2
+_UNIX_QSTR_LEN_ANCHOR = "#ifndef MICROPY_QSTR_BYTES_IN_LEN\n#define MICROPY_QSTR_BYTES_IN_LEN (1)\n#endif\n"
+_UNIX_QSTR_LEN_REVERIFY = "the qstr length width's guarded default changed upstream - re-check that a launch string over 255 bytes still kills the rig and set the width again (SPECIFICATION.md F.7 row 32)"
 _UNIX_GC_STACK_REVERIFY = "the GC mark stack's default or its overflow path changed upstream - re-derive the rig's mark stack, or retire it if the overflow no longer re-scans the heap (SPECIFICATION.md B.14.6)"
 
 
 def verify_unix_gc_stack_anchor(micropython_dir: Path) -> None:
     for relative, anchors in _UNIX_GC_STACK_ANCHORS:
         _require_in_order(micropython_dir, "unix_gc_stack", relative, anchors, _UNIX_GC_STACK_REVERIFY)
+    _require_in_order(micropython_dir, "unix_qstr_len", "py/mpconfig.h", (_UNIX_QSTR_LEN_ANCHOR,), _UNIX_QSTR_LEN_REVERIFY)
 
 
 def _unix_variant_header(real_variant_dir: Path) -> str:
     # The generated mpconfigvariant.h of the standard and settrace builds, which the host lwIP build
-    # starts from: the SIGINT part (B.14.1), then the mark stack (B.14.6).
+    # starts from: the SIGINT part (B.14.1), the mark stack (B.14.6), then the qstr length width (F.7).
     return (
         f"{_unix_kbd_intr_header(real_variant_dir)}"
         "// SPECIFICATION.md Part B.14.6: a mark stack deep enough that a collection never\n"
         "// re-scans the whole test heap; time only, the firmware keeps 64.\n"
         f"#define MICROPY_ALLOC_GC_STACK_SIZE ({UNIX_GC_STACK_ENTRIES})\n"
+        "// SPECIFICATION.md F.7 row 32: launch strings past 255 bytes; the firmware keeps one length byte.\n"
+        f"#define MICROPY_QSTR_BYTES_IN_LEN ({UNIX_QSTR_BYTES_IN_LEN})\n"
     )
 
 
@@ -832,8 +840,6 @@ _FLAGS_MAKE_KEYS = ("C_DEFINES", "C_INCLUDES", "C_FLAGS")
 _LWIP_PROBE_MARK = "LWIPPROBE"
 _MAX_SHIFT = 64
 _DEFAULT_COMPILER = "arm-none-eabi-gcc"
-# @tunable tool.preprocess_timeout_s = 120
-_PREPROCESS_TIMEOUT_S = 120
 # pico-sdk 2.3.0 names every object <source>.o (cmake/preload/toolchains/util/pico_gcc_common.cmake:45),
 # and CMake writes an outside source's object at its absolute path under the target dir.
 _FIRMWARE_OBJECT_SUFFIX = ".o"
@@ -925,9 +931,7 @@ def _preprocess_with_build_flags(build_dir: Path, probe_body: str, name: str, wh
         # -E only: this never links or runs anything, it just asks the preprocessor what the real
         # build's own macros resolved to. -P drops the line markers that would confuse the scan.
         try:
-            result = subprocess.run([compiler, "-E", "-P", *args, str(probe)], capture_output=True, text=True, check=False, timeout=_PREPROCESS_TIMEOUT_S)
-        except subprocess.TimeoutExpired as exc:
-            raise OverrideError(f"{name}: preprocessing {what} with compiler {compiler!r} did not finish within {_PREPROCESS_TIMEOUT_S} s") from exc
+            result = subprocess.run([compiler, "-E", "-P", *args, str(probe)], capture_output=True, text=True, check=False)
         except OSError as exc:
             raise OverrideError(f"{name}: cannot run the C compiler {compiler!r} to read back {what} ({exc}) - is the ARM toolchain installed and on PATH?") from exc
     if result.returncode != 0:
@@ -1006,9 +1010,7 @@ def _unix_mphal_pp(unix_dir: Path, make_vars: dict[str, str], build_dir_name: st
     pp_path.unlink(missing_ok=True)  # else a .pp an interrupted run left behind could vouch for this build
     try:
         try:
-            result = subprocess.run(argv, cwd=unix_dir, env=env, capture_output=True, text=True, check=False, timeout=_PREPROCESS_TIMEOUT_S)
-        except subprocess.TimeoutExpired as exc:
-            raise OverrideError(f"{name}: preprocessing unix_mphal.c for {build_dir_name} did not finish within {_PREPROCESS_TIMEOUT_S} s") from exc
+            result = subprocess.run(argv, cwd=unix_dir, env=env, capture_output=True, text=True, check=False)
         except OSError as exc:
             raise OverrideError(f"{name}: cannot run {make!r} to preprocess unix_mphal.c ({exc})") from exc
         if result.returncode != 0 or not pp_path.is_file():
@@ -1078,9 +1080,7 @@ def verify_unix_lwip_host_in_build(build_dir: Path, micropython_dir: Path, binar
     if sources[0].parts[-4:] != (UNIX_LWIP_HOST_DIR_NAME, "src", "extmod", MODLWIP_COPY_NAME) or _MODLWIP_EAGAIN_BLOCK not in sources[0].read_text(encoding="utf-8"):
         raise OverrideError(f"unix_lwip_host: {dep_file} compiles {sources[0]}, not the patched copy; {_LWIP_HOST_REVERIFY}")
     try:
-        result = subprocess.run([str(binary), "-c", _LWIP_HOST_PROBE], env=env, capture_output=True, text=True, check=False, timeout=_PREPROCESS_TIMEOUT_S)
-    except subprocess.TimeoutExpired as exc:
-        raise OverrideError(f"unix_lwip_host: {binary} did not answer the runtime probe within {_PREPROCESS_TIMEOUT_S} s") from exc
+        result = subprocess.run([str(binary), "-c", _LWIP_HOST_PROBE], env=env, capture_output=True, text=True, check=False)
     except OSError as exc:
         raise OverrideError(f"unix_lwip_host: cannot run {binary} ({exc})") from exc
     printed = result.stdout.strip()

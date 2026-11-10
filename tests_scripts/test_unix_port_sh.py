@@ -461,13 +461,6 @@ def test_a_malformed_command_is_a_usage_error(tmp_path: Path, args: tuple[str, .
     assert _calls(tmp_path) == []
 
 
-@pytest.mark.parametrize("flag", ["-h", "--help"])
-def test_help_answers_with_the_usage(flag: str) -> None:
-    done = _run(dict(os.environ), flag)
-    assert (done.returncode, done.stderr) == (0, ""), done
-    assert done.stdout.startswith("Usage: scripts/_unix_port.sh ")
-
-
 def test_sourcing_it_changes_none_of_the_callers_shell_options(tmp_path: Path) -> None:
     # Read in the calling shell itself: a $(...) would not show errexit, which bash clears in command substitutions.
     before, after = tmp_path / "before", tmp_path / "after"

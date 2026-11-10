@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
+from buildgen.buildspec import MANDATORY_FILES
 from buildgen.driver_registry import DriverInfo, parse_name_constant
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.graph import build_construction_order
@@ -107,15 +108,15 @@ _BUILD_GROUP: JsonDict = {
     ],
 }
 
-# Errcount module catalog (H.6): (have-key, label, has_cfgmgr_companion) rows. A have-key is an
-# instance's own `driver` string, plus the five mandatory keys that are never [[instance]]
-# entries. Generator-owned like the catalogs above: cosmetic labels, owned by no source file.
+# Errcount module catalog (H.6): (have-key, label, has_cfgmgr_companion) rows. A have-key is an instance's own
+# `driver` string, or a mandatory module's generated name (buildspec's MANDATORY_FILES). Generator-owned like the
+# catalogs above: cosmetic labels, owned by no source file.
 _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
-    ("wifi", "Wi-Fi", True),
+    ("conn", "Wi-Fi", True),
     ("dns", "Captive DNS", False),
     ("ntp", "NTP Client", True),
     ("fram", "FRAM Storage", False),
-    ("system", "System", True),
+    ("sysfunct", "System", True),
     ("scd30", "SCD30", True),  # (H.6) a CFGMGR_ companion for the three FRC settings
     ("sgp40", "SGP40", True),
     ("bmp3xx", "BMP3xx", True),
@@ -125,16 +126,11 @@ _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     # parameters are an out-of-band two-implementation wire contract, never runtime-writable (Part J.6)
     ("webserver", "Web Server", False),
 )
-# The mandatory modules' files: each one's logger name is its own `_NAME`, read from the file.
-_MANDATORY_ERRCOUNT_FILES: "dict[str, str]" = {
-    "wifi": "asy_wifi_service.py", "dns": "asy_captive_dns.py", "ntp": "asy_ntp_client.py",
-    "system": "asy_system_service.py", "webserver": "asy_webserver_service.py",
-}
 # Display names for the name_ext values a multi-instance driver carries, where the raw suffix is an
 # abbreviation. Anything absent renders as the raw name_ext, which is what a device author typed.
 _NAME_EXT_LABEL: "dict[str, str]" = {"init": "Initiator", "resp": "Responder"}
 _CFGMGR_LABEL: "dict[str, str]" = {
-    "wifi": "Wi-Fi Config Store", "ntp": "NTP Config Store", "system": "System Config Store",
+    "conn": "Wi-Fi Config Store", "ntp": "NTP Config Store", "sysfunct": "System Config Store",
     "scd30": "SCD30 Config Store", "sgp40": "SGP40 Config Store", "bmp3xx": "BMP3xx Config Store", "isl29125": "ISL29125 Config Store",
     "notification": "Notification Config Store",
 }
@@ -288,7 +284,7 @@ def _enum_field(tag: WebFieldTag, special: object, device: str, path: Path) -> J
 
 
 def _errcount_codes(catalog: _Catalog) -> JsonDict:
-    # Every non-retired errno/wrnno: numbers are global, so one table serves every errcount row.
+    # Every non-retired errno/wrnno: numbers are global, so the page's one table serves every errcount group.
     codes: JsonDict = {}
     for kind in ("E", "W"):
         texts: JsonDict = {num: row["text"] for num, row in catalog["codes"][kind].items() if not row.get("retired")}
@@ -296,7 +292,7 @@ def _errcount_codes(catalog: _Catalog) -> JsonDict:
     return codes
 
 
-def _errcount_group(model: DeviceModel, catalog: _Catalog, src_dir: Path) -> JsonDict:
+def _errcount_group(model: DeviceModel, src_dir: Path) -> JsonDict:
     # Keyed per logger INSTANCE, as the API publishes them: scd30_primary publishes
     # SCD30_primary and CFGMGR_SCD30_primary and needs a row under each. A kind-keyed catalog
     # drifts silently both ways - a missing source vanishes, a stale row renders a permanent 0.
@@ -309,8 +305,8 @@ def _errcount_group(model: DeviceModel, catalog: _Catalog, src_dir: Path) -> Jso
     for key, label, has_cfgmgr in _ERRCOUNT_CATALOG:
         if key in ("webserver", "dns"):
             continue
-        if key in _MANDATORY_ERRCOUNT_FILES:
-            # wifi/ntp/system are mandatory infrastructure, never [[instance]] - one logger each,
+        if key in MANDATORY_FILES:
+            # conn/ntp/sysfunct are mandatory infrastructure, never [[instance]] - one logger each,
             # named by its own file's _NAME.
             name = _logger_name(src_dir, key, model.device)
             modules.append({"key": name, "label": label})
@@ -324,12 +320,11 @@ def _errcount_group(model: DeviceModel, catalog: _Catalog, src_dir: Path) -> Jso
                 modules.append({"key": f"CFGMGR_{name}", "label": _suffixed(_CFGMGR_LABEL[key], spec.name_ext)})
     webserver_label = next(label for key, label, _has_cfgmgr in _ERRCOUNT_CATALOG if key == "webserver")
     modules.append({"key": _logger_name(src_dir, "webserver", model.device), "label": webserver_label})
-    return _errcount_shell("errcount", "Error Counts & History", modules, catalog)
+    return _errcount_shell("errcount", "Error Counts & History", modules)
 
 
-def _errcount_shell(key: str, label: str, modules: "list[JsonValue]", catalog: _Catalog) -> JsonDict:
-    # Every errcount group carries the same code-description block, so no two groups can differ.
-    return {"key": key, "label": label, "kind": "errcount", "modules": modules, "codes": _errcount_codes(catalog)}
+def _errcount_shell(key: str, label: str, modules: "list[JsonValue]") -> JsonDict:
+    return {"key": key, "label": label, "kind": "errcount", "modules": modules}
 
 
 def _fields_for(tags: _DriverTags, section: str, submit_group: str, device: str, path: Path) -> "list[JsonValue]":
@@ -404,7 +399,7 @@ def _load_driver_tags(cache: "dict[Path, _DriverTags]", path: Path, device: str,
 
 def _logger_name(src_dir: Path, key: str, device: str) -> str:
     # A mandatory module's logger name, read from its file's own `_NAME`.
-    return parse_name_constant(src_dir / _MANDATORY_ERRCOUNT_FILES[key], device, key)
+    return parse_name_constant(src_dir / MANDATORY_FILES[key], device, key)
 
 
 def _mandatory_group(section: str, submit_group: str, key: str, tags_list: "list[tuple[_DriverTags, Path]]", device: str, extra_fields: "tuple[JsonDict, ...]" = ()) -> JsonDict:
@@ -471,7 +466,7 @@ def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTa
         _mandatory_group("networking", "ntp", "ntp", [(ntp_tags, ntp_path)], device),
         _mandatory_group("networking", "dns", "dns", [(ntp_tags, ntp_path)], device),
         # The captive DNS server's history is shown with the networking data (owner, 2026-09-26).
-        _errcount_shell("dnsErrors", "Captive DNS Error History", [{"key": _logger_name(src_dir, "dns", device), "label": dns_label}], _load_catalog()),
+        _errcount_shell("dnsErrors", "Captive DNS Error History", [{"key": _logger_name(src_dir, "dns", device), "label": dns_label}]),
     ]
     section["groups"] = groups
     return section
@@ -678,7 +673,7 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
             {"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"},
         ]})
     # Every field group, then the error counts and their reset command; the webserver's row is errcount's last.
-    groups.append(_errcount_group(model, _load_catalog(), src_dir))
+    groups.append(_errcount_group(model, src_dir))
     groups.append(dict(_RESET_ERRORS_GROUP))
     section["groups"] = groups
     return section
@@ -833,6 +828,7 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> JsonDict:
         "landingSection": "measurements",
         "defaultPollIntervalMs": _POLL_INTERVAL_MS,
         "defaultDecimals": _DEFAULT_DECIMALS,
+        "errcountCodes": _errcount_codes(_load_catalog()),
         "sections": sections,
     }
 

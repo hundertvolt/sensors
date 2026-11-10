@@ -10,13 +10,14 @@ from typing import TypeAlias
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from buildgen.buildspec import MANDATORY_FILES
 from buildgen.driver_registry import parse_name_constant
-from buildgen.generate import _DEVICE_FRAM_CONSUMERS, expected_facts
 from buildgen.model import DeviceModel
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.signals import WARN_SIGNALS
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import _VALID_BUS_IDS, build_model, module_int_const
+from scripts._generate_sensortask_modules import expected_facts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -70,7 +71,7 @@ def _float_fields(model: DeviceModel) -> FactDict:
     # Every float schema field of the modules the device builds, keyed "<logger>.<field>" so two modules' fields of
     # one name keep their own ranges, plus the notification thresholds the generator emits (buildgen/signals.py).
     files = {spec.resolved_name: spec.driver_info.source_path for spec in model.instances.values() if spec.resolved_name and spec.driver_info}
-    for filename in _DEVICE_FRAM_CONSUMERS.values():
+    for filename in MANDATORY_FILES.values():
         files[parse_name_constant(SRC_DIR / filename, model.device, filename)] = SRC_DIR / filename
     found: FactDict = {}
     for logger, path in sorted(files.items()):

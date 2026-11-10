@@ -1,33 +1,14 @@
-// Vitest reporter that closes every npm test run with the runner summary block (SPECIFICATION.md E.10),
-// after vitest's own report, through tests_js/_summary_layout.js. Node-context (git, stdout); the hook
-// names and result shapes were read from the installed vitest's own type declarations.
-import { execFileSync } from "node:child_process";
-import { createSummary, renderSummary, summaryExitCode } from "./_summary_layout.js";
+// Vitest reporter that closes every npm test run with the runner summary block (SPECIFICATION.md E.10), after vitest's
+// own report, printed by the one emitter, scripts/_summary_block.py. Node-context (python3, stdout); the hook names and
+// result shapes were read from the installed vitest's own type declarations.
+import { spawnSync } from "node:child_process";
+import { createSummary, summaryRecords } from "./_summary_layout.js";
 
 /** @typedef {import("vitest/node").TestCase} TestCase */
 /** @typedef {import("vitest/node").TestModule} TestModule */
 /** @typedef {import("vitest/node").SerializedError} SerializedError */
 /** @typedef {import("vitest/node").TestRunEndReason} TestRunEndReason */
 /** @typedef {import("./_summary_layout.js").Summary} Summary */
-
-/** @param {string[]} args @returns {string | null} */
-function gitOutput(args) {
-    try {
-        return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    } catch {
-        return null;
-    }
-}
-
-/** The Commit: value, derived as scripts/_summary_block.py derives it; an unreadable status reads as dirty. */
-function commitLabel() {
-    const sha = (gitOutput(["rev-parse", "--short", "HEAD"]) ?? "").trim();
-    if (sha === "") {
-        return "unknown";
-    }
-    const porcelain = gitOutput(["status", "--porcelain"]);
-    return porcelain === null || porcelain.trim() !== "" ? `${sha} (uncommitted changes)` : sha;
-}
 
 /** @param {string | undefined} message */
 function firstLine(message) {
@@ -82,7 +63,7 @@ export default class SummaryReporter {
      */
     // eslint-disable-next-line class-methods-use-this -- vitest calls reporter hooks as methods of the instance it builds
     onTestRunEnd(testModules, unhandledErrors, reason) {
-        const summary = createSummary("npm test", commitLabel());
+        const summary = createSummary("npm test");
         summary.levels = "L0";
         let cases = 0;
         for (const testModule of testModules) {
@@ -115,8 +96,9 @@ export default class SummaryReporter {
         if (vitestCode !== 0 && (summary.items.get("failed")?.length ?? 0) === 0) {
             summary.add("failed", "vitest run", `exit code ${vitestCode} with no failing test recorded`);
         }
-        const exitCode = summaryExitCode(summary, vitestCode);
-        process.exitCode = exitCode;
-        process.stdout.write(renderSummary(summary, exitCode));
+        const printed = spawnSync("python3", ["scripts/_summary_block.py", "--print", "npm test", String(vitestCode)], { input: summaryRecords(summary), encoding: "utf8" });
+        process.stdout.write(printed.stdout ?? "");
+        process.stderr.write(printed.stderr ?? (printed.error === undefined ? "" : `the summary block could not be printed: ${printed.error.message}\n`));
+        process.exitCode = printed.status ?? 1;
     }
 }

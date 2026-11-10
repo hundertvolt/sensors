@@ -27,6 +27,7 @@ from buildgen.api_reference import api_reference_json, generate_api_reference
 from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
+from scripts._generate_sensortask_modules import expected_facts
 
 outputs = {}
 for toml in sys.argv[2:]:
@@ -36,7 +37,7 @@ for toml in sys.argv[2:]:
         "boot_entry": generated.boot_entry_source,
         "boot_entry_noautostart": generated.boot_entry_noautostart_source,
         "wiring_plan": json.dumps(compute_twin_wiring(generated.model), indent=1),
-        "expected_facts": json.dumps(generated.expected_facts, indent=1),
+        "expected_facts": json.dumps(expected_facts(generated.model, root / "src"), indent=1),
         "definitions": json.dumps(generate_definitions(generated.model, root / "src"), indent=1),
         "api_reference": api_reference_json(generate_api_reference(generated.model, root / "src")),
         "frozen_modules": "\\n".join(sorted(generated.frozen_modules)),

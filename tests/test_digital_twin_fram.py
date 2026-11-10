@@ -27,7 +27,7 @@ from _error_codes import code  # noqa: E402 - imported after the prewarm and the
 from _fast_sleep import FastAsyncSleep  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fram_chip import _PAGE_SIZE, FRAMChip  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import boot_generated  # noqa: E402 - imported after the prewarm and the UDP shim
-from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _task_names import task_name  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -38,6 +38,8 @@ from asy_fram_manager import FRAMManager  # noqa: E402 - imported after the prew
 from asy_print_log import LogConfig, PrintLogHistoryStore  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_spi_driver import SPI  # noqa: E402 - imported after the prewarm and the UDP shim
 from crc_checks import CRC8  # noqa: E402 - imported after the prewarm and the UDP shim
+
+_PHASE_ARMED = src_int("src/asy_system_service.py", "_PHASE_ARMED")  # the reset phase the system service reaches
 
 try:
     from typing import TYPE_CHECKING
@@ -162,7 +164,7 @@ def _silent_fram_on(device: str) -> None:
             landed = chip.write_count > before
             for _ in range(_UNTIL_YIELDS):  # the supervisor's polls: an ended watch task would be restarted here
                 await asyncio.sleep(0)
-            kept = (sysfunct._tasks[0] is first, sysfunct._reset_armed)
+            kept = (sysfunct._tasks[0] is first, (sysfunct._phase >= _PHASE_ARMED))
             await cancel(supervisor)
         assert refused == (before, True), f"the silent chip's writes: write count, latch warning = {refused}"
         assert landed, "the first logger write after the chip answered did not land"

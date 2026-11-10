@@ -23,7 +23,7 @@ from _devices import DEVICE_NAMES, device_toml, devices_with
 from _script_loader import load_script_module
 from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, write_doc
 
-from buildgen.codegen import _Ctx, _identifier, _lit, _sgp40_status_vars, generate_boot_entry_source, generate_module_source, trigger_spread
+from buildgen.codegen import _Ctx, _identifier, _lit, _sgp40_status_vars, generate_boot_entry_source, generate_module_source
 from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import GeneratedDevice, generate_device, main
@@ -31,6 +31,7 @@ from buildgen.graph import build_construction_order
 from buildgen.model import DeviceModel, TomlDoc, instance_label
 from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, build_model, module_int_const
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
+from scripts._generate_sensortask_modules import expected_facts
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -89,11 +90,9 @@ def _collected_modules(source: str, collector: str) -> "list[str]":
     return [elt.id for elt in loop.iter.elts if isinstance(elt, ast.Name)]
 
 
-def _expected_spread(model: DeviceModel) -> "list[str]":
-    # The device's trigger readers in construction order with their TOML buses, through trigger_spread()
-    # (the rule itself is pinned on synthetic input below): the device's order is data, never a literal here.
-    keys = [k for k in model.construction_order if isinstance(k, tuple) and k[0] in _TRIGGER_DRIVERS]
-    return trigger_spread([(instance_label(k), str(model.instances[k].fields["bus"])) for k in keys])
+def _expected_triggers(model: DeviceModel) -> "list[str]":
+    # The device's trigger readers in construction order: the device's order is data, never a literal here.
+    return [instance_label(k) for k in model.construction_order if isinstance(k, tuple) and k[0] in _TRIGGER_DRIVERS]
 
 
 def _fram_var(result: GeneratedDevice) -> str:
@@ -413,7 +412,7 @@ def test_real_device_types_the_collectors_by_what_the_service_takes(device: str)
 def test_real_device_expected_facts_name_the_setups_construction_and_phases_the_module_runs(device: str) -> None:
     # The boot-sequence oracle and the generated module agree, each derived on its own.
     result = _real(device)
-    sequence = result.expected_facts["boot_sequence"]
+    sequence = expected_facts(result.model)["boot_sequence"]
     assert isinstance(sequence, dict)
     assert sequence["setups"] == _setup_names(result.module_source)
     assert sequence["construction"] == [node if isinstance(node, str) else instance_label(node) for node in build_construction_order(result.model)]
@@ -432,7 +431,8 @@ def test_real_device_expected_facts_name_the_fram_backed_loggers(device: str) ->
     # SYSTEM's log is FRAM-backed exactly when [device.wiring] sets fram_target; every FRAM-wired instance's own
     # logger is in the set and the FRAM store's own never is (it cannot keep its failures through itself).
     result = _real(device)
-    found = result.expected_facts["fram_backed_loggers"]
+    facts = expected_facts(result.model)
+    found = facts["fram_backed_loggers"]
     assert isinstance(found, list) and all(isinstance(name, str) for name in found), found
     loggers = [str(name) for name in found]
     assert loggers == sorted(set(loggers)), loggers
@@ -441,7 +441,7 @@ def test_real_device_expected_facts_name_the_fram_backed_loggers(device: str) ->
     wiring = device_table.get("wiring", {})
     assert isinstance(wiring, dict)
     assert ("SYSTEM" in loggers) == ("fram_target" in wiring), loggers
-    wired = result.expected_facts["fram_wired"]
+    wired = facts["fram_wired"]
     assert isinstance(wired, list)
     specs = list(result.model.instances.values())
     assert {spec.resolved_name for spec in specs if spec.label in wired} <= set(loggers), loggers
@@ -454,7 +454,8 @@ def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> Non
     checked = []
     for device in devices_with("scd30"):
         result = _real(device)
-        wired, loggers = result.expected_facts["fram_wired"], result.expected_facts["fram_backed_loggers"]
+        facts = expected_facts(result.model)
+        wired, loggers = facts["fram_wired"], facts["fram_backed_loggers"]
         assert isinstance(wired, list) and isinstance(loggers, list)
         for spec in result.model.instances.values():
             if spec.driver == "scd30" and spec.label in wired:
@@ -974,15 +975,15 @@ def ext_dir(repo_root: Path) -> Path:
     return repo_root / "ext"
 
 
-def test_the_spread_reaches_a_real_device() -> None:
-    assert _SPREAD_DEVICES, f"no device declares two of {_TRIGGER_DRIVERS}, so the spread below orders nothing"
+def test_the_trigger_order_reaches_a_real_device() -> None:
+    assert _SPREAD_DEVICES, f"no device declares two of {_TRIGGER_DRIVERS}, so the order below orders nothing"
 
 
 @pytest.mark.parametrize("device", _SPREAD_DEVICES)
-def test_read_triggers_are_collected_with_bus_sharing_readers_furthest_apart(ext_dir: Path, triggers_src: "Callable[[tuple[str, ...]], Path]", device: str) -> None:
+def test_read_triggers_are_collected_in_construction_order(ext_dir: Path, triggers_src: "Callable[[tuple[str, ...]], Path]", device: str) -> None:
     src = triggers_src(_TRIGGER_DRIVERS)
     result = generate_device(device_toml(device), src, ext_dir)
-    assert _trigger_modules(result.module_source) == _expected_spread(result.model)
+    assert _trigger_modules(result.module_source) == _expected_triggers(result.model)
     assert "scd30" not in _trigger_modules(result.module_source)
 
 
@@ -1031,12 +1032,6 @@ def test_a_fixture_without_fram_target_still_collects_its_declared_fram(fixtures
     result = generate_device(fixtures_dir / "multi_instance.toml", src_dir, ext_dir)
     assert "storage=None" in result.module_source  # [device.wiring].fram_target unwired
     assert _fram_var(result) in _collected_modules(result.module_source, collector)
-
-
-def test_bus_spread_takes_the_largest_group_first_and_keeps_construction_order_on_ties() -> None:
-    order = trigger_spread([("a", "i2c0"), ("b", "i2c1"), ("c", "i2c1"), ("d", "i2c0"), ("e", "i2c1"), ("f", "spi0")])
-    assert order == ["b", "a", "f", "c", "d", "e"]
-    assert trigger_spread([]) == []
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -1174,7 +1169,7 @@ def test_ntp_timing_carries_the_dns_bounds_and_the_fetch_timeout(tmp_path: Path,
     source = generate_device(write_doc(tmp_path, "ntp_timing", base_doc()), src_dir, ext_dir).module_source
     ast.parse(source)
     line = next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
-    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS)" in line
+    assert "NtpTiming(_DNS_TIMEOUT_MS, _NTP_FETCH_TIMEOUT_MS)" in line
     assert "max_module_error" not in line  # NTP keeps no give-up streak (Part C.7.2)
 
 

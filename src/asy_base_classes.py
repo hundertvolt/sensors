@@ -351,8 +351,8 @@ class SensorReader:
         return {}
 
     async def _set_dict_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "WriteValidity":
-        # Setter mirror of _get_dict_cfg (Part C.5.2): stage first, push only the changed fields, then commit the
-        # staged write, so the flash write follows the pushes. One PUT per module at a time: a failed push's
+        # Setter mirror of _get_dict_cfg (Part C.5.2): stage first, push only the changed fields; the staged flush
+        # waits for this lock, so the flash write follows the pushes. One PUT per module at a time: a failed push's
         # recovery can never overwrite a value a later PUT stored meanwhile.
         async with self._set_lock:
             if self._writes_closed():
@@ -386,31 +386,28 @@ class SensorReader:
                 # suggest the values themselves were the problem) and nothing is pushed live either.
                 return dict.fromkeys(data, FAILED)
 
-            try:
-                for key in data:
-                    # Defense-in-depth: a misbehaving _set_mgr_cfg override could report persisted=True but
-                    # omit a key from results (the real ConfigManager-backed path never does).
-                    results.setdefault(key, FAILED)
-                for key, value in data.items():
-                    if results.get(key) != VALID:
-                        continue  # only an actual, successfully-persisted change gets pushed live
-                    callback = self._push_callbacks.get(key)
-                    field = fields.get(key)
-                    if callback is None or field is None:
-                        continue  # persist-only field, nothing to push
-                    # Push the coerced value that was actually persisted, not the caller's raw
-                    # pre-coercion one - see SPECIFICATION.md Part C.5.2's push-callback contract.
-                    _is_error, push_value = type_or_range_error(value, field)
-                    try:
-                        pushed = await callback(push_value)
-                    except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
-                        self.pr.err_s("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
-                        pushed = False
-                    if not pushed:
-                        results[key] = FAILED
-                        await self._recover_failed_push(key, old_values, cfg_vals, fields=fields)
-            finally:  # a cancelled PUT still releases its staged write
-                self._commit_mgr_cfg()
+            for key in data:
+                # Defense-in-depth: a misbehaving _set_mgr_cfg override could report persisted=True but
+                # omit a key from results (the real ConfigManager-backed path never does).
+                results.setdefault(key, FAILED)
+            for key, value in data.items():
+                if results.get(key) != VALID:
+                    continue  # only an actual, successfully-persisted change gets pushed live
+                callback = self._push_callbacks.get(key)
+                field = fields.get(key)
+                if callback is None or field is None:
+                    continue  # persist-only field, nothing to push
+                # Push the coerced value that was actually persisted, not the caller's raw
+                # pre-coercion one - see SPECIFICATION.md Part C.5.2's push-callback contract.
+                _is_error, push_value = type_or_range_error(value, field)
+                try:
+                    pushed = await callback(push_value)
+                except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
+                    self.pr.err_s("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
+                    pushed = False
+                if not pushed:
+                    results[key] = FAILED
+                    await self._recover_failed_push(key, old_values, cfg_vals, fields=fields)
             return results
 
     async def _set_meas_data(self, data: "NamedTuple") -> None:
@@ -436,10 +433,6 @@ class SensorReader:
             await self._recover_bus(_RUNG_BUS)
         elif n >= _RECOVER_CONTROLLER_AT:
             await self._recover_bus(_RUNG_CONTROLLER)
-
-    def _commit_mgr_cfg(self) -> None:
-        # Releases a store's deferred write once the pushes ended; no store, nothing deferred.
-        return
 
     async def _error_check(self, results: "MeasDataType", *, condition: bool = True) -> bool:
         # Shared consecutive-failure-streak counter and recovery ladder - see SPECIFICATION.md Part
@@ -633,12 +626,9 @@ class SensorReaderConfig(SensorReader):
 
     async def _set_mgr_cfg(self, data: "JsonMapping", _cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
         # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different persistence backend
-        # can override just this and still reuse _set_dict_cfg's orchestration. Deferred: _commit_mgr_cfg() releases it.
+        # can override just this and still reuse _set_dict_cfg's orchestration.
         self.pr.evt("Writing config via cfgmgr.")
-        return await self.cfgmgr.write_config(data, defer=True)
-
-    def _commit_mgr_cfg(self) -> None:
-        self.cfgmgr.commit()
+        return await self.cfgmgr.write_config(data)
 
     def _writes_closed(self) -> bool:
         # A store closed for a commanded reset refuses this module's PUTs.

@@ -1353,3 +1353,35 @@ for such opportunities.)
 "Not "this" specific pattern, rather "similar patterns of what happened in the audit and was added without my consent and kept growing" 
 Not to forget - don't drop real features and don't introduce or reintroduce gaps. Lean, functional, no losses, no gaps, efficient by smart design appropriate for limited devices like the rp2"
 (The sweep is not only about timeouts: find every pattern where the audit added something without the owner's consent and it kept growing. Real features are never dropped, no gap is opened or reopened; the result is lean, functional, lossless, gap-free and efficient by smart design for the rp2.)
+
+## 2026-11-10 05:27:25 UTC - budget meter reading
+"The meter says 26% since yesterday's restart"
+(The owner's meter: 26 % of the weekly budget used since the weekly reset yesterday. The lead's planned-share estimate for the same span was 35-40 %, so the shares overstate by about a third; the remaining G through D, planned at 17-21 %, comes to roughly 12-15 % on the meter, about 40 % in total.)
+
+## 2026-11-10 06:02:13 UTC - bench session started on the 05:45 relay
+"Bench is up"
+(The owner has started the bench session with the 05:45 relay: the zero-flash checks run now.)
+
+## 2026-11-10 06:15:46 UTC - the bench session must be reachable: find the cause
+"Nothing changed concerning the bench, it must be a reachable, find out what is wrong instead of stating it would not work"
+(Nothing changed on the bench side, so messages to it must be deliverable; find out why the send fails instead of reporting that it does not work.)
+
+## 2026-11-10 06:26:36 UTC - pre-audit credits: resolve by rule
+"They surely come from the promotion sessions. They might really be mine, or they might be an agent's. In addition, even if they were mine, there is some uncertainty if they actually were understood correctly by the session. They should mostly be in line with our agreements. Some may also rather apply to a promotion session only and slipped inside there. Generally, experience grew over progress and time, and if there are decisions into a different direction which are clear and  came in later, the more recent ones sopersede the older ones. So probably you can resolve these items with rule based like that. Check this, and tell me in case there are leftovers you cannot resolve."
+(The 117 pre-audit credits come from the promotion sessions; each may be the owner's or an agent's, and even an owner one may have been misread. Resolve them by rule: they should mostly match the agreements; some were instructions for one promotion session only and slipped into lasting text; a later clear decision in another direction supersedes an earlier one. Check, and bring back only the leftovers the rules cannot resolve.)
+
+## 2026-11-10 06:5x UTC (received after 06:47, before 07:03; recorded 07:08:40) - status pair: size of the gain
+"How significant would the gain be if I chose b?"
+(The owner asks how large the gain of writing each FRAM status pair as one 2-byte write would be.)
+
+## 2026-11-10 07:08:40 UTC (received after 07:03; time of recording) - status pair: future parts, CS release, destructive read
+"What if another future type of FRAM handles it differently and nobody remembers that design decision at that time? I also remember having read that the write is only considered valid after CS was released. And remember that FRAM reads destructivly. Is that safe under all these conditions?"
+(The owner asks whether the single 2-byte status write stays safe if a future FRAM part behaves differently and the decision is forgotten, given their memory that a write counts only once CS is released and that FRAM reads are destructive.)
+
+## 2026-11-10 08:46:45 UTC - status pair: how critical are the 1.4 ms (received before 08:46, recorded with the ruling)
+"concerning the FRAM: how critical are these 1.4ms?"
+(The owner asks how critical the 1.4 ms saved per logged entry would be.)
+
+## 2026-11-10 08:46:45 UTC - status pair: option (a), commit by CS deselect
+"i would rather not rely on the "it's written every byte received" but rather on CS being deselected. Rather option A)."
+(The owner chooses (a): each status byte stays its own WRITE command, so every byte is committed by a CS deselect; the design must not rely on the datasheet's per-byte storing within one command.)

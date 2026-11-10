@@ -44,7 +44,7 @@ def _sandbox(tmp_path: Path, *, mypy_fails_on: str = "", uv_install_fails: bool 
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
     (root / "toolchain").mkdir()
-    for name in ("typecheck.sh", "_summary_block.sh", "_require_venv.sh", "_require_python.sh"):
+    for name in ("typecheck.sh", "_summary_block.sh", "_summary_block.py", "_require_venv.sh", "_require_python.sh"):
         shutil.copy(REPO_ROOT / "scripts" / name, root / "scripts" / name)
     (root / "toolchain" / "versions.toml").write_text(versions, encoding="utf-8")
     venv_bin = root / ".venv" / "bin"
@@ -109,22 +109,6 @@ def test_a_failing_stub_install_aborts_naming_its_stage(tmp_path: Path) -> None:
     block = _block(done.stdout)
     assert "Failed:\n  - stub install: exited 1\n" in block
     assert "\nCounts (checks): passed 1 · failed 1 ·" in block
-
-
-@pytest.mark.parametrize("flag", ["-h", "--help"])
-def test_help_prints_the_usage_and_runs_nothing(tmp_path: Path, flag: str) -> None:
-    done = _run(tmp_path, flag, uv_install_fails=True)
-    assert done.returncode == 0, done.stderr
-    assert done.stdout.startswith("Usage: scripts/typecheck.sh [PATH ...]")
-    assert "== Summary" not in done.stdout
-    assert not (tmp_path / "calls").exists()
-
-
-def test_an_unknown_option_is_refused_naming_it_before_anything_runs(tmp_path: Path) -> None:
-    done = _run(tmp_path, "--strict")
-    assert done.returncode == 2
-    assert "error: unknown option --strict" in done.stderr
-    assert not (tmp_path / "calls").exists()
 
 
 def test_outside_the_project_venv_nothing_runs(tmp_path: Path) -> None:

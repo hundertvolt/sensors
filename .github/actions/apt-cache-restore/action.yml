@@ -6,7 +6,7 @@ description: >
   Refreshes apt's lists, plans the exact archives an apt-get install of `packages` (or of Playwright's own list for
   `playwright-deps`) would fetch, copies the cached ones that match the fresh index into apt's archive folder and probes
   the runner's mirror list, dropping a slow mirror for the rest of the job. Used by firmware-build-verify and, through
-  playwright-chromium, by web-unit-tests, web-put-matrix, web-coverage and web-cross-browser-smoke.
+  playwright-chromium, by web-unit-tests, web-put-matrix and web-cross-browser-smoke.
 
 inputs:
   family:

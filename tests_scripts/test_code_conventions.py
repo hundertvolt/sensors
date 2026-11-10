@@ -20,7 +20,7 @@ _LITERAL_PORT = "src/voc_algorithm.py"
 _COLLECTOR_NAMES = {
     "get_task_starters": re.compile(r"start_asy_\w+"),
     "get_timer_starters": re.compile(r"start_timer|start_\w+_timer"),
-    # Trigger starters arm a timer, so they take the timer starters' names (agent, 2026-10-07; owner-reviewed, 2026-11-06).
+    # Trigger starters arm a timer, so they take the timer starters' names (agent, 2026-10-07).
     "get_trigger_starters": re.compile(r"start_timer|start_\w+_timer"),
 }
 _TASK_COROUTINE = re.compile(r"_\w+_loop")
