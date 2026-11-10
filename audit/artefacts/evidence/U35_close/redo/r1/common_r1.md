@@ -53,6 +53,9 @@ without either it is not added. Real features stay, no gap opens or reopens, and
 - One MicroPython test file, both GC stages: `TZ=UTC MICROPYPATH=build/generated_src:src:tests:frozen_modules:.frozen
   S/tc-int/micropython/ports/unix/build-standard/micropython -X heapsize=16M tests/test_x.py`, and the same with
   `tests/_threshold_runner.py tests/test_x.py 32768` as its arguments (`TEST_DEVICE=<device>` for a per-device file).
+- Every test file you add or change also runs once under the coverage build (its result gates in CI, owner 2026-09-22):
+  the same command with `S/tc-int/micropython/ports/unix/build-settrace/micropython ... tests/_coverage_runner.py
+  tests/test_x.py S/u35r/r5/ftmp_<label>/cov.json`; it allocates 4-5x, so a test that needs scale there needs an invariant.
   The settrace binary is `build-settrace` beside it. Whole-tier runs set `PICO_TOOLCHAIN_DIR=S/tc-int`.
 - After any `src/`, `buildgen/` or device TOML edit: `S/u23/rebuild.sh <worktree>` before running a test file.
 - Lint: `S/u35/lead/lint_direct.sh` from your worktree (after the rebuild). Typecheck: `ln -s S/shared/typings

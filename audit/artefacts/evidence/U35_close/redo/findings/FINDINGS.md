@@ -1555,3 +1555,18 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
 - Left: `tests_hardware/bench/_load.py:477`'s comment names `arm_tick_timer()` (ub's leftover) -> T. mfs slips: one
   unfiltered grep printed two lines with WifiConfig test-fixture arguments (fixture values, not the hotspot password;
   to be checked by count); helper scripts with python3 outside run.sh.
+- Snapshot 56 = 512bb0dc (parent b4d87294), pushed 04:28; pattern check: counts unchanged per changed file except the CRC test's rename (same 4 hex strings). CI pending.
+- (12.149) G's DNS derivation, accepted by the lead: per-server timeout 1,000 ms = lwIP's DNS_TMR_INTERVAL (dns.h:54,
+  STABLE-2_2_1 at v1.29.0; rp2 lwipopts overrides neither it nor DNS_MAX_RETRIES 4, opt.h:1176); one try per server
+  (the server list is the retry, as lwIP's backup step; NTP's 15 s / 60 s retries repeat the attempt; four tries would
+  raise C.8's Wi-Fi-mode-lock hold from ~9 s to ~21 s): `dns.timeout_ms` 500 -> 1,000, `dns.tries` and its loop go.
+  The values live in buildgen/codegen.py (product constants the generator emits): G edits those lines, C told.
+
+## 12.150 Snapshot 56 CI: unit-tests-coverage red, 27 other jobs green
+- `test_an_internal_request_waits_past_any_deadline_parks_no_sleep_and_is_never_dropped` (ub's new LED test):
+  MemoryError allocating 8,192 B under build-settrace (4-5x allocations): 20 Hz ramps over 180 s recorded ~7,200 frames
+  and one list entry per step - brute scale where the property needs none (CLAUDE.md's host-churn rule). Reproduced
+  locally under build-settrace (41/42, the same 8,192 B). Fix (int, after a293d6f9): the same 180 s at 1 Hz (182
+  frames), the most parked wakes kept as one number; a deadline or a poll still fails it. Green under coverage and
+  at -1 and 32768 (42/42, 0 memory errors); lint and three mypy passes clean. Gap in the units' checks: neither ub's
+  nor mfs's gate ran the coverage build, whose test result gates (owner 2026-09-22) - unit briefs name it from now on.

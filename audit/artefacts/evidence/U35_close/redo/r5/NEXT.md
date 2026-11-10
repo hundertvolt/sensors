@@ -28,3 +28,5 @@
 - 01:2x: fsync handed back (12.145); follow-up asked (boot collects go); B gating under heavy.lock; then merge B, fsync (transform on B's files, drop 6aec784f's writer lines), snapshot, bench relay.
 - 02:4x: ub merged (int ddf77ce8 = 39e18d2a's tree, gate applies); waiting for fsync's follow-up commit, then merge fsync (transform on ub's files, drop the writer waits, UART Class B entry), gate, snapshot 56, bench relay.
 - 03:1x: fsync e1958815 back; mfs merge unit running (S/wt-mfs, due 07:30); then int fast-forward, snapshot 56 (parent b4d87294), bench relay; then G (+ T in parallel).
+- 04:28: snapshot 56 512bb0dc pushed (CI pending) = int a293d6f9; next: unit G (bounds + firmware simplify) and unit T in parallel; one bench image after G.
+- 04:30: units G (firmware bounds + simplify, S/wt-g) and C (build chain + website, S/wt-c) writing from a293d6f9, due 13:00; T after both; P9 last; one bench image after G (owner's reflash OK needed).

@@ -513,9 +513,10 @@ def test_overlay_calls_during_active_ramp_only_become_visible_after_ramp_finishe
 
 def test_an_internal_request_waits_past_any_deadline_parks_no_sleep_and_is_never_dropped() -> None:
     # Behind a 60 s external ramp and two 60 s internal ones, a fourth request waits 180 s on the lock: it parks no sleep
-    # meanwhile (one wake at its turn, no poll), plays in arrival order, and returns at its own ramp's end.
-    driver = _make_driver(freq=20)
-    parked: list[int] = []
+    # meanwhile (one wake at its turn, no poll), plays in arrival order, and returns at its own ramp's end. One frame a
+    # second: the same 180 s in 182 frames, the most parked wakes kept as one number.
+    driver = _make_driver(freq=1)
+    parked = [0]
 
     async def scenario(clock: DrivenTime) -> "tuple[list[bool], int]":
         tasks = await _start_all_tasks(driver)
@@ -524,10 +525,10 @@ def test_an_internal_request_waits_past_any_deadline_parks_no_sleep_and_is_never
         requests = [asyncio.create_task(driver.request_signal(*rgbt)) for rgbt in ((0, 9, 0, 60.0), (0, 0, 9, 60.0), (9, 9, 0, 1.0))]
 
         def last_done() -> bool:
-            parked.append(len(clock.wakes()))
+            parked[0] = max(parked[0], len(clock.wakes()))
             return requests[-1].done()
 
-        took = await clock.run_until(last_done, 3 * _ramp_ms(60.0, 20) + _ramp_ms(1.0, 20))
+        took = await clock.run_until(last_done, 3 * _ramp_ms(60.0, 1) + _ramp_ms(1.0, 1))
         await cancel_all(tasks, settle_yields=1)
         results = []
         for request in requests:  # no await inside a comprehension on MicroPython
@@ -537,8 +538,8 @@ def test_an_internal_request_waits_past_any_deadline_parks_no_sleep_and_is_never
     with _driven() as clock:
         results, took = run(scenario(clock))
     assert results == [True, True, True]
-    assert took == 3 * _ramp_ms(60.0, 20) + _ramp_ms(1.0, 20)
-    assert max(parked) == 1, max(parked)  # the running ramp's frame alone: no waiter sleeps
+    assert took == 3 * _ramp_ms(60.0, 1) + _ramp_ms(1.0, 1)
+    assert parked[0] == 1, parked[0]  # the running ramp's frame alone: no waiter sleeps
     order = [c for c in _colours(driver) if c[0] == 9 or c[1] == 9 or c[2] == 9]  # each ramp's peak
     assert order == [(9, 0, 0), (0, 9, 0), (0, 0, 9), (9, 9, 0)], order
 
