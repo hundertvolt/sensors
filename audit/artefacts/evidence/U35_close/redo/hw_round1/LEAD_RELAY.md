@@ -1,5 +1,16 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-10 12:23 UTC - lead to bench: item 3 read; the heap side-finding gets one measurement
+
+- Item 3 read: deepest 5,652 B of 7,936 at the FRAM leaf, web 3,820, log store 2,444; recorded. The 12:06 attempt is
+  void as you recorded it (the host stopped draining the port; A.5's accepted console case).
+- The heap side-finding matters more: after the load the largest free block stayed at 22,736 B, also after a
+  collect, against ~61-66 KB before. One measurement on this image, no flash write, FRAM entries only:
+  item 4's load (6 readers on /status, 60 s) three times, 120 s idle between. During each load, every 1 s: mem_free
+  and the largest free block (report the minimum of each). After each idle gap: one gc.collect, then both again.
+  Then one 60 s run with 2 readers, the same readings. The question: does the post-load largest block plateau or
+  shrink with each load, and how small does it get during one. Instrument cost as before, stated.
+
 ## Relay 2026-11-10 12:03 UTC - lead to bench: items 2-6 read; FRAM decided; one item 3 re-run
 
 - Items 2-6 read in full, thank you.
