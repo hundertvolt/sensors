@@ -3179,17 +3179,17 @@ as both lock layers (C.8) stay genuinely distinct. What differs:
   `_KNOWN_PRODUCT_IDS` entry and the `@limits max_size` set
   (`asy_fram_manager.py`; checked equal by `tests_scripts/test_buildgen_limits.py`), so the build
   refuses any other size.
-- **`FRAM_SPI`'s general-purpose API** — `set_write_protected()`, `get_write_protected()`,
-  `get_size()` and the one-call `get_values()`/`set_values()` complete the driver for the chip
-  (owner, 2026-09-26: 'These are functions of the hardware items … So they remain as they are.');
-  each is a plain synchronous function like the chunk layer's commands (C.8), `setup()` the one
-  coroutine; of them only the manager's erase reads `get_size()` and `get_write_protected()`.
-  Record: `verify_present()`, which that ruling kept, went with the driver's lock: nothing in `src/`
-  called it, decided under the owner's 2026-11-09 20:43:39 direction (agent, 2026-11-09).
-  `set_write_protected()`, `get_write_protected()`, `get_size()` and `set_values()` never raise on a
-  live bus: each checks `initialized` before touching the chip, and their transfers are writes or
-  reads under 32 bytes. `get_values()` into a buffer of 32 bytes or more can raise `OSError(EIO)` on
-  an RX overrun (F.5.2); its caller handles that as the chunk layer's `_read_chunk()` does. A WREN
+- **`FRAM_SPI`'s general-purpose API** — `verify_present()`, `set_write_protected()`,
+  `get_write_protected()`, `get_size()` and the one-call `get_values()`/`set_values()` complete the
+  driver for the chip (owner, 2026-09-26: 'These are functions of the hardware items … So they
+  remain as they are.'); each is a plain synchronous function like the chunk layer's commands
+  (C.8), `setup()` the one coroutine; of them only the manager's erase reads `get_size()` and
+  `get_write_protected()`. `verify_present()` re-reads the chip's ID: a chip that no longer
+  identifies leaves the driver uninitialized, every other call refusing until `setup()` succeeds.
+  `verify_present()`, `set_write_protected()`, `get_write_protected()`, `get_size()` and
+  `set_values()` never raise on a live bus: each checks `initialized` before touching the chip, and
+  their transfers are writes or reads under 32 bytes. `get_values()` into a buffer of 32 bytes or
+  more can raise `OSError(EIO)` on an RX overrun (F.5.2); its caller handles that as the chunk layer's `_read_chunk()` does. A WREN
   whose latch did not set is repeated once, like WRDI. `setup()` reads the chip as write-protected
   only when WPEN, BP1 and BP0 are all set, the one protected state the firmware writes; a register
   only partly set, which nothing in the product writes, reads as unprotected, and WPEN alone protects
@@ -4501,7 +4501,8 @@ and `None` otherwise — `SensorReader` and its subclasses, `ConfigManager` (its
 `FRAMManager` and `SystemService` answer nothing, the boot's setup list reading no answer; a protocol-layer setup
 keeps its documented raise for a chip that fails identification, which its reader's init catches. A
 class whose constructor refused persists that code in `setup()`. **Which classes carry the
-`initialized` flag**: only those whose product code reads it — `FRAM_SPI` (set by its `setup()`),
+`initialized` flag**: only those whose product code reads it — `FRAM_SPI` (set by its `setup()`,
+cleared by a failed `verify_present()`),
 `FRAMManager` (set by its first successful `setup()` and never cleared: the chip
 watch and the erase gate read it), `SPIDevice`, `UARTComm`, `UARTLinkDriver` and the logging classes
 (`asy_print_log.py`); a class where only a test would read it carries none (`SystemService`,

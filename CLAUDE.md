@@ -685,7 +685,7 @@ Three standing practices:
   (spelled that way, not as the individual flags, so a deliberate mypy version bump surfaces any
   newly added strict check as a finding to decide on), plus `no_implicit_optional`/`warn_unreachable`
   which aren't part of `--strict`, `disallow_any_explicit` (owner, 2026-09-28: "do it in this audit";
-  each pass's shrinking per-module baseline is BACKLOG.md's open item), and the `ignore-without-code`
+  no pass exempts a module), and the `ignore-without-code`
   error code in all three, so a bare
   `# type: ignore` is itself an error. **The one exemption is `no_implicit_reexport`, and only in the
   `[tool.mypy]` pass** — `tests/` mocks by reassigning a module's imported names
