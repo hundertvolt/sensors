@@ -43153,3 +43153,10 @@ AFTER 4 (one gc.collect after the 120 s idle): free  82176 largest  55120
 answer: the post-load largest block, collected, shrinks with each 6-reader load (23,040 -> 20,192 -> 18,336 B) at the same free (82,224 / 82,208 / 82,176), no plateau within three loads; after the 2-reader load it is back to 55,120 B. During one 6-reader load the largest block falls to 11,968 / 11,664 / 11,424 B and free to 15,728 / 15,216 / 16,176 B; during the 2-reader load to 18,336 B (its start value) and 41,824 B. Before any load: 64,064-66,256 B. No "MemoryError" or "memory allocation failed" in the console.
 errcount: WEBSERVER 80 -> 208 (+128 W60 = 44 + 41 + 43, the 6-reader refusals; none at 2 readers); NTP 1 -> 2 (E71 NTP_NO_REPLY, one sync without a reply); 19 sources unchanged. ResetReason after: 21, SysUptime 16 s, STA; flash cycles today: 1; logs/day5_20261110/ (h_console.txt, h_console.txt.host, h_*_status.json)
 status: confirmed as measured; whether the shrink continues past three loads not measured.
+
+## Bench 2026-11-10 20:47:31 UTC - day 5 end: idle on snapshot 58, no relay after 12:23
+
+- The board idled on snapshot 58 881562cf as the 12:03 relay asked; no probe ran after 12:38. Relay watch 12:41-20:47: none.
+- Status at end: SysUptime 29,329 s since the 12:38 restore, ResetReason 21, STA; errcount unchanged since the heap load
+  series' end (NTP 2, SGP40 27, WEBSERVER 208, WIFI 26; logs/day5_20261110/*Z_status.json). Flash cycles today: 1.
+- Open: the next image (FRAM CS settle pauses dropped) needs the owner's reflash OK, then item 1 again.
