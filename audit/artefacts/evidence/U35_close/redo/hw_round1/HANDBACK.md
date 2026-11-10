@@ -43044,3 +43044,37 @@ errcount at 11:09:11 (second boot, after restore: RR 21, SysUptime 29 s, STA): 2
 no entry outside those chunks and those two expected sources; no reset in the first boot.
 flash cycles today: 1; logs/day5_20261110/ (20261110T110726Z_first_boot_console.txt, *_pre_reflash_status.json, *_post_reflash_status.json, reflash_out.txt, build_snap58.log)
 status: confirmed as read; which chunk read blank after setup inferred.
+
+11:14:51 UTC 2026-11-10 lead 10:58 item 1: probes_20261110/fram_chunk_timing_frozen.py (the image's frozen modules, commands counted as CS edges / 2) through Board.run_isolated(), then restore_board_to_serving(); HEAD 881562cf; image 2026-11-10T11:02:16Z; board idle (main.py stopped), 125 MHz, gc.threshold 32768 (kept across the soft reset); chunks at 0x30000+ (production's untouched); 11:11:55-11:11:58
+verbatim:
+FRAMCHUNK initialized True write_protected False
+FRAMCHUNK addrs log 0x30000 0x3000f bak 0x3001e 0x3012c end 0x3023a
+FRAMCHUNK first_write_ok log True bak True
+FRAMCHUNK log_write_13B cmds 51 n 30 min 10463 med 12718 max 15807 us
+FRAMCHUNK log_write_13B all_ok True
+FRAMCHUNK log_read_13B cmds 46 n 30 min 9482 med 10894 max 15649 us
+FRAMCHUNK log_read_13B all_ok True
+FRAMCHUNK backup_write_268B cmds 51 n 30 min 11330 med 13030 max 21053 us
+FRAMCHUNK backup_write_268B all_ok True
+FRAMCHUNK backup_read_268B cmds 46 n 30 min 11531 med 13206 max 21441 us
+FRAMCHUNK backup_read_268B all_ok True
+FRAMCHUNK backup_readback_matches True
+FRAMCHUNK viper_crc32_add_into_264B cmds 0 n 30 min 1303 med 1310 max 1555 us
+FRAMCHUNK log_errors <deque> count 0
+FRAMCHUNK modules ['asy_base_classes', 'asy_config_manager', 'asy_fram_driver', 'asy_fram_manager', 'asy_print_log', 'asy_spi_driver', 'crc_checks']
+FRAMCHUNK done
+against the acceptance: commands 51 / 51 / 46 as expected; NOT met: entry write med 12.7 ms (<= 5), backup write med 13.0 ms (<= 8); G's target 4 / 6 ms not reached; about 2x faster than e8d48fab (26.3 / 26.9 ms). Viper CRC32 over 264 B 1.31 ms.
+breakdown, probes_20261110/fram_cmd_breakdown_frozen.py, the same way, 11:12:37-11:12:38, 300 calls each after one begin(), writes at 0x3ff00 only:
+FRAMCMD3 initialized True write_protected False gc_threshold 32768
+FRAMCMD3 empty_call n 300 min 20 med 22 p95 23 max 41 us
+FRAMCMD3 raw_rdsr n 300 min 51 med 54 p95 56 max 116 us
+FRAMCMD3 begin_only n 300 min 179 med 185 p95 217 max 6147 us
+FRAMCMD3 send_and_read_rdsr n 300 min 137 med 143 p95 147 max 206 us
+FRAMCMD3 send_command_wrdi n 300 min 114 med 119 p95 122 max 186 us
+FRAMCMD3 get_values_1B_no_begin n 300 min 237 med 245 p95 252 max 387 us
+FRAMCMD3 get_values_13B_no_begin n 300 min 252 med 260 p95 266 max 409 us
+FRAMCMD3 set_values_13B_no_begin n 300 min 794 med 809 p95 825 max 6648 us
+FRAMCMD3 done
+reading: a CS cycle through the bound wiring costs 119-143 us against 54 us raw (two cs() calls, two sleep_us(2), try/finally, attribute loads); get_values/set_values add ~100 us of checks each; begin() is 185 us per operation; the chunk layer's status/CRC handling makes up the rest of ~250 us per command.
+errcount: 21 sources unchanged (both runs); ResetReason after: 21, SysUptime 16 s, STA; flash cycles today: 1; logs/day5_20261110/ (f58_*, fb58_*)
+status: confirmed as measured; the per-layer split confirmed by the breakdown.
