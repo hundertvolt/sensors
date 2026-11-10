@@ -294,20 +294,20 @@ def _kb(rate: float) -> str:
 @dataclass(frozen=True)
 class Rule:
     # How fast a mirror must be: the probe's cap, the floor, the bound of the step that fetches what the cache does not
-    # hold (bound_from names its tunable for the log) and the margin.
+    # hold, if the caller has one (bound_from names its tunable for the log), and the margin.
     cap_s: float
     floor: float
-    bound_s: float
-    bound_from: str
+    bound_s: float | None
+    bound_from: str | None
     margin: float = RATE_MARGIN
 
     def __post_init__(self) -> None:
-        if not self.bound_s > 0:
+        if self.bound_s is not None and not self.bound_s > 0:
             raise ValueError(f"a fetching step's bound must be positive, not {self.bound_s}")
 
     def required(self, to_fetch: int) -> float:
-        # The rate that moves to_fetch bytes inside bound_s / margin, never under the floor.
-        return max(self.floor, self.margin * to_fetch / self.bound_s)
+        # The rate that moves to_fetch bytes inside bound_s / margin, never under the floor; the floor alone without one.
+        return self.floor if self.bound_s is None else max(self.floor, self.margin * to_fetch / self.bound_s)
 
 
 def check(planned: "list[Planned]", have: "set[str]", list_path: Path, rule: Rule, *, force: bool = False, fetcher: "Fetcher" = fetch) -> "str | None":
@@ -334,7 +334,10 @@ def check(planned: "list[Planned]", have: "set[str]", list_path: Path, rule: Rul
         return None
     to_fetch = sum(item.size for item, _ in candidates if item.file not in have)
     required = rule.required(to_fetch)
-    print(f"== required rate {_kb(required)}: {rule.margin:g} x {to_fetch} bytes still to fetch over the {rule.bound_s:g} s bound ({rule.bound_from}), floor {_kb(rule.floor)}", flush=True)
+    if rule.bound_s is None:
+        print(f"== required rate {_kb(required)}: the floor, no bound given, for {to_fetch} bytes still to fetch", flush=True)
+    else:
+        print(f"== required rate {_kb(required)}: {rule.margin:g} x {to_fetch} bytes still to fetch over the {rule.bound_s:g} s bound ({rule.bound_from}), floor {_kb(rule.floor)}", flush=True)
     budget = int(rule.cap_s * required)
     large = [pair for pair in candidates if pair[0].size >= budget]
     item, rel = min(large, key=lambda pair: pair[0].size) if large else max(candidates, key=lambda pair: pair[0].size)
@@ -447,8 +450,8 @@ def main(argv: "list[str] | None" = None) -> int:
     probe.add_argument("--out", type=Path, required=True)
     probe.add_argument("--cap-s", type=float, default=PROBE_CAP_S)
     probe.add_argument("--min-bytes-per-s", type=float, default=MIN_BYTES_PER_S, help="the floor of the required rate")
-    probe.add_argument("--bound-s", type=_positive, required=True, help="the bound of the step that fetches what is left")
-    probe.add_argument("--bound-from", required=True, help="the tunable that bound comes from, for the log")
+    probe.add_argument("--bound-s", type=_positive, help="the bound of the step that fetches what is left; without it the floor alone decides")
+    probe.add_argument("--bound-from", help="the tunable that bound comes from, for the log")
     probe.add_argument("--margin", type=_positive, default=RATE_MARGIN)
     probe.add_argument("--force", action="store_true", help="probe even when the cache holds every planned archive")
     out = commands.add_parser("copy-out", help="copy what apt fetched into the cache folder")

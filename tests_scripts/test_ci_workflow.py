@@ -340,8 +340,8 @@ def test_every_job_budget_is_tagged() -> None:
 
 
 def test_every_playwright_install_is_bounded_and_retried_by_apt() -> None:
-    # A stalled runner mirror otherwise holds the job to its own limit and it ends cancelled, naming nothing. A composite
-    # step takes no timeout-minutes, so the shared action's install holds its tagged bound through `timeout`.
+    # apt's drop-in and Playwright's own socket timeout end a stalled read; a slow live install is never cut on its own
+    # clock, its job's timeout-minutes is the backstop.
     jobs = _jobs()
     problems = [f"{name}: installs Playwright itself - call the playwright-chromium action" for name, job in jobs.items() if "npx playwright install" in job]
     users = sorted(name for name, job in jobs.items() if _PLAYWRIGHT_USES in job)
@@ -353,12 +353,7 @@ def test_every_playwright_install_is_bounded_and_retried_by_apt() -> None:
     installs = [i for i, run in enumerate(runs) if "npx playwright" in run and "--dry-run" not in run]
     if len(installs) != 1 or len(bound) != 1 or bound[0] > installs[0] or re.search(r"^\s+if:", steps[bound[0]], re.MULTILINE):
         problems.append(f"playwright-chromium: one install step, after an unconditional apt retry and timeout step (installs at {installs}, the bound at {bound})")
-    bounds = [i for i, step in enumerate(steps) if re.search(r"^\s+id: bound$", step, re.MULTILINE)]
-    tagged = len(bounds) == 1 and re.search(r"^\s+# @tunable ci\.playwright_install_timeout_min = (\d+)\n\s+limit_min=\1$", steps[bounds[0]], re.MULTILINE)
-    for i in installs:
-        reads = "LIMIT_MIN: ${{ steps.bound.outputs.min }}" in steps[i] and 'timeout "${LIMIT_MIN}m" npx playwright' in runs[i]
-        if not (tagged and bounds[0] < i and reads) or "continue-on-error" in steps[i]:
-            problems.append('playwright-chromium: the install runs under `timeout "${LIMIT_MIN}m"` from the bound step, tagged ci.playwright_install_timeout_min, and gates')
+    problems.extend("playwright-chromium: the install gates and runs under its job's timeout-minutes alone, no `timeout` of its own" for i in installs if "timeout" in runs[i] or "continue-on-error" in steps[i])
     assert not problems, "\n".join(problems)
 
 
@@ -418,24 +413,26 @@ def test_the_apt_cache_runs_around_every_apt_install() -> None:
     assert not problems, "\n".join(problems)
 
 
-def test_every_mirror_check_sizes_its_rate_on_its_own_fetching_bound() -> None:
-    # The required rate is the bytes left over the bound of the step that fetches them: tool.apt_step_timeout_s for the
-    # firmware set's download attempts, ci.playwright_install_timeout_min for Playwright's install.
+def test_every_mirror_check_sizes_its_rate_on_its_own_fetching_bound(tmp_path: Path) -> None:
+    # The required rate is the bytes left over the bound they are fetched under: the firmware job's own timeout-minutes
+    # (apt has no limit of its own); Playwright's install passes none, so the floor alone decides there.
     problems = []
-    firmware = _steps(_jobs()["firmware-build-verify"], 6)
+    job = _jobs()["firmware-build-verify"]
+    firmware = _steps(job, 6)
     listed = [step for step in firmware if re.search(r"^\s+id: apt-packages$", step, re.MULTILINE)]
     restore = [step for step in firmware if _APT_RESTORE_USES in step]
-    if len(listed) != 1 or 'print(f"bound-s={st._APT_STEP_TIMEOUT_S}")' not in listed[0]:
-        problems.append("firmware-build-verify: the apt-packages step prints bound-s from setup_toolchain's _APT_STEP_TIMEOUT_S")
-    if len(restore) != 1 or "bound-s: ${{ steps.apt-packages.outputs.bound-s }}" not in restore[0] or "bound-from: tool.apt_step_timeout_s" not in restore[0]:
-        problems.append("firmware-build-verify: apt-cache-restore takes bound-s from apt-packages and names tool.apt_step_timeout_s")
+    limit = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
+    output = tmp_path / "output"
+    run = "\n".join(_run_lines(listed[0])) if len(listed) == 1 else "false"
+    done = subprocess.run(["/bin/bash", "-e", "-c", run], cwd=_REPO, env={"PATH": os.environ["PATH"], "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False, timeout=30)
+    if limit is None or done.returncode != 0 or f"bound-s={int(limit[1]) * 60}\n" not in output.read_text(encoding="utf-8"):
+        problems.append(f"firmware-build-verify: the apt-packages step prints bound-s, this job's own timeout-minutes in seconds: {done}")
+    if len(restore) != 1 or "bound-s: ${{ steps.apt-packages.outputs.bound-s }}" not in restore[0] or "bound-from: ci.firmware_build_verify_timeout_min" not in restore[0]:
+        problems.append("firmware-build-verify: apt-cache-restore takes bound-s from apt-packages and names ci.firmware_build_verify_timeout_min")
     steps = _action_steps(_PLAYWRIGHT_ACTION)
     restore = [step for step in steps if _APT_RESTORE_USES in step]
-    bound = [step for step in steps if re.search(r"^\s+id: bound$", step, re.MULTILINE)]
-    if len(bound) != 1 or 's=%s\\n\' "$limit_min" "$((limit_min * 60))"' not in bound[0]:
-        problems.append("playwright-chromium: the bound step outputs the install's minutes and their seconds")
-    if len(restore) != 1 or "bound-s: ${{ steps.bound.outputs.s }}" not in restore[0] or "bound-from: ci.playwright_install_timeout_min" not in restore[0]:
-        problems.append("playwright-chromium: apt-cache-restore takes bound-s from the bound step and names ci.playwright_install_timeout_min")
+    if len(restore) != 1 or "bound-" in restore[0]:
+        problems.append("playwright-chromium: apt-cache-restore takes no bound, so the floor alone sets the required rate")
     check = [step for step in _action_steps(_APT_RESTORE_ACTION) if "ci_apt_cache.py check" in step]
     if len(check) != 1 or '--bound-s "$BOUND_S" --bound-from "$BOUND_FROM"' not in check[0] or "BOUND_S: ${{ inputs.bound-s }}" not in check[0]:
         problems.append("apt-cache-restore: the check passes its bound-s and bound-from inputs to ci_apt_cache.py check")
