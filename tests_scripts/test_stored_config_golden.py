@@ -1,8 +1,10 @@
 """Every device's stored config - each config file name and its stored key -> type map, special-alone
 fields excluded - derived two independent ways (the buildgen device model, the generated module's own
-constructions) must agree; from the release on the map is pinned as a golden fixture (C.5)."""
+constructions) must agree and equal the release's golden fixture, tests_scripts/golden/<device>.json (C.5)."""
 
 import ast
+import json
+import sys
 from functools import cache
 from pathlib import Path
 
@@ -18,6 +20,8 @@ from buildgen.validate import build_model
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src"
+GOLDEN = REPO_ROOT / "tests_scripts" / "golden"
+_REGENERATE = "PYTHONPATH=. uv run python tests_scripts/test_stored_config_golden.py --regenerate"
 # The fixed core every device constructs, by its construction-order key.
 _CORE = {"conn": "asy_wifi_service.py", "ntp": "asy_ntp_client.py", "sysfunct": "asy_system_service.py"}
 
@@ -137,6 +141,15 @@ def test_both_derivations_of_the_stored_config_agree(device: str) -> None:
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_stored_config_is_the_release_fixture(device: str) -> None:
+    # From the release on, a changed config file name, stored key or type ships with its migration (owner, 2026-09-26).
+    fixture = GOLDEN / f"{device}.json"
+    assert fixture.is_file(), f"no golden fixture {fixture.relative_to(REPO_ROOT)} - write it with `{_REGENERATE}`"
+    stored = from_model(REPO_ROOT / "devices" / f"{device}.toml", SRC)
+    assert stored == json.loads(fixture.read_text(encoding="utf-8")), f"{device}'s stored config is not {fixture.relative_to(REPO_ROOT)}: ship its migration in the same commit, then `{_REGENERATE}`"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_a_construction_the_model_does_not_know_fails(device: str) -> None:
     toml = REPO_ROOT / "devices" / f"{device}.toml"
     source = generate_device(toml, SRC, build_date="2026-01-01").module_source
@@ -171,3 +184,11 @@ def test_a_store_built_through_a_module_helper_or_an_attribute_call_is_a_store(t
     )
     classes = _classes(tmp_path)
     assert {name: _is_store(name, classes) for name in classes} == {"Helped": True, "Dotted": True, "Inherits": True, "Plain": False}
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["--regenerate"]:
+        sys.exit(f"usage: {_REGENERATE}")
+    GOLDEN.mkdir(exist_ok=True)
+    for name in DEVICE_NAMES:
+        (GOLDEN / f"{name}.json").write_text(json.dumps(from_model(REPO_ROOT / "devices" / f"{name}.toml", SRC), indent=2, sort_keys=True) + "\n", encoding="utf-8")
