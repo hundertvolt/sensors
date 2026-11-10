@@ -1033,7 +1033,9 @@ module. A field's facts are its API keys (`key`, `kind`, `unit`, `min`/`max`,
 options reduced to their values, a composite's sub-fields to their facts); the page-only hints
 (`label`, `description`, `onLabel`, `offLabel`, `decimals`, `clearable`, `codeTones`, `confirm`)
 stay out, and a definitions key in neither set fails the build (`api.field-key-unclassified`).
-`tests_scripts/test_api_reference.py` pins it; this section is its prose summary. The build refuses
+`tests_scripts/test_api_reference.py` pins it and compares it with the release's copy,
+`tests_scripts/fixtures/api_reference/<device>.json`: from the release on, a changed route or key ships
+with a migration (H.3); this section is its prose summary. The build refuses
 a logger name two instances would claim in `errcount` (L.6.6).
 
 `WebserverService` is **registration-based**: the generated module hands it one `RouteSources`
@@ -2884,7 +2886,7 @@ then three single-file checks (below), each recorded as its own check in its sum
   through `MICROPYPATH`, and `typecheck.sh` checks it alone under this config.
   `digital_twin/machine.py`, `network.py`: a hard "Duplicate module named" error against the
   same-named fake in `tests/`; the fakes both tiers share (`rp2.py`, `neopixel.py`, `_twin_common.py`,
-  `_strict_json.py`) sit once in `fakes/`, which both passes check.
+  `_strict_json.py`, `_crc8.py`) sit once in `fakes/`, which both passes check.
   `digital_twin/run_generic_integration.py`, `run_device_script.py`, every
   `tests/test_digital_twin_*.py` and the shared construction scenario library
   (`_digital_twin_construction_scenarios.py`): they use the
@@ -2894,9 +2896,8 @@ then three single-file checks (below), each recorded as its own check in its sum
 - `strict = true`, spelled that way so a mypy bump surfaces new strict checks as findings;
   `no_implicit_optional` and `warn_unreachable` on top, and the `ignore-without-code` error code in
   all three passes, so a bare `# type: ignore` is itself an error. **Explicit `Any`**: all three passes set
-  `disallow_any_explicit = true`; each keeps a per-module baseline of exempted modules (a
-  `disallow_any_explicit = false` override), which only shrinks and which
-  `tests_scripts/test_mypy_any_baseline.py` pins. `disable_error_code = assignment` is
+  `disallow_any_explicit = true` and exempts no module, which `tests_scripts/test_mypy_any_baseline.py`
+  pins. `disable_error_code = assignment` is
   deliberately not set. The one exemption, `no_implicit_reexport = false`: CLAUDE.md.
 
 **Twin pass — `digital_twin/typecheck.ini`**, its `files` (`digital_twin`, `fakes`, every
@@ -3409,9 +3410,10 @@ invalid and silently drops it on rewrite. A one-off script touching one field mu
 with the *entire* real schema, or every sibling field gets reset to its default. A device script
 constructing a `ConfigManager` over a production file is checked to pass that module's full schema
 (`tests_scripts/test_device_script_config_schemas.py`), and every device's stored config — each file
-and its keys' types — is pinned by a golden fixture from the release on: a change to it ships with a
-migration (owner, 2026-09-26). Until the release, `tests_scripts/test_stored_config_golden.py`
-derives that map two independent ways and asserts they agree.
+and its keys' types — is pinned by the release's golden fixture, `tests_scripts/golden/<device>.json`:
+from the release on, a change to it ships with a migration (owner, 2026-09-26).
+`tests_scripts/test_stored_config_golden.py` derives that map two independent ways, asserts they agree
+and equal the fixture, and names the command that rewrites it.
 
 Four typed accessors — `get_int_values()`/`get_float_values()`/`get_str_values()`/
 `get_bool_values()` — return cache values checked by exact type (an `int` field read as `float` is
@@ -5386,7 +5388,7 @@ tests running into timeout."): a test, a test file or a tier that runs into its 
 twice, three attempts in all — a per-file or `scenarios[<device>]` job and the backgrounded
 `tests_scripts/` tier (`runner.per_file_attempts`), a JS test, its `beforeEach`/`afterEach` included, on
 vitest's own message (`Test timed out in <n>ms`, `Hook timed out in <n>ms`; `l0.vitest_timeout_retries`; a
-suite's `beforeAll`/`afterAll` runs once, the pinned vitest 5.0.3 retrying only inside a test, so a timeout there
+suite's `beforeAll`/`afterAll` runs once, the pinned vitest 5.1.0 retrying only inside a test, so a timeout there
 fails at once) — and a pass
 after a retry is reported apart (`RETRIED-PASS`, `Passed only on retry`); any other failure fails at
 once. An event retry (a bench, host or network event, never a timeout: the hotspot join, a
@@ -6210,8 +6212,7 @@ import: `_http_client.py` imports `_strict_json` at module level from `fakes/`, 
 manifest; the rule holds regardless. Imports run once, at module load (agent, 2026-10-06):
 `tests_scripts/test_import_placement.py` walks every `.py` in the nine lint scopes and
 fails on an import inside a function body or a dynamic load, except the sites its
-`_NAMED_EXCEPTIONS` names with their reasons and a pending list (`_PENDING`) that only shrinks — a
-second check fails on a pending entry that no longer occurs.
+`_NAMED_EXCEPTIONS` names with their reasons.
 
 **`.frozen` is MicroPython's import sentinel, never a directory**: a path entry starting with it
 (`MP_FROZEN_PATH_PREFIX`) is answered from the compiled-in frozen-module table and never reads the
@@ -8528,8 +8529,8 @@ and the pytest tier that pins them: `tests_hardware/README.md`, "Holding a ceili
 ### Cross-browser coverage
 
 Vitest's browser mode only automates Chromium-family browsers via Playwright.
-`scripts/cross_browser_smoke.mjs` closes this gap: boots the real twin of every device of
-`devices/*.toml` (through `tests_js/_twin_process.js`, the live tier's own launch), one at a time,
+`scripts/cross_browser_smoke.mjs` closes this gap: boots the real twin of one device per
+`hardware_family` (through `tests_js/_twin_process.js`, the live tier's own launch), one at a time,
 and drives that device's real website
 through **WebKitGTK** (real WebKit), **real Firefox** (`geckodriver` via `micromamba`, since
 Ubuntu's `firefox` apt package is a snap-only stub), and **real Microsoft Edge** — plus Playwright's
@@ -11412,6 +11413,9 @@ Both
 are bumped by hand in that one file, with no bump automation (agent, 2026-09-12, a deferral, not a
 decision), as for `toolchain/versions.toml`'s pin.
 
+The release is the merge into `main`, tagged `v<FIRMWARE_VERSION>` on that merge commit; the first
+release is `2.0`, for both constants (owner, 2026-11-10).
+
 ---
 
 # Part M — Chip Reference
@@ -11744,9 +11748,10 @@ test-side budget is C.8's. A body carrying both `AmbPres` and `ContMeas=false` i
 driver's fixed order with the stop last, so the sensor ends stopped (owner, 2026-10-26: "And the
 order of application of the commands is okay."; the question, paraphrase: whether a stop sent after
 the same body's `AmbPres` is the right order).
-0x0010's argument persistence and read-back are undocumented: 1.4.1 says only that the
-continuous-measurement status is kept in NVM, and the driver reads the pressure back through the
-same word as legacy did (owner, 2026-07-22, `75f2e11`).
+The chip keeps every setting through a power cut, the 0x0010 pressure and the continuous-measurement
+status included, and resumes as it ended (owner, 2026-11-10: "Field proven many times."; 1.4.1 documents
+only the status). Reading the pressure back through the same word is undocumented; the driver does it as
+legacy did (owner, 2026-07-22, `75f2e11`).
 
 **Forced-recalibration readiness** (owner, 2026-09-29: the four criteria and the states; agent,
 2026-09-28: the code values). `FRCState` reports whether the conditions suit a `ForceCalRef`; it never
@@ -12016,7 +12021,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `wifi.refresh_s` | 5 s | `src/asy_wifi_service.py` — `5` | the connection-check loop period | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:19` | unknown until measured | the CYW43 driver or the pin moves |
 | `udp.retry_backoff_ms` | 500 ms | `src/asy_udp_socket.py` — `500` | — | legacy `legacy/firmware/python/CommonDrivers/asy_udp_socket.py:42` | unknown until measured | the socket setup path changes |
 | `udp.poll_wait_ms` | 20 ms | `src/asy_udp_socket.py` — `20` | every UDP wait with a deadline: the resolver's and the NTP fetch's exchanges, each ending at most one step past `dns.timeout_ms` or `ntp.fetch_timeout_ms`; C.8's NTP hold bound | estimated (agent, `6438bdc`, 2026-07-19: the step fixes a reproduced busy-poll; legacy waited 0) — measurement owed: the latency an exchange's poll step adds and the event-loop share it takes, L4 | unknown until measured | the poller or a caller's timeout changes |
-| `udp.poll_idle_ms` | 100 ms | `src/asy_udp_socket.py` — `100` | the captive DNS listener's first answer after silence (at most one idle step late) and its idle poll rounds (10 per second); C.7.5's burst bound (four datagrams per idle poll) | estimated (`f1f800e`; kept with its measurement owed, owner, 2026-10-05): idle poll rounds cut from 50 to 10 per second against at most 100 ms added to the first answer after silence — measurement owed: the event-loop share an idle captive-DNS listener's polling takes and its first-query latency, L2 (twin) and L4 (bench) (owner, 2026-10-05: kept, its measurement owed) | unknown until measured | the measurement lands, or the listener's latency need changes |
+| `udp.poll_idle_ms` | 100 ms | `src/asy_udp_socket.py` — `100` | the captive DNS listener's first answer after silence (at most one idle step late) and its idle poll rounds (10 per second); C.7.5's burst bound (four datagrams per idle poll) | estimated (`f1f800e`; kept with its measurement owed, owner, 2026-10-05): idle poll rounds cut from 50 to 10 per second against at most 100 ms added to the first answer after silence; L2 measured (twin on the host, Unix port v1.29.0, 2026-11-10; two runs per GC stage, a 5 s idle window and 20 queries at phases walking the period): 10.0 idle rounds per second at -1 and at 32768, 5-6 µs per `ipoll(0)`, the loop share below a flat-out task's ±4 % run-to-run noise, the first query after a silence answered at median 65 ms, max 100.4 ms — L4 (bench) owed (owner, 2026-10-05: kept, its measurement owed) | unknown until measured | the measurement lands, or the listener's latency need changes |
 | `dns_server.error_retry_wait_s` | 3 s | `src/asy_captive_dns.py` — `3` | the serve loop's pause after an exception and after every failed receive (C.9); `tests/test_asy_captive_dns.py` reads it from the source | legacy `legacy/firmware/python/CommonDrivers/captive_dns.py:37` | unknown until measured | the serve loop's error path changes |
 | `led.min_signal_s` | 0.1 s | `src/asy_neopixel_driver.py` — `0.1` | the shortest ramp a signal runs | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:128` | unknown until measured | the ramp's step rate changes |
 | `led.refresh_hz` | 20 Hz | `src/asy_neopixel_driver.py` — `20` | the default of `NeopixelDriver`'s `neopixel_freq` (tests pass their own); the ramp's step count per signal; the frame period `_frame_ms` (derived, an int 50 ms); the loop-lag scenario's at-rest bound, one frame period (`con.led_frame`, `scripts/_digital_twin_scenarios.py`), which the window after the one straddling the load's stop stays under at its p99 | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | unknown until measured | the LED driver's refresh path changes |

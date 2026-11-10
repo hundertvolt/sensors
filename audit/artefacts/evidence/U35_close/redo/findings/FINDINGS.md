@@ -1917,3 +1917,105 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
   PASS, 5252 passed 0 failed; the scenario 5.8 s on dev. Unreproduced: identical src/ and twin code passed FS's gate,
   12 gates since 11-09, 6/6 alone and this rerun; it failed once, in the first heavy run after the container restart,
   its twin log lost. No cause is claimed. CI on snapshot 59 runs it again; a second failure anywhere is real.
+
+## 12.173 cov59 green; snapshot 59 pushed (lead, 16:0x)
+- cov59 (every tests/ file changed since snapshot 58, 59 files, 74 jobs with the per-device ones) under build-settrace:
+  all rc 0, no MemoryError text. heavy.lock released to the units.
+- Snapshot 59 a771238b (parent 910a0a62, tree = int 651af010 + records; SNAP_EXCLUDE + ftmp_apt ftmp_fs ftmp_cs
+  ftmp_w1a ftmp_w2): the diff's PAT matches are 3, all 8-character hex (commit ids), none a withheld prefix. Pushed to
+  claude/whole-project-audit-plan (hundertvolt/sensors#107); CI pending; a771238b is the next PARENT once green.
+
+## 12.174 W2 merged (int 3bee346e); the releases made during execution become unit PIN (lead, 16:2x)
+- W2 d7ac6018 read (golden tests compare against committed fixtures and name the regenerate command; README Release
+  section, current fact, each fix with its test; BACKLOG P08, B40 (bootloader 2, harness hard reset 21), N05, N03).
+  Merged clean: int 3bee346e. P05 (version) waits for the owner's number (asked 15:0x).
+- W2's one red (test_twin_process_spawn "uncaught NLR") was S/tc-int, built from an older micropython_overrides.py;
+  passes on S/tc-c. common_r1's four tc-int paths now name tc-c (old copy at S/u35/lead/common_r1_before_tcc.md).
+- U01 (W2): MicroPython v1.29.0 and every firmware-side pin are newest; dev tools moved upstream (mypy 2.4.1, ruff
+  0.17.4, pytest 9.2.0, coverage 7.17.2, zizmor 1.32.0, types-pyserial, uv 0.13.7, Node 26 LTS, the npm set with
+  stylelint 18 and its config 41 as majors). A.SDEP.25 (OR129.a (1), owner 09-30): a new release becomes its family's
+  action, the close's re-verification passes its gate; under the owner's 14:57:50 "(A), finish as planned" unit PIN
+  (BRIEF_PIN.md) moves them, own venv and Node, beside W1a. Not an image change.
+- Snapshot 59 CI green: run 42845410992, 28/28 jobs success (unit-tests with the dev scenarios at -1, the shipped
+  threshold, coverage, twin e2e 8, firmware 4, web 6, lint 5); run 42845393906 cancelled by the newer push's
+  concurrency group (no job ran). a771238b is the next PARENT. 12.172's scenario passed on CI too.
+
+## 12.175 PIN merged (int 64b719c2); disk freed (lead, 16:4x)
+- PIN 4242b1fd read: pins only (mypy 2.4.1, ruff 0.17.4, pytest 9.2.0, coverage 7.17.2, zizmor 1.32.0, types-pyserial,
+  uv 0.13.7, Node 26.13.0 LTS with engines/devEngines >=26 <27, the npm set incl. stylelint 18 / config 41) plus the four
+  ICN001 aliases ruff 0.17 demands (`import datetime as dt`); package-lock regenerated (vitest 5.1.0's peers). PIN's
+  gate at -1 green on its own venv and Node 26; 32768, twin and CI owed (the re-verification pass). npm audit: 4
+  moderate in eslint's minimatch chain, dev-only, no fixed release in range: recorded for the final report.
+  Merged clean: int 64b719c2.
+- Disk was 2.3 GB free (run.sh refuses below 3 GB): 14 merged, clean unit worktrees removed by literal path (each
+  head an ancestor of int, no tracked change): fs w2 apt t p9 g c mfs fsync ub crceng weblog bchain bfix -> 5.8 GB.
+  The owner-paused worktrees untouched.
+- After W1a merges: the shared venv re-synced to the new lock (network, outside the namespace), run.sh's NODE to
+  S/shared/node-v26.13.0-linux-x64 (moved there from ftmp_pin), then lint/mypy/gate on the combined tree.
+
+### 12.176 P05 done: release version 2.0 (owner 16:40:55), int 5b8c3446 (2026-11-10)
+Owner: "It's 2.0". buildgen/version.py both constants "2.0"; mockdata/samples.json build entry "2.0"; SPEC L.7 one
+paragraph (release = tagged merge into main, first is 2.0, owner 2026-11-10); README Release's first sentence names 2.0.
+Not changed: test_buildgen_version.py (its examples are format cases, no value pin needed), tests/test_asy_webserver_service.py
+fixtures (arbitrary data). 6 tests_scripts files that read the sites: 492 passed. O5 closed; O3 is the last owner question.
+
+### 12.177 O3 closed by the owner (16:47:07): SCD30 keeps every setting through a power cut; int 77a4e1e8 (2026-11-10)
+Owner: "The SCD30 stores everything, including the "Go" for continuous measurements. It just starts as it ended,
+when power is back. Field proven many times." No instrument. Removed: BACKLOG's owed item (12 lines), and from
+tests_hardware/manual/manual_persistence.py the pressure reads, the `_served_after_power` amb_before parameter (4
+callers) and `_boot_sends_continuous_measurement` (an 11-line AST walker over src/, added 2026-10-15 in U26, sole
+user this question), `import ast` with it. Stated: SPEC M.2 NVM paragraph, twin fidelity row (accepted, owner's
+words) and SCD30-persistence note, driver comment. ruff, host mypy, 8 tests_scripts files (809 passed). Every owner
+item is now settled (O3/O5 by the owner, O1/O2/O4/O6 by evidence, listed in the final report). Row B29 DONE.
+
+### 12.178 W1a merged (int 20629434) + two loose ends (886f8af0); tools moved to the new pins; gate60 started; W1b out (2026-11-10)
+Reviewed b5f2978c (66 files, +535/-795): Any typed (type-only unions, generic _CallLog), _PENDING/regenerate gone,
+bounds removed with probes, helpers shared, twin SGP40 528 ms model, F3 root cause = twin random walk (not src). The
+smoke's JS device picker mirrors _devices.sh as derivedDevices() already mirrors _devices.py (pre-existing pattern,
+kept). Merge auto-clean. Lead follow-ups (886f8af0): H03 settled by naming: _ESCALATION_WAIT_S states the measured
+escalation (dev 15-20 s) and that it is a hang backstop (CLAUDE.md: no hanging tests); per-device derivation would add
+a mechanism with no need. The off-list caught wait_for(10 s)+silent cancel in test_asy_uart_comm's heap-flat train
+test -> plain await (listener ends inside the protocol reply timeout; 201/201 at -1 and 32768); _STEP_BOUND_S gone.
+Environment: uv 0.13.7 moved to S/shared/uvenv-0.13.7 (from ftmp_pin); shared venv synced --locked (ruff 0.17.4, mypy
+2.4.1, pytest 9.2.0, coverage 7.17.2, zizmor 1.32.0 = pins); int node_modules symlink removed, npm ci with Node 26
+(192 packages, int-local); run.sh and tcc_setup.sh point at the new uv/Node (run_before_pin.sh kept). Checks c60:
+lint_direct 0 (ruff 0.17.4 clean, zizmor clean), mypy 285/309/58 clean, readers 99 passed. Gate60 (lock lead) running.
+W1b briefed (BRIEF_W1B.md: D.15 by hand outside src/, check widened, js by review, empty _PENDING_ASSERTS goes).
+Open from W1a: (c) uart_ring_under_concurrent_load 32768 1/8 on W1a's tree - to root-cause, not a flake.
+
+## 12.179 gate60 green on int 886f8af0; cov60 running; finding (c) read (lead, 18:4x)
+- gate60: test_e 0, test_f 0, twin -1 suite/harness 0/0, twin 32768 suite/harness 0/0, npm 0. Lock released.
+- cov60: every tests/ file changed since snapshot 59's tree (651af010) plus every importer of a changed helper
+  (machine, _crc8, _notification_cycle, _uart_comm_harness, ...): 58 files, under build-settrace (lock lead).
+- (c) read: scripts/_digital_twin_scenarios.py _uart_load(): ceiling()+1 hammer threads retry a refusal at once
+  (_status_of returns "rejected" and loops); the one flusher sleeps _LINE_POLL_S (0.05 s) after each refusal. A freed
+  slot is retaken by a hammer within microseconds, so the flusher only lands when it happens to try in that instant;
+  a window where it never does gives puts == [] (the failure text). Test-side asymmetry, not src/: a client at the
+  ceiling that polls slower than the ones holding it loses, as on any server. Planned check: instrument in the
+  throwaway worktree wt-uload (puts and refusal counts, never committed), runs at 32768 before and after dropping the
+  sleep (retry at once, as the hammers do). _LINE_POLL_S stays (5 other users).
+- L07's "sgp40 serial read (no script found)" is DONE by evidence: the bench campaign's
+  tests_hardware/device_scripts/sgp40_conformance_probe.py (via flash/test_chip_conformance.py) read all three words
+  on the dev chip on 2026-10-28 18:00:39 (hw_handover/HANDBACK.md: A01_serial word 0 = 0x0000, A02_serial_stable=yes).
+  No new script. Owed: src/asy_sgp40_driver.py:682-683's comment "The dev board's word 0 is still to be recorded on
+  real hardware" is stale -> "and the dev board reads 0x0000 (bench, 2026-10-28)" (comment only; lead, after cov60).
+
+## 12.180 RP hand-back read and checked (lead, 19:1x)
+- r5/PROBES_RECHECK.md: the nine 11-04 probes byte-identical on the bench branch (d6bd2d45). OK: boot_stretch_final
+  (12a; e1958815 changes its figures, not its code), dns_idle_poll + host_dns_query_timing (12c), host_reset_errors
+  (12d), general_call_per_chip (12e), bmp3xx probe (16b), country_scan (13), long_fram (11), fram_raw_dump (1).
+  STALE: ring_peak_final.py:33 comment "SCD30 reset alone waits 2.5 s" -> 2 s (2001 ms since 39e18d2a; its 15 s wait
+  covers it). OBSOLETE: held_sda_reset (12f): ba671e7a put it in flash/test_bus_concurrency.py:300-337 (step 4b runs
+  it; owner 11-06 "Option A, I have no oscilloscope at hand"); round1.sh row 12f and held_sda() go. Both ride the
+  last-round relay (bench branch). F4 (peak=0 for a ring never up) not taken: no failure, no new mechanism.
+- F1 checked, real: SPECIFICATION.md:932, :933, :12170, :12171 still name run_setups()'s first gc.collect() and
+  start_tasks()' collects (N + 1); src/ has none since e1958815 (git grep: no gc.collect in src/ or buildgen/), and
+  SPEC :909 and :9277-9278 already say so. Lead docs fix: 4 lines.
+- F2 checked, real: BACKLOG.md:282-290 (bench ResetErrors budget) says "the concurrent reset the owner chose (owner,
+  2026-09-26)"; the owner's later go (2026-11-07 17:57:27, "Go to all", item (1) error-log reset sequential, 12.107)
+  made it one after another (f3886cb0). Lead docs fix; the code comment (asy_webserver_service.py:815) and SPEC A.8
+  :1175 credit it "(agent, 2026-11-07)": the decision is the owner's go -> "(owner, 2026-11-07)".
+- F3 (bench src older than int) is the planned last-round image push.
+- Slip (lead, 19:0x): looking for the 16:35 package table, a grep's file list included the session transcript under
+  /root/.claude/ (piped to head -0: nothing printed, nothing read into context). Rule: never open /root/.claude/. The
+  16:35 table was not kept in the records; from now on the package list is the fixed 7-row list of 19:00 (NEXT.md).

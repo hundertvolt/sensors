@@ -17,7 +17,7 @@ import pytest
 import tomllib
 from _devices import DEVICE_NAMES, device_toml, devices_with
 
-from buildgen.definitions import SCHEMA_VERSION, _build_field_def, _DriverTags, definitions_for_toml, generate_definitions, uart_initiator_name
+from buildgen.definitions import SCHEMA_VERSION, _build_field_def, _DriverTags, _measurements_and_sensors_sections, _notification_section, _resolved_key, definitions_for_toml, generate_definitions, uart_initiator_name
 from buildgen.driver_registry import DriverInfo
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import generate_device
@@ -1224,8 +1224,6 @@ def test_mandatory_group_declared_but_no_fields_reference_it_fails_loud(tmp_path
 def test_resolved_key_fails_loud_if_resolved_name_still_unset() -> None:
     # _resolved_key()'s own invariant guard - buildgen.validate._resolve_instances()
     # always sets resolved_name before definitions generation ever runs on a real model.
-    from buildgen.definitions import _resolved_key
-
     spec = InstanceSpec(driver="scd30", name_ext="", fields={}, wiring={}, order_index=0)  # resolved_name defaults to None
     with pytest.raises(BuildInternalError, match="resolved_name unresolved before definitions generation"):
         _resolved_key(spec, "fixture")
@@ -1234,8 +1232,6 @@ def test_resolved_key_fails_loud_if_resolved_name_still_unset() -> None:
 def test_measurements_and_sensors_sections_fails_loud_if_driver_info_still_unset() -> None:
     # _measurements_and_sensors_sections()'s own invariant guard - same
     # always-resolved-by-validate.py reasoning as _resolved_key() above.
-    from buildgen.definitions import _measurements_and_sensors_sections
-
     spec = InstanceSpec(driver="scd30", name_ext="", fields={}, wiring={}, order_index=0, resolved_name="SCD30")  # driver_info defaults to None
     model = DeviceModel(device="fixture", path=Path("fixture.toml"), doc={"device": {"name": "fixture"}}, instances={("scd30", ""): spec}, construction_order=[("scd30", "")])
     with pytest.raises(BuildInternalError, match="driver_info unresolved before definitions generation"):
@@ -1244,8 +1240,6 @@ def test_measurements_and_sensors_sections_fails_loud_if_driver_info_still_unset
 
 def test_notification_section_fails_loud_if_driver_info_still_unset() -> None:
     # _notification_section()'s own invariant guard, same reasoning as above.
-    from buildgen.definitions import _notification_section
-
     spec = InstanceSpec(driver="notification", name_ext="", fields={}, wiring={}, order_index=0)  # driver_info defaults to None
     model = DeviceModel(device="fixture", path=Path("fixture.toml"), doc={"device": {"name": "fixture"}}, instances={("notification", ""): spec}, construction_order=[("notification", "")])
     with pytest.raises(BuildInternalError, match="driver_info unresolved before definitions generation"):

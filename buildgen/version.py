@@ -6,8 +6,8 @@ Consumed by buildgen.codegen/definitions (see that session's own account for the
 
 from datetime import UTC, datetime
 
-FIRMWARE_VERSION = "2.0b0"
-WEBSITE_VERSION = "2.0b0"
+FIRMWARE_VERSION = "2.0"
+WEBSITE_VERSION = "2.0"
 
 
 def current_build_date() -> str:

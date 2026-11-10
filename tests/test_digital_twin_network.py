@@ -155,12 +155,10 @@ def test_wlan_config_calls_stays_bounded_across_many_calls() -> None:
 
 
 def test_country_and_hostname_set_then_get_round_trip() -> None:
-    import network as network_module
-
-    assert network_module.country("US") == "US"
-    assert network_module.country() == "US"
-    assert network_module.hostname("MyDevice") == "MyDevice"
-    assert network_module.hostname() == "MyDevice"
+    assert network.country("US") == "US"
+    assert network.country() == "US"
+    assert network.hostname("MyDevice") == "MyDevice"
+    assert network.hostname() == "MyDevice"
 
 
 def test_wlan_connect_shows_a_real_connecting_phase_before_got_ip() -> None:
@@ -472,18 +470,16 @@ def test_a_chip_down_stations_answer_is_32_unfilled_entries() -> None:
 def test_country_and_hostname_enforce_the_real_byte_bounds() -> None:
     # Mirrors extmod/modnetwork.c: country() takes exactly 2 BYTES, hostname() at most 32 - the
     # checks that make a character-valid "ÄT" raise on silicon (SPECIFICATION.md C.7.4).
-    import network as network_module
-
     for bad in ("D", "DEU", "ÄT"):
         try:
-            network_module.country(bad)
+            network.country(bad)
         except ValueError:
             pass
         else:
             raise AssertionError("country() accepted " + repr(bad))
-    assert network_module.hostname("ä" * 16) == "ä" * 16  # 32 bytes: the bound itself
+    assert network.hostname("ä" * 16) == "ä" * 16  # 32 bytes: the bound itself
     try:
-        network_module.hostname("ä" * 16 + "x")
+        network.hostname("ä" * 16 + "x")
     except ValueError:
         pass
     else:

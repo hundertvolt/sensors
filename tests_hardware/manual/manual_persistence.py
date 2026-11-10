@@ -2,7 +2,6 @@
 automated tiers reproduces - what the bench board's FRAM (its part read from the bench TOML at run time), its flash
 filesystem and the SCD30's NVM keep across a supply cut, and what a cut in the middle of a write or a command leaves."""
 
-import ast
 import re
 from typing import TYPE_CHECKING
 
@@ -31,19 +30,6 @@ _RR_POWER_ON, _RR_REBOOT, _RR_INTERRUPTED, _RR_BOOT_FAILURE, _BOOT_CONSTRUCTION 
 _READ_REASON = "import sys\nm = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\nprint('REASON', m[0].sysfunct.get_reset_reason() if m else None)\n"
 
 
-def _boot_sends_continuous_measurement() -> bool:
-    # Whether src/asy_scd30_driver.py's setup() reaches the 0x0010 command, read from the source at execution.
-    tree = ast.parse((SRC_DIR / "asy_scd30_driver.py").read_text(encoding="utf-8"))
-    calls = {fn.name: {n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "") for n in ast.walk(fn) if isinstance(n, ast.Call)} for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef)}
-    names = {fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef) and any(isinstance(n, ast.Name) and n.id == "_CMD_CONTINUOUS_MEASUREMENT" for n in ast.walk(fn))}
-    grown = True
-    while grown:
-        reaching = {name for name, called in calls.items() if called & names}
-        grown = not reaching <= names
-        names |= reaching
-    return "setup" in names
-
-
 def _fram_part() -> str:
     # The bench board's FRAM part, from the comment line its TOML carries under the fram instance.
     match = re.search(r'driver = "fram"[^\[]*?#\s*(MB85\w+)', device_toml().read_text(encoding="utf-8"))
@@ -58,22 +44,19 @@ def _get(path: str, module: str, field: str) -> "JSONValue":
 
 def _power_cycle(context: str) -> "JSONObject":
     # The genuine cut: power off for a while, back on, then the board serving again; its attribution recorded.
-    amb_before = _get("/sensors", "SCD30", "AmbPres")
     print_instruction(f"Now physically remove the board's power (unplug USB or the bench supply - NOT a reset button). You have {_POWER_CUT_WINDOW_S:g} seconds.")
     countdown(_POWER_CUT_WINDOW_S, "Cut power to the board now")
     countdown(_POWER_OFF_S, "Keep power off")
     print_instruction("Now restore power.")
     confirm("Press Enter once power is restored")
-    return _served_after_power(context, amb_before)
+    return _served_after_power(context)
 
 
-def _served_after_power(context: str, amb_before: object) -> "JSONObject":
+def _served_after_power(context: str) -> "JSONObject":
     wait_until(lambda: bool(rest_get("/status")), timeout_s=_SERVING_TIMEOUT_S, description=f"the DUT serving after the power cut ({context})")
     system = rest_get("/status").get("system")
     assert isinstance(system, dict), "GET /status carries no system block"
-    amb_after = _get("/sensors", "SCD30", "AmbPres")
-    sends = "sends" if _boot_sends_continuous_measurement() else "does not send"
-    print_instruction(f"{context}: ResetReason {system.get('ResetReason')}; SCD30 AmbPres {amb_before} -> {amb_after}, and the product's boot {sends} 0x0010.")
+    print_instruction(f"{context}: ResetReason {system.get('ResetReason')}.")
     record_assertion()
     assert system.get("ResetReason") == _RR_POWER_ON, f"{context}: the boot after the cut read ResetReason {system.get('ResetReason')}, not {_RR_POWER_ON}"
     return system
@@ -158,7 +141,7 @@ def test_genuine_power_loss_mid_config_write() -> None:
         parse_facts(output, allow_missing_done=True)
         print_instruction("Restore power.")
         confirm("Press Enter once power is restored")
-        _served_after_power(f"round {n}", None)
+        _served_after_power(f"round {n}")
         facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "config_scratch_readback.py"))
         print_instruction(f"Written before the cut: {written[-2:]}; read back: {facts}")
         confirm_pass("Does the file parse and hold the last reported value or the one before? [y/N]")
@@ -182,7 +165,7 @@ def test_power_loss_during_the_shutdown_commands() -> None:
     countdown(3, "Cut power at the end of this count (2.5-4.0 s after the answer)")
     countdown(_POWER_OFF_S, "Keep power off, then restore it")
     confirm("Press Enter once power is restored")
-    _served_after_power("erasefram cut", None)
+    _served_after_power("erasefram cut")
     after = get_errcount(dut_ip())
     torn = [name for name in fram_backed_logger_names() if after[name]["history"] != before[name]["history"] and after[name]["counter"] >= before[name]["counter"] > 0]
     assert not torn, f"logs neither old nor restarted after the cut erase: {torn}"
@@ -219,7 +202,7 @@ def test_power_loss_mid_scd30_nvm_write() -> None:
     written = [int(line.split()[2]) for line in output.splitlines() if line.startswith("WROTE ")]
     print_instruction("Restore power.")
     confirm("Press Enter once power is restored")
-    _served_after_power("SCD30 interval loop", None)
+    _served_after_power("SCD30 interval loop")
     ts = _get("/measurements", "SCD30", "TS")
     countdown(3 * int(str(prior)), "Waiting three measurement intervals for a fresh SCD30 reading")
     after = _get("/sensors", "SCD30", "MeasInterval")
@@ -292,7 +275,7 @@ def test_console_soft_reset_keeps_the_reset_record() -> None:
     record_assertion()
     assert "run_not_pressed" not in facts and isinstance(facts.get("valid_record"), list), f"no record written, or no power cut within the script's wait: {facts}"
     confirm("Press Enter once power is restored")
-    _served_after_power("a valid record held across the cut", None)
+    _served_after_power("a valid record held across the cut")
     system = _console_soft_reset(board, "after the Ctrl-C")
     assert system.get("ResetReason") == _RR_INTERRUPTED, f"the soft reset's boot read ResetReason {system.get('ResetReason')}, not the recorded {_RR_INTERRUPTED}"
     # The cause is still the power-on's. mpremote's raw-REPL soft reset runs no main.py (ports/rp2/main.c:246); the

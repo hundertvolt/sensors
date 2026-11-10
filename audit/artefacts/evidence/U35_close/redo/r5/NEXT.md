@@ -63,3 +63,13 @@
 - 14:57: owner chose (A): finish as planned (D.15 sweep by hand included). Next: briefs W1a (lists/baselines/twin items) + W2 (docs/release) in parallel; W1b (D.15) after W1a; O5 asked next.
 - 15:1x: units W1a (tests/tooling) and W2 (docs/release) running; O5 (release number) asked. gate59 -1 red (12.172): rerun_e running under heavy.lock (lead) with dev twin logs kept.
 - 15:5x: rerun_e green (12.172 closed unreproduced). gate59 green otherwise. cov59 running (lock lead); then snapshot 59.
+- 16:0x: snapshot 59 a771238b pushed (12.173), CI pending; next PARENT once green. W1a, W2 running; O5 open.
+- 16:2x: W2 merged (int 3bee346e); unit PIN (dev-tool pin moves, A.SDEP.25) started beside W1a; P05 waits for O5. Then W1b (D.15) after W1a + PIN merge; shared venv re-synced to the new pins after PIN.
+- 16:0x: snapshot 59 a771238b CI green (run 42845410992, 28/28) = next PARENT. W1a, PIN running; P05 waits for O5.
+- 16:4x: PIN merged (int 64b719c2, 12.175); disk 5.8 GB. Waiting: W1a; O5. After W1a: venv sync + Node 26 in run.sh, merge, W1b (D.15) brief.
+- 16:4x: O5 = 2.0 (owner 16:40:55); P05 done, int 5b8c3446 (12.176). Next owner question: O3. Waiting: W1a.
+- 16:5x: O3 closed by owner 16:47:07 (12.177, int 77a4e1e8). No owner question left. Waiting: W1a.
+- 17:5x: W1a merged (20629434) + follow-ups 886f8af0 (12.178); tools on new pins + Node 26; gate60 running (lock lead); W1b out. Next: (c) root-cause read; after gate60: snapshot 60.
+- 18:4x: gate60 green (12.179); cov60 running (lock lead); (c) measurement prepared in wt-uload (uload.sh). W1b running. Then snapshot 60.
+- 18:5x: SGP40 serial read DONE by evidence (bench 10-28; comment fix owed in src/asy_sgp40_driver.py after cov60). RP (read-only probe re-read, BRIEF_RP.md) out. Writing: W1b. SNAP_EXCLUDE += ftmp_uload ftmp_rp.
+- 19:0x: package list fixed (owner asked 19:03:24 why the count stays): 1 W1b; 2 small fixes + snapshot 60 (cov60, (c), SGP40 comment, SPEC/BACKLOG staleness); 3 probe re-check (RP done 19:0x); 4 re-verification + image; 5 last bench round; 6 W3; 7 final verification + D. New finds fold into a row; a row is ticked only when done.

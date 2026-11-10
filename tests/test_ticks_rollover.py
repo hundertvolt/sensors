@@ -51,6 +51,7 @@ _TWIN_DIR = "digital_twin"
 _KNOWN_TICKS_USERS = (
     "digital_twin/_driven_clock.py",
     "digital_twin/_flash_stall.py",
+    "digital_twin/_sgp40_chip.py",
     "digital_twin/machine.py",
     "digital_twin/run_generic_integration.py",
     "src/asy_base_classes.py",

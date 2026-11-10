@@ -1,0 +1,1326 @@
+{
+  "device": "wozi",
+  "envelopeCodes": {
+    "0": "Command executed",
+    "1": "Invalid JSON request",
+    "400": "Bad request",
+    "404": "Not found",
+    "405": "Method not allowed",
+    "413": "Payload too large",
+    "500": "Internal server error"
+  },
+  "resultWords": [
+    "Valid",
+    "Unchanged",
+    "Invalid",
+    "Failed"
+  ],
+  "routes": [
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "key": "CO2",
+              "kind": "readonly",
+              "unit": "ppm"
+            },
+            {
+              "key": "Temp",
+              "kind": "readonly",
+              "unit": "\u00b0C"
+            },
+            {
+              "key": "Hum",
+              "kind": "readonly",
+              "unit": "%"
+            },
+            {
+              "key": "WetBulb",
+              "kind": "readonly",
+              "unit": "\u00b0C"
+            },
+            {
+              "key": "DewPoint",
+              "kind": "readonly",
+              "unit": "\u00b0C"
+            },
+            {
+              "codes": {
+                "0": "not measuring",
+                "1": "settling",
+                "2": "CO2 drifting",
+                "3": "CO2 noisy",
+                "4": "ready for a forced recalibration"
+              },
+              "key": "FRCState",
+              "kind": "readonly"
+            },
+            {
+              "key": "FRCWait",
+              "kind": "readonly",
+              "unit": "s"
+            },
+            {
+              "format": "epoch",
+              "key": "TS",
+              "kind": "readonly"
+            }
+          ],
+          "key": "SCD30"
+        },
+        {
+          "fields": [
+            {
+              "key": "VOC",
+              "kind": "readonly"
+            },
+            {
+              "key": "Raw",
+              "kind": "readonly",
+              "unit": "ticks"
+            },
+            {
+              "codes": {
+                "0": "blackout (first 46 samples, index 0)",
+                "1": "learning (fresh start, first 24 h)",
+                "2": "settled (past the 24 h learning time)",
+                "3": "restored from backup (first 24 h after the restore)"
+              },
+              "key": "VOCState",
+              "kind": "readonly"
+            },
+            {
+              "format": "epoch",
+              "key": "TS",
+              "kind": "readonly"
+            }
+          ],
+          "key": "SGP40"
+        },
+        {
+          "fields": [
+            {
+              "key": "Pres",
+              "kind": "readonly",
+              "unit": "hPa"
+            },
+            {
+              "key": "Temp",
+              "kind": "readonly",
+              "unit": "\u00b0C"
+            },
+            {
+              "key": "SLPres",
+              "kind": "readonly",
+              "unit": "hPa"
+            },
+            {
+              "format": "epoch",
+              "key": "TS",
+              "kind": "readonly"
+            }
+          ],
+          "key": "BMP3XX"
+        }
+      ],
+      "method": "GET",
+      "path": "/measurements"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "float": true,
+              "key": "TempOffset",
+              "kind": "number",
+              "max": 655.35,
+              "min": 0.0,
+              "resolution": 0.01,
+              "unit": "K"
+            },
+            {
+              "key": "MeasInterval",
+              "kind": "number",
+              "max": 1800,
+              "min": 2,
+              "unit": "s"
+            },
+            {
+              "alwaysExecuted": true,
+              "key": "AmbPres",
+              "kind": "number",
+              "max": 1400,
+              "min": 700,
+              "specialValues": [
+                {
+                  "meaning": "Compensation off / use Altitude",
+                  "value": 0
+                }
+              ],
+              "unit": "hPa"
+            },
+            {
+              "ignoredWhenSet": "AmbPres",
+              "key": "Altitude",
+              "kind": "number",
+              "max": 65535,
+              "min": 0,
+              "unit": "m"
+            },
+            {
+              "alwaysExecuted": true,
+              "key": "ForceCalRef",
+              "kind": "number",
+              "max": 2000,
+              "min": 400,
+              "unit": "ppm"
+            },
+            {
+              "key": "SelfCal",
+              "kind": "toggle"
+            },
+            {
+              "float": true,
+              "key": "FRCNoise",
+              "kind": "number",
+              "max": 500.0,
+              "min": 1.0,
+              "unit": "ppm"
+            },
+            {
+              "float": true,
+              "key": "FRCRate",
+              "kind": "number",
+              "max": 1000.0,
+              "min": 0.1,
+              "unit": "ppm/min"
+            },
+            {
+              "key": "FRCWindow",
+              "kind": "number",
+              "max": 3600,
+              "min": 20,
+              "unit": "s"
+            }
+          ],
+          "key": "SCD30"
+        },
+        {
+          "fields": [
+            {
+              "key": "BackupPeriod",
+              "kind": "number",
+              "max": 1440,
+              "min": 0,
+              "specialValues": [
+                {
+                  "meaning": "Backups off",
+                  "value": 0
+                }
+              ],
+              "unit": "min"
+            },
+            {
+              "key": "BackupMaxAge",
+              "kind": "number",
+              "max": 10080,
+              "min": 0,
+              "specialValues": [
+                {
+                  "meaning": "Use all found backups",
+                  "value": 0
+                }
+              ],
+              "unit": "min"
+            },
+            {
+              "key": "WaitTimeNTP",
+              "kind": "number",
+              "max": 600,
+              "min": 0,
+              "specialValues": [
+                {
+                  "meaning": "Never wait for NTP sync",
+                  "value": 0
+                }
+              ],
+              "unit": "s"
+            }
+          ],
+          "key": "SGP40"
+        },
+        {
+          "fields": [
+            {
+              "key": "SampleInterval",
+              "kind": "number",
+              "max": 3600,
+              "min": 1,
+              "unit": "s"
+            },
+            {
+              "key": "PresOvers",
+              "kind": "enum",
+              "options": [
+                1,
+                2,
+                4,
+                8,
+                16,
+                32
+              ]
+            },
+            {
+              "key": "TempOvers",
+              "kind": "enum",
+              "options": [
+                1,
+                2,
+                4,
+                8,
+                16,
+                32
+              ]
+            },
+            {
+              "key": "FiltCoeff",
+              "kind": "enum",
+              "options": [
+                0,
+                1,
+                3,
+                7,
+                15,
+                31,
+                63,
+                127
+              ]
+            },
+            {
+              "float": true,
+              "key": "PresOffset",
+              "kind": "number",
+              "max": 500.0,
+              "min": -500.0,
+              "unit": "hPa"
+            },
+            {
+              "float": true,
+              "key": "TempOffset",
+              "kind": "number",
+              "max": 10.0,
+              "min": -10.0,
+              "unit": "K"
+            },
+            {
+              "float": true,
+              "key": "SeaLevelOffset",
+              "kind": "number",
+              "max": 5000.0,
+              "min": -1000.0,
+              "unit": "m"
+            },
+            {
+              "float": true,
+              "key": "MeanAtmTemp",
+              "kind": "number",
+              "max": 50.0,
+              "min": -40.0,
+              "unit": "\u00b0C"
+            }
+          ],
+          "key": "BMP3XX"
+        }
+      ],
+      "method": "GET",
+      "path": "/sensors"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "float": true,
+              "key": "TempOffset",
+              "kind": "number",
+              "max": 655.35,
+              "min": 0.0,
+              "resolution": 0.01,
+              "unit": "K"
+            },
+            {
+              "key": "MeasInterval",
+              "kind": "number",
+              "max": 1800,
+              "min": 2,
+              "unit": "s"
+            },
+            {
+              "alwaysExecuted": true,
+              "key": "AmbPres",
+              "kind": "number",
+              "max": 1400,
+              "min": 700,
+              "specialValues": [
+                {
+                  "meaning": "Compensation off / use Altitude",
+                  "value": 0
+                }
+              ],
+              "unit": "hPa"
+            },
+            {
+              "ignoredWhenSet": "AmbPres",
+              "key": "Altitude",
+              "kind": "number",
+              "max": 65535,
+              "min": 0,
+              "unit": "m"
+            },
+            {
+              "alwaysExecuted": true,
+              "key": "ForceCalRef",
+              "kind": "number",
+              "max": 2000,
+              "min": 400,
+              "unit": "ppm"
+            },
+            {
+              "key": "SelfCal",
+              "kind": "toggle"
+            },
+            {
+              "float": true,
+              "key": "FRCNoise",
+              "kind": "number",
+              "max": 500.0,
+              "min": 1.0,
+              "unit": "ppm"
+            },
+            {
+              "float": true,
+              "key": "FRCRate",
+              "kind": "number",
+              "max": 1000.0,
+              "min": 0.1,
+              "unit": "ppm/min"
+            },
+            {
+              "key": "FRCWindow",
+              "kind": "number",
+              "max": 3600,
+              "min": 20,
+              "unit": "s"
+            },
+            {
+              "alwaysExecuted": true,
+              "key": "ContMeas",
+              "kind": "toggle"
+            }
+          ],
+          "key": "SCD30"
+        },
+        {
+          "fields": [
+            {
+              "key": "BackupPeriod",
+              "kind": "number",
+              "max": 1440,
+              "min": 0,
+              "specialValues": [
+                {
+                  "meaning": "Backups off",
+                  "value": 0
+                }
+              ],
+              "unit": "min"
+            },
+            {
+              "key": "BackupMaxAge",
+              "kind": "number",
+              "max": 10080,
+              "min": 0,
+              "specialValues": [
+                {
+                  "meaning": "Use all found backups",
+                  "value": 0
+                }
+              ],
+              "unit": "min"
+            },
+            {
+              "key": "WaitTimeNTP",
+              "kind": "number",
+              "max": 600,
+              "min": 0,
+              "specialValues": [
+                {
+                  "meaning": "Never wait for NTP sync",
+                  "value": 0
+                }
+              ],
+              "unit": "s"
+            },
+            {
+              "dispatch": true,
+              "key": "ResetVOC",
+              "kind": "toggle"
+            }
+          ],
+          "key": "SGP40"
+        },
+        {
+          "fields": [
+            {
+              "key": "SampleInterval",
+              "kind": "number",
+              "max": 3600,
+              "min": 1,
+              "unit": "s"
+            },
+            {
+              "key": "PresOvers",
+              "kind": "enum",
+              "options": [
+                1,
+                2,
+                4,
+                8,
+                16,
+                32
+              ]
+            },
+            {
+              "key": "TempOvers",
+              "kind": "enum",
+              "options": [
+                1,
+                2,
+                4,
+                8,
+                16,
+                32
+              ]
+            },
+            {
+              "key": "FiltCoeff",
+              "kind": "enum",
+              "options": [
+                0,
+                1,
+                3,
+                7,
+                15,
+                31,
+                63,
+                127
+              ]
+            },
+            {
+              "float": true,
+              "key": "PresOffset",
+              "kind": "number",
+              "max": 500.0,
+              "min": -500.0,
+              "unit": "hPa"
+            },
+            {
+              "float": true,
+              "key": "TempOffset",
+              "kind": "number",
+              "max": 10.0,
+              "min": -10.0,
+              "unit": "K"
+            },
+            {
+              "float": true,
+              "key": "SeaLevelOffset",
+              "kind": "number",
+              "max": 5000.0,
+              "min": -1000.0,
+              "unit": "m"
+            },
+            {
+              "float": true,
+              "key": "MeanAtmTemp",
+              "kind": "number",
+              "max": 50.0,
+              "min": -40.0,
+              "unit": "\u00b0C"
+            }
+          ],
+          "key": "BMP3XX"
+        }
+      ],
+      "method": "PUT",
+      "path": "/sensors"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "byteLength": true,
+              "key": "SSID",
+              "kind": "string",
+              "maxLength": 32,
+              "minLength": 0
+            },
+            {
+              "byteLength": true,
+              "key": "PW",
+              "kind": "string",
+              "mask": true,
+              "maxLength": 63,
+              "minLength": 8,
+              "specialValues": [
+                {
+                  "meaning": "Open network",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "byteLength": true,
+              "key": "Country",
+              "kind": "string",
+              "maxLength": 2,
+              "minLength": 2,
+              "shape": "countryCode"
+            },
+            {
+              "byteLength": true,
+              "key": "Hostname",
+              "kind": "string",
+              "maxLength": 32,
+              "minLength": 1,
+              "shape": "hostLabel"
+            },
+            {
+              "byteLength": true,
+              "key": "HotspotPW",
+              "kind": "string",
+              "mask": true,
+              "maxLength": 63,
+              "minLength": 8
+            }
+          ],
+          "key": "identity"
+        },
+        {
+          "fields": [
+            {
+              "key": "LEDWifiOn",
+              "kind": "toggle"
+            }
+          ],
+          "key": "wifiLed"
+        },
+        {
+          "fields": [
+            {
+              "key": "NTPHost",
+              "kind": "string",
+              "maxLength": 253,
+              "minLength": 3,
+              "shape": "hostName"
+            },
+            {
+              "key": "NTPOffset",
+              "kind": "number",
+              "max": 43200,
+              "min": -43200,
+              "unit": "s"
+            },
+            {
+              "key": "NTPInterval",
+              "kind": "number",
+              "max": 24,
+              "min": 1,
+              "unit": "h"
+            }
+          ],
+          "key": "ntp"
+        },
+        {
+          "fields": [
+            {
+              "key": "DNSFallback",
+              "kind": "string",
+              "maxLength": 47,
+              "minLength": 0,
+              "shape": "ipv4List"
+            }
+          ],
+          "key": "dns"
+        }
+      ],
+      "method": "GET",
+      "path": "/networking"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "byteLength": true,
+              "key": "SSID",
+              "kind": "string",
+              "maxLength": 32,
+              "minLength": 0
+            },
+            {
+              "byteLength": true,
+              "key": "PW",
+              "kind": "string",
+              "mask": true,
+              "maxLength": 63,
+              "minLength": 8,
+              "specialValues": [
+                {
+                  "meaning": "Open network",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "byteLength": true,
+              "key": "Country",
+              "kind": "string",
+              "maxLength": 2,
+              "minLength": 2,
+              "shape": "countryCode"
+            },
+            {
+              "byteLength": true,
+              "key": "Hostname",
+              "kind": "string",
+              "maxLength": 32,
+              "minLength": 1,
+              "shape": "hostLabel"
+            },
+            {
+              "byteLength": true,
+              "key": "HotspotPW",
+              "kind": "string",
+              "mask": true,
+              "maxLength": 63,
+              "minLength": 8
+            }
+          ],
+          "key": "identity"
+        },
+        {
+          "fields": [
+            {
+              "key": "LEDWifiOn",
+              "kind": "toggle"
+            }
+          ],
+          "key": "wifiLed"
+        },
+        {
+          "fields": [
+            {
+              "key": "NTPHost",
+              "kind": "string",
+              "maxLength": 253,
+              "minLength": 3,
+              "shape": "hostName"
+            },
+            {
+              "key": "NTPOffset",
+              "kind": "number",
+              "max": 43200,
+              "min": -43200,
+              "unit": "s"
+            },
+            {
+              "key": "NTPInterval",
+              "kind": "number",
+              "max": 24,
+              "min": 1,
+              "unit": "h"
+            }
+          ],
+          "key": "ntp"
+        },
+        {
+          "fields": [
+            {
+              "key": "DNSFallback",
+              "kind": "string",
+              "maxLength": 47,
+              "minLength": 0,
+              "shape": "ipv4List"
+            }
+          ],
+          "key": "dns"
+        }
+      ],
+      "method": "PUT",
+      "path": "/networking"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "key": "DebugLevel",
+              "kind": "number",
+              "max": 5,
+              "min": 0
+            },
+            {
+              "key": "GMTOffset",
+              "kind": "number",
+              "max": 43200,
+              "min": -43200,
+              "unit": "s"
+            },
+            {
+              "key": "DSTOffset",
+              "kind": "number",
+              "max": 43200,
+              "min": -43200,
+              "unit": "s"
+            }
+          ],
+          "key": "settings"
+        },
+        {
+          "fields": [
+            {
+              "key": "FirmwareVersion",
+              "kind": "readonly",
+              "path": [
+                "build",
+                "FirmwareVersion"
+              ]
+            },
+            {
+              "key": "WebsiteVersion",
+              "kind": "readonly",
+              "path": [
+                "build",
+                "WebsiteVersion"
+              ]
+            },
+            {
+              "key": "BuildDate",
+              "kind": "readonly",
+              "path": [
+                "build",
+                "BuildDate"
+              ]
+            }
+          ],
+          "key": "build"
+        }
+      ],
+      "method": "GET",
+      "path": "/system"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "key": "DebugLevel",
+              "kind": "number",
+              "max": 5,
+              "min": 0
+            },
+            {
+              "key": "GMTOffset",
+              "kind": "number",
+              "max": 43200,
+              "min": -43200,
+              "unit": "s"
+            },
+            {
+              "key": "DSTOffset",
+              "kind": "number",
+              "max": 43200,
+              "min": -43200,
+              "unit": "s"
+            }
+          ],
+          "key": "settings"
+        },
+        {
+          "fields": [
+            {
+              "dispatch": true,
+              "key": "SystemCmd",
+              "kind": "enum",
+              "options": [
+                "reboot",
+                "bootloader",
+                "mempause",
+                "resetconfig",
+                "erasefram"
+              ]
+            }
+          ],
+          "key": "command"
+        }
+      ],
+      "method": "PUT",
+      "path": "/system"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "key": "Mode",
+              "kind": "readonly"
+            },
+            {
+              "key": "Connected",
+              "kind": "readonly"
+            },
+            {
+              "key": "IPv4",
+              "kind": "readonly"
+            },
+            {
+              "key": "Subnet",
+              "kind": "readonly"
+            },
+            {
+              "key": "Gateway",
+              "kind": "readonly"
+            },
+            {
+              "key": "DNS",
+              "kind": "readonly"
+            },
+            {
+              "key": "RSSI",
+              "kind": "readonly",
+              "unit": "dBm"
+            },
+            {
+              "key": "WifiUptime",
+              "kind": "readonly",
+              "unit": "s"
+            },
+            {
+              "format": "epoch",
+              "key": "WifiTS",
+              "kind": "readonly"
+            },
+            {
+              "key": "NTPSynced",
+              "kind": "readonly"
+            },
+            {
+              "key": "NTPLastSyncAge",
+              "kind": "readonly",
+              "unit": "s"
+            },
+            {
+              "format": "epoch",
+              "key": "NTPLastSync",
+              "kind": "readonly"
+            },
+            {
+              "key": "HTTPDropped",
+              "kind": "readonly"
+            }
+          ],
+          "key": "networking"
+        },
+        {
+          "fields": [
+            {
+              "key": "SysUptime",
+              "kind": "readonly",
+              "unit": "s"
+            },
+            {
+              "key": "BootSignature",
+              "kind": "readonly"
+            },
+            {
+              "codes": {
+                "0": "unknown (the record's magic or check word is wrong)",
+                "1": "power-on (also the RUN pin, RP2040 datasheet \u00a74.7.4)",
+                "11": "boot failure in phase 1 (construction), the watchdog reset or the boot entry's reset followed",
+                "12": "boot failure in phase 2 (setup batch), the watchdog reset or the boot entry's reset followed",
+                "13": "boot failure in phase 3 (task starts), the watchdog reset or the boot entry's reset followed",
+                "14": "boot failure in phase 4 (timer starts), the watchdog reset or the boot entry's reset followed",
+                "15": "boot failure in phase 5 (first NTP sync), the watchdog reset or the boot entry's reset followed",
+                "2": "watchdog without a record (a starvation, machine.reset() from outside the firmware with no run to interrupt)",
+                "20": "supervisor escalation (a handler recorded a C-stack overflow)",
+                "21": "interrupted: Ctrl-C on the console ended the run (an mpremote reset of a running board reads 21), the watchdog reset, a console soft reset or machine.reset() followed",
+                "22": "the event loop ended with an exception after boot, and the boot entry reset the chip",
+                "3": "reboot command",
+                "5": "supervisor escalation (task-error budget)",
+                "6": "watchdog starve after the reset timer could not be armed",
+                "7": "reboot after \"Reset to defaults\"",
+                "8": "reboot after \"Erase FRAM\"",
+                "9": "a system command that did not complete: its shutdown did not finish, its delete, erase or config flush fell short, or the bootloader command never reached BOOTSEL"
+              },
+              "key": "ResetReason",
+              "kind": "readonly"
+            },
+            {
+              "key": "MemFree",
+              "kind": "readonly",
+              "unit": "B"
+            },
+            {
+              "key": "MemPaused",
+              "kind": "readonly"
+            },
+            {
+              "key": "ConfigFaults",
+              "kind": "readonly"
+            },
+            {
+              "format": "lasttaskend",
+              "key": "LastTaskEnd",
+              "kind": "readonly"
+            },
+            {
+              "format": "gmtimestruct",
+              "key": "LocalTime",
+              "kind": "readonly"
+            },
+            {
+              "format": "gmtimestruct",
+              "key": "UTCTime",
+              "kind": "readonly"
+            },
+            {
+              "key": "UnixTime",
+              "kind": "readonly",
+              "unit": "s"
+            }
+          ],
+          "key": "system"
+        },
+        {
+          "fields": [
+            {
+              "format": "epoch",
+              "key": "SGP40_BackupTS",
+              "kind": "readonly",
+              "path": [
+                "SGP40",
+                "BackupTS"
+              ],
+              "specialValues": [
+                {
+                  "meaning": "None since boot",
+                  "value": null
+                },
+                {
+                  "meaning": "No timestamp",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "format": "epoch",
+              "key": "SGP40_RestoreTS",
+              "kind": "readonly",
+              "path": [
+                "SGP40",
+                "RestoreTS"
+              ],
+              "specialValues": [
+                {
+                  "meaning": "None since boot",
+                  "value": null
+                },
+                {
+                  "meaning": "No timestamp",
+                  "value": 0
+                }
+              ]
+            }
+          ],
+          "key": "sensors"
+        },
+        {
+          "fields": [
+            {
+              "key": "PauseTime",
+              "kind": "readonly",
+              "unit": "s"
+            }
+          ],
+          "key": "notification"
+        },
+        {
+          "key": "errcount",
+          "modules": [
+            "WIFI",
+            "CFGMGR_WIFI",
+            "NTP",
+            "CFGMGR_NTP",
+            "FRAM",
+            "SYSTEM",
+            "CFGMGR_SYSTEM",
+            "SCD30",
+            "CFGMGR_SCD30",
+            "SGP40",
+            "CFGMGR_SGP40",
+            "BMP3XX",
+            "CFGMGR_BMP3XX",
+            "NOTIFY",
+            "CFGMGR_NOTIFY",
+            "WEBSERVER",
+            "DNSSRV"
+          ]
+        }
+      ],
+      "method": "GET",
+      "path": "/status"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "dispatch": true,
+              "key": "ResetErrors",
+              "kind": "toggle"
+            }
+          ],
+          "key": "resetErrors"
+        }
+      ],
+      "method": "PUT",
+      "path": "/status"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "key": "AutoOn",
+              "kind": "toggle"
+            },
+            {
+              "key": "OnH",
+              "kind": "number",
+              "max": 23,
+              "min": 0
+            },
+            {
+              "key": "OnM",
+              "kind": "number",
+              "max": 59,
+              "min": 0
+            },
+            {
+              "key": "OffH",
+              "kind": "number",
+              "max": 23,
+              "min": 0
+            },
+            {
+              "key": "OffM",
+              "kind": "number",
+              "max": 59,
+              "min": 0
+            },
+            {
+              "key": "FlashBri",
+              "kind": "number",
+              "max": 255,
+              "min": 1
+            },
+            {
+              "float": true,
+              "key": "FlashInterval",
+              "kind": "number",
+              "max": 3600.0,
+              "min": 60.0,
+              "unit": "s"
+            },
+            {
+              "float": true,
+              "key": "FlashDur",
+              "kind": "number",
+              "max": 10.0,
+              "min": 0.5,
+              "unit": "s"
+            },
+            {
+              "key": "WarnCO2",
+              "kind": "number",
+              "max": 3000,
+              "min": 0,
+              "unit": "ppm"
+            },
+            {
+              "key": "WarnVOC",
+              "kind": "number",
+              "max": 500,
+              "min": 0
+            },
+            {
+              "float": true,
+              "key": "WarnHum",
+              "kind": "number",
+              "max": 100.0,
+              "min": 0.0,
+              "unit": "%"
+            }
+          ],
+          "key": "autoConfig"
+        }
+      ],
+      "method": "GET",
+      "path": "/notification"
+    },
+    {
+      "groups": [
+        {
+          "fields": [
+            {
+              "key": "AutoOn",
+              "kind": "toggle"
+            },
+            {
+              "key": "OnH",
+              "kind": "number",
+              "max": 23,
+              "min": 0
+            },
+            {
+              "key": "OnM",
+              "kind": "number",
+              "max": 59,
+              "min": 0
+            },
+            {
+              "key": "OffH",
+              "kind": "number",
+              "max": 23,
+              "min": 0
+            },
+            {
+              "key": "OffM",
+              "kind": "number",
+              "max": 59,
+              "min": 0
+            },
+            {
+              "key": "FlashBri",
+              "kind": "number",
+              "max": 255,
+              "min": 1
+            },
+            {
+              "float": true,
+              "key": "FlashInterval",
+              "kind": "number",
+              "max": 3600.0,
+              "min": 60.0,
+              "unit": "s"
+            },
+            {
+              "float": true,
+              "key": "FlashDur",
+              "kind": "number",
+              "max": 10.0,
+              "min": 0.5,
+              "unit": "s"
+            },
+            {
+              "key": "WarnCO2",
+              "kind": "number",
+              "max": 3000,
+              "min": 0,
+              "unit": "ppm"
+            },
+            {
+              "key": "WarnVOC",
+              "kind": "number",
+              "max": 500,
+              "min": 0
+            },
+            {
+              "float": true,
+              "key": "WarnHum",
+              "kind": "number",
+              "max": 100.0,
+              "min": 0.0,
+              "unit": "%"
+            }
+          ],
+          "key": "autoConfig"
+        },
+        {
+          "fields": [
+            {
+              "dispatch": true,
+              "key": "LightCmdLED",
+              "kind": "composite",
+              "subFields": [
+                {
+                  "key": "R",
+                  "kind": "number",
+                  "max": 255,
+                  "min": 0
+                },
+                {
+                  "key": "G",
+                  "kind": "number",
+                  "max": 255,
+                  "min": 0
+                },
+                {
+                  "key": "B",
+                  "kind": "number",
+                  "max": 255,
+                  "min": 0
+                },
+                {
+                  "float": true,
+                  "key": "T",
+                  "kind": "number",
+                  "max": 60.0,
+                  "min": 0.5
+                }
+              ]
+            }
+          ],
+          "key": "flash"
+        },
+        {
+          "fields": [
+            {
+              "dispatch": true,
+              "key": "PauseTime",
+              "kind": "number",
+              "max": 3600,
+              "min": 0,
+              "statusPath": [
+                "notification",
+                "PauseTime"
+              ],
+              "unit": "s"
+            }
+          ],
+          "key": "pause"
+        }
+      ],
+      "method": "PUT",
+      "path": "/notification"
+    }
+  ],
+  "unavailableMarker": {
+    "error": "unavailable"
+  },
+  "unknownCodeText": "Unknown error"
+}

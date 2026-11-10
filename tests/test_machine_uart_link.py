@@ -202,12 +202,12 @@ def test_the_call_log_is_bounded_and_says_when_it_dropped() -> None:
     # under test, not here. Bounded now, and the drop is visible rather than silent.
     uart, _b, _link = _make_link()
     for index in range(_LOG_MAXLEN * 2):
-        uart.log.append(("synthetic", index))
+        uart.log.append(("read", index))
     assert len(uart.log) <= _LOG_MAXLEN, len(uart.log)
     assert uart.log.dropped > 0
     # The forms every existing assertion uses must all still work on the bounded log.
-    assert uart.log[-1] == ("synthetic", _LOG_MAXLEN * 2 - 1)
-    assert [entry for entry in uart.log if entry[0] == "synthetic"]
+    assert uart.log[-1] == ("read", _LOG_MAXLEN * 2 - 1)
+    assert [entry for entry in uart.log if entry[0] == "read"]
     uart.log.clear()
     assert uart.log == []
 

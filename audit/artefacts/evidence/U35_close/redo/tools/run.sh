@@ -9,10 +9,10 @@ label="$2"
 shift 2
 L="$S/u35/lead"
 NS="$S/u24/ns_xdg.sh"
-NODE=/root/pico-toolchain/node/node-v24.22.1-linux-x64/bin
+NODE=$S/shared/node-v26.13.0-linux-x64/bin
 avail=$(df --output=avail -B1G / | tail -1 | tr -d ' ')
 if [ "$avail" -lt 3 ]; then echo "disk: $avail GB available, below 3 GB - not starting"; exit 3; fi
-PRE="export PATH=$S/uvenv/bin:$NODE:\$PATH UV_OFFLINE=1 UV_PROJECT_ENVIRONMENT=$S/wt-base/.venv; source $S/wt-base/.venv/bin/activate"
+PRE="export PATH=$S/shared/uvenv-0.13.7/bin:$NODE:\$PATH UV_OFFLINE=1 UV_PROJECT_ENVIRONMENT=$S/wt-base/.venv; source $S/wt-base/.venv/bin/activate"
 echo "| RUNNING $(date -u +%T) $(date -u +%F) | U35 lead $label pid $$ | $W | $* | $(date -u +%T) |" >> "$S/u21/RUNS.md"
 t0=$(date +%s)
 cd "$W" || exit 2

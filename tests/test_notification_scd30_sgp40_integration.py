@@ -10,9 +10,11 @@ import struct
 from collections import namedtuple
 
 from _async_harness import cancel_all, run
+from _crc8 import crc8
 from _error_codes import code
 from _fake_time import DrivenTime, FakeTime, UTCValid
 from _fast_sleep import FastAsyncSleep
+from _notification_cycle import cycle
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 
@@ -40,30 +42,6 @@ if TYPE_CHECKING:
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. `label`
 # (e.g. "scd30"/"sgp40") keeps this file's two-sensors-in-one-service directories readable.
 _scratch = TmpScratch("notify_dual")
-
-
-def _crc8(data: bytes) -> int:
-    crc = 0xFF
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = ((crc << 1) ^ _CRC_POLY) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
-    return crc
-
-
-async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
-    # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
-    # end the loop has not parked on its next cycle yet; then it parks there, FlashInterval after its start.
-    cfg = (await notify.get_dict_cfg())["NOTIFY"]
-    flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
-    assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
-    start = clock.now
-    end = start + flashes * round(flash_dur * 2000)
-    if end > start:
-        await clock.elapse(end - 1 - start)
-        assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
-    await clock.elapse(end - clock.now)
-    assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
 
 
 def _drive_scd_cycle(reader: SCD30_Reader) -> "SCDResults":
@@ -151,12 +129,11 @@ def _settle_and_spike(reader: SGP40_Reader, fake_bus: "FakeI2C") -> "SGP40":
 
 # --- SGP40 side: word/CRC builders, verbatim from test_notification_sgp40_integration.py ---
 
-_CRC_POLY = 0x31  # SGP40 datasheet Table 7 - same polynomial as test_asy_sgp40_driver.py's own
 
 
 def _word(value: int) -> bytes:
     payload = bytes([(value >> 8) & 0xFF, value & 0xFF])
-    return payload + bytes([_crc8(payload)])
+    return payload + bytes([crc8(payload)])
 
 
 _CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
@@ -209,7 +186,7 @@ def test_both_sensors_crossing_threshold_together_trigger_their_own_signal_witho
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 2)  # both signals flash, one settle after the other
+        await cycle(clock, notify, 2)  # both signals flash, one settle after the other
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:
@@ -249,7 +226,7 @@ def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_trigg
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 1)
+        await cycle(clock, notify, 1)
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:

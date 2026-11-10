@@ -51,12 +51,12 @@ without either it is not added. Real features stay, no gap opens or reopens, and
 - Every run, a short probe included, goes through `S/u35/lead/run.sh <worktree> <label> "<command>"` (network
   namespace, nice 19, run log lines, a disk check; output in `S/u35/lead/<label>.log`). Prefix labels with your unit.
 - One MicroPython test file, both GC stages: `TZ=UTC MICROPYPATH=build/generated_src:src:tests:frozen_modules:.frozen
-  S/tc-int/micropython/ports/unix/build-standard/micropython -X heapsize=16M tests/test_x.py`, and the same with
+  S/tc-c/micropython/ports/unix/build-standard/micropython -X heapsize=16M tests/test_x.py`, and the same with
   `tests/_threshold_runner.py tests/test_x.py 32768` as its arguments (`TEST_DEVICE=<device>` for a per-device file).
 - Every test file you add or change also runs once under the coverage build (its result gates in CI, owner 2026-09-22):
-  the same command with `S/tc-int/micropython/ports/unix/build-settrace/micropython ... tests/_coverage_runner.py
+  the same command with `S/tc-c/micropython/ports/unix/build-settrace/micropython ... tests/_coverage_runner.py
   tests/test_x.py S/u35r/r5/ftmp_<label>/cov.json`; it allocates 4-5x, so a test that needs scale there needs an invariant.
-  The settrace binary is `build-settrace` beside it. Whole-tier runs set `PICO_TOOLCHAIN_DIR=S/tc-int`.
+  The settrace binary is `build-settrace` beside it. Whole-tier runs set `PICO_TOOLCHAIN_DIR=S/tc-c`.
 - After any `src/`, `buildgen/` or device TOML edit: `S/u23/rebuild.sh <worktree>` before running a test file.
 - Lint: `S/u35/lead/lint_direct.sh` from your worktree (after the rebuild). Typecheck: `ln -s S/shared/typings
   <worktree>/typings`, then `mypy --cache-dir=/dev/null`, `mypy --cache-dir=/dev/null --config-file host_typecheck.ini`
@@ -64,7 +64,7 @@ without either it is not added. Real features stay, no gap opens or reopens, and
   literal path, as its own command). `scripts/lint.sh` and `scripts/typecheck.sh` refuse the shared venv.
 - The gate (once, on the finished change, in the background, and only when the lead says the host is free: two
   gates at once on this 4-core host fail wall-clock bounds, 2026-11-03):
-  `PICO_TOOLCHAIN_DIR=S/tc-int scripts/test.sh` and `PICO_TOOLCHAIN_DIR=S/tc-int GC_THRESHOLD=32768 scripts/test.sh`
+  `PICO_TOOLCHAIN_DIR=S/tc-c scripts/test.sh` and `PICO_TOOLCHAIN_DIR=S/tc-c GC_THRESHOLD=32768 scripts/test.sh`
   (one after the other, never at the same time as another port-binding run), then
   `scripts/run_digital_twin_ci.sh dev --gc-threshold -1 --part suite`, the same with `--part harness`, and both again
   with `--gc-threshold 32768`. A change the website reads

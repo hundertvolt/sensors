@@ -17,8 +17,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import TypeVar
 
-    from _isl29125_chip import ISL29125Chip
-
     from asy_isl29125_driver import ISL29125
     from asy_print_log import ErrorLog
 
@@ -32,6 +30,7 @@ import machine
 import microtest
 from _async_harness import cancel_all, run
 from _error_codes import code
+from _isl29125_chip import ISL29125Chip
 from _src_const import src_const
 from _tmp_scratch import TmpScratch
 from _twin_devices import bus_keywords, device_with, wiring_plan
@@ -73,6 +72,7 @@ async def _make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 
     i2c = asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], **bus_keywords(device, bus_name))  # type: ignore[typeddict-item]  # an I2C bus's pins
     assert i2c._i2c is not None
     chip = i2c._i2c.devices[attachment["address"]]
+    assert isinstance(chip, ISL29125Chip)
     # The fake keeps CONVERTING on its own timer, and that is load-bearing: a CONFIG1 write restarts
     # the conversion and leaves the previous values readable, so only a real conversion during the
     # settle produces a sample on the new gain. lux_step = 0 switches off the random WALK instead.

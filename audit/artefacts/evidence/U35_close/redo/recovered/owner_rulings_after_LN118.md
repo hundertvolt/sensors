@@ -1405,3 +1405,23 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-10 14:57:50 UTC - R5 close scope: option (A)
 "We still are at 40. Do (A), finish as planned"
 (Put: the close list (CLOSE_STATUS, 73 open items, 6 owner items) costs ~14-18 meter points, ~54-58 % at the finish; (A) everything as planned by hand, (B) the ~150-file D.15 reorder by a throwaway script, (C) B plus the import-placement and mypy-Any lists left as shrinking lists. The owner, reading 40 % on the meter, chose (A): every planned item, done as planned, the D.15 sweep included.)
+
+## 2026-11-10 16:35:29 UTC - remaining work packages
+"how many packages are left?"
+(The owner asks how many work packages remain before the close is finished.)
+
+## 2026-11-10 16:40:55 UTC - release number (O5)
+"release number? you mean the version number it gets? It's 2.0"
+(The release's version number is 2.0; P05 sets it in its five places.)
+
+## 2026-11-10 16:47:07 UTC - SCD30 ambient pressure across a power cut (O3)
+"No worries about this. The SCD30 stores everything, including the "Go" for continuous measurements. It just starts as it ended, when power is back. Field proven many times."
+(No new instrument. The SCD30 keeps all its settings, the ambient pressure and the running continuous measurement included, through a power cut and resumes as it was; field-proven. The persistence becomes a stated fact, not an owed measurement.)
+
+## 2026-11-10 18:59:55 UTC - remaining packages, budget at 46 %
+"How many packages still to go? We are at 46 now."
+(The owner asks how many work packages remain; the weekly budget stands at 46 %.)
+
+## 2026-11-10 19:03:24 UTC - why the open-package count stays constant
+"Why did the overall number of open packages stay more or less constant although packages were finished?"
+(The owner asks why the count of open packages did not fall although packages were finished since the last count.)

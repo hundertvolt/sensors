@@ -18,20 +18,36 @@ from _script_loader import load_script_module
 from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, with_uart_pair, write_doc, write_text
 
 import buildgen.validate as validate_mod
-from buildgen.buildspec import ALLOWED_INSTANCE_FIELDS, MANDATORY_FILES, UART_CRC_MODES
+from buildgen.buildspec import ALLOWED_INSTANCE_FIELDS, BUS_KIND_BY_DRIVER, MANDATORY_FILES, UART_CRC_MODES
 from buildgen.definitions import definitions_for_toml
 from buildgen.driver_registry import resolve_driver
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
-from buildgen.validate import build_model, device_max_connections, device_max_connections_by_name, module_float_const, module_str_const, webserver_init_default
+from buildgen.model import DeviceModel, InstanceSpec, lwip_macros
+from buildgen.validate import (
+    _check_default_provider_params,
+    _check_default_value_selection,
+    _check_gpio_collisions,
+    _check_instance_label_collisions,
+    _check_instance_name_collisions,
+    _check_wiring_reference,
+    build_model,
+    device_max_connections,
+    device_max_connections_by_name,
+    init_int_default,
+    module_float_const,
+    module_int_const,
+    module_str_const,
+    webserver_init_default,
+)
+from buildgen.value_wiring import ValueWiringField
+from buildgen.wiring import WiringField
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from _toml_fixtures import TomlDoc, TomlValue
-
-    from buildgen.model import DeviceModel
 
 
 _BUILD_DATE ="2026-09-12T10:00:00Z"  # any fixed stamp: the generator's own wall-clock default moves between calls
@@ -725,8 +741,6 @@ def test_duplicate_driver_name_ext_pair(tmp_path: Path, src_dir: Path) -> None:
 
 def test_instance_name_collision_via_distinct_drivers_same_resolved_name(tmp_path: Path, src_dir: Path) -> None:
     # Extension-point guard, on a synthetic model: a future driver whose _NAME another instance already resolves to.
-    from buildgen.model import DeviceModel, InstanceSpec
-    from buildgen.validate import _check_instance_name_collisions
 
     neopixel = resolve_driver("neopixel", src_dir, "fixture")  # a real driver owning no config store
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
@@ -741,8 +755,6 @@ def test_instance_name_collision_check_fails_loud_if_resolved_name_still_unset(t
     # The same function's own "internal:" invariant guard - _resolve_instances() always sets
     # resolved_name before this check ever runs in build_model()'s own pipeline, so this is driven
     # directly against a synthetic spec, same technique as the collision test just above.
-    from buildgen.model import DeviceModel, InstanceSpec
-    from buildgen.validate import _check_instance_name_collisions
 
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     model.instances[("a", "")] = InstanceSpec("a", "", {}, {}, 0)  # resolved_name defaults to None
@@ -761,9 +773,6 @@ def test_required_fields_check_fails_loud_for_a_bus_attached_driver_with_no_bus_
     # _check_required_fields()'s internal invariant: every BUS_ATTACHED_DRIVERS member must
     # appear in BUS_KIND_BY_DRIVER, true of every real driver, so this is reached by
     # monkeypatch - the technique the device-wiring test below also uses.
-    import buildgen.validate as validate_mod
-    from buildgen.buildspec import BUS_KIND_BY_DRIVER
-    from buildgen.model import DeviceModel, InstanceSpec
 
     # Imported from its origin module rather than through validate_mod, which
     # no_implicit_reexport rejects as accessing a name validate.py only imported. Both bind the
@@ -779,9 +788,6 @@ def test_required_fields_check_fails_loud_for_a_bus_attached_driver_with_no_bus_
 def test_wiring_reference_check_fails_loud_if_target_driver_info_still_unset(tmp_path: Path) -> None:
     # _check_wiring_reference()'s own "internal:" invariant guard - _resolve_instances() always sets
     # driver_info on every real instance before any wiring-reference check ever runs.
-    from buildgen.model import DeviceModel, InstanceSpec
-    from buildgen.validate import _check_wiring_reference
-    from buildgen.wiring import WiringField
 
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     model.instances[("neopixel", "")] = InstanceSpec("neopixel", "", {}, {}, 0)  # driver_info defaults to None
@@ -793,8 +799,6 @@ def test_wiring_reference_check_fails_loud_if_target_driver_info_still_unset(tmp
 def test_default_provider_params_check_fails_loud_if_driver_info_still_unset(tmp_path: Path) -> None:
     # _check_default_provider_params()'s own "internal:" invariant guard - shared by both
     # _WIRING-based and _VALUE_WIRING-based defaults, same driver_info-always-resolved reasoning.
-    from buildgen.model import DeviceModel, InstanceSpec
-    from buildgen.validate import _check_default_provider_params
 
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     spec = InstanceSpec("sgp40", "", {}, {}, 0)  # driver_info defaults to None
@@ -805,9 +809,6 @@ def test_default_provider_params_check_fails_loud_if_driver_info_still_unset(tmp
 def test_default_value_selection_check_fails_loud_for_a_non_table_wiring_value(tmp_path: Path) -> None:
     # _check_default_value_selection()'s own "internal:" invariant guard - its only real caller,
     # _check_value_wiring(), already confirms isinstance(value, dict) before ever calling this.
-    from buildgen.model import DeviceModel, InstanceSpec
-    from buildgen.validate import _check_default_value_selection
-    from buildgen.value_wiring import ValueWiringField
 
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     spec = InstanceSpec("sgp40", "", {}, {"temperature_source": "not-a-table"}, 0)
@@ -818,8 +819,6 @@ def test_default_value_selection_check_fails_loud_for_a_non_table_wiring_value(t
 
 def test_instance_label_collision_synthetic(tmp_path: Path, src_dir: Path) -> None:
     # Extension-point guard, on a synthetic model: a future driver name with an underscore lining up with a name_ext.
-    from buildgen.model import DeviceModel, InstanceSpec
-    from buildgen.validate import _check_instance_label_collisions
 
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     model.instances[("foo_bar", "")] = InstanceSpec("foo_bar", "", {}, {}, 0)
@@ -830,8 +829,6 @@ def test_instance_label_collision_synthetic(tmp_path: Path, src_dir: Path) -> No
 
 def test_gpio_collision_cs_pin_synthetic_two_instances(tmp_path: Path, src_dir: Path) -> None:
     # Extension-point guard, on a synthetic model: a second chip-select user (only the singleton fram has one today).
-    from buildgen.model import DeviceModel, InstanceSpec
-    from buildgen.validate import _check_gpio_collisions
 
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     model.instances[("fram", "a")] = InstanceSpec("fram", "a", {"cs_pin": 9}, {}, 0)
@@ -1327,9 +1324,6 @@ def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_di
     # Both real [device.wiring] fields are optional, so this drives the required-field
     # enforcement against a stand-in consumer table pointing at notification's signal_sink - a
     # genuinely required _WIRING entry, sgp40's old comp_source no longer being one at all.
-    import buildgen.validate as validate_mod
-    from buildgen.model import DeviceModel
-
     monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", ("signal_sink",))
     monkeypatch.setitem(MANDATORY_FILES, "signal_sink", "asy_notification_service.py")
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {"device": {"wiring": {}}})
@@ -1732,8 +1726,6 @@ def test_the_uart_buffer_edges_pass_the_range_check(tmp_path: Path, src_dir: Pat
 
 
 def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path: Path) -> None:
-    from buildgen.validate import module_int_const
-
     (tmp_path / "m.py").write_text("_A = const(21)\n_B = 5\n_C = const(True)\n_D = const(_A)\n", encoding="utf-8")
     assert module_int_const(tmp_path, "m.py", "_A") == 21
     assert module_int_const(tmp_path, "m.py", "_B") == 5
@@ -2050,8 +2042,6 @@ def test_uart_link_invalid_role_value_rejected(tmp_path: Path, src_dir: Path) ->
 
 
 def _lwip_pcbs() -> int:
-    from buildgen.model import lwip_macros
-
     return lwip_macros()["MEMP_NUM_TCP_PCB"]
 
 
@@ -2068,8 +2058,6 @@ def test_max_connections_is_optional_and_falls_back_to_the_src_default(tmp_path:
 def test_the_src_default_itself_is_servable_by_the_pinned_lwip_table(src_dir: Path, overrides: ModuleType) -> None:
     # A device that states no ceiling builds at this one, so it answers to the same per-connection
     # relationships every stated ceiling does - three spare PCBs included (Part H.7).
-    from buildgen.model import lwip_macros
-    from buildgen.validate import webserver_init_default
 
     assert overrides.check_lwip_ensemble(lwip_macros(), webserver_init_default(src_dir, "max_connections")) == []
 
@@ -2131,19 +2119,14 @@ def test_a_backlog_above_one_over_max_connections_is_rejected(tmp_path: Path, sr
 def test_a_malformed_lwip_table_is_a_named_build_error_never_a_traceback(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch, table: "object", expect: str) -> None:
     # The toolchain's own shape check runs first, so a typo in versions.toml names itself here
     # instead of surfacing as a TypeError or ZeroDivisionError inside the ensemble arithmetic.
-    from buildgen import validate
-    from buildgen.model import lwip_macros
-
     pinned = lwip_macros()
     bad: dict[str, object] = dict(table) if isinstance(table, dict) else {**pinned, str(table): 0 if table == "TCP_MSS" else "12000"}
-    monkeypatch.setattr(validate, "lwip_macros", lambda: bad)
+    monkeypatch.setattr(validate_mod, "lwip_macros", lambda: bad)
     with pytest.raises(BuildError, match=expect):
         _build(tmp_path, src_dir, base_doc())
 
 
 def test_an_lwip_entry_that_is_not_a_table_is_refused_by_the_loader(tmp_path: Path) -> None:
-    from buildgen.model import lwip_macros
-
     versions = write_text(tmp_path, "versions", "lwip = 5\n")
     with pytest.raises(BuildError, match=r"\[lwip\] in .* must be a table"):
         lwip_macros(versions)
@@ -2160,8 +2143,6 @@ def test_an_lwip_entry_that_is_not_a_table_is_refused_by_the_loader(tmp_path: Pa
 def test_an_unreadable_lwip_table_is_a_named_build_error_never_a_traceback(tmp_path: Path, content: "str | None", why: str) -> None:
     # Missing file, missing table, broken TOML: the three ways the loader can fail, each naming
     # the file and the ceiling it bounds rather than escaping as OSError/KeyError/TOMLDecodeError.
-    from buildgen.model import lwip_macros
-
     versions = tmp_path / "versions.toml" if content is None else write_text(tmp_path, "versions", content)
     with pytest.raises(BuildError, match=r"cannot read the \[lwip\] table from .*versions\.toml") as info:
         lwip_macros(versions)
@@ -2194,8 +2175,6 @@ def _webserver_src(tmp_path: Path, body: str) -> Path:
 def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_path: Path, body: str, want: "int | None") -> None:
     # The ServingLimits default is the module-level _DEFAULT_MAX_CONNECTIONS const(): a bool, a
     # name, a constructor keyword or a function-local copy never counts - each is refused by name.
-    from buildgen.validate import webserver_init_default
-
     src = _webserver_src(tmp_path, body)
     if want is not None:
         assert webserver_init_default(src, "max_connections") == want
@@ -2207,8 +2186,6 @@ def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_
 def test_init_int_default_reads_the_named_class_in_the_named_file_only(tmp_path: Path) -> None:
     # Generalised off webserver_init_default() for NTPClient's backoff pair: the class name and
     # file both scope the lookup, and a miss names both rather than falling back to a guess.
-    from buildgen.validate import init_int_default
-
     (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass NTPClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n", encoding="utf-8")
     assert init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "retry_s") == 10
     assert init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "retry_max_s") == 600
@@ -2222,8 +2199,6 @@ def test_init_int_default_reads_the_named_class_in_the_named_file_only(tmp_path:
 
 @pytest.mark.parametrize("content", [None, "class WebserverService(:\n"])
 def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, content: "str | None") -> None:
-    from buildgen.validate import webserver_init_default
-
     if content is not None:
         (tmp_path / "asy_webserver_service.py").write_text(content, encoding="utf-8")
     with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve its _DEFAULT_MAX_CONNECTIONS") as info:
@@ -2252,8 +2227,6 @@ def test_the_ntp_retry_keys_are_no_device_setting(tmp_path: Path, src_dir: Path,
 
 def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Path, src_dir: Path) -> None:
     # The one reader every host-side instrument sizes its load with, so it must agree with the build.
-    from buildgen.validate import device_max_connections, webserver_init_default
-
     doc = base_doc()
     table_at(doc, "device")["max_connections"] = 3
     assert device_max_connections(write_doc(tmp_path, "stated", doc), src_dir) == 3

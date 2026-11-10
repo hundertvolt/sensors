@@ -4,9 +4,11 @@
 
 import asyncio
 import json
+import time
 from collections import namedtuple
 
 from _async_harness import cancel, run
+from _crc8 import crc8
 from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
@@ -54,24 +56,12 @@ _scratch = TmpScratch("sgp40")
 _SHARED_CFG_DIR = _scratch.dir()
 
 
-_CRC_POLY = 0x31  # datasheet Table 7
 _EVENT_WAIT_S = 1
-
-
-def _crc8(data: bytes) -> int:
-    # Independent CRC-8 reimplementation for building fixtures - not the driver's own
-    # crc_checks.CRC8, so a bug shared between the two couldn't hide behind a self-consistent test.
-    crc = 0xFF
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = ((crc << 1) ^ _CRC_POLY) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
-    return crc
 
 
 def _word(value: int) -> bytes:
     payload = bytes([(value >> 8) & 0xFF, value & 0xFF])
-    return payload + bytes([_crc8(payload)])
+    return payload + bytes([crc8(payload)])
 
 
 _BACKUP_COUNTER_MAX: int = src_int("src/asy_sgp40_driver.py", "_BACKUP_COUNTER_MAX")
@@ -126,7 +116,7 @@ def test_a_defaulted_source_returns_the_same_object_every_call_rather_than_alloc
 
 
 def test_crc8_helper_matches_datasheet_example() -> None:
-    assert _crc8(b"\xbe\xef") == 0x92
+    assert crc8(b"\xbe\xef") == 0x92
 
 
 def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str":
@@ -2539,14 +2529,10 @@ class _OldTime:
     # So utc_now()'s own `time` (asy_base_classes') is replaced for the one write, giving an old but
     # valid, correctly CRC-covered timestamp.
     def gmtime(self, *args: object) -> object:
-        import time as _real_time
-
-        return _real_time.gmtime(*args)  # type: ignore[arg-type]
+        return time.gmtime(*args)  # type: ignore[arg-type]
 
     def mktime(self, t: object) -> int:
-        import time as _real_time
-
-        return _real_time.mktime(t) - 999999  # type: ignore[arg-type]
+        return time.mktime(t) - 999999  # type: ignore[arg-type]
 
 
 def test_fram_restore_rejects_backup_older_than_backup_max_age() -> None:
@@ -3259,7 +3245,7 @@ def test_touches_only_its_own_address_except_reset_which_touches_only_the_genera
             fake_bus.read_queue.append(_word(0x8000))
         with FastAsyncSleep():
             run(getattr(sgp, name)(*args))
-        assert {entry[1] for entry in fake_bus.log} == {0x59}, (name, list(fake_bus.log))
+        assert {entry[1:2] for entry in fake_bus.log} == {(0x59,)}, (name, list(fake_bus.log))
     sgp = _make_sgp()
     fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
     with FastAsyncSleep():
@@ -3271,7 +3257,7 @@ def test_touches_only_its_own_address_except_reset_which_touches_only_the_genera
         queue_successful_init(fake_bus)
         with FastAsyncSleep():
             run(getattr(sgp, name)())
-        assert {entry[1] for entry in fake_bus.log} == {0x59, 0x00}, name
+        assert {entry[1:2] for entry in fake_bus.log} == {(0x59,), (0x00,)}, name
 
 
 def test_init_sgp_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:

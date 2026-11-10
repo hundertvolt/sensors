@@ -1,0 +1,44 @@
+{
+  "config_NOTIFY.cfg": {
+    "AutoOn": "bool",
+    "FlashBri": "int",
+    "FlashDur": "float",
+    "FlashInterval": "float",
+    "OffH": "int",
+    "OffM": "int",
+    "OnH": "int",
+    "OnM": "int",
+    "WarnCO2": "int",
+    "WarnHum": "float",
+    "WarnVOC": "int"
+  },
+  "config_NTP.cfg": {
+    "DNSFallback": "str",
+    "DSTOffset": "int",
+    "GMTOffset": "int",
+    "NTPHost": "str",
+    "NTPInterval": "int",
+    "NTPOffset": "int"
+  },
+  "config_SCD30.cfg": {
+    "FRCNoise": "float",
+    "FRCRate": "float",
+    "FRCWindow": "int"
+  },
+  "config_SGP40.cfg": {
+    "BackupMaxAge": "int",
+    "BackupPeriod": "int",
+    "WaitTimeNTP": "int"
+  },
+  "config_SYSTEM.cfg": {
+    "DebugLevel": "int"
+  },
+  "config_WIFI.cfg": {
+    "Country": "str",
+    "Hostname": "str",
+    "HotspotPW": "str",
+    "LEDWifiOn": "bool",
+    "PW": "str",
+    "SSID": "str"
+  }
+}

@@ -15,7 +15,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -104,8 +104,6 @@ def test_build_stage_dir_rejects_a_frozen_module_resolving_to_neither_src_nor_ex
     # A defensive check for a contract mismatch buildgen's guarantees should prevent, simulated
     # with a fake GeneratedDevice - a plain SimpleNamespace, build_stage_dir reading only four
     # attributes off it - whose frozen_modules names a module neither src/ nor ext/ has.
-    from types import SimpleNamespace
-
     fake_generated = SimpleNamespace(
         model=SimpleNamespace(device=_FIXTURE_DEVICE),
         module_source="# fake module\n",
@@ -122,8 +120,6 @@ def test_build_stage_dir_rejects_a_frozen_module_colliding_with_a_reserved_stagi
     # The other defensive check: a frozen module whose filename collides with a reserved name
     # must fail rather than overwrite the real entry or website content. No src/ file is called
     # "main.py" today, so REPO_ROOT is patched to a fake tree purely to reach the collision.
-    from types import SimpleNamespace
-
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "main.py").write_text("# dummy colliding module\n", encoding="utf-8")
     monkeypatch.setattr(build_firmware, "REPO_ROOT", tmp_path)

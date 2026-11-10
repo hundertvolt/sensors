@@ -10,6 +10,7 @@ import asyncio
 
 from _async_harness import cancel_all, run
 from _fake_time import DrivenTime, FakeTime, Rp2Gmtime
+from _notification_cycle import cycle
 from _tmp_scratch import TmpScratch
 
 import asy_base_classes
@@ -56,21 +57,6 @@ _scratch = TmpScratch("notify_neopixel")
 
 def _co2_signal(value: int = 2000) -> NotificationSignal:
     return NotificationSignal("WarnCO2", ValueRef(_FakeSource("WarnCO2", value), "WarnCO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-
-
-async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int, ramp_ms: int | None = None) -> None:
-    # The monitor's first cycle by the service's own rule: each flash's ramp (FlashDur on a real LED), then FlashDur
-    # dark, so 1 ms before that end the loop has not parked on its next cycle yet; then it parks FlashInterval after.
-    cfg = (await notify.get_dict_cfg())["NOTIFY"]
-    flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
-    assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
-    start = clock.now
-    end = start + flashes * ((round(flash_dur * 1000) if ramp_ms is None else ramp_ms) + round(flash_dur * 1000))
-    if end > start:
-        await clock.elapse(end - 1 - start)
-        assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
-    await clock.elapse(end - clock.now)
-    assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
 
 
 def _driven() -> DrivenTime:
@@ -122,7 +108,7 @@ def test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color() -> 
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = await _start_all(pixel, notify)
-        await _cycle(clock, notify, 1)
+        await cycle(clock, notify, 1)
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:
@@ -144,7 +130,7 @@ def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ra
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = await _start_all(pixel, notify)
-        await _cycle(clock, notify, 2)  # one settle after the other, in registration order
+        await cycle(clock, notify, 2)  # one settle after the other, in registration order
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:
@@ -187,7 +173,7 @@ def test_a_notification_behind_a_busy_led_waits_its_turn_and_plays_with_no_entry
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = await _start_all(pixel, notify)
-        await _cycle(clock, notify, 1, _ramp_ms(pixel, 1.0) + _ramp_ms(pixel, 0.5))  # behind the busy ramp
+        await cycle(clock, notify, 1, _ramp_ms(pixel, 1.0) + _ramp_ms(pixel, 0.5))  # behind the busy ramp
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:
@@ -211,7 +197,7 @@ def test_the_window_check_reads_a_real_ntp_clock() -> None:
         async def scenario(clock: DrivenTime) -> None:
             await notify._set_dict_cfg(cfg, notify.get_cfg_schema())
             tasks = await _start_all(pixel, notify)
-            await _cycle(clock, notify, flashes)
+            await cycle(clock, notify, flashes)
             await cancel_all(tasks, settle_yields=1)
 
         with _driven() as clock:
@@ -240,7 +226,7 @@ def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         task = notify.start_asy_monitor()
-        await _cycle(clock, notify, 1, 0)  # the default sink returns at once: FlashDur dark, no ramp
+        await cycle(clock, notify, 1, 0)  # the default sink returns at once: FlashDur dark, no ramp
         await cancel_all([task])
 
     with _driven() as clock:

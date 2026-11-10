@@ -16,9 +16,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from typing import Any, Protocol
+    from typing import Protocol
 
-    LinkFactory = Callable[[], tuple[Any, Any, Any]]  # what each check takes: it returns (uart_a, uart_b, link)
+    # What each check takes: it returns (uart_a, uart_b, link) of the machine fake the running tier imports.
+    LinkFactory = Callable[[], tuple[machine.UART, machine.UART, machine.UARTLink]]
 
     class _BoundedRecord(Protocol):
         # What both fakes' bounded logs offer a reader: a size, a drop count, entries oldest first.
@@ -545,7 +546,7 @@ def check_a_full_uart_buffer_leaves_bytes_to_the_fifo(make: "LinkFactory") -> No
     assert b.any() == b.rxbuf
     b.read(32)
     assert b.any() == b.rxbuf  # room again: the FIFO drained into it
-    assert b.read()[-32:] == b"x" * 32
+    assert (b.read() or b"")[-32:] == b"x" * 32
 
 
 _ONE_BLOCK_MAX = 512  # entries a bounded log may keep in one storage block (the fakes' chunk sizes: 256, 512)
@@ -586,7 +587,7 @@ def check_the_bounded_logs_keep_a_fixed_occupancy(make: "LinkFactory") -> None:
     _assert_fixed_occupancy("Pin.value_log", machine.Pin.value_log(20), lambda k: pin.value(k & 1), 64)
     machine.Pin.reset_registry()
     if hasattr(a, "log"):  # the unit tier's own call log
-        _assert_fixed_occupancy("UART.log", a.log, lambda k: a.log.append(("synthetic", k)), 4096)
+        _assert_fixed_occupancy("UART.log", a.log, lambda k: a.log.append(("read", k)), 4096)
 
 
 ALL_CHECKS = (

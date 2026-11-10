@@ -7,6 +7,7 @@ import struct
 import time
 
 import microtest
+from _crc8 import crc8
 from _fast_sleep import FastAsyncSleep
 from _src_const import src_int
 from machine import I2C as FakeI2C
@@ -26,11 +27,12 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine, Iterable
+    from typing import Final
 
     from _twin_devices import I2CAttachment
 
 _GENERAL_CALL_ADDR = 0x00
-_TRANSFER_OPS = ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")  # the fake bus log's addressed transfers
+_TRANSFER_OPS: "Final" = ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")  # the fake bus log's addressed transfers
 
 
 # I2C spec reserved address ranges (0x00-0x07 general call, CBUS, reserved and Hs-mode; 0x78-0x7F 10-bit
@@ -523,15 +525,6 @@ def build_bus_occupants(i2c: I2C, attachments: "list[I2CAttachment]") -> "list[B
         address = attachment["address"]
         occupants.append(BusOccupant(adapter, adapter.construct(i2c, address), address, i2c))
     return occupants
-
-
-def crc8(data: bytes) -> int:
-    crc = 0xFF
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = ((crc << 1) ^ 0x31) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
-    return crc
 
 
 def fake(i2c: I2C) -> FakeI2C:

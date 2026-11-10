@@ -731,8 +731,8 @@ class SCD30_I2C:
         await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
 
     async def set_ambient_pressure(self, pressure_mbar: float) -> None:
-        # 0x0010 starts continuous measurement, whose on/off status the chip keeps in NVM (Interface Description
-        # 1.4.1); whether the pressure value itself persists is undocumented. Validated before truncating -
+        # 0x0010 starts continuous measurement; the chip keeps the pressure and the on/off status through a power cut
+        # (field-proven, owner, 2026-11-10; Interface Description 1.4.1 names only the status). Validated before truncating -
         # int(-0.5) == 0 would otherwise slip through as the "disable" value; NaN is rejected explicitly too.
         if pressure_mbar != pressure_mbar:  # NaN is the only value unequal to itself
             raise ValueError("ambient_pressure must not be NaN")

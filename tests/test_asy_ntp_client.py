@@ -86,9 +86,7 @@ _SYNC_RETRIES = 3
 # @tunable ntp.async_intervals = 3
 _ASYNC_INTERVALS = 3
 
-_EVENT_WAIT_S = 0.2
 _FAKE_SERVER_POLL_MS = 10
-_FIRED_PROBE_S = 0.05
 _STATE_POLL_MS = 20
 _NO_ANSWER_WAIT_S = 1
 _NO_REPLY_FETCH_TIMEOUT_MS = 100
@@ -274,6 +272,13 @@ def _make_client(
     run(build())
     client._check = ManualTick()  # the refresh check, stepped by hand
     return client
+
+
+def _fired(client: NTPClient) -> bool:
+    # Whether the sync trigger is set, taken as the sync loop's wait() takes it: the level read, then cleared.
+    fired = client._ntp_sync_trigger_event.state == 1
+    client._ntp_sync_trigger_event.clear()
+    return fired
 
 
 def _check(client: NTPClient) -> ManualTick:
@@ -753,12 +758,7 @@ def test_ntp_force_sync_resets_last_sync_retries_and_fires_the_sync_trigger() ->
         assert not await client.ntp_issynced()  # a settings change clears Synced, as legacy did
         assert await _last_sync(client) is None
         assert client._ntp_retries == 0
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-        except asyncio.TimeoutError:
-            return False
-        else:
-            return True
+        return _fired(client)
 
     assert run(scenario())
 
@@ -1155,10 +1155,7 @@ def test_a_cancelled_fetch_still_disconnects() -> None:
 
     async def scenario() -> bool:
         task = asyncio.create_task(client._fetch_ntp_reply(("192.0.2.123", 123)))
-        try:
-            await asyncio.wait_for(script.parked.wait(), _EVENT_WAIT_S)  # waiting in recvfrom()
-        except asyncio.TimeoutError:
-            pass  # never reached recvfrom(): awaiting the task below surfaces why
+        await script.parked.wait()  # waiting in recvfrom()
         task.cancel()
         try:
             await task
@@ -1488,22 +1485,15 @@ def test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without
     with _SteppedClock():
         client = _make_invalid_cfg_client()
 
-        async def fired() -> bool:
-            try:
-                await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-            except asyncio.TimeoutError:
-                return False
-            return True
-
         async def scenario() -> "tuple[bool, bool]":
             await client._set_synced(value=True)
             task = asyncio.create_task(client._refresh_loop())
             await asyncio.sleep(0)  # the loop zeroes its tick count before the first tick
             client._ntp_sec_count = 12 * 3600 - 2 * _CHECK_INTERVAL_S  # the ticks of 12 h but two, counted
             await tick(_check(client), 1)
-            early = await fired()
+            early = _fired(client)
             await tick(_check(client), 1)
-            due = await fired()
+            due = _fired(client)
             await cancel(task)
             return early, due
 
@@ -1517,11 +1507,7 @@ def test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced() 
     async def scenario() -> bool:
         task = asyncio.create_task(client._refresh_loop())
         await tick(_check(client), 1)
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-            fired = True
-        except asyncio.TimeoutError:
-            fired = False
+        fired = _fired(client)
         task.cancel()
         try:
             await task
@@ -1537,19 +1523,12 @@ def test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynce
     client = _make_client()
     client._retry_wait_s = 40
 
-    async def fired() -> bool:
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
-        except asyncio.TimeoutError:
-            return False
-        return True
-
     async def scenario() -> "list[bool]":
         task = asyncio.create_task(client._refresh_loop())
         results = []
         for ticks in (3, 1, 3, 1):
             await tick(_check(client), ticks)
-            results.append(await fired())
+            results.append(_fired(client))
         task.cancel()
         try:
             await task
@@ -1568,11 +1547,7 @@ def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interv
         await client._set_synced(value=True)
         task = asyncio.create_task(client._refresh_loop())
         await tick(_check(client), 1)  # one tick, well under 1h / 10s-per-tick
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-            fired = True
-        except asyncio.TimeoutError:
-            fired = False
+        fired = _fired(client)
         task.cancel()
         try:
             await task
@@ -1594,11 +1569,7 @@ def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
             task = asyncio.create_task(client._refresh_loop())
             await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
             await tick(_check(client), 360, clock, _CHECK_INTERVAL_S * 1000)
-            try:
-                await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-                fired = True
-            except asyncio.TimeoutError:
-                fired = False
+            fired = _fired(client)
             task.cancel()
             try:
                 await task
@@ -2239,7 +2210,7 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
         # codebase, which relies on the outer task-supervisor to notice and restart it, not a
         # catch-all here; retrieved explicitly so asyncio doesn't warn about it going unretrieved.
         try:
-            await asyncio.wait_for(task, _EVENT_WAIT_S)
+            await task
             raised = False
         except RuntimeError:
             raised = True
@@ -2877,23 +2848,16 @@ def test_ntp_time_hours_counter_does_not_bank_synced_ticks_toward_the_unsynced_w
     client = _make_client()
     client._retry_wait_s = 30
 
-    async def fired() -> bool:
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
-        except asyncio.TimeoutError:
-            return False
-        return True
-
     async def scenario() -> "list[bool]":
         await client._set_synced(value=True)
         task = asyncio.create_task(client._refresh_loop())
         await tick(_check(client), 5)
-        results = [await fired()]
+        results = [_fired(client)]
         await client._set_synced(value=False)
         await tick(_check(client), 2)
-        results.append(await fired())
+        results.append(_fired(client))
         await tick(_check(client), 1)
-        results.append(await fired())
+        results.append(_fired(client))
         task.cancel()
         try:
             await task
