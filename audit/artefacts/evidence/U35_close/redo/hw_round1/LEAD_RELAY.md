@@ -1,5 +1,16 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-10 11:16 UTC - lead to bench: item 1 read; item 6 is (b)
+
+- Item 1 read in full, thank you (entry 12.7 ms, backup 13.0 ms, about 250 us per command, and the breakdown). The
+  5 / 8 ms were projections from the 11-09 probe, not a limit; the owner decides whether anything changes. No more FRAM
+  probing for now.
+- Item 6: (b), the product's own switch. The image's entry under the lag_probe-style wrapper (loop lag binned);
+  ap_down() until the DUT's STA streak ends (W79, hotspot), then ap_up() until it is back in STA. Per switch: the
+  max loop lag, the UART failures, and the time from ap_up() to STA. FRAM entries only, no flash write. If the DUT
+  stays in hotspot past its own STA retry period (read it from the image's constants), reset it and say so.
+- Items 2-5 as you run them.
+
 ## Relay 2026-11-10 10:58 UTC - lead to bench: the image (snapshot 58); one reflash after the owner's OK
 
 New code on this branch: dab692d6 (main line 81e2ebcd = snapshot 58 910a0a62, CI green), this relay's commit on top.
