@@ -223,8 +223,8 @@ def test_real_device_hands_every_setup_to_one_list_in_the_fixed_order(device: st
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_module_neither_feeds_nor_collects_and_constructs_without_awaiting(device: str) -> None:
-    # Every feed and every boot placement collect sits in SystemService (run_setups(), start_tasks());
-    # the module keeps gc for MemFree's gc.mem_free().
+    # Every boot feed sits in SystemService (run_setups(), start_tasks()), and nothing collects; the module keeps gc
+    # for MemFree's gc.mem_free().
     source = _real(device).module_source
     assert "gc.collect(" not in source
     assert "feed_watchdog(" not in source

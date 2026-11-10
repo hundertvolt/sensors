@@ -2734,54 +2734,9 @@ def test_cancelling_supervise_tasks_cancels_its_supervisor() -> None:
         run(scenario())
 
 
-class _CountingGc:
-    # Stands in for the `gc` module so the boot collects can be counted - module-attribute
-    # reassignment is this project's mocking mechanism (MicroPython has no unittest.mock).
-
-    def __init__(self) -> None:
-        self.collects = 0
-
-    def collect(self) -> None:
-        self.collects += 1
-
-
-def _count_collects_during_supervision(starters: "list[Callable[[], asyncio.Task[None]]]", iterations: int) -> "tuple[int, int]":
-    # Returns (collects once start_tasks() has started every starter, collects after `iterations` more
-    # supervisor yields) - the second must equal the first: the supervisor is the run phase.
-    counter = _CountingGc()
-    original_gc = asy_system_service.gc
-    asy_system_service.gc = counter  # type: ignore[assignment]
-    svc = _make_service(watchdog=machine.WDT())
-    after_start = [0]
-
-    async def scenario() -> None:
-        await svc.start_tasks(starters, task_names=["T"] * len(starters))
-        after_start[0] = counter.collects
-        task = asyncio.create_task(svc.supervise_tasks())
-        await _yields(iterations)
-        await cancel(task)
-
-    try:
-        with FastAsyncSleep():
-            run(scenario())
-    finally:
-        asy_system_service.gc = original_gc
-    return after_start[0], counter.collects
-
-
-def test_start_tasks_collects_once_per_starter_plus_one_and_the_supervisor_never() -> None:
-    # The boot placement reset (SPECIFICATION.md I.4(f.1)): the starter list is the second of the two one-time
-    # boot lists that get a collect between their units; the supervisor underneath is the run phase.
-    starters = [_long_lived_starter, _long_lived_starter, _long_lived_starter]
-    after_start, after_supervision = _count_collects_during_supervision(starters, 40)
-    assert after_start == len(starters) + 1, f"expected {len(starters) + 1} boot collects, got {after_start}"
-    assert after_supervision == after_start, f"the supervisor collected {after_supervision - after_start} time(s)"
-
-
-def test_start_tasks_with_no_starters_still_does_the_start_of_list_collect() -> None:
-    after_start, after_supervision = _count_collects_during_supervision([], 20)
-    assert after_start == 1, f"expected exactly the start-of-list collect, got {after_start}"
-    assert after_supervision == 1, "the supervisor loop must not collect even with no tasks to supervise"
+def test_neither_boot_list_nor_the_supervisor_collects() -> None:
+    # No collect between the boot lists' units: their survivors land low without one since FRAM became synchronous.
+    assert not hasattr(asy_system_service, "gc"), "asy_system_service imports gc again"
 
 
 def _supervised(svc: SystemService, starters: "list[Callable[[], asyncio.Task[None]]]", passes: int = 20, names: "list[str] | None" = None) -> None:
@@ -3143,18 +3098,8 @@ def test_the_escalation_flushes_a_staged_write_and_stops_feeding_for_good() -> N
 
 
 # ---------------------------------------------------------------------------
-# run_setups() - the boot setup list, fed and collected per unit; the config-fault list
+# run_setups() - the boot setup list, fed per unit; the config-fault list
 # ---------------------------------------------------------------------------
-
-
-class _RecordingGc:
-    # Stands in for asy_system_service's `gc`, recording each collect with the watchdog feeds made so far.
-    def __init__(self, events: "list[object]", wdt: "WDT") -> None:
-        self._events = events
-        self._wdt = wdt
-
-    def collect(self) -> None:
-        self._events.append(("collect", self._wdt.feed_count))
 
 
 def _setup_unit(events: "list[object]", wdt: "WDT", n: int, *, raises: bool = False) -> "SetupFct":
@@ -3167,21 +3112,13 @@ def _setup_unit(events: "list[object]", wdt: "WDT", n: int, *, raises: bool = Fa
     return setup
 
 
-def _with_recording_gc(svc: SystemService, events: "list[object]", wdt: "WDT", coro: "Coroutine[object, object, None]") -> None:
-    real_gc = asy_system_service.gc
-    asy_system_service.gc = _RecordingGc(events, wdt)  # type: ignore[assignment]
-    try:
-        run(coro)
-    finally:
-        asy_system_service.gc = real_gc
-
-
-def test_run_setups_awaits_in_order_feeds_after_each_and_collects_after_each_feed() -> None:
+def test_run_setups_awaits_in_order_and_feeds_after_each() -> None:
     wdt = machine.WDT()
     svc = _make_service(watchdog=wdt)
     events: list[object] = []
-    _with_recording_gc(svc, events, wdt, svc.run_setups([_setup_unit(events, wdt, n) for n in range(3)]))
-    assert events == [("collect", 0), ("setup", 0, 0), ("collect", 1), ("setup", 1, 1), ("collect", 2), ("setup", 2, 2), ("collect", 3)], events
+    run(svc.run_setups([_setup_unit(events, wdt, n) for n in range(3)]))
+    assert events == [("setup", 0, 0), ("setup", 1, 1), ("setup", 2, 2)], events
+    assert wdt.feed_count == 3
 
 
 def test_a_raising_setup_propagates_and_nothing_after_it_runs() -> None:
@@ -3190,12 +3127,12 @@ def test_a_raising_setup_propagates_and_nothing_after_it_runs() -> None:
     events: list[object] = []
     setups = [_setup_unit(events, wdt, 0), _setup_unit(events, wdt, 1, raises=True), _setup_unit(events, wdt, 2)]
     try:
-        _with_recording_gc(svc, events, wdt, svc.run_setups(setups))
+        run(svc.run_setups(setups))
     except RuntimeError:
         pass
     else:
         raise AssertionError("a raising setup() was swallowed")
-    assert events == [("collect", 0), ("setup", 0, 0), ("collect", 1), ("setup", 1, 1)], events
+    assert events == [("setup", 0, 0), ("setup", 1, 1)], events
     assert wdt.feed_count == 1
 
 

@@ -13,7 +13,6 @@ regions 0/1 - RAM that survives a reset, never flash or FRAM (owner, 2026-09-26)
 # the intent, not a failure.
 
 import asyncio
-import gc
 import random
 import time
 
@@ -685,12 +684,10 @@ class SystemService:
 
     async def run_setups(self, setups: "list[SetupFct]") -> None:
         # Fed once after every one-time setup(), so the batch cannot starve the watchdog however many modules a device
-        # wires; the collect comes after the feed - it is the slow part (the boot placement reset, SPECIFICATION.md Part I.4(f.1)).
-        gc.collect()
+        # wires.
         for setup in setups:
             await setup()
             self.feed_watchdog()
-            gc.collect()
         self._config_faults = [store.module_name for store in self._config_stores if store.faulted]
 
     async def setup(self) -> None:
@@ -708,13 +705,9 @@ class SystemService:
                 await self._apply_level(level[0])
 
     async def start_tasks(self, task_starters: "list[TaskStarter]", task_names: list[str]) -> None:
-        # The boot placement reset (SPECIFICATION.md I.4(f.1)): the second of the two one-time boot lists that get a
-        # placement reset between their units - each collect puts the allocator's free-scan index back to zero.
-        # Not hygiene, not compaction, and never in the supervisor.
         self._task_starters = task_starters
         self._task_names = task_names
         self._tasks = [None] * len(task_starters)
-        gc.collect()
         # A task that dies with nobody awaiting it reaches SYSTEM's level-gated report (Part F.1). A handler already
         # set stays: the PC tiers install one that prints at every level, so their memory gates see each death.
         loop = asyncio.get_event_loop()
@@ -723,7 +716,6 @@ class SystemService:
         for n, starter in enumerate(task_starters):
             self._tasks[n] = await self._start_task(starter, n)
             await asyncio.sleep_ms(1000 // len(task_starters))
-            gc.collect()
 
     async def start_timers(self, triggers: "list[TimerStarter]", timers: "list[TimerStarter]") -> None:
         # The unstaggered timer starters in order, then each read trigger k at t0 + k * slot from one shared
