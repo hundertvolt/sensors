@@ -130,10 +130,6 @@ VERSIONS_PATH = Path(__file__).parent / "versions.toml"
 APT_ACQUIRE_TIMEOUT_S = 30
 
 
-# One apt download attempt's limit: three of them, their pauses and a bounded list update stay well inside
-# a CI job's own limit, and each streams its output, so the last line names a stalled mirror.
-# @tunable tool.apt_step_timeout_s = 150
-_APT_STEP_TIMEOUT_S = 150
 _APT_SUDO_HINT = (
     "if sudo refused --preserve-env, add the proxy variables to env_keep (see the commented example in "
     "/etc/sudoers), or install the packages by hand and pass --skip-apt"
@@ -946,16 +942,11 @@ def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
     apt_get = [*_sudo_prefix(env), "apt-get", *apt_options()]
     # Non-fatal: unrelated third-party sources some environments have configured (PPAs etc.)
     # may be blocked or broken without affecting the main archive packages we actually need.
+    run([*apt_get, "update"], check=False, env=env)
+    # Run once, with no wall-clock limit: apt_options() retries a failed fetch and ends a stalled read, a slow live
+    # download finishes, and a CI job's own limit is the backstop.
     try:
-        run([*apt_get, "update"], check=False, env=env, timeout_s=_APT_STEP_TIMEOUT_S)
-    except SetupError as exc:
-        log(f"apt-get update did not finish ({exc}) - going on with the package lists already on this host")
-    # Only the download is retried: it never reaches dpkg, so no retry can kill dpkg mid-configure (that
-    # leaves the package database interrupted until `dpkg --configure -a`). The install then reads the cache.
-    install = ["install", "-y", "--no-install-recommends", *packages]
-    try:
-        run_retried([*apt_get, "install", "--download-only", *install[1:]], env=env, timeout_s=_APT_STEP_TIMEOUT_S)
-        run([*apt_get, *install], env=env)
+        run([*apt_get, "install", "-y", "--no-install-recommends", *packages], env=env)
     except SetupError as exc:
         raise SetupError(f"{exc} - {_APT_SUDO_HINT}") from exc
 
