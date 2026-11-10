@@ -1173,8 +1173,8 @@ Part B.7.
 
 ## Release
 
-A release is the merge into `main`, tagged `v<FIRMWARE_VERSION>` on that merge commit
-(`buildgen/version.py`, SPECIFICATION.md L.7). A legacy unit moves to it by a reflash and a fresh
+This release is 2.0: the merge into `main`, tagged `v2.0` on that merge commit (`buildgen/version.py`,
+SPECIFICATION.md L.7). A legacy unit moves to it by a reflash and a fresh
 setup, with nothing migrated ("Moving a legacy unit to this firmware" above). The figures
 SPECIFICATION.md Part N still marks *estimated* await their silicon runs, listed in BACKLOG.md's
 "Real-hardware work still owed".

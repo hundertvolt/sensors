@@ -11415,6 +11415,9 @@ Both
 are bumped by hand in that one file, with no bump automation (agent, 2026-09-12, a deferral, not a
 decision), as for `toolchain/versions.toml`'s pin.
 
+The release is the merge into `main`, tagged `v<FIRMWARE_VERSION>` on that merge commit; the first
+release is `2.0`, for both constants (owner, 2026-11-10).
+
 ---
 
 # Part M — Chip Reference
