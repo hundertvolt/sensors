@@ -43132,3 +43132,24 @@ per leaf, the deepest micropython.stack_use() against 7,936 B: FRAM _send_and_re
 heap under the load (sampled every 10 s): free fell to 16,224 B at 60 s; after the load the largest free block was 22,736 B (1,421 blocks) with 72,960 B free, and still 22,736 B after one gc.collect() (80,912 free), against 66,064 B (4,129 blocks) at BOOT_DONE: the load left the heap split.
 errcount (attempt 2): WEBSERVER +39 W60; SGP40 24 -> 27 (no new kind); 19 sources unchanged. ResetReason after: 21, SysUptime 16 s, STA; flash cycles today: 1; logs/day5_20261110/ (s2_console.txt, s2_console.txt.host, s2_*_status.json)
 status: attempt 2 confirmed as measured; attempt 1's cause inferred.
+
+12:39:17 UTC 2026-11-10 lead 12:23, the post-load largest block: probes_20261110/snap58_heap_loads.py (the image's entry re-stated under `mpremote run`, no flash write; from BOOT_DONE every 1 s mem_free and micropython.mem_info(), whose "max free sz" x 16 B is the largest free block; after each 120 s idle one gc.collect(), then both) driven by heap_loads_host.py (mpremote's stdout a file; heap_probe/status_load.py N 60 /status on each LOAD line); summary by heap_loads_summary.py; HEAD 795a0b19; image 2026-11-10T11:02:16Z; 12:25:42-12:38:42; instrument cost as before (the wrapper's code and globals, the sampler, a mem_info heap walk every second; not subtracted)
+host: load 1 (6 readers) 12:26:07 {200: 113, reset 44}; load 2 (6) 12:29:12 {200: 108, reset 41}; load 3 (6) 12:32:17 {200: 108, reset 43}; load 4 (2) 12:35:22 {200: 100}; DONE 12:38:27, record 21, restored 12:38:42
+verbatim (heap_loads_summary.py; t_s from BOOT_DONE; largest = largest free block in bytes):
+boot   n   1 t_s    0-   0  free min  67360 med  67360 last  67360 | largest min  66256 med  66256 last  66256
+idle0  n  19 t_s    1-  19  free min  65808 med  75328 last  80528 | largest min  64064 med  65392 last  64080
+idle1  n 119 t_s   85- 204  free min  58240 med  72384 last  77120 | largest min  18784 med  23040 last  23040
+load1  n  63 t_s   20-  84  free min  15728 med  34976 last  67200 | largest min  11968 med  15680 last  18784
+idle2  n 118 t_s  270- 389  free min  59776 med  70496 last  80848 | largest min  15936 med  20192 last  20192
+load2  n  63 t_s  205- 269  free min  15216 med  35456 last  63408 | largest min  11664 med  13984 last  15936
+idle3  n 118 t_s  455- 574  free min  57760 med  72624 last  70608 | largest min  18336 med  18336 last  18336
+load3  n  63 t_s  390- 454  free min  16176 med  33872 last  65024 | largest min  11424 med  14448 last  18336
+idle4  n 119 t_s  640- 760  free min  58256 med  71120 last  82144 | largest min  43408 med  55120 last  55120
+load4  n  64 t_s  575- 639  free min  41824 med  59072 last  72624 | largest min  18336 med  40288 last  43408
+AFTER 1 (one gc.collect after the 120 s idle): free  82224 largest  23040
+AFTER 2 (one gc.collect after the 120 s idle): free  82208 largest  20192
+AFTER 3 (one gc.collect after the 120 s idle): free  82176 largest  18336
+AFTER 4 (one gc.collect after the 120 s idle): free  82176 largest  55120
+answer: the post-load largest block, collected, shrinks with each 6-reader load (23,040 -> 20,192 -> 18,336 B) at the same free (82,224 / 82,208 / 82,176), no plateau within three loads; after the 2-reader load it is back to 55,120 B. During one 6-reader load the largest block falls to 11,968 / 11,664 / 11,424 B and free to 15,728 / 15,216 / 16,176 B; during the 2-reader load to 18,336 B (its start value) and 41,824 B. Before any load: 64,064-66,256 B. No "MemoryError" or "memory allocation failed" in the console.
+errcount: WEBSERVER 80 -> 208 (+128 W60 = 44 + 41 + 43, the 6-reader refusals; none at 2 readers); NTP 1 -> 2 (E71 NTP_NO_REPLY, one sync without a reply); 19 sources unchanged. ResetReason after: 21, SysUptime 16 s, STA; flash cycles today: 1; logs/day5_20261110/ (h_console.txt, h_console.txt.host, h_*_status.json)
+status: confirmed as measured; whether the shrink continues past three loads not measured.
