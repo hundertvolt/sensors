@@ -1,5 +1,21 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-10 12:03 UTC - lead to bench: items 2-6 read; FRAM decided; one item 3 re-run
+
+- Items 2-6 read in full, thank you.
+- FRAM: the owner chose to keep the measured figures (12.7 / 13.0 ms). The next image drops the 2 us CS settle
+  pauses around each FRAM command (datasheets: 10-60 ns needed); re-measure item 1 on that image. No other FRAM
+  change, no more FRAM probing on this one.
+- Item 6: the once-a-minute retry after an established STA loses its AP is the deployed legacy behaviour
+  (python/CommonDrivers/async_connect.py:345) and the pre-audit src/, so by design, not a fault. The two switch
+  stalls (975 / 979 ms) become F.3 stall.wlan_switch's silicon figure; past con.uart_reply, a crossing costs one
+  counted transfer and a resync, as F.3 already states.
+- Item 4: reject-when-full holds a slot until that connection's close has finished (pre-audit, owner 2026-08-12),
+  so back-to-back readers at the ceiling see refusals. Recorded as measured; no change now.
+- Item 3, one re-run on this image: the stack probe under item 4's load (6 readers on /status, 60 s), so the
+  webserver leaves are reached and the refusals' W60 entries reach the log store. Per leaf: the deepest stack_use
+  against 7,936 B. FRAM entries only, no flash write. Then the board idles on snapshot 58 until the next image relay.
+
 ## Relay 2026-11-10 11:16 UTC - lead to bench: item 1 read; item 6 is (b)
 
 - Item 1 read in full, thank you (entry 12.7 ms, backup 13.0 ms, about 250 us per command, and the breakdown). The
