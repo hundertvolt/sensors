@@ -197,7 +197,7 @@ max-returns = 10
 "build/generated_src/sensortask_*_main_noautostart.py" = ["E402", "F401", "T20"]
 # Test code asserts (S101), reaches into privates under test (SLF001) and asserts literal values (PLR2004; Part E.3); a
 # double accepts the real API's full signature, and mypy checks Protocol and monkeypatch parameter NAMES (ARG). Tests
-# print as their output (T20) and keep the function-level imports on test_import_placement.py's pending list (PLC0415).
+# print as their output (T20).
 #
 # tests/ and digital_twin/ run under microtest.py, not pytest (PT), poll a fake's plain state flag - the fakes expose no
 # Event to wait on (ASYNC110) - and keep per-process counters and module-level fake state (PLW0603).
@@ -205,7 +205,7 @@ max-returns = 10
 # tests/ doubles also take machine.I2C's positional `stop` (FBT001/FBT002), await in loops a MicroPython comprehension
 # cannot hold (PERF401; py/compile.c, v1.29.0) and bind or compare the all-interfaces address the code under test uses
 # (S104).
-"tests/**" = ["ARG001", "ARG002", "ARG005", "ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "FBT001", "FBT002", "PERF401", "PLC0415", "PLR2004", "PLW0603", "PT", "PTH", "RUF005", "S101", "S104", "SIM105", "SLF001", "T20", "TRY003"]
+"tests/**" = ["ARG001", "ARG002", "ARG005", "ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "FBT001", "FBT002", "PERF401", "PLR2004", "PLW0603", "PT", "PTH", "RUF005", "S101", "S104", "SIM105", "SLF001", "T20", "TRY003"]
 "digital_twin/**" = ["ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "PLR2004", "PLW0603", "PTH", "RUF005", "SIM105", "SLF001", "T20", "TRY003"]
 "fakes/**" = ["EM101", "EM102", "PLR2004", "SLF001", "TRY003"]
 # Device scripts run on the board, never under pytest (PT), and await in loops as tests/ does (PERF401); rp2 has no
@@ -222,7 +222,7 @@ max-returns = 10
 # (owner, 2026-10-19: "Default is ok", SPECIFICATION.md Part D.6).
 #
 # S603: running the repo's own scripts as subprocesses IS what tests_scripts/ verifies, every argv in-repo.
-"tests_scripts/**" = ["ARG001", "ARG002", "ARG005", "EM101", "EM102", "PLC0415", "PLR2004", "PT018", "S101", "S603", "SLF001", "T20", "TRY003"]
+"tests_scripts/**" = ["ARG001", "ARG002", "ARG005", "EM101", "EM102", "PLR2004", "PT018", "S101", "S603", "SLF001", "T20", "TRY003"]
 "tests_hardware/**" = ["ARG001", "ARG002", "EM101", "EM102", "PLR2004", "PT018", "S101", "SLF001", "T20", "TRY003"]
 # Part C.5.2 publishes the `_set_dict_cfg` setter-dispatch contract by name, so these two call it across objects
 # (SLF001); asy_webserver_service.py imports asy_api_response.py's private _RequestLike Protocol for its routes (PYI046).
@@ -262,11 +262,8 @@ max-returns = 10
 # The machine fakes mirror MicroPython's own signatures - the constructors' `id` (A002), I2C writeto()/readfrom_into()'s
 # positional-only `stop` (FBT001/FBT002; extmod/machine_i2c.c rejects kwargs), machine.UART/SPI's parameter lists
 # (PLR0913) and Pin.__init__'s `id`, which __new__ resolved (ARG002): a faithful double must match.
-#
-# ANN401: tests/machine.py's _CallLog.__getitem__, UART._channel and mem_backup() return Any; the twin's
-# _build_i2c_chip() does on purpose, no single chip fake implementing every _I2CDevice method.
-"tests/machine.py" = ["A002", "ANN401", "PLR0913"]
-"digital_twin/machine.py" = ["A002", "ANN401", "ARG002", "FBT001", "FBT002", "PLR0913"]
+"tests/machine.py" = ["A002", "PLR0913"]
+"digital_twin/machine.py" = ["A002", "ARG002", "FBT001", "FBT002", "PLR0913"]
 # A Pin double takes machine.Pin's own `id` parameter (A002); `result != result` is the NaN check (PLR0124).
 "tests/test_asy_i2c_driver.py" = ["A002", "PLR0124"]
 # A runner exec()s the test file, device script or generated entry it runs; two host tests exec a function's own source
@@ -292,8 +289,7 @@ max-returns = 10
 # setattr() patches a module object known only at run time (B010).
 "digital_twin/_flash_stall.py" = ["B010"]
 "digital_twin/_wall_clock.py" = ["B010"]
-# No `from e`: MicroPython prints "exception chaining not supported" for it (B904); tests/ is absent from a standalone
-# twin's path, so _strict_json is imported where it is used (PLC0415, SPECIFICATION.md F.1).
+# No `from e`: MicroPython prints "exception chaining not supported" for it (B904).
 "digital_twin/_http_client.py" = ["B904"]
 # The armed watchdog the script's checks feed, bound once in _main() (PLW0603).
 "tests_hardware/device_scripts/fram_pause_unpause_and_gating.py" = ["PLW0603"]
@@ -397,18 +393,6 @@ no_implicit_reexport = false
 # no search path.
 module = "frozen_html"
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-# baseline: a module leaves this list once its explicit-`Any` findings are cleared; the list ends
-# empty (owner, 2026-09-28).
-module = [
-    "_boot_contiguity_probe",
-    "_sensortask_scenarios",
-    "_uart_link_contract",
-    "machine",
-    "test_asy_uart_comm",
-]
-disallow_any_explicit = false
 
 [tool.pytest.ini_options]
 # pytest runs tests_scripts/ only, the host build chain's CPython suite; tests/ runs under the real

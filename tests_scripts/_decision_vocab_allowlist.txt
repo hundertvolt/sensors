@@ -82,7 +82,6 @@ digital_twin/README.md	`Timer` fires for real on a wall-clock schedule via an in
 digital_twin/README.md	`_isl29125_chip.py` is **dev-only** (`wozi` does not carry this sensor) and is t
 digital_twin/README.md	`digital_twin` sits between `src` and `frozen_modules`/`.frozen` — never togethe
 digital_twin/README.md	`fram` is deliberately absent from that set even though its own log genuinely is
-digital_twin/_crc8.py	Independent CRC-8 reimplementation (Sensirion polynomial 0x31, init 0xFF) shared
 digital_twin/_isl29125_chip.py	Deliberately NOT the nominal 10000/375 = 26.67: the driver's gain-ratio self-cal
 digital_twin/_isl29125_chip.py	Destructive by design (p11/p12): the transfer clears RGBTHF, CONVENF and BOUTF a
 digital_twin/_isl29125_chip.py	p12, Table 18 - HIGH at power-up by design
@@ -302,7 +301,6 @@ tests_js/render.test.js	min: 0 deliberately, to catch a form input coerced to th
 tests_scripts/_devices.py	A leaked live-tree fixture (tests_scripts/conftest.py's own reclamation, scripts
 tests_scripts/buildgen_fixtures/malformed_missing_device_table.toml	Deliberately invalid buildgen fixture: no [device] table at all (a plausible han
 tests_scripts/buildgen_fixtures/multi_instance.toml	multi_instance.toml - axis 9's own dedicated multi-instance fixture (SPECIFICATI
-tests_scripts/buildgen_fixtures/novel_combo.toml	ISL29125 on i2c0 (dev.toml wires it on i2c1) with an irq_pin/trigger_s combo no
 tests_scripts/test_buildgen_definitions.py	Failure paths: a minimal DeviceModel pointed at a deliberately mutated copy of o
 tests_scripts/test_buildgen_definitions.py	SPECIFICATION.md Part L.7: buildgen.version.WEBSITE_VERSION is a build-provenanc
 tests_scripts/test_buildgen_definitions.py	asy_ntp_client.py deliberately never declares its own @web-group for section=sys

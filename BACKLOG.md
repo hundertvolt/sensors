@@ -10,16 +10,7 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
 
 ## Refactor targets not yet done
 
-- **Mypy shall be configured to disallow `Any` types** (owner-specified). Configured: all three
-  passes run full `--strict` (`disallow_any_generics` included) plus `disallow_any_explicit = true`
-  (`pyproject.toml`'s `[tool.mypy]`, `digital_twin/typecheck.ini`, `host_typecheck.ini`). What
-  remains is each pass's baseline of modules still exempted through a per-module
-  `disallow_any_explicit = false` override; a module leaves it once its explicit `Any` is gone, and
-  the list only shrinks, pinned by `tests_scripts/test_mypy_any_baseline.py`. The owner's later word
-  supersedes the 2026-09-11 deferral to a dedicated session (owner, 2026-09-28: "do it in this
-  audit"). Most of what is left
-  is test code: monkeypatch and wrapper classes duck-typing a real MicroPython object, which need a
-  typing strategy (e.g. `Protocol` classes and `__getattr__` delegation) rather than a flag flip.
+None open.
 
 ## Open questions (need owner input or further investigation)
 
@@ -219,11 +210,6 @@ gates, traps).
   `flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake`). Expected: none stated; the
   probe's `G01`/`G02` facts are reported only, and the fidelity row stays an assumption unless they
   settle it.
-- **The SGP40's reaction to an unknown command** — on `dev`, a device script sending one undefined
-  16-bit command and then a measure command, recording whether the measure answers normally; the
-  datasheet states no reaction, the twin ignores it. Expected: none stated; the answer is recorded,
-  and the fidelity row follows it. Wear: none. Twin row: the fidelity table's
-  SGP40 unknown-command assumption. Needs that device script.
 - **The BMP3XX's real calibration block** — on `dev`, the 21 calibration bytes from register 0x31
   (`asy_bmp3xx_driver.py`'s `_REGISTER_CAL_DATA`) printed once by a device script, so the twin's
   synthetic block can be checked against a real one. The probe reads it

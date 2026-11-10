@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from typing import SupportsIndex, overload
 
     from _async_harness import CoroutineOf
+    from machine import Mem32Entry, UARTEntry, _CallLog
     from typing_extensions import TypedDict, Unpack
 
     from asy_uart_driver import PieceBuffer
@@ -1426,8 +1427,9 @@ def test_write_frames_with_configured_crc() -> None:
             return await uart.write(bytearray(b"hello"))
 
     assert run(scenario()) is True
-    op, framed = fake(uart).log[-1]
-    assert op == "write"
+    entry = fake(uart).log[-1]
+    assert entry[0] == "write"
+    framed = entry[1]
     assert framed[:5] == b"hello"
     assert len(framed) == 5 + CRC16().length()
     assert CRC16().check(bytearray(framed)) == bytearray(b"hello")
@@ -1483,8 +1485,9 @@ def test_writefrom_frames_with_crc_in_place() -> None:
             return await uart.writefrom(buf, 5)
 
     assert run(scenario()) is True
-    op, written = fake(uart).log[-1]
-    assert op == "write"
+    entry = fake(uart).log[-1]
+    assert entry[0] == "write"
+    written = entry[1]
     assert written[:5] == b"hello"
     assert len(written) == 5 + CRC16().length()
 
@@ -1513,7 +1516,7 @@ def test_write_retries_after_a_short_write_until_everything_is_sent() -> None:
             return await uart.write(bytearray(b"1234567"))
 
     assert run(scenario()) is True
-    writes = [data for op, data in fake(uart).log if op == "write"]
+    writes = [entry[1] for entry in fake(uart).log if entry[0] == "write"]
     assert len(writes) > 1  # genuinely needed more than one round, not a lucky single call
     assert b"".join(writes) == b"1234567"  # nothing dropped, nothing duplicated
 
@@ -1542,7 +1545,7 @@ def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> Non
             return await uart.writefrom(buf, 5)
 
     assert run(scenario()) is True
-    writes = [data for op, data in fake(uart).log if op == "write"]
+    writes = [entry[1] for entry in fake(uart).log if entry[0] == "write"]
     assert len(writes) > 1
     framed = b"".join(writes)
     assert framed[:5] == b"hello"
@@ -2552,7 +2555,7 @@ def test_a_read_retains_nothing() -> None:
     assert run(reads(10)) == 10  # warm-up: every path taken before the heap is sampled
     # The fake's capped logs (mem32's above all) grow until they wrap once, by a count per read that varies with
     # poll rounds: reading on until each has wrapped, or a batch leaves it untouched, keeps that out of the samples.
-    logs = (fake(uart).log, mem32.log)
+    logs: tuple[_CallLog[UARTEntry] | _CallLog[Mem32Entry], ...] = (fake(uart).log, mem32.log)
     for _ in range(128):  # 8,192 reads: a 4,096-entry log wraps within them at one entry per read
         before = [(len(log), log.dropped) for log in logs]
         assert run(reads(64)) == 64

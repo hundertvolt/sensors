@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine, Sequence
 
     from _async_harness import CoroutineOf
+    from machine import I2CEntry
 
     from asy_config_manager import CfgValue, WriteValidity
     from asy_print_log import ErrorLog
@@ -162,7 +163,7 @@ async def _no_reset() -> None:
     return None
 
 
-def _parse_scd30_log(log: "Sequence[tuple[str, int, bytes, bool]]", read_iterations: int) -> None:
+def _parse_scd30_log(log: "Sequence[I2CEntry]", read_iterations: int) -> None:
     # Command-byte-based proof that same-device ops never interleave on the wire: parses the log into non-
     # overlapping runs and fails on any stray entry. A before/after log-length "span" check was rejected - a
     # coroutine blocked on the lock overlaps the holder's span, which is correct serialization.
@@ -174,7 +175,8 @@ def _parse_scd30_log(log: "Sequence[tuple[str, int, bytes, bool]]", read_iterati
         if entry[0] == "writeto" and bytes(entry[2][:2]) == _WIRE_GET_DATA_READY:
             assert i + 3 < len(log), f"truncated read_measurement() sequence at log index {i}: {log[i:]}"
             assert log[i + 1][0] == "readfrom_into", f"expected readfrom_into at index {i + 1}, got {log[i + 1]}"
-            assert log[i + 2][0] == "writeto" and bytes(log[i + 2][2][:2]) == _WIRE_READ_MEASUREMENT, f"expected writeto(READ_MEASUREMENT) at index {i + 2}, got {log[i + 2]}"
+            command = log[i + 2]
+            assert command[0] == "writeto" and bytes(command[2][:2]) == _WIRE_READ_MEASUREMENT, f"expected writeto(READ_MEASUREMENT) at index {i + 2}, got {command}"
             assert log[i + 3][0] == "readfrom_into", f"expected readfrom_into at index {i + 3}, got {log[i + 3]}"
             reads_parsed += 1
             i += 4
@@ -386,7 +388,7 @@ def test_temperature_offset_rounds_to_the_nearest_tick() -> None:
     # 0.29 * 100 is 28.999999999999996 in double: truncation sends 28, the nearest tick is 29.
     scd, i2c = _make_scd()
     run(scd.set_temperature_offset(0.29))
-    assert i2c.log[-1][2][:4] == bytes([0x54, 0x03, 0x00, 29])
+    assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x54, 0x03, 0x00, 29, crc8_byte(bytes([0x00, 29]))]), True)
 
 
 def test_every_two_decimal_temperature_offset_is_sent_as_typed() -> None:
@@ -397,8 +399,8 @@ def test_every_two_decimal_temperature_offset_is_sent_as_typed() -> None:
     async def sweep() -> int:
         for n in range(65536):  # 0.00-655.35, the schema range, as type_or_range_error() hands each value over
             await scd.set_temperature_offset(n / 100)
-            frame = i2c.log[-1][2]
-            if (frame[2] << 8 | frame[3]) != n or scd._temp_offset_ticks != n:
+            entry = i2c.log[-1]
+            if entry[0] != "writeto" or (entry[2][2] << 8 | entry[2][3]) != n or scd._temp_offset_ticks != n:
                 return n
         return -1
 
@@ -876,10 +878,12 @@ def test_setup_probes_reads_firmware_version_then_soft_resets_and_reads_the_temp
     assert [seconds for _task, seconds, _ms in sleeps.slept].count(_SOFT_RESET_WAIT_MS / 1000) == 1
     ops = [entry[0] for entry in i2c.log]
     assert ops == ["writeto", "writeto", "readfrom_into", "writeto", "writeto", "readfrom_into"]
-    assert i2c.log[0][2] == b""  # I2CDevice.setup()'s device-presence probe
-    assert i2c.log[1][2] == bytes([0xD1, 0x00])  # _CMD_READ_FIRMWARE_VERSION
-    assert i2c.log[3][2] == bytes([0xD3, 0x04])  # _CMD_SOFT_RESET
-    assert i2c.log[4][2] == bytes([0x54, 0x03])  # the temperature offset the range gate adds back
+    assert [entry[2] for entry in i2c.log if entry[0] == "writeto"] == [
+        b"",  # I2CDevice.setup()'s device-presence probe
+        bytes([0xD1, 0x00]),  # _CMD_READ_FIRMWARE_VERSION
+        bytes([0xD3, 0x04]),  # _CMD_SOFT_RESET
+        bytes([0x54, 0x03]),  # the temperature offset the range gate adds back
+    ]
     assert scd._temp_offset_ticks == 450
 
 
@@ -1694,7 +1698,7 @@ def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> 
     for value in (450, 10, 1000, 200, 400, 1):  # TempOffset, MeasInterval, AmbPres, Altitude, ForceCalRef, SelfCal
         i2c.read_queue.append(register_frame(value))
 
-    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], list[tuple[str, int, bytes, bool]]]":
+    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], list[I2CEntry]]":
         with FastAsyncSleep():
             read_task = asyncio.create_task(reader.get_dict_cfg())
             await _settle(3)  # let the read task acquire the lock and begin its first register read

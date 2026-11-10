@@ -20,6 +20,7 @@ from machine import I2C as FakeI2C
 from machine import Timer as FakeTimer
 
 import asy_bmp3xx_driver
+import asy_config_manager
 from asy_bmp3xx_driver import BMP3XX, BMP3XX_I2C, BMP3XX_Reader
 from asy_config_manager import schema_names
 from asy_i2c_driver import I2C
@@ -338,7 +339,7 @@ def test_setup_soft_resets_the_chip_once_after_its_id_check() -> None:
     log = fake(i2c).log
     resets = _writes_to(i2c, _REGISTER_CMD)
     id_read = [i for i, entry in enumerate(log) if entry[0] == "writeto" and entry[3] is False and entry[2] == bytes([_REGISTER_CHIPID])]
-    assert [log[i][2] for i in resets] == [bytes([_REGISTER_CMD, 0xB6])], f"setup() sent CMD writes {[log[i][2] for i in resets]}"
+    assert [log[i] for i in resets] == [("writeto", _ADDR, bytes([_REGISTER_CMD, 0xB6]), True)], f"setup() sent CMD writes {[log[i] for i in resets]}"
     assert id_read and id_read[0] < resets[0], "setup() reset the chip before identifying it"
 
 
@@ -1599,7 +1600,7 @@ def test_two_failed_reads_reset_the_chip_and_reapply_the_stored_config() -> None
     assert _writes_to(i2c, _REGISTER_CMD) == []  # the 1st failure: the retry is the next cycle
     assert _cycle(reader) is True
     cmd = _writes_to(i2c, _REGISTER_CMD)
-    assert len(cmd) == 1 and fake(i2c).log[cmd[0]][2] == bytes([_REGISTER_CMD, 0xB6])
+    assert len(cmd) == 1 and fake(i2c).log[cmd[0]] == ("writeto", _ADDR, bytes([_REGISTER_CMD, 0xB6]), True)
     osr, config = _writes_to(i2c, _REGISTER_OSR), _writes_to(i2c, _REGISTER_CONFIG)
     assert len(osr) == 2 and len(config) == 1 and cmd[0] < min(osr) and cmd[0] < config[0]
     assert run(reader._bmp.get_config_snapshot()) == (8, 4, 3)  # the stored values, back in the chip
@@ -2321,8 +2322,6 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     # Regression (SPECIFICATION.md C.7.3): a failed config write used to leave cfgmgr invalid, so
     # _init_bmp() logged its config-read error and ended the task on every restart - a reboot loop that rewrote the
     # file each boot. Now it initialises on the validated defaults and the write is not retried.
-    import asy_config_manager
-
     i2c = _make_i2c()
     reader = BMP3XX_Reader(i2c, address=_ADDR, cfg_path=_tmp_cfg_path("unwritable") + "missing_dir/")
     run(reader.setup())

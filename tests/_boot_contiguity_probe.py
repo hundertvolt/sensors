@@ -24,6 +24,7 @@ from _async_harness import run
 from _generated_module import boot_generated, fram_fake_class
 
 import asy_spi_driver
+import asy_system_service
 import asy_uart_driver
 
 try:
@@ -34,12 +35,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
-    from typing import Any
 
-    from asy_base_classes import SetupFct
+    from asy_base_classes import SetupFct, TaskStarter
     from asy_system_service import SystemService
-
-    _Starter = Callable[[], asyncio.Task[Any]]
 
 # The bound mirroring tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py's, so a
 # twin reading and a board reading are taken at the same positions of the same sequence.
@@ -53,11 +51,11 @@ def _keep_nothing(_log: object, _entry: object) -> None:
 # The fakes' call and wire logs are test bookkeeping with no board counterpart, and their entries were
 # 92-96% of a batch's new blocks: every log is one shared instance made here, before the seam, that keeps
 # nothing, so the maps hold the firmware's own survivors. Each fake still builds its entry, as garbage.
-_NO_CALL_LOG = machine._CallLog()
+_NO_CALL_LOG: "machine._CallLog[object]" = machine._CallLog()
 _NO_WIRE_LOG = machine._WireLog(0)
 machine._CallLog.append = _keep_nothing  # type: ignore[assignment, method-assign]
 machine._WireLog.append = _keep_nothing  # type: ignore[assignment, method-assign]
-machine._CallLog = lambda _maxlen=0: _NO_CALL_LOG  # type: ignore[assignment, misc]
+machine._CallLog = lambda _maxlen=0: _NO_CALL_LOG  # type: ignore[assignment, misc, return-value]
 machine._WireLog = lambda _maxlen=0: _NO_WIRE_LOG  # type: ignore[assignment, misc]
 machine.Pin.value_log = staticmethod(lambda _id: _NO_CALL_LOG)  # type: ignore[assignment, method-assign]
 
@@ -95,7 +93,7 @@ async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Calla
     return True
 
 
-async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Starter]", task_names: "list[str]") -> None:
+async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[TaskStarter]", task_names: "list[str]") -> None:
     # main()'s step after the setup list. The map follows start_tasks() at once; the supervisor is never entered.
     await sysfunct.start_tasks(task_starters, task_names=task_names)
     _dump("after_starter_loop_end")
@@ -104,9 +102,7 @@ async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Sta
 async def _main(device: str, cfg_path: str, settle_ms: int) -> int:
     unix_port_unretrieved_report.install()  # as microtest does for the suite this probe measures (Part I.4(e))
     asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
-    module: Any = __import__(f"sensortask_{device}")
-    import asy_system_service
-
+    module = __import__(f"sensortask_{device}")
     real_run_setups = asy_system_service.SystemService.run_setups
 
     async def seamed_run_setups(self: "SystemService", setups: "list[SetupFct]") -> None:

@@ -311,8 +311,9 @@ def test_a_simulated_reset_maps_to_its_exit_code_and_its_line() -> None:
     reset, bootloader = machine.SimulatedResetError("r"), machine.SimulatedBootloaderEntryError("b")
     assert (runner._exit_code(reset), runner._exit_code(bootloader)) == (3, 4)
     machine.reset_count, machine.bootloader_count = 2, 1
-    assert runner._reset_line("dev", reset) == "digital_twin/run_generic_integration.py [dev] machine reset: kind=reset reset_count=2 bootloader_count=1"
-    assert runner._reset_line("dev", bootloader).endswith("machine reset: kind=bootloader reset_count=2 bootloader_count=1")
+    device = generated_devices()[0]
+    assert runner._reset_line(device, reset) == f"digital_twin/run_generic_integration.py [{device}] machine reset: kind=reset reset_count=2 bootloader_count=1"
+    assert runner._reset_line(device, bootloader).endswith("machine reset: kind=bootloader reset_count=2 bootloader_count=1")
 
 
 class _FakeWatchdog:
@@ -340,7 +341,7 @@ class _OverrunBus:
 
 
 def test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_registers() -> None:
-    watchdog, gaps = _FakeWatchdog(), runner._FeedGaps()
+    watchdog, gaps, device = _FakeWatchdog(), runner._FeedGaps(), generated_devices()[0]
     watchdog.feed_at(1000, 1500, 3500)
     gaps.fold(watchdog)
     watchdog.feed_at(3600, 6600)  # the gap across two folds counts too
@@ -348,11 +349,11 @@ def test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_
     machine.mem_backup(0)[0] = 0xDEADBEEF
     _flash_stall.longest_ms = 7
     try:
-        line = runner._shutdown_line("wozi", watchdog, gaps, [("uart_link_init", _CountedLink(3, 1), _OverrunBus(2))])
+        line = runner._shutdown_line(device, watchdog, gaps, [("uart_link_init", _CountedLink(3, 1), _OverrunBus(2))])
     finally:
         _flash_stall.longest_ms = 0
     assert line == (
-        "digital_twin/run_generic_integration.py [wozi] shutdown: would_have_triggered_count=1 feed_count=5 "
+        f"digital_twin/run_generic_integration.py [{device}] shutdown: would_have_triggered_count=1 feed_count=5 "
         "largest_feed_gap_ms=3000 wdt_timeout_ms=8000 mem_backup: r0=0xdeadbeef,0x00000000,0x00000000,0x00000000 "
         f"public_destinations_refused={_unix_port_udp_addr_shim.public_destinations_refused} flash_stall_longest_ms=7 "
         f"gc_block_bytes={_GC_BLOCK_BYTES} uart=uart_link_init:transfers=3,failures=1,overruns=2"
@@ -1165,7 +1166,7 @@ def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
 
 # ---------------------------------------------------------------------------
 # main() - a real, short, bounded end-to-end smoke boot of a generated module with one injected fault, once per distinct
-# wiring of the FRAM its stores write and the SGP40 the fault arms; main()'s shutdown drains each (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+# wiring of the FRAM its stores write and the SGP40 the fault arms; main()'s shutdown drains each (agent, 2026-10-27).
 # ---------------------------------------------------------------------------
 
 

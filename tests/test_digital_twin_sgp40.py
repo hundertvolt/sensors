@@ -7,10 +7,12 @@ import sys
 
 sys.path.insert(0, "digital_twin")  # digital_twin/ is not on scripts/test.sh's MICROPYPATH; this file reaches it itself.
 
+import _sgp40_chip
 import machine
 import microtest
 from _async_harness import cancel, run
 from _crc8 import crc8, word
+from _fake_time import DrivenTime
 from _fast_sleep import FastAsyncSleep
 from _sgp40_chip import SGP40Chip
 from _tmp_scratch import TmpScratch
@@ -141,11 +143,21 @@ def test_readfrom_into_returns_exactly_the_requested_length_zero_padded() -> Non
     assert reply[3:] == bytes(7)
 
 
-def test_unrecognized_command_does_not_raise() -> None:
+def test_an_unknown_command_times_the_chip_out_until_it_reads_again() -> None:
+    # The bench part (dev, 2026-10-29): ETIMEDOUT for about 0.5 s after an undefined command, read again after 528 ms.
     chip = SGP40Chip()
-    chip.handle_writeto(b"\xff\xff")  # not a real SGP40 command
-    reply = chip.handle_readfrom_into(3)
-    assert len(reply) == 3  # no crash - real hardware would just not respond usefully either
+    with DrivenTime(_sgp40_chip) as clock:
+        chip.handle_writeto(b"\xff\xff")  # not a real SGP40 command
+        clock.advance(527)
+        for op in (lambda: chip.handle_readfrom_into(3), lambda: chip.handle_writeto(b"\x28\x0e")):
+            try:
+                op()
+                raise AssertionError("the chip answered inside its timeout window")
+            except OSError as e:
+                assert e.errno == errno.ETIMEDOUT, e
+        clock.advance(1)
+        chip.handle_writeto(b"\x28\x0e")  # the self-test, answered once the window has passed
+        assert chip.handle_readfrom_into(3) == word(0xD400)
 
 
 def test_fault_injection_on_writeto() -> None:

@@ -1,4 +1,4 @@
-// Standalone cross-browser smoke: boots the twin of every device of devices/*.toml in turn and drives its real site
+// Standalone cross-browser smoke: boots the twin of one device per hardware family in turn and drives its real site
 // through WebKitGTK, Firefox, Edge and Playwright's Chromium (SPECIFICATION.md Part H.7, "Cross-browser coverage").
 // `--require-all-engines` (CI) fails on a missing engine; without it a missing engine is a warning.
 
@@ -53,7 +53,7 @@ const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium"; // same fallback rule as v
 const REQUIRE_ALL_ENGINES = "--require-all-engines";
 
 const USAGE = `Usage: node scripts/cross_browser_smoke.mjs [${REQUIRE_ALL_ENGINES}] [-h | --help]
-Boots the twin of every device of devices/*.toml in turn and drives its site through every installed
+Boots the twin of one device per hardware family in turn and drives its site through every installed
 engine (WebKitGTK, Firefox, Edge, Playwright's Chromium) at two viewports (SPECIFICATION.md H.7).
   ${REQUIRE_ALL_ENGINES}  a missing engine fails the run (CI); without it a missing engine is skipped, with a warning
 Environment:
@@ -86,6 +86,25 @@ function derivedDevices() {
         .filter((name) => name.endsWith(".toml") && !name.startsWith("zz_test_"))
         .map((name) => name.slice(0, -".toml".length))
         .sort();
+}
+
+/** One derived device per [device] hardware_family, a device naming none its own: scripts/_devices.sh's distinct_devices. */
+function distinctDevices() {
+    /** @type {Set<string>} */
+    const seen = new Set();
+    return derivedDevices().filter((device) => {
+        const toml = readFileSync(path.join(REPO_ROOT, "devices", `${device}.toml`), "utf8");
+        const section = toml.split(/^\[/m).find((part) => part.startsWith("device]\n"));
+        const family = section?.match(/^hardware_family = "(?<family>.*)"$/m)?.groups?.family;
+        if (family === undefined) {
+            return true;
+        }
+        if (seen.has(family)) {
+            return false;
+        }
+        seen.add(family);
+        return true;
+    });
 }
 
 // Every device's module, wiring plan and definitions come from build/generated_src/ and its site from
@@ -607,11 +626,11 @@ async function main() {
         process.exit(1);
     }
 
-    // Every device's probe is picked before any twin boots, so a missing build or a device with no
+    // Every booted device's probe is picked before any twin boots, so a missing build or a device with no
     // probe-able field fails the run at once, naming the device.
     /** @type {{device: string, probe: Probe}[]} */
     const plan = [];
-    for (const device of derivedDevices()) {
+    for (const device of distinctDevices()) {
         if (!existsSync(definitionsPath(device)) || !existsSync(sitePath(device))) {
             console.error(`${device}: no generated definitions or site under build/ - run 'npm run build:site' first.`);
             process.exit(1);

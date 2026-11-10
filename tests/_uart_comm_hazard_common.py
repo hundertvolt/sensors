@@ -27,8 +27,6 @@ if TYPE_CHECKING:
 _TIMEOUT_MS = 30
 _PAYLOAD = 8
 
-_STEP_BOUND_S = 5
-
 
 # Every check runs both with and without a CRC (agent, 2026-09-12) - the dev wiring selects
 # CRCPass, but a CRC changes which corruptions are detectable at all

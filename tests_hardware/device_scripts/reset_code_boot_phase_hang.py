@@ -11,10 +11,10 @@ import _bench_device as device  # rendered: the bench device's generated module
 import machine
 
 from asy_ntp_client import NTPClient
-from asy_print_log import PrintLog
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
+# @include _shared/unretrieved.py
 
 try:
     from typing import TYPE_CHECKING
@@ -23,12 +23,11 @@ except ImportError:  # typing has no runtime presence on MicroPython
 
 if TYPE_CHECKING:
     from _shared.facts import fact
+    from _shared.unretrieved import report_unretrieved
     from _shared.watchdog import _WDT_TIMEOUT_MS, arm
     from bench_facts import BenchFacts
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
-# The product's own unretrieved-task report at the error level, so it prints whatever level the board's config holds.
-_REPORT = PrintLog(level=1, name="UNRETRIEVED TASK EXCEPTION:")
 
 _SCRATCH_CFG_PATH = "hwtest-scratch/"
 _HANG_MS = _WDT_TIMEOUT_MS + 2000  # one blocking call past the watchdog period
@@ -46,7 +45,7 @@ def _hang(*_args: object, **_kwargs: object) -> None:
 
 
 async def _main() -> None:
-    asyncio.get_event_loop().set_exception_handler(_REPORT.report_unretrieved)  # before main(): the firmware keeps it
+    report_unretrieved()
     wdt = arm()
     phase = int(BENCH.get("PHASE", "1"))
     holder, name = _CALLEES[phase]

@@ -31,7 +31,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
-    from typing import Any, Literal, Protocol, TypedDict, overload
+    from typing import Literal, Protocol, TypedDict, overload
 
     from _mpy_shed.time_mp import _TicksMs
     from rp2 import DMA
@@ -57,21 +57,21 @@ if TYPE_CHECKING:
         def uniform(self, a: float, b: float) -> float: ...
 
     class _I2CDevice(Protocol):
+        # The four transaction shapes this bus forwards to a wired chip fake; each fake implements only the subset its
+        # real counterpart answers.
         def handle_readfrom_into(self, nbytes: int) -> bytes: ...
         def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes: ...
-        # The four transaction shapes this bus forwards to a wired chip fake. Each fake implements only the subset its
-        # real counterpart answers, and I2C.devices stays Any-valued so tests reach chip-specific state through it.
         def handle_writeto(self, data: bytes) -> None: ...
         def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None: ...
+
+    # Every chip fake _build_i2c_chip() wires: a test narrows I2C.devices[addr] to its class to reach its state.
+    I2CChip = SCD30Chip | SGP40Chip | BMP3XXChip | ISL29125Chip
 
 
 _VALUE_LOG_MAXLEN = 64  # a line's value log: a chip-select toggles on every SPI transaction
 _MEM32_LOG_MAXLEN = 64  # likewise for register accesses: a DMA reader reads UARTRSR at every fill-level read
 _WIRE_LOG_MAXLEN = 4096  # bytes of a link direction's wire log kept; its `dropped` counts the rest
 _WIRE_CHUNK = 512  # bytes per storage chunk of a wire log
-# MicroPython's asyncio.core, the run queue WDT's countdown is woken on; CPython tooling that imports this module
-# has none and never builds a WDT.
-_ASYNCIO_CORE: "Any" = sys.modules.get("asyncio.core")
 
 
 class _WireLog:
@@ -139,7 +139,7 @@ def _absent_handler(_pin: "Pin") -> None:
     pass
 
 
-def _build_i2c_chip(attachment: "_I2CAttachment") -> "Any":
+def _build_i2c_chip(attachment: "_I2CAttachment") -> "I2CChip":
     # Dispatches on the plan's driver string - the twin's hand-kept chip-fake catalog, the compared strings kept literal;
     # the chip Timers are simulation clocks, not rp2 alarms.
     global _current_scd30_chip
@@ -427,7 +427,7 @@ def _valid_mem_backup_state(state: object) -> "tuple[int, int, int, list[list[in
     return words[0], words[1], words[2], regions  # type: ignore[return-value]  # each checked an int above
 
 
-def _wire_i2c_devices(bus_id: int) -> "dict[int, Any]":
+def _wire_i2c_devices(bus_id: int) -> "dict[int, I2CChip]":
     attachments: list[_I2CAttachment] = _plan_table("buses", _current_wiring_plan()["buses"], f"i2c{bus_id}") or []  # type: ignore[assignment]  # the plan's JSON shape
     return {attachment["address"]: _build_i2c_chip(attachment) for attachment in attachments}
 
@@ -472,7 +472,7 @@ class I2C:
             # register byte the chip NACKed (pico-sdk i2c.c:229-231); the chip takes none of that write.
             self.nack_after: dict[int, int] = {}
             self._pointers: dict[int, int] = {}  # per register chip: the register the next read starts at
-            self._unplugged: dict[int, Any] = {}  # chips pulled off the bus by unplug(), kept for plug()
+            self._unplugged: dict[int, I2CChip] = {}  # chips pulled off the bus by unplug(), kept for plug()
             self._wired = True
             _I2C_OBJECTS[id] = self
         # Every construction initialises (:105-115): the controller takes both pins, each with its pull-up.
@@ -495,7 +495,7 @@ class I2C:
 
     def _device_or_nak(self, address: int, *, probe: bool = False) -> "_I2CDevice":
         # A zero-length write goes through soft I2C, where a NAK reads ENODEV (machine_i2c.c:127-145, extmod/machine_i2c.c:199-203).
-        device: _I2CDevice | None = self.devices.get(address)
+        device: _I2CDevice | None = self.devices.get(address)  # type: ignore[assignment]  # each chip answers its own subset
         if device is None:
             raise OSError(errno.ENODEV) if probe else OSError(errno.EIO, "no ACK from device")
         return device
@@ -1529,7 +1529,7 @@ class WDT:
         task = self._task
         if task is None or task.done():  # one countdown for the WDT's life; one a test's reap ended starts again
             self._task = asyncio.get_event_loop().create_task(self._countdown())
-        elif task is not _ASYNCIO_CORE.cur_task:
+        elif task is not sys.modules["asyncio.core"].cur_task:  # MicroPython's asyncio.core: CPython tooling has none
             self._wake_countdown(task)
 
     async def _countdown(self) -> None:
@@ -1556,11 +1556,12 @@ class WDT:
     def _wake_countdown(task: "asyncio.Task[None]") -> None:
         # Task.cancel()'s move with no exception (extmod/modasyncio.c task_cancel()): a sleeping task leaves the run queue,
         # or the queue of what it awaits, and runs at the next round, where its sleep ends early.
+        queue = sys.modules["asyncio.core"]._task_queue
         if task.data is None:
-            _ASYNCIO_CORE._task_queue.remove(task)
+            queue.remove(task)
         else:
             task.data.remove(task)
-        _ASYNCIO_CORE._task_queue.push(task)
+        queue.push(task)
 
     def feed(self) -> None:
         self.feed_count = saturating_add(self.feed_count)
