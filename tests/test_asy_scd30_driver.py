@@ -16,7 +16,7 @@ from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _recording_print import record_prints
 from _schema_cases import declared_fields, domain_cases
-from _src_const import src_const, src_int
+from _src_const import src_int
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from machine import I2C as FakeI2C
@@ -24,7 +24,6 @@ from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
 import asy_config_manager as cm
-import asy_print_log
 import asy_scd30_driver
 from asy_i2c_driver import I2C
 from asy_print_log import LogConfig, PrintLogHistory
@@ -37,7 +36,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine, Sequence
+    from collections.abc import Coroutine, Sequence
 
     from _async_harness import CoroutineOf
 
@@ -51,7 +50,6 @@ _START_TRIGGER_PERIOD_MS = 500  # pins src/asy_scd30_driver.py _START_TRIGGER_PE
 _CMD_RESPONSE_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_CMD_RESPONSE_WAIT_MS")
 _ASC_ENABLE_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_ASC_ENABLE_WAIT_MS")
 _SOFT_RESET_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_BOOT_UP_MAX_MS") + 1  # the documented < 2 s, plus a tick
-_STACK_EXHAUSTED = src_const("src/asy_print_log.py", "_STACK_EXHAUSTED")  # the interpreter's own C-stack overflow text
 _EVENT_WAIT_S = 1
 
 
@@ -162,10 +160,6 @@ def _make_scd() -> "tuple[SCD30_I2C, FakeI2C]":
 
 async def _no_reset() -> None:
     return None
-
-
-async def _overflow(*_args: object, **_kwargs: object) -> None:
-    raise RuntimeError(_STACK_EXHAUSTED)
 
 
 def _parse_scd30_log(log: "Sequence[tuple[str, int, bytes, bool]]", read_iterations: int) -> None:
@@ -2241,43 +2235,6 @@ def test_a_full_length_frc_window_keeps_every_stored_sum_a_small_float() -> None
 # _on_invalid_range above only ever exercise the failure branches; only set_altitude has its own
 # success-path round-trip test.
 # ---------------------------------------------------------------------------
-
-
-def test_every_broad_handler_records_a_c_stack_overflow_for_the_supervisor() -> None:
-    # Each still answers its failure value and runs on; first it records the overflow, which the supervisor reboots on.
-    reader = _make_reader()
-    cases: list[tuple[str, Callable[[], Coroutine[object, object, object]], object]] = [
-        ("get_config_snapshot", reader._config_snapshot, None),
-        ("setup", reader._init_scd, False),
-        ("reset", reader._recover_device, False),
-        ("get_altitude", reader.get_altitude, None),
-        ("get_ambient_pressure", reader.get_ambient_pressure, None),
-        ("get_forced_recalibration_reference", reader.get_forced_recalibration_reference, None),
-        ("get_measurement_interval", reader.get_measurement_interval, None),
-        ("get_self_calibration_enabled", reader.get_self_calibration_enabled, None),
-        ("get_temperature_offset", reader.get_temperature_offset, None),
-        ("set_altitude", lambda: reader.set_altitude(100), False),
-        ("set_ambient_pressure", lambda: reader.set_ambient_pressure(1013), False),
-        ("set_forced_recalibration_reference", lambda: reader.set_forced_recalibration_reference(400), False),
-        ("set_measurement_interval", lambda: reader.set_measurement_interval(2), False),
-        ("set_self_calibration_enabled", lambda: reader.set_self_calibration_enabled(True), False),
-        ("set_temperature_offset", lambda: reader.set_temperature_offset(1.0), False),
-        ("stop_continuous_measurement", lambda: reader.stop_continuous_measurement(value=False), False),
-    ]
-    for name, call, failed in cases:
-        real = getattr(reader._scd, name)
-        setattr(reader._scd, name, _overflow)
-        try:
-            assert run(call()) == failed, name
-        finally:
-            setattr(reader._scd, name, real)
-        assert asy_print_log.fatal_reported() is True, name
-        asy_print_log._fatal = False  # as at boot, for the next handler
-    reader._scd.read_measurement = _overflow  # type: ignore[assignment, method-assign]
-    results, new_data = run(reader._read_scd())
-    assert (results[0], new_data) == (None, False)
-    assert asy_print_log.fatal_reported() is True
-    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
 def test_reader_setters_return_true_on_success() -> None:

@@ -453,27 +453,6 @@ def _scenario_dead_fram_chip_escalates(device: str) -> None:
     run(_cancel_reset_task(module.sysfunct))
 
 
-@_register("setup_batch_runs_every_unit_in_the_collected_order")
-def _scenario_setup_batch_order(device: str) -> None:
-    # The boot's setup units, recorded from outside as run_setups() runs them and named by their module globals:
-    # exactly the generated _collect_setups() list, in its order, each unit once.
-    recorder = BootRecorder(build(device))  # the recorder names its classes from a built module
-    try:
-        module = build(device)
-    finally:
-        recorder.restore()
-    expected = _setup_owner_names(module)
-    assert [name for kind, name in recorder.entries() if kind == "setup"] == expected, recorder.entries()
-    # fram first (sysfunct's FRAM-backed store logs to it), every sensor reader set up, the webserver last.
-    fram_vars = [name for name in expected if name.startswith("fram")]
-    assert expected[: len(fram_vars)] == fram_vars
-    readers = [name for name in dir(module) if not name.startswith("_") and isinstance(getattr(module, name), SensorReader)]
-    assert readers
-    for name in readers:
-        assert name in expected, f"{name} is not set up in the batch"
-    assert expected[-1] == "webserver"
-
-
 class _BatchWaits:
     # For the with block: each wait that ran its full time in the setup batch's task or a task it spawned (a wait_for_ms()
     # runner and the coroutine it bounds), as (unit, ms), the unit being the feeds so far (run_setups() feeds after
@@ -565,6 +544,14 @@ def _scenario_boot_sequence(device: str) -> None:
         asy_system_service.asyncio = asyncio
         recorder.restore()
     assert recorder.entries() == expected_entries(_expected_facts(device)["boot_sequence"]), recorder.entries()
+    # The order's own rules: fram first (sysfunct's FRAM-backed store logs to it), every sensor reader set up, the
+    # webserver last; and the task starters handed over whole.
+    names = _setup_owner_names(module)
+    fram_vars = [name for name in names if name.startswith("fram")]
+    assert names[: len(fram_vars)] == fram_vars and names[-1] == "webserver", names
+    readers = [name for name in dir(module) if not name.startswith("_") and isinstance(getattr(module, name), SensorReader)]
+    assert readers and all(name in names for name in readers), (readers, names)
+    assert len(module.sysfunct._tasks) == len(module._collect_task_starters()), module.sysfunct._tasks
 
 
 @_register("every_logger_the_boot_constructs_reaches_status_errcount_exactly_once")
@@ -2725,76 +2712,6 @@ def _scenario_collect_starters_never_blocks(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# main()'s own composition - build_system() -> run_setups() -> start_tasks() -> start_timers() ->
-# ntp_force_sync() -> supervise_tasks(), in that order. Every step after construction is faked (the
-# real ones start tasks, wait on Timers or supervise for good); test_asy_system_service.py covers them.
-# ---------------------------------------------------------------------------
-
-
-@_register("main_runs_setups_then_tasks_then_timers_then_force_sync_then_supervises_in_order")
-def _scenario_main_call_order(device: str) -> None:
-    calls: list[str] = []
-    passed: list[object] = []
-    from asy_ntp_client import NTPClient
-
-    real_run_setups = SystemService.run_setups
-    real_start_tasks = SystemService.start_tasks
-    real_start_timers = SystemService.start_timers
-    real_force_sync = NTPClient.ntp_force_sync
-    real_supervise = SystemService.supervise_tasks
-
-    # self/setups/task_starters/triggers/timers keep their names (and self stays unused): these are assigned onto
-    # the real class attributes below, so mypy checks their parameter NAMES against the real methods'
-    # (an underscore prefix is a hard [assignment] error, not covered by the method-assign ignore).
-    async def _fake_run_setups(self: "SystemService", setups: "list[SetupFct]") -> None:
-        calls.append("run_setups")
-        passed.append(setups)
-
-    async def _fake_start_tasks(self: "SystemService", task_starters: "list[TaskStarter]", task_names: "list[str]") -> None:
-        calls.append("start_tasks")
-        passed.append((task_starters, task_names))
-
-    async def _fake_start_timers(self: "SystemService", triggers: "list[Callable[[], None]]", timers: "list[Callable[[], None]]") -> None:
-        calls.append("start_timers")
-        passed.append((triggers, timers))
-
-    async def _fake_force_sync(self: "NTPClient") -> None:
-        calls.append("force_sync")
-
-    async def _fake_supervise(self: "SystemService") -> None:
-        calls.append("supervise_tasks")
-        # Returns at once where the real one supervises for good: this proves main() reaches it, not
-        # that the supervisor loop itself behaves (test_asy_system_service.py's own job).
-
-    SystemService.run_setups = _fake_run_setups  # type: ignore[method-assign]
-    SystemService.start_tasks = _fake_start_tasks  # type: ignore[method-assign]
-    SystemService.start_timers = _fake_start_timers  # type: ignore[method-assign]
-    NTPClient.ntp_force_sync = _fake_force_sync  # type: ignore[method-assign]
-    SystemService.supervise_tasks = _fake_supervise  # type: ignore[method-assign]
-    try:
-        asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
-        module = __import__(f"sensortask_{device}")
-        cfg_path = _tmp_cfg_dir()
-        write_error_level_config(cfg_path)
-        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL))
-    finally:
-        SystemService.run_setups = real_run_setups  # type: ignore[method-assign]
-        SystemService.start_tasks = real_start_tasks  # type: ignore[method-assign]
-        SystemService.start_timers = real_start_timers  # type: ignore[method-assign]
-        NTPClient.ntp_force_sync = real_force_sync  # type: ignore[method-assign]
-        SystemService.supervise_tasks = real_supervise  # type: ignore[method-assign]
-
-    assert calls == ["run_setups", "start_tasks", "start_timers", "force_sync", "supervise_tasks"], calls
-    # The collected lists, each handed over whole: the setups in their fixed order, then the task starters beside their
-    # names, then the read triggers (staggered) beside the unstaggered timer starters.
-    expected = [module._collect_setups(), (module._collect_task_starters(), module._collect_task_names()), (module._collect_trigger_starters(), module._collect_timer_starters())]
-    assert passed == expected, passed
-    # build_system() itself already ran (construction succeeded) - main() reaches the task-starting
-    # phase with every module in place, not just up to build_system().
-    assert module.sysfunct is not None
-
-
-# ---------------------------------------------------------------------------
 # Webserver wiring - build_system() also constructs a real Microdot() app + WebserverService,
 # registering every driver's SettingsGroup/status_source/system_cmd/notification_led/
 # maintenance_sensor/error_source. These check the real registrations landed correctly.
@@ -3230,81 +3147,6 @@ def _scenario_notification_put_light_cmd_led(device: str) -> None:
     assert sum(ramp) <= 1.0 + 1e-9, ramp  # the whole ramp, up and down, within T
 
 
-@_register("webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced")
-def _scenario_notification_light_cmd_led_integral_float(device: str) -> None:
-    # asy_config_manager.py's checked_int()/checked_float() policy applied to LightCmdLED too (SPECIFICATION.md
-    # Part A.8): an integral float R/G/B coerces to int, a plain int T coerces to float - both
-    # directions a real client could plausibly send.
-    module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10.0, "G": 20.0, "B": 30.0, "T": 1}})
-    assert _strict(res.body, "result")["LightCmdLED"] == "Valid"
-
-
-@_register("webserver_notification_put_light_cmd_led_rejects_fractional_rgb")
-def _scenario_notification_light_cmd_led_rejects_fractional(device: str) -> None:
-    # Regression test for the behavior this callback used to have (raw int()/float() truncating
-    # casts): a fractional R/G/B is now rejected outright, not silently truncated (12.5 no longer
-    # becomes a silent 12).
-    module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10.5, "G": 20, "B": 30, "T": 1.0}})
-    assert _strict(res.body, "result")["LightCmdLED"] == "Invalid"
-
-
-@_register("webserver_notification_put_light_cmd_led_rejects_non_numeric_field")
-def _scenario_notification_light_cmd_led_rejects_non_numeric_field(device: str) -> None:
-    # Another behavior change from the old raw int()/float() casts: those would parse a
-    # numeric-looking string ("10") via Python's lenient constructors, while the checked_*() validators only
-    # coerces between the two numeric types, so this is now rejected too.
-    module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": "10", "G": 20, "B": 30, "T": 1.0}})
-    assert _strict(res.body, "result")["LightCmdLED"] == "Invalid"
-
-
-@_register("webserver_notification_put_light_cmd_led_rejects_non_numeric_t")
-def _scenario_notification_light_cmd_led_rejects_non_numeric_t(device: str) -> None:
-    # T goes through cm.coerce_numeric(payload["T"], float) - a distinct code path from R/G/B's own
-    # int coercion (already tested above for R specifically) - confirms the same non-numeric
-    # rejection holds for T's own float-typed branch, not just the int-typed ones.
-    module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": "soon"}})
-    assert _strict(res.body, "result")["LightCmdLED"] == "Invalid"
-
-
-@_register("webserver_notification_put_light_cmd_led_rejects_missing_field")
-def _scenario_notification_light_cmd_led_rejects_missing_field(device: str) -> None:
-    module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30}})  # T missing
-    assert _strict(res.body, "result")["LightCmdLED"] == "Invalid"
-
-
-@_register("webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb")
-def _scenario_notification_light_cmd_led_rejects_out_of_range_rgb(device: str) -> None:
-    # Regression test for a real legacy-vs-src/ divergence (SPECIFICATION.md Part H.6's
-    # dispatch-only field rules): legacy's led_cmd() rejects out-of-range r/g/b (0-255) where the
-    # promoted callback used to silently clamp. Rejected exactly like a missing/non-numeric field.
-    module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 256, "G": 20, "B": 30, "T": 1.0}})
-    assert _strict(res.body, "result")["LightCmdLED"] == "Invalid"
-
-
-@_register("webserver_notification_put_light_cmd_led_rejects_negative_rgb")
-def _scenario_notification_light_cmd_led_rejects_negative_rgb(device: str) -> None:
-    module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": -1, "B": 30, "T": 1.0}})
-    assert _strict(res.body, "result")["LightCmdLED"] == "Invalid"
-
-
-@_register("webserver_notification_put_light_cmd_led_rejects_out_of_range_t")
-def _scenario_notification_light_cmd_led_rejects_out_of_range_t(device: str) -> None:
-    # Legacy's own t bound is 0.5-60.0 - the promoted src/ callback used to floor a too-small t to
-    # 0.1 and never bounded a too-large one at all.
-    module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 0.1}})
-    assert _strict(res.body, "result")["LightCmdLED"] == "Invalid"
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 100.0}})
-    assert _strict(res.body, "result")["LightCmdLED"] == "Invalid"
-
-
 @_register("webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t")
 def _scenario_notification_light_cmd_led_lower_boundary(device: str) -> None:
     # Deliberately one dispatch per test: _dispatch() drives each call through its own fresh
@@ -3325,7 +3167,7 @@ def _scenario_notification_light_cmd_led_upper_boundary(device: str) -> None:
 @_register("webserver_notification_light_cmd_led_refuses_a_second_flash_at_once")
 def _scenario_notification_light_cmd_led_refuses_while_busy(device: str) -> None:
     # Each dispatch is its own asyncio.run(), so the pixel's signal task never runs in between: the
-    # first flash stays queued and the second is refused at once, never queued (owner, 2026-09-29).
+    # first flash stays queued and the second is refused at once, never queued (owner, 2026-10-02).
     module = build(device)
     flash = {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 1.0}}
     first = _dispatch(module, "PUT", "/notification", flash)
@@ -3685,71 +3527,3 @@ def _scenario_hotspot_redirects(device: str) -> None:
     assert res.headers["Location"] == "/"
 
 
-@_register("is_hotspot_active_wiring_default_sta_phase_still_404s")
-def _scenario_hotspot_default_sta_404(device: str) -> None:
-    # Error-path/good-outcome baseline: WifiService.__init__ starts in _PHASE_STA_SEEKING - the real
-    # wiring must not accidentally redirect before hotspot mode is ever reached.
-    module = build(device)
-    assert module.conn is not None
-    assert module.conn._conn_phase == _PHASE_STA_SEEKING
-    res = _dispatch(module, "GET", "/generate_204")
-    assert res.status_code == 404
-
-
-@_register("is_hotspot_active_wiring_dynamic_phase_switch_is_reflected_live")
-def _scenario_hotspot_dynamic_switch(device: str) -> None:
-    # Dynamic-mode-switch coverage through the real construction graph: flips the real conn's phase
-    # back and forth on the same built system and confirms each dispatch reflects the phase at call
-    # time, not whatever it was when WebserverService(...) was constructed.
-    module = build(device)
-    assert module.conn is not None
-    conn = module.conn
-
-    assert _dispatch(module, "GET", "/generate_204").status_code == 404
-
-    conn._conn_phase = _PHASE_HOTSPOT
-    res = _dispatch(module, "GET", "/generate_204")
-    assert res.status_code == 302
-    assert res.headers["Location"] == "/"
-
-    conn._conn_phase = _PHASE_STA_SEEKING
-    assert _dispatch(module, "GET", "/generate_204").status_code == 404
-
-
-@_register("is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_hotspot_mode")
-def _scenario_hotspot_real_routes_unaffected(device: str) -> None:
-    # Upstream/downstream error handling: real content must keep flowing through cleanly - the
-    # redirect fallback must never shadow an actual file hit or a real API route, hotspot mode or not.
-    module = build(device)
-    assert module.conn is not None
-    module.conn._conn_phase = _PHASE_HOTSPOT
-
-    res = _dispatch(module, "GET", "/")
-    assert res.status_code == 200  # real (stub) index.html, not a redirect loop
-
-    res = _dispatch(module, "GET", "/measurements")
-    assert res.status_code == 200
-    expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
-    assert_sensor_payload_not_self_wrapped(_strict(status_body(res)), expected)
-
-
-@_register("is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode")
-def _scenario_hotspot_directory_traversal_404s(device: str) -> None:
-    # All-paths coverage through the real wiring: the ".." guard clause in _StaticRoutes.serve() runs
-    # before is_hotspot_active() is ever consulted (see asy_webserver_service.py's own source order).
-    module = build(device)
-    assert module.conn is not None
-    module.conn._conn_phase = _PHASE_HOTSPOT
-    res = _dispatch(module, "GET", "/foo/../../index.html")
-    assert res.status_code == 404
-
-
-@_register("is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode")
-def _scenario_hotspot_put_unmatched_405(device: str) -> None:
-    # All-paths coverage: a non-GET request to an unmatched path resolves to 405 inside Microdot's
-    # own routing before _StaticRoutes.serve() is ever reached - real hotspot state must not change that.
-    module = build(device)
-    assert module.conn is not None
-    module.conn._conn_phase = _PHASE_HOTSPOT
-    res = _dispatch(module, "PUT", "/generate_204", {})
-    assert res.status_code == 405

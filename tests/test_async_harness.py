@@ -1,5 +1,5 @@
-"""tests/_async_harness.py: run() and run_timed() refuse to nest inside a running loop, end every task they created
-whatever the coroutine does, name the ones they cannot end and keep no finished one; run_to_interrupt() refuses as well;
+"""tests/_async_harness.py: run() refuses to nest inside a running loop, ends every task it created whatever the
+coroutine does, names the ones it cannot end and keeps no finished one; run_to_interrupt() refuses as well;
 cancel() and cancel_all() end a task and wait for it."""
 
 import asyncio
@@ -10,7 +10,7 @@ import sys
 from time import ticks_diff, ticks_ms
 
 import _async_harness
-from _async_harness import cancel, cancel_all, run, run_timed, run_to_interrupt
+from _async_harness import cancel, cancel_all, run, run_to_interrupt
 from _tmp_scratch import TmpScratch
 
 try:
@@ -22,10 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
 
 _scratch = TmpScratch("async_harness")
-_ANSWER_BOUND_S = 5  # a hang bound on a coroutine that answers at once
-_SLEEPER_BOUND_S = 0.01  # waited out: the sleeper never returns
-_STUCK_REAP_MS = 60_000  # the reap bound a task nothing can end is named inside of, never waited out
-_STUBBORN_REAP_MS = 5  # waited out: the reap bound a task running on after its cancellation outlasts
+_STUCK_REAP_MS = 60_000  # a task nothing can end is named well inside this, never waited out
 
 
 class _Reboot(BaseException):  # stands in for the fakes' simulated reset, a BaseException
@@ -62,43 +59,22 @@ async def _sleeper() -> None:
     await asyncio.sleep(3600)
 
 
-def _unended_message(coro: "Coroutine[object, object, None]", limit_ms: int) -> "tuple[str, int]":
-    # run()'s RuntimeError for a task it could not end, and the run's milliseconds, under the reap bound `limit_ms`.
-    saved = _async_harness._REAP_LIMIT_MS
-    _async_harness._REAP_LIMIT_MS = limit_ms
+def _unended_message(coro: "Coroutine[object, object, None]") -> "tuple[str, int]":
+    # run()'s RuntimeError for a task it could not end, and the run's milliseconds.
     start = ticks_ms()
     try:
         run(coro)
     except RuntimeError as e:
         return str(e), ticks_diff(ticks_ms(), start)
-    finally:
-        _async_harness._REAP_LIMIT_MS = saved
     raise AssertionError("a task the reap could not end passed the run")
 
 
-def test_run_returns_the_coroutines_value_and_a_bound_raises_timeout() -> None:
+def test_run_returns_the_coroutines_value() -> None:
     async def answer() -> int:
         await asyncio.sleep(0)
         return 42
 
     assert run(answer()) == 42
-    assert run(answer(), _ANSWER_BOUND_S) == 42
-    raised = False
-    try:
-        run(_sleeper(), _SLEEPER_BOUND_S)
-    except asyncio.TimeoutError:
-        raised = True
-    assert raised
-    assert _scheduler_empty()
-
-
-def test_run_timed_bounds_the_coroutine_and_leaves_nothing_parked() -> None:
-    raised = False
-    try:
-        run_timed(_sleeper(), _SLEEPER_BOUND_S)
-    except asyncio.TimeoutError:
-        raised = True
-    assert raised
     assert _scheduler_empty()
 
 
@@ -229,7 +205,7 @@ def test_a_task_whose_awaited_task_swallows_its_cancellation_is_still_ended() ->
     assert _scheduler_empty()
 
 
-def test_a_task_nothing_can_wake_is_named_and_taken_off_without_waiting_out_the_bound() -> None:
+def test_a_task_nothing_can_wake_is_named_and_taken_off_at_once() -> None:
     never = asyncio.Event()
 
     async def stuck() -> None:
@@ -244,18 +220,18 @@ def test_a_task_nothing_can_wake_is_named_and_taken_off_without_waiting_out_the_
         left.append(asyncio.create_task(stuck()))
         await asyncio.sleep(0)
 
-    message, took_ms = _unended_message(main(), _STUCK_REAP_MS)
+    message, took_ms = _unended_message(main())
     assert "'stuck'" in message, message
     assert took_ms < _STUCK_REAP_MS, took_ms
     assert not left[0].done()  # named and taken off, not ended: nothing could end it
     assert _scheduler_empty()
 
 
-def test_a_task_running_on_after_its_cancellation_is_named_once_the_bound_passes() -> None:
+def test_a_task_running_on_after_its_cancellation_is_named_once_the_rounds_pass() -> None:
     async def stubborn() -> None:
         while True:
             try:
-                await asyncio.sleep(3600)
+                await asyncio.sleep_ms(1)
             except asyncio.CancelledError:
                 pass
 
@@ -265,7 +241,7 @@ def test_a_task_running_on_after_its_cancellation_is_named_once_the_bound_passes
         left.append(asyncio.create_task(stubborn()))
         await asyncio.sleep(0)
 
-    message, _took_ms = _unended_message(main(), _STUBBORN_REAP_MS)
+    message, _took_ms = _unended_message(main())
     assert "'stubborn'" in message, message
     assert not left[0].done()
     assert _scheduler_empty()

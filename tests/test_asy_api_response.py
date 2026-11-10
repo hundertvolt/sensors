@@ -6,6 +6,7 @@ from collections import namedtuple
 
 from _async_harness import run
 from _error_codes import code
+from _src_const import src_const
 from _tmp_scratch import TmpScratch
 
 import asy_api_response as ar
@@ -85,16 +86,6 @@ def _remove(path: str) -> None:
         pass  # already gone
 
 
-def _src_string_const(name: str) -> str:
-    # A `NAME = const("<text>")` line of the source: an underscore const() is not a module attribute on MicroPython.
-    with open("src/asy_api_response.py") as f:
-        for line in f:
-            if line.startswith(name + ' = const("'):
-                text: str = line.split('const("', 1)[1].split('")', 1)[0]
-                return text
-    raise AssertionError(name + " not found in src/asy_api_response.py")
-
-
 # ---------------------------------------------------------------------------
 # make_response - envelope/catalog primitive
 # ---------------------------------------------------------------------------
@@ -150,7 +141,7 @@ def test_make_response_unknown_code_without_descr_falls_back_to_unknown_error() 
 
 def test_the_unknown_code_text_is_the_one_constant_beside_the_catalog() -> None:
     # Guard: the fallback descr the REST reference and the mock mirror is _UNKNOWN_DESCR's text, never a second literal.
-    assert _src_string_const("_UNKNOWN_DESCR") == "Unknown error" == ar.make_response(-1)["descr"]
+    assert src_const("src/asy_api_response.py", "_UNKNOWN_DESCR") == "Unknown error" == ar.make_response(-1)["descr"]
 
 
 def test_make_response_unknown_code_with_descr_keeps_the_given_descr() -> None:
@@ -180,7 +171,7 @@ def test_make_response_result_can_carry_partial_failures_under_an_overall_ok() -
 # ---------------------------------------------------------------------------
 # handle_set_cmd - drives SensorReaderConfig._set_dict_cfg and the post-write hook and returns the per-field result; a
 # raising hook (the Wi-Fi reconnect, the NTP force sync) answers its group's fields "Failed" and logs CALLBACK, instead
-# of Microdot's bare 500 after the values were already saved (agent, 2026-08-03; owner-reviewed, 2026-11-06).
+# of Microdot's bare 500 after the values were already saved (agent, 2026-08-03).
 # ---------------------------------------------------------------------------
 
 

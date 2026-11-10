@@ -1,12 +1,9 @@
 """Generates a device's website `definitions.json` (SPECIFICATION.md Part H.5) from a validated
 `DeviceModel` plus the `# @web`/`# @web-group` tags on the `src/` files that own each field/group
-(`buildgen.web_tag`; design rationale: Part H.5.1). CLI at the bottom: manual use + `build_website.sh`."""
+(`buildgen.web_tag`; design rationale: Part H.5.1). The build reaches it through `_generate_sensortask_modules.py`."""
 
-import argparse
-import contextlib
 import functools
 import json
-import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
@@ -22,7 +19,6 @@ from buildgen.validate import build_model, module_str_const
 from buildgen.version import WEBSITE_VERSION
 from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, check_ignored_when_set, parse_web_group_tags, parse_web_tags, resolution_decimals
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 # The one code catalog (SPECIFICATION.md C.7.1): errno/wrnno texts and the status-code tables.
 _CATALOG_PATH = Path(__file__).resolve().parent / "error_catalog.json"
 
@@ -780,18 +776,6 @@ def _warn_field(signal: WarnSignal) -> JsonDict:
     return field
 
 
-def _write_replacing(path: Path, text: str) -> None:
-    # Written beside the target, then renamed over it: a failed write leaves the old file or none, never part of one.
-    tmp = path.with_name(path.name + ".tmp")
-    try:
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(path)
-    except OSError:
-        with contextlib.suppress(OSError):
-            tmp.unlink(missing_ok=True)
-        raise
-
-
 def definitions_for_toml(toml_path: Path, src_dir: Path) -> JsonDict:
     # The one entry point from a device TOML to its definitions: validated model, construction
     # order (`buildgen.graph`), then `generate_definitions()` - every caller gets the build's order.
@@ -837,35 +821,3 @@ def uart_initiator_name(model: DeviceModel) -> str:
     # The hazard report's maintenance key: the initiating link instance's REST identity, as an SGP40's is its own.
     spec = next(s for s in model.instances.values() if s.driver == "uart_link" and s.fields.get("role") == "initiator")
     return str(spec.resolved_name)
-
-
-def main(argv: "list[str] | None" = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate a device's website definitions.json from its device TOML.")
-    parser.add_argument("device_toml", type=Path)
-    parser.add_argument("--src-dir", type=Path, default=REPO_ROOT / "src")
-    parser.add_argument("--out", type=Path, default=None, help="write definitions.json here instead of printing to stdout")
-    args = parser.parse_args(argv)
-
-    try:
-        definitions = definitions_for_toml(args.device_toml, args.src_dir)
-    except BuildError as e:
-        print(f"buildgen: {e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        print(f"buildgen: cannot read {e.filename}: {e.strerror} - fix: check that --src-dir names a complete src/ tree", file=sys.stderr)
-        return 1
-
-    text = json.dumps(definitions, indent=2)
-    if args.out is None:
-        print(text)
-        return 0
-    try:
-        _write_replacing(args.out, text)
-    except OSError as e:
-        print(f"buildgen: cannot write {args.out}: {e.strerror} - fix: check that the output directory exists and is writable", file=sys.stderr)
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

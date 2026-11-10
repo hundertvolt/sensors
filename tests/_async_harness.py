@@ -5,7 +5,7 @@ starts is untracked, microtest's after-each check backstops it. run_to_interrupt
 import asyncio
 import asyncio.core as _core  # type: ignore[import-not-found]  # cur_task, the queues and core's own create_task; no stub covers them
 import sys
-from time import ticks_add, ticks_diff, ticks_ms
+from time import ticks_diff, ticks_ms
 
 try:
     from typing import TYPE_CHECKING
@@ -25,8 +25,9 @@ if TYPE_CHECKING:
 
 _NESTED = "run() called from inside a coroutine - build the fixture in the test's synchronous scope"
 _UNENDED = "the reap could not end a task the run created:"
-# How long the reap lets a cancelled task go on running; a task nothing can wake again is named at once.
-_REAP_LIMIT_MS = 5000
+# The loop rounds the reap gives the cancelled tasks: each ends at its next await, the reaper takes it in the next
+# (measured: two at most over the unit tier at both GC stages; agent, 2026-11-10). One still unended is named.
+_REAP_ROUNDS = 2
 _COMPACT_MIN = 8
 _START_ROUNDS = 8  # scheduler rounds newest_start() gives a just-created task to begin
 # The running call's tasks: the finished ones are dropped whenever the list doubles past its last compaction, so a
@@ -84,17 +85,16 @@ def _compact() -> None:
     _compact_at = max(_COMPACT_MIN, 2 * kept)
 
 
-def _drive(coro: "CoroutineOf[T]", limit_s: "float | None") -> "T":
+def _drive(coro: "CoroutineOf[T]") -> "T":
     # A nested asyncio.run() swaps the queues the outer loop's parked tasks live on: the Unix port then crashes
     # (CLAUDE.md "Known segfault cause"). cur_task is the running task inside run_until_complete() only (core.py).
     global _core_create_task, _real_create_task
     if _core.cur_task is not None:
         coro.close()
         raise RuntimeError(_NESTED)
-    aw = coro if limit_s is None else asyncio.wait_for(coro, limit_s)
     _real_create_task, _core_create_task = asyncio.create_task, _core.create_task
     asyncio.create_task = _core.create_task = _tracking  # type: ignore[assignment]  # put back by _end() on every path
-    return _run_tracked(aw)
+    return _run_tracked(coro)
 
 
 def _due(head: "_Task | None", now: "_TicksMs") -> bool:
@@ -124,15 +124,15 @@ def _passed() -> None:
 
 def _reap(pending: "list[_Task]") -> "tuple[list[Exception], list[_Task]]":
     # One loop round first, as the board's loop never stops (a due deferred flush completes), then each task still
-    # unfinished is cancelled on its own and the loop runs until all have ended, nothing but the watch can run, or the
-    # bound passes. Returns what they ended with but cancellation, and the unended, taken off every queue they were on.
+    # unfinished is cancelled on its own and the loop runs until all have ended, nothing but the watch can run, or its
+    # rounds pass. Returns what they ended with but cancellation, and the unended, taken off every queue they were on.
     errors: list[Exception] = []
     asyncio.run(_round())
     for task in pending:
         if not task.done():
             _cancel_alone(task)
     reaper = asyncio.create_task(_await_each(pending, errors))  # the real create_task again
-    asyncio.run(_watch(reaper, ticks_add(ticks_ms(), _REAP_LIMIT_MS)))
+    asyncio.run(_watch(reaper))
     unended = [task for task in pending if not task.done()]
     for task in unended if reaper.done() else unended + [reaper]:  # a [*a, b] display is a SyntaxError on MicroPython
         _unpark(task)
@@ -204,19 +204,16 @@ def _unpark(task: "_Task") -> None:
         _core._task_queue.remove(task)
 
 
-async def _watch(reaper: "_Task", deadline: "_TicksMs") -> None:
+async def _watch(reaper: "_Task") -> None:
     # The reap's main task: returns once the reaper is done and nothing on the run queue is due, once nothing else can
-    # ever run, or past the deadline; sleeps to the earliest wake-up between, a millisecond at most while a stream waits.
-    while True:
+    # ever run, or after its rounds. Until the reaper is done each round sleeps to the earliest wake-up, a millisecond at
+    # most while a stream waits; after, it only yields, as a task woken later is not this call's (a sync-started flash).
+    for _ in range(_REAP_ROUNDS):
         now = ticks_ms()
         head = _core._task_queue.peek()
-        if reaper.done() and not _due(head, now):
+        if (reaper.done() and not _due(head, now)) or (head is None and not _core._io_queue.map):
             return
-        step = ticks_diff(deadline, now)
-        if step <= 0 or (head is None and not _core._io_queue.map):
-            return
-        if head is not None:
-            step = min(step, max(0, ticks_diff(head.ph_key, now)))
+        step = 0 if head is None or reaper.done() else max(0, ticks_diff(head.ph_key, now))
         await asyncio.sleep_ms(min(step, 1) if _core._io_queue.map else step)
 
 
@@ -270,13 +267,9 @@ def release_finished() -> None:
     _compact()
 
 
-def run(coro: "CoroutineOf[T]", limit_s: "float | None" = None) -> "T":
-    # The coroutine's result; with `limit_s`, bounded by asyncio.wait_for() and TimeoutError past it.
-    return _drive(coro, limit_s)
-
-
-def run_timed(coro: "CoroutineOf[T]", timeout_s: float) -> "T":
-    return _drive(coro, timeout_s)
+def run(coro: "CoroutineOf[T]") -> "T":
+    # The coroutine's result; a hang is the per-file timeout's to end, which names the file.
+    return _drive(coro)
 
 
 def run_to_interrupt(coro: "Coroutine[object, object, object]") -> bool:

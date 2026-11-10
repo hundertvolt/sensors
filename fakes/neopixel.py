@@ -1,6 +1,5 @@
-"""Twin fake of micropython-lib's neopixel module (the Unix port has none): a bytearray in GRB order as
-drivers/led/neopixel/neopixel.py stores it, and a bounded log of every written frame, read back as RGB tuples as
-tests/neopixel.py's are (an independent copy)."""
+"""Fake of micropython-lib's neopixel module for both tiers (the Unix port has none): a bytearray in GRB order as
+drivers/led/neopixel/neopixel.py stores it, and a bounded log of every written frame, read back as RGB tuples."""
 
 from _twin_common import LOG_MAXLEN, BoundedLog
 
@@ -23,14 +22,16 @@ class NeoPixel:
     TEST_API = ("writes", "raise_on_write")
     ORDER = (1, 0, 2, 3)  # GRB(W), micropython-lib neopixel.py:9 (pinned version)
 
-    def __init__(self, pin: "_OutPin", n: int, bpp: int = 3) -> None:
+    def __init__(self, pin: "_OutPin", n: int, bpp: int = 3, timing: int = 1) -> None:
         self.pin = pin
         self.n = n
         self.bpp = bpp
+        self.timing = timing
         self.buf = bytearray(n * bpp)
         self.pin.init(pin.OUT)
         self.writes: BoundedLog[list[tuple[int, ...]]] = BoundedLog(LOG_MAXLEN)  # each written frame, RGB per pixel
-        self.raise_on_write: Exception | None = None  # twin-only test knob
+        # Test-only knob: no silicon fault reaches write(), but a raise here is how a test reaches the driver's restart.
+        self.raise_on_write: Exception | None = None
 
     def __getitem__(self, i: int) -> "tuple[int, ...]":
         offset = i * self.bpp

@@ -28,9 +28,9 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
-from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime, driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import TypeVar, cast
 
-    from launch import _Plan
+    from run_generic_integration import _Plan
 
     T = TypeVar("T")
 
@@ -65,7 +65,6 @@ _WATCHDOG_REASON, _CHIP_RESET = 0x40058008, 0x40064008  # the chip's reset flags
 _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # WATCHDOG REASON: TIMER and FORCE
 _HAD_POR_BIT = 0x100  # CHIP_RESET HAD_POR: power-on or brown-out
 _BOOT_LIMIT_MS = 20000  # a boot past it is a failure of its own, never a planted fault
-_RUN_TIMEOUT_S = 30.0
 _POLL_MS = 5  # one look of the boot watcher on the driven clock, and of the next boot's /status wait in real time
 
 _scratch = TmpScratch(f"dtle_{device}")
@@ -222,8 +221,8 @@ def _next_boot_reads(cfg_path: str) -> "dict[str, object]":
         finally:
             await cancel(main_task)
 
-    with DrivenTime(*_driven_modules(), sleeps=True) as clock:
-        return run_timed(scenario(clock), timeout_s=_RUN_TIMEOUT_S)
+    with DrivenTime(*driven_modules(), sleeps=True) as clock:
+        return run(scenario(clock))
 
 
 def _case(kind: str, phase: int, reset: str = "watchdog") -> "tuple[_Plant, BaseException | None, dict[str, object]]":
@@ -232,7 +231,7 @@ def _case(kind: str, phase: int, reset: str = "watchdog") -> "tuple[_Plant, Base
     machine.power_on()
     cfg_path = _cfg_dir(kind + str(phase) + reset)
     module = _fresh_board()
-    with DrivenTime(*_driven_modules(), sleeps=True) as clock:  # the boot's waits, on the clock the watcher drives
+    with DrivenTime(*driven_modules(), sleeps=True) as clock:  # the boot's waits, on the clock the watcher drives
         plant = _Plant(module, cfg_path, kind, phase, clock)
         escaped = _run_entry(plant)
     assert plant.raised_in_phase, f"the boot never reached phase {phase}"
@@ -243,11 +242,6 @@ def _case(kind: str, phase: int, reset: str = "watchdog") -> "tuple[_Plant, Base
     elif reset == "power":
         machine.power_on()
     return plant, escaped, _next_boot_reads(cfg_path)
-
-
-def _driven_modules() -> "list[object]":
-    # Every src module holding asyncio and the twin's machine and network: one clock for each sleep and tick read.
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
 
 
 def _per_distinct_wiring() -> None:

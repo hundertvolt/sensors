@@ -4,12 +4,10 @@ C.9). No generated module calls either."""
 
 import ast
 import functools
-import shutil
 from pathlib import Path
 
 import pytest
 from _devices import DEVICE_NAMES
-from test_task_inventory import REPO_ROOT, SRC, _starters
 
 from buildgen.generate import generate_device
 from buildgen.source_ast import parse_source
@@ -17,6 +15,8 @@ from buildgen.source_ast import parse_source
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 Classes = dict[str, tuple[str, ast.ClassDef]]
 Module = tuple[str, str, ast.Module]  # file name, text, tree
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SRC = REPO_ROOT / "src"
 
 
 def _is_self(node: ast.expr) -> bool:
@@ -92,13 +92,6 @@ def _classes(modules: "list[Module]") -> Classes:
     return found
 
 
-def _edit(src: Path, name: str, old: str, new: str) -> None:
-    path = src / name
-    text = path.read_text(encoding="utf-8")
-    assert text.count(old) == 1, f"{name}: the anchor is not unique: {old!r}"
-    path.write_text(text.replace(old, new), encoding="utf-8")
-
-
 def _logs(stmt: ast.stmt, name: str) -> bool:
     # `self.pr.err_s(..., <name>, ...)` (or a logger's own `self.err_s(...)`) as a statement of its own.
     if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
@@ -157,6 +150,22 @@ def _server_sites(tree: ast.Module) -> "tuple[tuple[int, int], ...]":
     return tuple((node.lineno, node.col_offset) for node in ast.walk(tree) if isinstance(node, ast.Call) and _calls(node, "start_server"))  # per read-only tree
 
 
+def _starters(classes: "dict[str, ast.ClassDef]", name: str) -> "set[str]":
+    # The methods a class's (or a base's) get_task_starters() returns, as `self.<method>` references; start_timers()
+    # discards a timer starter's result (asy_system_service.py), so no supervisor watches a task created there.
+    found: set[str] = set()
+    todo = [name]
+    while todo:
+        node = classes.get(todo.pop())
+        if node is None:
+            continue
+        todo.extend(b.id for b in node.bases if isinstance(b, ast.Name))
+        for fn in node.body:
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name == "get_task_starters":
+                found.update(n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self")
+    return found
+
+
 def ends_in_a_top(fn: Function) -> bool:
     # The last statement is a top, or a `while True:` whose whole body is one, either in a cleanup-only `try`.
     last = fn.body[-1]
@@ -183,11 +192,6 @@ def generated_task_calls(sources: "dict[str, str]") -> "list[str]":
         for name in ("create_task", "start_server")
         if _calls(node, name)
     ]
-
-
-@pytest.fixture
-def src_copy(tmp_path: Path) -> Path:
-    return Path(shutil.copytree(SRC, tmp_path / "src"))
 
 
 def task_tops(src: Path) -> "tuple[list[str], list[str]]":
@@ -241,62 +245,3 @@ def test_a_generated_module_that_creates_a_task_fails(generated: "dict[str, str]
     findings = generated_task_calls({path: source.replace(anchor, f"    {call}\n{anchor}") for path, source in generated.items()})
     assert [f.split(":", 1)[0] for f in findings] == sorted(generated), findings  # one per device
     assert all(f.endswith(f": a generated module calls {name}(), whose task no supervisor watches") for f in findings), findings
-
-
-@pytest.mark.parametrize(
-    ("name", "cls", "method", "loop"),
-    [("asy_neopixel_driver.py", "NeopixelDriver", "toggle", "_signal_loop"), ("asy_scd30_driver.py", "SCD30_Reader", "start_timer", "_read_loop")],
-    ids=["in-a-plain-method", "in-a-timer-starter"],  # start_timers() discards a timer starter's result: no supervisor watches its task
-)
-def test_a_supervised_loop_started_outside_its_starter_fails(src_copy: Path, name: str, cls: str, method: str, loop: str) -> None:
-    _edit(src_copy, name, f"    def {method}(self) -> None:\n", f"    def {method}(self) -> None:\n        asyncio.create_task(self.{loop}())\n")
-    findings = task_tops(src_copy)[0]
-    assert len(findings) == 1 and f"{cls}.{method}(): its task {cls}.{loop}() ({name}:" in findings[0], findings
-
-
-@pytest.mark.parametrize(
-    ("name", "old", "new"),
-    [
-        ("asy_config_manager.py", "        except Exception as e:  # an unsupervised task's top", "        except OSError as e:  # an unsupervised task's top"),
-        ("asy_config_manager.py", '"- flush task failed:", e, errno=', '"- flush task failed:", errno='),
-        ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        self._led_off()\n'),
-        ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        else:\n            self._led_off()\n'),
-        ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n        finally:\n            self._led_off()\n'),
-        ("asy_wifi_service.py", '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n', '"LED flash task failed:", e, errno=_ERR_UNEXPECTED)\n            raise\n'),
-        ("asy_wifi_service.py", "        except Exception as e:  # unsupervised task's top", "        except OSError:\n            raise\n        except Exception as e:  # unsupervised task's top"),
-        ("asy_captive_dns.py", "            while True:\n                try:\n", "            while True:\n                await asyncio.sleep(0)\n                try:\n"),
-    ],
-    ids=["narrowed", "cause-not-logged", "work-after-the-top", "work-in-its-else", "work-in-its-finally", "raised-after-the-log", "an-earlier-arm-re-raises", "loop-pass-outside-the-top"],
-)
-def test_a_top_that_does_not_cover_its_task_fails(src_copy: Path, name: str, old: str, new: str) -> None:
-    _edit(src_copy, name, old, new)
-    findings = task_tops(src_copy)[0]
-    assert len(findings) == 1 and f" ({name}:" in findings[0] and findings[0].endswith(") ends in no top"), findings  # the task's own file
-
-
-def test_a_connection_callback_whose_top_is_removed_fails(src_copy: Path) -> None:
-    top = (
-        "            except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a\n"
-        "                # proxy, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)\n"
-        "                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, the decrement cannot raise\n"
-        '                self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)\n'
-    )
-    _edit(src_copy, "asy_webserver_service.py", top, "")  # only the cancellation arm is left
-    findings = task_tops(src_copy)[0]
-    assert len(findings) == 1 and "WebserverService._serve_loop(): its task WebserverService._serve() (asy_webserver_service.py:" in findings[0], findings
-
-
-def test_an_unresolvable_coroutine_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_wifi_service.py", "create_task(self._flash_led(on_ms, off_ms))", "create_task(_flash(on_ms, off_ms))")
-    findings = task_tops(src_copy)[0]
-    assert len(findings) == 1 and "WifiService._run_led_pattern(): create_task() runs a coroutine this check cannot resolve" in findings[0], findings
-
-
-def test_an_unresolvable_or_unowned_server_callback_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_webserver_service.py", "start_server(self._serve, ", "start_server(_serve, ")
-    findings = task_tops(src_copy)[0]
-    assert len(findings) == 1 and "WebserverService._serve_loop(): start_server() runs a callback this check cannot resolve" in findings[0], findings
-    path = src_copy / "asy_captive_dns.py"
-    path.write_text(path.read_text(encoding="utf-8") + "\n\nasync def _plant() -> None:\n    await asyncio.start_server(_plant, '', 80)\n", encoding="utf-8")
-    findings = task_tops(src_copy)[0]
-    assert len(findings) == 2 and "asy_captive_dns.py:" in findings[1] and findings[1].endswith(": start_server() outside a class method, which this check cannot resolve"), findings

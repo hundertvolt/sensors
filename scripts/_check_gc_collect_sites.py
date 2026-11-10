@@ -31,7 +31,7 @@ from buildgen.generate import generate_device  # noqa: E402 - the repo-root inse
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-SCOPES = ("src", "tests", "digital_twin", "tests_hardware")
+SCOPES = ("src", "tests", "digital_twin", "fakes", "tests_hardware")
 POLICY = ("collect", "threshold", "disable", "enable")  # threshold only as a set: the zero-argument call reads it
 # Why a site may call gc (SPECIFICATION.md I.4(e)/(f.1)): every row names one.
 CATEGORIES = ("baseline", "before a timed window", "twin exception", "measured collection pause", "stage")
@@ -54,9 +54,6 @@ ALLOWED = {
     ("tests/test_digital_twin_sensortask_integration.py", "_heap_floor", "collect"): "baseline: the supervised deaths' heap floor",
     ("tests/test_digital_twin_uart_link.py", "_hammer_with_the_graph_running", "collect"): "baseline: the hammer's retention rate",
     ("tests/test_digital_twin_uart_link.py", "test_many_back_to_back_transfers_do_not_degrade_or_leak", "collect"): "baseline: the transfers' retention rate",
-    ("tests/test_digital_twin_unix_port_unretrieved_report.py", "_call_cost", "collect"): "baseline: an empty call's allocation",
-    ("tests/test_digital_twin_unix_port_unretrieved_report.py", "_settled_alloc", "collect"): "baseline: the settled allocation",
-    ("tests/test_digital_twin_unix_port_unretrieved_report.py", "test_the_reports_outputs_allocate_nothing", "collect"): "baseline: the report's allocation",
     ("tests/test_uart_comm_hazard.py", "_hammer_clean.hammer", "collect"): "baseline: the clean hammer's retention",
     ("tests/test_uart_comm_hazard.py", "_hammer_faulted.hammer", "collect"): "baseline: each faulted window's retention",
     ("tests/test_uart_comm_hazard.py", "_measure_retention", "collect"): "baseline: the retention and its ambient control",

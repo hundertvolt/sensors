@@ -37,7 +37,7 @@ import unix_port_unretrieved_report  # noqa: E402 - imported after the prewarm a
 from _async_harness import cancel, release_finished, run  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _fake_time import DrivenTime, ManualTick  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _fake_time import DrivenTime, ManualTick, driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _fast_sleep import check_sleep_ms  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -53,6 +53,7 @@ import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP s
 import asy_captive_dns  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import asy_neopixel_driver  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import asy_notification_service  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+import asy_print_log  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import asy_scd30_driver  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import asy_sgp40_driver  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import asy_system_service  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -78,7 +79,7 @@ if TYPE_CHECKING:
 
     from _mpy_shed.time_mp import _TicksMs
     from _scd30_chip import SCD30Chip
-    from launch import _Plan
+    from run_generic_integration import _Plan
 
     from asy_base_classes import TaskStarter, TickSeconds
     from asy_fram_manager import FRAMChunkTimestampedBuffer
@@ -127,7 +128,7 @@ _PASS_YIELD_BOUND = 20000  # loop yields allowed for one wait below; a pass cost
 _HEAP_DRIFT_BYTES = 2048
 # Per death, the median of every pairwise slope over the settled readings (Theil-Sen), each death on the driven clock
 # reading the same heap: 36 healthy runs, six devices at both stages, read 0 B, a planted 32 or 64 B per death exactly
-# that (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+# that (agent, 2026-10-27).
 _DRIFT_SLOPE_BYTES = 32  # one GC block a death on the twin, the least a leak can retain
 _SETTLED_DEATH = 3  # the readings before it still settle: the second and third hold up to 0.8 KB the fourth does not
 _FLOOR_READS = 3
@@ -136,7 +137,7 @@ _SCD30_READING = SCD30(800, 22.0, 45.0, None, None, None, None, None)
 
 _scratch = TmpScratch("dtsi_" + device)  # per device: two devices' jobs of this file may run at once
 _ports = PortAllocator("dtsi", device)  # a fresh port per serving boot avoids any TIME_WAIT reuse flakiness
-_UNSERVED_PORT = _ports.next()  # every boot that never starts the web server: nothing binds it (agent, 2026-10-21; owner-reviewed, 2026-11-06)
+_UNSERVED_PORT = _ports.next()  # every boot that never starts the web server: nothing binds it (agent, 2026-10-21)
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 module = load_device(device)
@@ -313,11 +314,6 @@ async def _driven(clock: DrivenTime, what: str, coro: "Coroutine[object, object,
     return await task
 
 
-def _driven_modules() -> "list[object]":
-    # Every src module holding asyncio and the twin's machine and network: one clock for each sleep and tick read.
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
-
-
 def _driver_specific(*drivers: str) -> None:
     # A driver-specific scenario runs once per distinct wiring of its drivers, on the first device of each; devices wiring
     # them identically share that run, and none wiring them fails in devices_with() rather than skipping everywhere.
@@ -421,7 +417,7 @@ async def _measured_above(chip: "SCD30Chip", limit: int) -> bool:
 async def _on_driven_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, None]]") -> None:
     # The scenario on one driven clock over every module holding asyncio (the boot's waits, the WiFi service's, the
     # twin's join and timers), so its seconds of waits take no real time; each module's own view is back on every path.
-    with DrivenTime(*_driven_modules(), sleeps=True) as clock:
+    with DrivenTime(*driven_modules(), sleeps=True) as clock:
         await scenario(clock)
 
 
@@ -511,28 +507,18 @@ class _FastSupervisorAsyncio:
 
 
 class _ReportTap:
-    # Checks each of the PC report's two outputs and passes it on to the real console. Counts rather than keeps
-    # them: a kept exception or dead task would read as heap drift.
+    # Checks each traceback the PC report prints (print_exception is the logger module's one use of sys) and passes it
+    # on to the real console. Counts rather than keeps them: a kept exception or dead task would read as heap drift.
     def __init__(self) -> None:
-        self.reported = 0
         self.traced = 0
         self.wrong: list[object] = []
 
     def __enter__(self) -> "_ReportTap":
-        unix_port_unretrieved_report.print = self._print  # type: ignore[attr-defined]
-        unix_port_unretrieved_report.sys = self  # type: ignore[assignment, attr-defined]
+        asy_print_log.sys = self  # type: ignore[assignment, attr-defined]
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        del unix_port_unretrieved_report.print  # type: ignore[attr-defined]
-        unix_port_unretrieved_report.sys = sys  # type: ignore[attr-defined]
-
-    def _print(self, *args: object) -> None:
-        if args == (unix_port_unretrieved_report.MARKER, "Task exception wasn't retrieved"):
-            self.reported += 1
-        else:
-            self.wrong.append(args)
-        print(*args)
+        asy_print_log.sys = sys  # type: ignore[attr-defined]
 
     def print_exception(self, exc: BaseException) -> None:
         if isinstance(exc, RuntimeError) and exc.args == ("injected status fault",):
@@ -711,7 +697,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
         sysfunct: SystemService = module.sysfunct
         sysfunct.pr.set_level(0)
         # A linked station, its link awaited below: with no SSID the hotspot fallback would switch the radio and bind the
-        # captive DNS instead (agent, 2026-10-14; owner-reviewed, 2026-11-06).
+        # captive DNS instead (agent, 2026-10-14).
         persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
         task_starters = module._collect_task_starters()
@@ -746,9 +732,9 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
                     # board: a pass awaiting the dead task first would retrieve the exception, and no handler runs.
                     fast.hold = True
                     assert await _yield_until(lambda: fast.parked), "the supervisor never reached its sleep"
-                    restarts, reported = starts[status_idx], tap.reported
+                    restarts, reported = starts[status_idx], tap.traced
                     sysfunct._tick.set()
-                    assert await _yield_until_above(lambda: tap.reported, reported), f"the death never reached the PC report: {tap.wrong}"
+                    assert await _yield_until_above(lambda: tap.traced, reported), f"the death never reached the PC report: {tap.wrong}"
                     fast.release()
                     assert await _yield_until_above(lambda: starts[status_idx], restarts), "the dead status task was never restarted"
                     fed = watchdog.feed_count
@@ -772,7 +758,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
                 await cancel(module.conn._dns_server_task)
 
     run(_on_driven_clock(scenario))
-    assert (tap.reported, tap.traced, tap.wrong) == (_STATUS_DEATHS, _STATUS_DEATHS, []), (tap.reported, tap.traced, tap.wrong)
+    assert (tap.traced, tap.wrong) == (_STATUS_DEATHS, []), (tap.traced, tap.wrong)
     assert machine.reset_count == resets  # the restart budget never escalated to a reset
     # The first reading still holds 0.9 KB the second no longer does (measured at both GC stages, 2026-10-14): the
     # baseline is the reading after it.
@@ -985,7 +971,7 @@ def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> No
 def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
     # With no DNS traffic for a window, the listener wakes once per udp.poll_idle_ms, the twin half of that rate's basis,
     # then answers a burst back to back (lwIP's drop past its queue shows on the bench). Its hotspot boot drives the LED and
-    # writes WIFI's FRAM chunk (measured): one run per wiring of both (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+    # writes WIFI's FRAM chunk (measured): one run per wiring of both (agent, 2026-10-27).
     _driver_specific("neopixel", "fram")
 
     async def scenario(clock: DrivenTime) -> None:

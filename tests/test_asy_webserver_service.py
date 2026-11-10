@@ -21,7 +21,7 @@ sys.path.insert(0, "ext")
 
 import machine
 import microtest
-from _async_harness import cancel, run, run_timed, track_starts
+from _async_harness import cancel, run, track_starts
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
@@ -101,10 +101,10 @@ if TYPE_CHECKING:
 
 def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
     # These tests pin write bounds, not timeouts: _make_service()'s 0.5s outer cap cut a 37 KB body
-    # short on a loaded CI runner. 4s stays under run_timed()'s 5s, so a hang still fails the test.
+    # short on a loaded CI runner; the service's own 4s cap still ends a hang.
     service._per_call_timeout_ms, service._outer_cap_ms = _WIRE_PER_CALL_MS, _WIRE_OUTER_CAP_MS
     writer = _ChunkRecordingWriter()
-    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=_RUN_BOUND_S)
+    run(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer))
     head = writer.chunks[0]  # the whole header block is one write (_TimeoutStreamProxy.awrite)
     assert head.endswith(b"\r\n\r\n") and head.count(b"\r\n\r\n") == 1, head
     lines = head.decode().split("\r\n")
@@ -161,15 +161,8 @@ _VAL_NTP_HOST: "cm.ConfigSchema" = src_schema("src/asy_ntp_client.py", "_VAL_NTP
 # (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level or above).
 _ERROR_LEVEL = 2  # pins src/asy_print_log.py _LOG_WARN
 
-# The usual run_timed() bound: section F below exercises timeout/hang scenarios, so a genuine bug in the
-# implementation under test (or in one of the fakes below) must surface as a fast FAIL, never a whole-suite stall.
-_RUN_BOUND_S = 5.0
-# The other run_timed() bounds, and the service timeouts and real waits of the timeout cases: one constant per value and
+# The service timeouts and real waits of the timeout cases: one constant per value and
 # role. A case waits out a per-call timeout or cap it names; a headroom is a timeout its request must finish under.
-_SERVE_BOUND_S = 2.0  # one _serve() whose reclaim it waits out
-_SERVE_LONG_BOUND_S = 3.0  # one _serve() under a headroom timeout
-_RUN_LONG_BOUND_S = 10.0  # a scenario of many connections
-_REWEDGE_RUN_BOUND_S = 15.0  # the repeated-rewedging scenario
 _PROXY_BOUND_MS = 1000  # a stream proxy's per-call bound on forwards that return at once
 _TINY_PER_CALL_S = 0.01
 _FAST_PER_CALL_S = 0.02
@@ -191,7 +184,7 @@ _FLAT_DICT_PIECE_MAX_BYTES = 1200  # each streamed piece of the 30-field dict st
 _MAKE_SERVICE_PER_CALL_S = 0.2  # _make_service()'s per-call timeout, for a case that sets none
 _MAKE_SERVICE_OUTER_CAP_S = 0.5  # _make_service()'s outer cap, for a case that sets none
 _WIRE_PER_CALL_MS = 2000  # _get_on_the_wire()'s per-call timeout: a loaded host never cuts a body short
-_WIRE_OUTER_CAP_MS = 4000  # _get_on_the_wire()'s outer cap, under _RUN_BOUND_S
+_WIRE_OUTER_CAP_MS = 4000  # _get_on_the_wire()'s outer cap
 _SLOWLORIS_TRICKLE_RATIO = 0.5  # the slowloris trickle's byte interval, as a share of its per-call timeout
 _SOAK_WARMUP_CYCLES = 20  # the lifecycle soak's warm-up
 _SOAK_RATE_FROM_CYCLE = 80  # the soak's retention rate runs from this cycle to its last
@@ -297,16 +290,16 @@ class _FakeModule:
         return await self.pr.reset()
 
 
+class _OneStream:
+    def get_extra_info(self, _name: str) -> object:
+        raise AssertionError("get_extra_info() on the reader half")
+
 # ---------------------------------------------------------------------------
 # Fakes - reader/writer stream doubles for asyncio.Stream, covering every method ext/microdot.py
 # actually calls plus what a per-call timeout-wrapping proxy forwards. Never backed by a real
 # select.poll()/socket - CLAUDE.md's CI-hang note says why that is a hard requirement here.
 # ---------------------------------------------------------------------------
 
-
-class _OneStream:
-    def get_extra_info(self, _name: str) -> object:
-        raise AssertionError("get_extra_info() on the reader half")
 
     async def aclose(self) -> None:
         raise AssertionError("aclose() on the reader half")
@@ -740,7 +733,7 @@ def _hammer_mixed_bodies(service: "WebserverService", sizes: "list[int]") -> "li
     async def _all() -> None:  # index-based, not zip(): MicroPython's zip() has no strict= (B905)
         await asyncio.gather(*(service._serve(readers[i], writers[i]) for i in range(len(sizes))))
 
-    run_timed(_all(), timeout_s=_RUN_LONG_BOUND_S)
+    run(_all())
     for i, size in enumerate(sizes):
         expected = b" 200 " if size <= _BODY_CAP else b"413"
         assert expected in writers[i].written, (size, writers[i].written[:80])
@@ -1287,7 +1280,7 @@ class _OrderedResetModule(_FakeModule):
 
 
 def test_reset_errors_runs_its_sources_one_after_another() -> None:
-    # One source after another, no task per source (owner, 2026-11-07): each reset ends before the next begins.
+    # One source after another, no task per source (agent, 2026-11-07, under the owner's option B): each reset ends before the next begins.
     events: list[str] = []
     mods = [_OrderedResetModule(n, events) for n in ("A", "B", "C")]
     _service, app = _make_service(error_sources=mods)
@@ -1317,7 +1310,7 @@ def _head_then_body(request: bytes) -> "list[tuple[float, bytes]]":
 
 
 def _json(body: "bytes | str") -> object:
-    # Every response body is read through the strict RFC 8259 recogniser (tests/_strict_json.py): a duplicate key fails.
+    # Every response body is read through the strict RFC 8259 recogniser (fakes/_strict_json.py): a duplicate key fails.
     # A body read before reuses its checked parse: the hammers read each route's few bodies hundreds of times over.
     if body not in _PARSED:
         if len(_PARSED) >= _PARSED_MAX:
@@ -1922,7 +1915,7 @@ def test_d_own_errcount_entry_reflects_real_logged_warnings_and_resets_with_the_
     service, app = _make_service(error_sources=[], per_call_timeout_s=_TINY_PER_CALL_S)
     reader = _HangingReader()
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), _RUN_BOUND_S)
+    run(service._serve(reader, writer))
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = _obj(_at(_json(status_body(res)), "errcount"))
     counter = _at(errcount, "WEBSERVER", "counter")
@@ -1951,7 +1944,7 @@ def test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim() -> No
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_SHORT_OUTER_CAP_S, max_connections=2)
     reader = _HangingReader()
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=_SERVE_BOUND_S)
+    run(service._serve(reader, writer))
     log = run(service.get_error_counter())
     entry = next(iter(log.values()))
     assert entry["ErrCount"] == 1, entry  # one reclaimed connection, one entry
@@ -2071,7 +2064,7 @@ def test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state()
 def test_f1_client_sends_nothing_ever_is_reclaimed_by_the_per_call_timeout() -> None:
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_HEADROOM_S)
     writer = _ScriptedWriter()
-    run_timed(service._serve(_HangingReader(), writer), timeout_s=_SERVE_BOUND_S)
+    run(service._serve(_HangingReader(), writer))
     assert service._open_conns == 0
     assert writer.close_called
 
@@ -2079,7 +2072,7 @@ def test_f1_client_sends_nothing_ever_is_reclaimed_by_the_per_call_timeout() -> 
 def test_f1_client_opens_then_immediately_closes_before_any_bytes() -> None:
     service, _app = _make_service()
     writer = _ScriptedWriter()
-    run_timed(service._serve(_ClosedReader(), writer), _RUN_BOUND_S)
+    run(service._serve(_ClosedReader(), writer))
     assert service._open_conns == 0
 
 
@@ -2090,7 +2083,7 @@ def test_f1_rapid_connect_disconnect_churn_keeps_counter_accurate() -> None:
         for _ in range(50):
             await service._serve(_ClosedReader(), _ScriptedWriter())
 
-    run_timed(churn(), timeout_s=_RUN_LONG_BOUND_S)
+    run(churn())
     assert service._open_conns == 0
 
 
@@ -2119,7 +2112,7 @@ def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_closed_and_logged(
         for t in held_tasks:
             t.cancel()
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() -> None:
@@ -2133,7 +2126,7 @@ def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() ->
         await service._serve(second_reader, second_writer)
         assert second_writer.written != b""  # actually served this time, no cooldown gap
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 class _GatedCloseWriter(_ScriptedWriter):
@@ -2182,13 +2175,12 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
         await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), admitted)
         assert admitted.written.startswith(b"HTTP/1."), admitted.written
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 # Connection lifecycle: mid-request, the request line and headers
 
 
-_SERVE_BACKSTOP_CAP_MULT = 20  # run_timed()'s backstop over the outer cap under test
 
 
 def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per_call_timeout() -> None:
@@ -2205,7 +2197,7 @@ def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per
     service, _app = _make_service(per_call_timeout_s=per_call, outer_cap_s=outer_cap)
     clock = _VirtualClock()  # the lines' pacing moves this clock, so the cap fires on the third line on any host
     writer = _ScriptedWriter()
-    _on_virtual_clock(clock, service._serve(_ScriptedReader(chunks, clock=clock), writer), outer_cap * _SERVE_BACKSTOP_CAP_MULT)
+    _on_virtual_clock(clock, service._serve(_ScriptedReader(chunks, clock=clock), writer))
     assert service._open_conns == 0
     assert writer.written == b""  # reclaimed before a response could ever be produced
 
@@ -2214,7 +2206,7 @@ def test_f2_malformed_request_line_degrades_safely_via_microdots_own_blanket_cat
     service, _app = _make_service()
     reader = _ScriptedReader([(0, b"NOT A VALID REQUEST LINE AT ALL\r\n\r\n")])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), _RUN_BOUND_S)
+    run(service._serve(reader, writer))
     assert service._open_conns == 0  # no exception escaped _serve()
 
 
@@ -2255,7 +2247,7 @@ def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:
     body = json.dumps({"Interval": 1, "Padding": "x" * 200}).encode()
     reader = _ScriptedReader([(0, _request_bytes("PUT", "/networking", body))])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=_SERVE_LONG_BOUND_S)
+    run(service._serve(reader, writer))
     assert service._open_conns == 0
     assert b"413" in writer.written
 
@@ -2268,7 +2260,7 @@ def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blan
     service, _app = _make_service(per_call_timeout_s=_MID_HEADROOM_S, outer_cap_s=_HEADROOM_S)
     reader = _ScriptedReader([(0, headers.encode() + b'{"Interval": 1}')], eof=True)  # then a clean EOF, not silence
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=_SERVE_LONG_BOUND_S)
+    run(service._serve(reader, writer))
     assert service._open_conns == 0
     assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
 
@@ -2406,7 +2398,7 @@ def test_f2b_a_body_arriving_with_its_head_is_served_from_both_reads_and_applied
     request = _sized_put(1500, interval=33)
     reader = _BodySizeReader([(0, request)])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=_SERVE_LONG_BOUND_S)
+    run(service._serve(reader, writer))
     assert b" 200 " in writer.written, writer.written[:80]
     assert mod.set_calls[-1]["Interval"] == 33
     assert reader.body_reads == [len(request) - _WIRE_CHUNK_BYTES], (len(request), reader.body_reads)
@@ -2458,7 +2450,6 @@ def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
     assert service._open_conns == 0
 
 
-
 # Connection lifecycle: after the response, the close
 
 
@@ -2466,7 +2457,7 @@ def test_f5_normal_close_decrements_counter_exactly_once() -> None:
     service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), _RUN_BOUND_S)
+    run(service._serve(reader, writer))
     assert service._open_conns == 0
     assert writer.close_called
 
@@ -2484,7 +2475,7 @@ def test_f5_double_close_paths_dont_raise_or_double_decrement() -> None:
     service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), _RUN_BOUND_S)  # our own finally + Microdot's own aclose() both run
+    run(service._serve(reader, writer))  # our own finally + Microdot's own aclose() both run
     assert service._open_conns == 0
 
 
@@ -2501,7 +2492,7 @@ def test_f6_n_simultaneous_wedged_connections_are_each_independently_reclaimed()
         for w in writers:
             assert w.close_called
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_f6_no_cooldown_gap_between_a_reclaim_and_the_next_accept() -> None:
@@ -2515,7 +2506,7 @@ def test_f6_no_cooldown_gap_between_a_reclaim_and_the_next_accept() -> None:
             start += 1
         assert start == 5
 
-    run_timed(scenario(), timeout_s=_RUN_LONG_BOUND_S)
+    run(scenario())
 
 
 def test_f6_pathological_repeated_rewedging_stays_bounded_never_escalates() -> None:
@@ -2528,7 +2519,7 @@ def test_f6_pathological_repeated_rewedging_stays_bounded_never_escalates() -> N
         # repeatedly" - never an unbounded backlog, never a _TASK_FAIL_MAX-style escalation.
         assert service._open_conns == 0
 
-    run_timed(scenario(), timeout_s=_REWEDGE_RUN_BOUND_S)
+    run(scenario())
 
 
 class _RaisingCloseWriter(_ScriptedWriter):
@@ -2542,7 +2533,7 @@ def test_close_writer_swallows_a_raising_close_and_still_awaits_wait_closed() ->
     # afterward, not abort early.
     service, _app = _make_service()
     writer = _RaisingCloseWriter()
-    run_timed(service._close_writer(writer), _RUN_BOUND_S)
+    run(service._close_writer(writer))
     assert writer.wait_closed_called is True
 
 
@@ -2552,7 +2543,7 @@ def test_close_writer_logs_a_persisted_warning_when_close_raises() -> None:
     # failure this file already logs (peer-closed-early, timed-out, socket-error).
     service, _app = _make_service()
     writer = _RaisingCloseWriter()
-    run_timed(service._close_writer(writer), _RUN_BOUND_S)
+    run(service._close_writer(writer))
     assert service.pr._err_count == 1
     assert _newest_entry(service) == (code("W", "HTTP_CLOSE_RAISED"), "W")
 
@@ -2566,7 +2557,7 @@ class _RaisingWaitClosedWriter(_ScriptedWriter):
 def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None:
     service, _app = _make_service()
     writer = _RaisingWaitClosedWriter()
-    run_timed(service._close_writer(writer), _RUN_BOUND_S)
+    run(service._close_writer(writer))
     assert writer.close_called is True
     assert service.pr._err_count == 1
     assert _newest_entry(service) == (code("W", "HTTP_WAIT_CLOSED"), "W")
@@ -2581,7 +2572,7 @@ class _RaisingCloseAndWaitWriter(_RaisingCloseWriter):
 def test_a_close_that_raises_and_whose_wait_fails_keeps_both_warnings() -> None:
     # Two failures of one call, each its own warning: neither is an error-and-warning pair for one occurrence.
     service, _app = _make_service()
-    run_timed(service._close_writer(_RaisingCloseAndWaitWriter()), _RUN_BOUND_S)
+    run(service._close_writer(_RaisingCloseAndWaitWriter()))
     entry = run(service.get_error_counter())["WEBSERVER"]
     assert entry["ErrCount"] == 2
     assert entry["ErrNum"][-2:] == [code("W", "HTTP_CLOSE_RAISED"), code("W", "HTTP_WAIT_CLOSED")], entry
@@ -2591,7 +2582,7 @@ def test_a_close_that_raises_and_whose_wait_fails_keeps_both_warnings() -> None:
 def test_repeated_reclaims_spend_one_slot() -> None:
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_HEADROOM_S)
     for _ in range(5):
-        run_timed(service._serve(_HangingReader(), _ScriptedWriter()), timeout_s=_SERVE_BOUND_S)
+        run(service._serve(_HangingReader(), _ScriptedWriter()))
     entry = run(service.get_error_counter())["WEBSERVER"]
     assert entry["ErrCount"] == 5
     used = [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] != "N"]
@@ -2609,7 +2600,7 @@ def test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot() -> No
     service.pr.wrn_s = out_of_heap  # type: ignore[method-assign]  # deliberate monkeypatch
     for _ in range(3):
         try:
-            run_timed(service._serve(_ClosedReader(), _RaisingCloseWriter()), _RUN_BOUND_S)
+            run(service._serve(_ClosedReader(), _RaisingCloseWriter()))
         except MemoryError:
             pass  # escaping is acceptable here; keeping the slot is not
         assert service._open_conns == 0
@@ -2625,7 +2616,7 @@ def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
     # the proxy logging it as well counted one reclaimed connection as two warnings.
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_HEADROOM_S)
     request = _request_bytes("GET", "/status")
-    run_timed(service._serve(_ScriptedReader([(0.0, request)]), _HangingWriter()), timeout_s=_SERVE_BOUND_S)
+    run(service._serve(_ScriptedReader([(0.0, request)]), _HangingWriter()))
     entry = next(iter(run(service.get_error_counter()).values()))
     assert entry["ErrCount"] == 1, entry
     assert _newest_entry(service) == (code("W", "HTTP_CALL_TIMEOUT"), "W")
@@ -2635,7 +2626,7 @@ def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
 def test_a_read_phase_per_call_timeout_logs_the_call_timeout_code() -> None:
     # A silent client: the proxy's own read bound fires and logs; microdot swallows it and answers 400.
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_HEADROOM_S)
-    run_timed(service._serve(_HangingReader(), _ScriptedWriter()), timeout_s=_SERVE_BOUND_S)
+    run(service._serve(_HangingReader(), _ScriptedWriter()))
     assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
     assert _newest_entry(service) == (code("W", "HTTP_CALL_TIMEOUT"), "W")
 
@@ -2717,7 +2708,7 @@ def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_strea
     proxy = _TimeoutStreamProxy(writer, _PROXY_BOUND_MS, _FakeLogger("X"), [False])  # type: ignore[arg-type]
     proxy.close()
     assert writer.close_called is True
-    run_timed(proxy.wait_closed(), _RUN_BOUND_S)
+    run(proxy.wait_closed())
     assert writer.wait_closed_called is True
 
 
@@ -2730,7 +2721,7 @@ def test_an_eoferror_from_handle_request_is_an_unexpected_error() -> None:
         raise EOFError
 
     app.handle_request = _raise_eof  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
-    run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
+    run(service._serve(_ScriptedReader([]), _ScriptedWriter()))
     assert service._open_conns == 0
     assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
     assert _newest_entry(service) == (code("E", "UNEXPECTED"), "E")
@@ -2745,7 +2736,7 @@ def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
         raise OSError("simulated socket failure")
 
     app.handle_request = _raise_os  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
-    run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
+    run(service._serve(_ScriptedReader([]), _ScriptedWriter()))
     assert service._open_conns == 0
 
 
@@ -2756,7 +2747,7 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
         raise RuntimeError("simulated unexpected bug")
 
     app.handle_request = _raise_boom  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
-    run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
+    run(service._serve(_ScriptedReader([]), _ScriptedWriter()))
     assert service._open_conns == 0
     log = run(service.get_error_counter())
     entry = next(iter(log.values()))
@@ -2776,7 +2767,7 @@ def test_a_fault_building_a_connection_proxy_is_logged_and_the_connection_closed
     asy_webserver_service._TimeoutStreamProxy = _FaultingProxy  # type: ignore[assignment, misc]  # a stand-in class, restored below
     try:
         with record_prints(service.pr) as recorder:
-            run_timed(service._serve(_ScriptedReader([]), writer), _RUN_BOUND_S)
+            run(service._serve(_ScriptedReader([]), writer))
     finally:
         asy_webserver_service._TimeoutStreamProxy = _TimeoutStreamProxy  # type: ignore[misc]
     assert _newest_entry(service) == (code("E", "UNEXPECTED"), "E")
@@ -2797,7 +2788,7 @@ def test_a_fault_in_the_refusal_trace_is_logged_and_the_refused_connection_close
     service._uptime_s = _faulting_uptime
     writer = _ScriptedWriter()
     with record_prints(service.pr) as recorder:
-        run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))]), writer), _RUN_BOUND_S)
+        run(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))]), writer))
     service._uptime_s = _no_uptime
     assert _newest_entry(service) == (code("E", "UNEXPECTED"), "E")
     assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
@@ -2831,7 +2822,7 @@ def test_f7_extremely_long_url_path_is_handled_cleanly_not_a_crash() -> None:
     long_path = "/status/" + ("a" * 8192)
     reader = _ScriptedReader([(0, _request_bytes("GET", long_path))])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=_SERVE_LONG_BOUND_S)
+    run(service._serve(reader, writer))
     assert service._open_conns == 0  # reclaimed or 404'd, never an escaped exception
 
 
@@ -2855,7 +2846,7 @@ def test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_sl
         await service._serve(fresh_reader, fresh_writer)
         assert fresh_writer.written != b""
 
-    run_timed(scenario(), timeout_s=_RUN_LONG_BOUND_S)
+    run(scenario())
 
 
 # Server start-up edge cases (largely resolved by source research - these confirm
@@ -2888,7 +2879,7 @@ def test_setup_readies_the_logger_and_the_serve_task_never_does() -> None:
             pass
         return initialized
 
-    assert run_timed(scenario(), timeout_s=_SERVE_LONG_BOUND_S) is False
+    assert run(scenario()) is False
 
 
 def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None:
@@ -2908,7 +2899,7 @@ def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None
         except asyncio.CancelledError:
             pass
 
-    run_timed(scenario(), timeout_s=_SERVE_LONG_BOUND_S)
+    run(scenario())
 
 
 # Supervisor integration and soak (capstone)
@@ -2935,7 +2926,7 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
 
     def free_after(cycles: range) -> int:
         for i in cycles:
-            run_timed(one_cycle(i), _RUN_BOUND_S)
+            run(one_cycle(i))
             if i % 3 == 1:  # every 3-cycle period ends collected: a dangling C-stack word of the test rig then finds the
                 gc.collect()  # same heap at each collect, so it pins a block in the warm-up or never (SPECIFICATION.md E.7)
         gc.collect()
@@ -3190,7 +3181,7 @@ def test_g3_the_header_block_is_one_write_so_a_cut_response_still_carries_its_le
         _status, headers, _body = _get_on_the_wire(service, path)  # asserts the one-write head itself
         assert "content-length" in headers, (path, headers)
     writer = _BodyFailingWriter()
-    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/page.bin"))], eof=True), writer), timeout_s=_RUN_BOUND_S)
+    run(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/page.bin"))], eof=True), writer))
     assert len(writer.chunks) == 1, writer.chunks
     assert writer.chunks[0].startswith(b"HTTP/1.0 200 OK\r\n") and b"Content-Length: 1000\r\n" in writer.chunks[0], writer.chunks
 
@@ -3427,7 +3418,7 @@ def test_h1_a_request_read_that_exhausts_the_c_stack_answers_400_and_reports_it(
     service, _app = _make_service()
     writer = _ScriptedWriter()
     assert fatal_reported() is False
-    run_timed(service._serve(_OverflowingReader([]), writer), timeout_s=_SERVE_LONG_BOUND_S)
+    run(service._serve(_OverflowingReader([]), writer))
     assert b" 400 " in writer.written
     assert fatal_reported() is True
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
@@ -3455,13 +3446,13 @@ def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:
 # when driven past an await, as body_iter() would. SPECIFICATION.md Part F.1.
 
 
-def _on_virtual_clock(clock: "_VirtualClock", scenario: "Coroutine[object, object, T]", timeout_s: float = _RUN_BOUND_S) -> "T":
+def _on_virtual_clock(clock: "_VirtualClock", scenario: "Coroutine[object, object, T]") -> "T":
     # Runs scenario with the module's bounds on clock: one fires only when the test moves the clock, so a host
     # stall can neither cut a response short nor reorder two bounds. Called at synchronous test scope only.
     real_asyncio = asy_webserver_service.asyncio
     asy_webserver_service.asyncio = clock.timers()  # type: ignore[assignment]  # a stand-in module, restored below
     try:
-        return run_timed(scenario, timeout_s)  # a hang bound only: the virtual clock makes the pass itself instant
+        return run(scenario)
     finally:
         asy_webserver_service.asyncio = real_asyncio
 
@@ -4031,8 +4022,6 @@ def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concaten
     assert _json(status_body(res)) == result
 
 
-
-
 def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "dict[str, str] | None" = None) -> bytes:
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json", "Host": "device.local"}
     if extra_headers:
@@ -4081,7 +4070,7 @@ def test_i2_hammer_concurrent_sensors_requests_stay_valid() -> None:
 def _serve_one(service: "WebserverService", body_bytes: int, interval: int = 7) -> "tuple[_BodySizeReader, _ScriptedWriter]":
     reader = _BodySizeReader(_head_then_body(_sized_put(body_bytes, interval)))
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=_SERVE_LONG_BOUND_S)
+    run(service._serve(reader, writer))
     return reader, writer
 
 
@@ -4156,7 +4145,6 @@ def status_body(res: "Response") -> bytes:
 def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write() -> None:
     _, app = _make_write_hammer_service()
     run(_hammer_routes_with_concurrent_writes(app, 40))  # 40 rounds * 2 GET routes + 40 PUTs = 120 concurrent requests
-
 
 
 # ---------------------------------------------------------------------------
@@ -4262,7 +4250,7 @@ def test_serve_never_swallows_its_own_tasks_cancellation_and_still_frees_the_slo
             return True
         return False
 
-    assert run_timed(scenario(), _RUN_BOUND_S) is True, "the cancellation was swallowed"
+    assert run(scenario()) is True, "the cancellation was swallowed"
     assert writer.close_called is True
     assert service._open_conns == 0
 
@@ -4272,7 +4260,7 @@ def test_a_body_that_never_arrives_is_logged_as_a_read_phase_timeout() -> None:
     # does for the headers, so the proxy's own log is the only trace this connection ever leaves.
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_HEADROOM_S)
     request = _request_bytes("PUT", "/status", b"", {"Content-Length": "10"})
-    run_timed(service._serve(_ScriptedReader([(0.0, request)]), _ScriptedWriter()), timeout_s=_SERVE_BOUND_S)
+    run(service._serve(_ScriptedReader([(0.0, request)]), _ScriptedWriter()))
     entry = next(iter(run(service.get_error_counter()).values()))
     assert entry["ErrCount"] == 1, entry
     assert service._open_conns == 0
@@ -4288,7 +4276,7 @@ def test_nothing_is_written_to_a_peer_that_reset_while_its_body_was_read() -> No
     service, _app = _make_service(per_call_timeout_s=_RECLAIM_PER_CALL_S, outer_cap_s=_MID_HEADROOM_S)
     request = _request_bytes("PUT", "/status", b"", {"Content-Length": "10"})
     writer = _ScriptedWriter()
-    run_timed(service._serve(_ResetDuringBodyReader([(0.0, request)]), writer), timeout_s=_SERVE_BOUND_S)
+    run(service._serve(_ResetDuringBodyReader([(0.0, request)]), writer))
     assert writer.written == b"", writer.written
     assert service.pr._err_count == 1, service.pr._err_count
     assert _newest_entry(service) == (code("W", "HTTP_PEER_RESET"), "W")
@@ -4313,7 +4301,6 @@ def test_a_webserver_built_without_a_system_command_handler_answers_invalid() ->
     res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": "reboot"})))
     assert res.status_code == 200
     assert _obj(_at(_json(res.body), "result")).get("SystemCmd") == "Invalid"
-
 
 
 class _OverflowingJson:

@@ -72,7 +72,7 @@ def _on_path(directory: str) -> "Iterator[None]":
 def digital_twin_machine(repo_root: Path) -> "Iterator[ModuleType]":
     # digital_twin/machine.py has no MicroPython-only import at module scope (only individual method
     # bodies do), so plain `import machine` under this suite's own CPython/pytest process works.
-    with _on_path(str(repo_root / "digital_twin")):
+    with _on_path(str(repo_root / "digital_twin")), _on_path(str(repo_root / "fakes")):  # fakes/: the helpers it imports
         import machine  # type: ignore[import-not-found]  # only resolvable once digital_twin/ is on sys.path, above
 
         yield machine
@@ -83,7 +83,7 @@ def test_the_twin_directory_leaves_no_module_and_no_path_entry_behind(repo_root:
     # The twin's `machine` would shadow any other `machine` a later test imports in this process.
     twin_dir = (repo_root / "digital_twin").resolve()
     modules, path = set(sys.modules), list(sys.path)
-    with contextlib.suppress(RuntimeError), _on_path(str(twin_dir)):
+    with contextlib.suppress(RuntimeError), _on_path(str(twin_dir)), _on_path(str(repo_root / "fakes")):
         load_script_module(twin_dir / "machine.py", "zz_twin_machine_probe")
         if body == "raises":
             raise RuntimeError("a failing test body")

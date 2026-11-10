@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 import tomllib
-from _devices import DEVICE_NAMES, device_toml
+from _devices import DEVICE_NAMES, device_toml, distinct_devices
 
 from buildgen.generate import generate_device
 
@@ -80,7 +80,7 @@ def _boot(repo_root: Path, micropython_bin: Path, tmp_path: Path, toml_text: str
     (tmp_path / "cfg").mkdir()
     script = tmp_path / "boot.py"
     script.write_text(_BOOT % {"device": _DEVICE, "cfg": tmp_path / "cfg", "marker": _FACTS}, encoding="utf-8")
-    env = {"MICROPYPATH": f"{tmp_path}:src:tests:.frozen", "TZ": "UTC", "PATH": "/usr/bin:/bin"}  # .frozen: the port's own asyncio
+    env = {"MICROPYPATH": f"{tmp_path}:src:tests:fakes:.frozen", "TZ": "UTC", "PATH": "/usr/bin:/bin"}  # .frozen: the port's own asyncio
     result = subprocess.run([str(micropython_bin), "-X", "heapsize=16M", str(script)], cwd=repo_root, env=env, capture_output=True, text=True, timeout=_BOOT_TIMEOUT_S, check=False)
     lines = [line for line in result.stdout.splitlines() if line.startswith(_FACTS)]
     assert result.returncode == 0 and len(lines) == 1, f"rc={result.returncode}\n{result.stdout}\n{result.stderr}"
@@ -95,7 +95,7 @@ def test_the_fixture_declares_no_fram_at_all(device: str) -> None:
     assert "fram_target" not in json.dumps(doc), "a fram_target wiring survived"
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)  # each device's own chips, its FRAM taken out
+@pytest.mark.parametrize("device", distinct_devices())  # each device's own chips, its FRAM taken out
 def test_a_device_without_fram_boots_with_every_log_in_ram_and_refuses_erase_fram(repo_root: Path, micropython_bin: Path, tmp_path: Path, device: str) -> None:
     facts = _boot(repo_root, micropython_bin, tmp_path, _without_fram(device_toml(device).read_text(encoding="utf-8")))
     assert facts == {"fram": False, "storage": False, "stored": [], "erasefram": {"SystemCmd": "Failed"}, "armed": False, "resets": 0}, facts

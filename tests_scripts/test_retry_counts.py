@@ -9,7 +9,7 @@ from typing import NamedTuple
 
 from test_tunables_register import _HASH_SUFFIXES, _SKIP_DIRS, _SLASH_SUFFIXES, Tag, _scan_file
 
-_SCOPES = ("tests", "digital_twin", "tests_scripts", "tests_hardware", "scripts", "tests_js")
+_SCOPES = ("tests", "digital_twin", "fakes", "tests_scripts", "tests_hardware", "scripts", "tests_js")
 _FILES = ("vitest.config.js",)
 # A poll bound (`_tries`) waits for a state and never repeats a failed step, so no retry count is named so.
 _COUNT = re.compile(r"@tunable [a-z][a-z0-9_]*\.[a-z][a-z0-9_]*(?:_attempts|_retries|_rebinds) = ")

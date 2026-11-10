@@ -2,7 +2,7 @@
 asy_notification_service.py.NotificationService via request_signal_cb=pixel.request_signal - the shape every generated
 sensortask module wires (SPECIFICATION.md L.2).
 
-Only tests/neopixel.py's fake write surface is mocked; overlay/arbitration, the poll loop, gating, config, and logging
+Only fakes/neopixel.py's fake write surface is mocked; overlay/arbitration, the poll loop, gating, config, and logging
 all run for real end to end.
 """
 
@@ -91,7 +91,7 @@ def _make_pair(
     signals: "tuple[NotificationSignal, ...]", local_time: "Callable[[], Awaitable[_HourMinute | None]]" = _local_time,
 ) -> "tuple[NeopixelDriver, NotificationService]":
     pixel = NeopixelDriver(0)  # at the shipped frame rate: FlashDur's 0.5 s floor still plays several frames a direction
-    notify = NotificationService(pixel.request_signal, local_time, signals, cfg_path=_tmp_cfg_dir())
+    notify = NotificationService(pixel.request_signal, local_time, signals, cfg_path=_scratch.dir())
     run(notify.setup())
     return pixel, notify
 
@@ -112,10 +112,6 @@ async def _start_all(pixel: NeopixelDriver, notify: NotificationService) -> "lis
     tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
     await asyncio.sleep(0)  # one yield lets each task park on its first wait (a limit, not an interleaving claim)
     return tasks
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
 
 
 def test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color() -> None:
@@ -204,7 +200,7 @@ def test_a_notification_behind_a_busy_led_waits_its_turn_and_plays_with_no_entry
 
 def test_the_window_check_reads_a_real_ntp_clock() -> None:
     # The production local-time callback: a real NTP client's cettime(), marked synced by the test.
-    ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(1000, 5000), cfg_path=_tmp_cfg_dir())
+    ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(1000, 5000), cfg_path=_scratch.dir())
     run(ntp.cfgmgr.setup())
     run(ntp._set_synced(value=True))
 
@@ -238,7 +234,7 @@ def test_the_window_check_reads_a_real_ntp_clock() -> None:
 
 def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
     sink = asy_notification_service._DefaultSignalSink()
-    notify = NotificationService(sink.request_signal, _local_time, (_co2_signal(),), cfg_path=_tmp_cfg_dir())
+    notify = NotificationService(sink.request_signal, _local_time, (_co2_signal(),), cfg_path=_scratch.dir())
     run(notify.setup())
 
     async def scenario(clock: DrivenTime) -> None:

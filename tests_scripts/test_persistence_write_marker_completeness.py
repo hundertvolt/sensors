@@ -179,7 +179,7 @@ def _forwarded_method_calls(path: Path, shape: _FetchShape) -> list[str]:
 
 
 # SystemCmd is dispatch-only in general, but one command word deletes every config file, so a PUT
-# carrying it writes the flash filesystem. Pinned by name with its reason (owner, 2026-09-30); the
+# carrying it writes the flash filesystem. Pinned by name with its reason (agent, 2026-09-30); the
 # word must still be a real _SYSTEM_CMDS entry (checked below), never a literal that drifted.
 _PERSISTING_COMMAND_WORDS = {"resetconfig": "deletes every config file (a flash-filesystem write the test owns)"}
 

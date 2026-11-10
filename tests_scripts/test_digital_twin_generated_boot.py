@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 import tomllib
-from _devices import DEVICE_NAMES
+from _devices import DEVICE_NAMES, distinct_devices
 from _devices import device_toml as device_toml_path
 from _script_loader import load_script_module
 
@@ -589,7 +589,7 @@ def test_synthetic_fixture_boots_and_serves_over_real_http(
     assert _boot_generated_device(None, generated, micropython_bin, tmp_path, _free_port()) == []
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)
+@pytest.mark.parametrize("device", distinct_devices())
 def test_real_device_boots_its_generated_module_and_serves_over_real_http(
     micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
 ) -> None:

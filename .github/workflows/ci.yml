@@ -315,7 +315,7 @@ jobs:
       - name: Generate the device modules (ruff checks them)
         run: uv run scripts/_generate_sensortask_modules.py
       - name: Ruff (every scope, the generated device modules included)
-        run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts build/generated_src
+        run: uv run ruff check src tests digital_twin fakes tests_hardware buildgen scripts toolchain tests_scripts build/generated_src
       - name: Mypy (all three passes; typecheck.sh)
         run: uv run scripts/typecheck.sh
 

@@ -95,7 +95,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     markers.register(config)
     # A thread that dies fails the test it ran under instead of leaving only pytest's warning, so no reader's death
-    # goes unseen (agent, 2026-10-22; owner-reviewed, 2026-11-06); a -W option or a filterwarnings mark, applied after this line, still overrides it.
+    # goes unseen (agent, 2026-10-22); a -W option or a filterwarnings mark, applied after this line, still overrides it.
     config.addinivalue_line("filterwarnings", "error::pytest.PytestUnhandledThreadExceptionWarning")
     # The bench board by name: every default-taking harness helper reads $BENCH_DEVICE, so the option is exported for
     # this session and the previous value restored at its end (an in-process pytest.main() loop must not inherit it).

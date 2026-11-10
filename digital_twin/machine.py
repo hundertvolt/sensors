@@ -618,8 +618,8 @@ _FRAM_RDID_BY_MAX_SIZE: "dict[int, bytes]" = {
 
 
 def configure_fram_state_path(path: "str | None") -> None:
-    # Called once, before build_system() constructs spi0, by the twin's entry points (launch.py,
-    # run_generic_integration.py) - src/ never calls this: zero twin-awareness in src/ (owner, 2026-09-26: 'zero artifacts
+    # Called once, before build_system() constructs spi0, by the twin's entry points (run_generic_integration.py,
+    # run_device_script.py) - src/ never calls this: zero twin-awareness in src/ (owner, 2026-09-26: 'zero artifacts
     # specifically added for testing'). None (the default) means "in-memory only, no persistence".
     _require_unconstructed("configure_fram_state_path")
     global _fram_state_path
@@ -778,7 +778,7 @@ class SPI:
 
 
 _UART_BITS_PER_BYTE = 10  # 8N1 on the wire: one start bit, eight data bits, one stop bit
-# Claimed rp2.DMA channels by number: digital_twin/rp2.py registers here, so a UART finds the channel draining it.
+# Claimed rp2.DMA channels by number: fakes/rp2.py registers here, so a UART finds the channel draining it.
 _DMA_CHANNELS: "dict[int, DMA]" = {}
 _UART_BASES = (0x40034000, 0x40038000)  # UART0/UART1 register blocks; UARTDR at offset 0 (RP2040 datasheet 4.2.8)
 _UARTRSR = 0x004  # read as UARTRSR, written as UARTECR (any write clears the four error bits)
@@ -872,7 +872,7 @@ def configure_mem_backup_state_path(path: "str | None") -> None:
 
 
 def configure_random_source(source: "_RandomSource | None") -> None:
-    # Every chip's value walk draws from `source` (launch.py's --seed); None leaves each on the un-seeded module.
+    # Every chip's value walk draws from `source` (the runner's --seed); None leaves each on the un-seeded module.
     _require_unconstructed("configure_random_source")
     global _random_source
     _random_source = source
