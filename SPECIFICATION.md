@@ -3148,11 +3148,11 @@ as both lock layers (C.8) stay genuinely distinct. What differs:
   locked — so the scheduling points belong in the coroutine that owns the operation, not in the CS
   path. The FRAM needs none: its tCSU/tCSH 10 ns and tD 40/60 ns (MB85RS2MTA p.15, MB85RS64V p.14)
   pass within one interpreted call (agent, 2026-11-10). The async forms remain, expressed on the same primitives, with one `sleep(0)` after the
-  lock is released. Measured cost of getting this wrong: see F.5.8's SPI note. Every CS cycle
-  re-runs `machine.SPI.init()` at the fixed bus config: on rp2 that is argument parsing plus
+  lock is released. Measured cost of getting this wrong: see F.5.8's SPI note. A session re-runs
+  `machine.SPI.init()` only when another device configured the bus last (`SPIDevice._configure()`), so
+  once on every device, the FRAM being its only SPI device: on rp2 that is argument parsing plus
   `spi_set_baudrate()` and `spi_set_format()` (`ports/rp2/machine_spi.c:219-262`); it never resets
-  the block — `spi_init()` runs only in the constructor (`:206`). The pico-sdk side of the two calls
-  was not audited; its cost is part of the per-CS overhead F.5.8 measures. During reset and until
+  the block — `spi_init()` runs only in the constructor (`:206`). During reset and until
   `setup()` configures the pin, the FRAM CS pad sits at an intermediate level (0.22-0.74 × VDD on
   the MB85RS64V) between the RP2040 pad's default pull-down (50-80 kΩ, RP2040 datasheet 2.19, 5.5)
   and the chip's internal CS pull-up (MB85RS64V 28-180 kΩ, MB85RS2MTA 18-80 kΩ); SCK and SI are
@@ -5128,16 +5128,16 @@ fake's state reaches the next test. Every test file ends with the canonical
 a running loop raises `RuntimeError` naming the fix (CLAUDE.md, the known segfault cause). Every
 task the call creates is tracked. When the call ends, the loop gets one round first, as the board's
 loop never stops (a task left queued and due takes its step: a deferred config flush completes
-there); then each unfinished task is cancelled on its own and awaited until all have ended, nothing
-else can run, or two loop rounds pass (`_REAP_ROUNDS`: a cancelled task ends at its next await, and
-the reaper takes it in the next round). A task the reap could not end is
+there); then each unfinished task is cancelled on its own and awaited until all have ended or nothing
+else can run, given every wait its own cleanup asks for (an I2C probe's second settle); one that runs on
+after its cancellation is the per-file timeout's. A task nothing can wake is
 named and taken off every queue it was on, and a task that failed during its cancellation is
 re-raised when the run itself passed. A finished task whose data the loop cleared after another
 task awaited it is passed over (F.1: awaiting it again crashes the port); finished tasks leave the
 tracked list as it grows, and `release_finished()` drops them inside a running call, so a heap
 reading there measures only the code under test, and tests take their heap readings between harness
-runs. Over a plain `asyncio.run()` a call costs 2.0 µs more at the reactive default and 3.1 µs more
-at `gc.threshold(32768)`, and allocates nothing more (medians per call, measured 2026-10-13).
+runs. Over a plain `asyncio.run()` a call costs about 2 µs more at the reactive default and 2-3 µs more
+at `gc.threshold(32768)`, and allocates nothing more (medians of 501 calls, 2026-11-10).
 
 **One copy of each shared test helper**, in a `tests/_*.py` module; a test file's own doubles and
 builders are private (`_Fake…`, `_make_…`, checked by `tests_scripts/test_microtest.py`), and each
@@ -6743,7 +6743,7 @@ The budget rows, one per stretch:
 | `stall.fram_command` | one FRAM command, its CS envelope, a plain call: the bus configured once, no lock, no yield (C.8) | ~250 µs per command, a chunk write's 12.7 ms over its 51 (`stall.fram_entry`) | medians of 300 calls on the dev chip (2026-11-10 image, frozen, 125 MHz, idle, `gc.threshold(32768)`), each with the harness's 22 µs call floor: an RDSR 143 µs, a WRDI 119 µs, a 1 B read 245 µs (13 B 260 µs), a 13 B write 809 µs as its 5 commands, `begin()` 185 µs once per operation; a bare `machine.SPI` RDSR 54 µs; re-measured on the next image, which drops the 2 µs CS settle at each edge | `con.routine_stall`; one UART poll floor, 80 B at 115200 baud = 6,944 µs (J.6) | `device_scripts/fram_command_hold_timing.py`, run by `tests_hardware/flash/test_fram_storage.py` | — |
 | `stall.gc` | one garbage collection | 21 ms, the worst measured pause (I.1) | I.1 | `con.uart_reply` (its floor holds it) | J.6's floor checks (`UARTComm._min_timeout()`, `buildgen/validate.py`); the re-measure by `device_scripts/loop_stretch_timing.py` on the full dev graph | `uart.gc_pause_worst_ms` |
 | `stall.voc_process` | one `vocalgorithm_process()` per SGP40 sample, no yield inside | owed | owed: `device_scripts/loop_stretch_timing.py` | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` (`tests_hardware/flash/test_memory_stress.py`) | — |
-| `stall.crc` | a CRC over a buffer runs as native code with no yield inside (`crc_checks.py`), so one stretch is the whole buffer | 0.95 ms for 264 B, the SGP40 backup chunk's CRC32 (RAM-loaded viper engine on the dev RP2040, 2026-11-09; the frozen engine's figure owed) | the 256-byte chunk's total and gap: owed, `device_scripts/loop_stretch_timing.py` | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` | — |
+| `stall.crc` | a CRC over a buffer runs as native code with no yield inside (`crc_checks.py`), so one stretch is the whole buffer | 1.31 ms for 264 B, the SGP40 backup chunk's CRC32 (the frozen viper engine on the dev RP2040, 2026-11-10 image, median of 30, maximum 1.56 ms) | the 256-byte chunk's total and gap: owed, `device_scripts/loop_stretch_timing.py` | `con.routine_stall` | `test_routine_no_yield_stretches_stay_under_the_gc_term` | — |
 | `stall.uart_call` | one UART driver call on the loop | 1,533 µs: a third (`_SPAN_FRACTION`) of one 53-byte frame's wire time at 115200 baud, 4,600 µs (`FRAME` in `device_scripts/uart_driver_read_never_blocks_the_loop.py`, F.5.8) | 126-132 µs (dev, 2026-09-25, F.5.8) | `con.uart_reply`, `con.routine_stall` | `device_scripts/uart_driver_read_never_blocks_the_loop.py` | — |
 | `stall.sync_wait` | the one synchronous wait `src/` makes on purpose: the I2C bus clear's half period | 5 µs per wait | — | `con.routine_stall` | — | — |
 | `stall.console` | `print()` at a raised `DebugLevel` while a USB host program holds the port open and does not read (A.5); never without such a host, and the shipped level prints no client-triggered line | 2 s per printed line (about: several writes, each up to 500 ms) | — | `con.uart_reply` (crossed: an accepted debug-mode limitation (owner, 2026-09-30, asked, in paraphrase, how to treat debug logging with a connected USB host that does not read: 'a', to accept it as one; A.5)), `con.led_frame` (crossed), `con.watchdog` (a busy log can still starve it: A.5 names the exits) | `test_console_output_with_a_non_reading_usb_host_never_starves_the_watchdog` (`tests_hardware/bench/test_network_resilience.py`, behind `--allow-persistence-write`) | — |

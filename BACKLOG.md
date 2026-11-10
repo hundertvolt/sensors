@@ -95,10 +95,6 @@ gates, traps).
   writes in the script's scratch region). Twin row: the flash test
   `test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget` under `--twin` and the
   `loop_lag_under_combined_load` scenario (Part F.3's `lag.loop`).
-- **The serving rate behind `max_connections`** — on `dev`, back-to-back `GET /status` against
-  SPECIFICATION.md H.7's ~2.2 requests/s, measured when one `/status` build took ~455 ms of CPU, before
-  the 2026-11-06 `/status` fix; `max_connections` and `web.poll_interval_ms` move only after it. Twin
-  row: none (the figure is the board's CPU time).
 - **The UART hazard run under API load** — on `dev`,
   `bench/test_uart_link_under_api_load.py::test_a_hazard_run_under_the_readers_load_reports_every_verdict`:
   one `PUT /uart {"UartHazards": true}` while 3 readers GET `/status` until the run ends.

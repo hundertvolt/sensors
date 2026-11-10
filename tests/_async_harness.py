@@ -1,5 +1,5 @@
 """Drives a coroutine from a synchronous test, refusing to nest inside a running loop. run() ends each task the call
-created on every path, cancelling each alone and naming any it could not end within its bound; a task such a cancel
+created on every path, cancelling each alone and naming any nothing can wake; a task such a cancel
 starts is untracked, microtest's after-each check backstops it. run_to_interrupt() drops them as the boot entry does."""
 
 import asyncio
@@ -25,9 +25,6 @@ if TYPE_CHECKING:
 
 _NESTED = "run() called from inside a coroutine - build the fixture in the test's synchronous scope"
 _UNENDED = "the reap could not end a task the run created:"
-# The loop rounds the reap gives the cancelled tasks: each ends at its next await, the reaper takes it in the next
-# (measured: two at most over the unit tier at both GC stages; agent, 2026-11-10). One still unended is named.
-_REAP_ROUNDS = 2
 _COMPACT_MIN = 8
 _START_ROUNDS = 8  # scheduler rounds newest_start() gives a just-created task to begin
 # The running call's tasks: the finished ones are dropped whenever the list doubles past its last compaction, so a
@@ -124,8 +121,8 @@ def _passed() -> None:
 
 def _reap(pending: "list[_Task]") -> "tuple[list[Exception], list[_Task]]":
     # One loop round first, as the board's loop never stops (a due deferred flush completes), then each task still
-    # unfinished is cancelled on its own and the loop runs until all have ended, nothing but the watch can run, or its
-    # rounds pass. Returns what they ended with but cancellation, and the unended, taken off every queue they were on.
+    # unfinished is cancelled on its own and the loop runs until all have ended or nothing but the watch can run.
+    # Returns what they ended with but cancellation, and the unended, taken off every queue they were on.
     errors: list[Exception] = []
     asyncio.run(_round())
     for task in pending:
@@ -205,16 +202,17 @@ def _unpark(task: "_Task") -> None:
 
 
 async def _watch(reaper: "_Task") -> None:
-    # The reap's main task: returns once the reaper is done and nothing on the run queue is due, once nothing else can
-    # ever run, or after its rounds. Until the reaper is done each round sleeps to the earliest wake-up, a millisecond at
-    # most while a stream waits; after, it only yields, as a task woken later is not this call's (a sync-started flash).
-    for _ in range(_REAP_ROUNDS):
-        now = ticks_ms()
+    # The reap's main task: until the reaper is done, or nothing else can ever run, it sleeps to the earliest wake-up, a
+    # millisecond at most while a stream waits, so a cancelled task gets every wait its own cleanup asks for; then it
+    # yields once to a task already due, as one woken later is not this call's (a sync-started flash).
+    while not reaper.done():
         head = _core._task_queue.peek()
-        if (reaper.done() and not _due(head, now)) or (head is None and not _core._io_queue.map):
+        if head is None and not _core._io_queue.map:
             return
-        step = 0 if head is None or reaper.done() else max(0, ticks_diff(head.ph_key, now))
+        step = 1 if head is None else max(0, ticks_diff(head.ph_key, ticks_ms()))
         await asyncio.sleep_ms(min(step, 1) if _core._io_queue.map else step)
+    if _due(_core._task_queue.peek(), ticks_ms()):
+        await asyncio.sleep(0)
 
 
 async def cancel(task: "asyncio.Task[T]") -> None:

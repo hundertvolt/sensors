@@ -227,23 +227,23 @@ def test_a_task_nothing_can_wake_is_named_and_taken_off_at_once() -> None:
     assert _scheduler_empty()
 
 
-def test_a_task_running_on_after_its_cancellation_is_named_once_the_rounds_pass() -> None:
-    async def stubborn() -> None:
-        while True:
-            try:
-                await asyncio.sleep_ms(1)
-            except asyncio.CancelledError:
-                pass
+def test_a_cancelled_task_is_given_every_wait_its_own_cleanup_asks_for() -> None:
+    # An I2C probe cancelled in its first settle awaits its second in a finally (asy_i2c_driver.py); shorter cleanups
+    # beside it wake first. The reap waits for all of them rather than ending at a count of loop rounds.
+    async def settles(ms: int) -> None:
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            await asyncio.sleep_ms(ms)
 
     left: list[asyncio.Task[None]] = []
 
     async def main() -> None:
-        left.append(asyncio.create_task(stubborn()))
+        left.extend(asyncio.create_task(settles(ms)) for ms in (100, 50, 10))
         await asyncio.sleep(0)
 
-    message, _took_ms = _unended_message(main())
-    assert "'stubborn'" in message, message
-    assert not left[0].done()
+    run(main())
+    assert all(task.done() for task in left)
     assert _scheduler_empty()
 
 
