@@ -2083,7 +2083,10 @@ def _two_at_once(ctx: Context, first: str, second: str, label: str) -> None:
 
 def _uart_load(ctx: Context, twin: Twin) -> None:
     # A hammer one past the ceiling on /status and stored config PUTs every half second, each a flash write, for the window.
+    # A served client's reconnect retakes its own slot before a refused one's, so the flusher takes a slot before the
+    # hammers start and keeps it with /status between its PUTs.
     stop = threading.Event()
+    holding = threading.Event()
     puts: list[object] = []
 
     def hammer(_i: int) -> int:
@@ -2094,20 +2097,26 @@ def _uart_load(ctx: Context, twin: Twin) -> None:
 
     def flusher(_i: int) -> int:
         index = 0
-        while not stop.is_set():  # each a stored change, so each a config flush and its flash stall
+        due = time.monotonic()
+        while not stop.is_set():  # each PUT a stored change, so each a config flush and its flash stall
+            if time.monotonic() < due:
+                _status_of(twin.port, "/status", _UART_LOAD_REQUEST_S)
+                continue
             try:
                 puts.append(_config_write(twin.port, index % 30, _UART_LOAD_REQUEST_S)[1])
-            except RefusedError:  # the hammer holds the ceiling: a clean refusal, sent again
-                time.sleep(_LINE_POLL_S)
+            except RefusedError:  # a clean refusal, sent again at once, as the hammer's are
                 continue
+            holding.set()
             index += 1
-            time.sleep(0.5)
+            due = time.monotonic() + 0.5
         return index
 
     hammers = ctx.ceiling() + 1
     results: list[object] = [None] * (hammers + 1)
     threads = [threading.Thread(target=_record_into, args=(results, i, hammer if i < hammers else flusher)) for i in range(hammers + 1)]
-    for thread in threads:
+    threads[hammers].start()
+    holding.wait(_UART_LOAD_REQUEST_S)
+    for thread in threads[:hammers]:
         thread.start()
     time.sleep(_UART_LOAD_S)
     stop.set()
