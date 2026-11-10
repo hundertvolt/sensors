@@ -196,7 +196,8 @@ class SCD30Chip:
         self._measuring = measuring
 
     def _not_loaded(self, reason: str) -> None:
-        # Missing, malformed, truncated or mistyped file: the factory-fresh chip (owner, 2026-08-13), and a line saying so.
+        # Missing, malformed, truncated or mistyped file: the factory-fresh chip and a line saying so (agent, 2026-10-14),
+        # so the persisted state the owner asked for (2026-08-13) is never dropped without a word.
         print("SCD30 state", self.state_path, "not loaded (" + reason + "): starting from factory-fresh settings")
 
     def _power_up(self) -> None:

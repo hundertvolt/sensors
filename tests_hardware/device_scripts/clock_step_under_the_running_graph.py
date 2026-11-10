@@ -42,35 +42,6 @@ _BACK_S = 7200  # the step back behind the backup, as the twin steps: its age re
 _MAX_AGE_MIN = 60  # a BackupMaxAge that refuses it; 0 accepts every age (asy_sgp40_driver.py's age check)
 
 
-def _set(rtc: machine.RTC, epoch: int) -> None:
-    t = time.gmtime(epoch)
-    rtc.datetime((t[0], t[1], t[2], t[6], t[3], t[4], t[5], 0))
-
-
-def _count_restores(sgp: "SGP40_Reader") -> "list[bool]":
-    # Each restore the reader decides from here on, in order: True where it applied the backup.
-    decisions: list[bool] = []
-    original = sgp._run_restore
-
-    async def run_restore(buf: object, *, deserialize: bool, cfg_values: "tuple[int, int, int] | None") -> bool:
-        applied = await original(buf, deserialize=deserialize, cfg_values=cfg_values)  # type: ignore[arg-type]  # passed through
-        if deserialize:
-            decisions.append(applied)
-        return applied
-
-    sgp._run_restore = run_restore  # type: ignore[method-assign]  # observed from outside, as reset_code_stack_exhausted.py wraps
-    return decisions
-
-
-async def _until(check: "Callable[[], Awaitable[bool]]", what: str) -> None:
-    waited = 0
-    while not await check():
-        if waited >= _WAIT_MS:
-            raise RuntimeError(what + " within " + str(_WAIT_MS) + " ms")
-        await asyncio.sleep_ms(_POLL_MS)
-        waited += _POLL_MS
-
-
 async def _backup_age_past_a_step_back(sgp: "SGP40_Reader", rtc: machine.RTC) -> "dict[str, object]":
     # One backup at the running clock, the clock stepped back behind it, then a restore under a max age and under none.
     async def settled() -> bool:  # initialised, a sample read and the boot's own restore attempt over
@@ -101,6 +72,35 @@ async def _backup_age_past_a_step_back(sgp: "SGP40_Reader", rtc: machine.RTC) ->
         newest = [[kind, num] for kind, num in zip(log["ErrType"], log["ErrNum"]) if kind != "N"][-1:]
         restores.append({"max_age": max_age, "restored": decisions[asked], "from": (await sgp.get_mem_status())[1], "newest": newest})
     return {"stamp": stamp, "restores": restores}
+
+
+def _count_restores(sgp: "SGP40_Reader") -> "list[bool]":
+    # Each restore the reader decides from here on, in order: True where it applied the backup.
+    decisions: list[bool] = []
+    original = sgp._run_restore
+
+    async def run_restore(buf: object, *, deserialize: bool, cfg_values: "tuple[int, int, int] | None") -> bool:
+        applied = await original(buf, deserialize=deserialize, cfg_values=cfg_values)  # type: ignore[arg-type]  # passed through
+        if deserialize:
+            decisions.append(applied)
+        return applied
+
+    sgp._run_restore = run_restore  # type: ignore[method-assign]  # observed from outside, as reset_code_stack_exhausted.py wraps
+    return decisions
+
+
+def _set(rtc: machine.RTC, epoch: int) -> None:
+    t = time.gmtime(epoch)
+    rtc.datetime((t[0], t[1], t[2], t[6], t[3], t[4], t[5], 0))
+
+
+async def _until(check: "Callable[[], Awaitable[bool]]", what: str) -> None:
+    waited = 0
+    while not await check():
+        if waited >= _WAIT_MS:
+            raise RuntimeError(what + " within " + str(_WAIT_MS) + " ms")
+        await asyncio.sleep_ms(_POLL_MS)
+        waited += _POLL_MS
 
 
 async def _main() -> None:

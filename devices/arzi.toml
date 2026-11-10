@@ -13,7 +13,7 @@ hotspot_time_min = 8
 # is omitted, so it derives max_connections + 1 - already the deepest queue buildgen allows.
 max_connections = 6
 
-# Mandatory-infra-to-instance links; each optional, absence disables that link (owner, 2026-09-09).
+# Mandatory-infra-to-instance links; each optional, absence disables that link (agent, 2026-09-09).
 [device.wiring]
 led_target = "neopixel"
 fram_target = "fram"
@@ -83,7 +83,7 @@ driver = "notification"
 signal_sink = "neopixel"
 fram_target = "fram"
 
-# Per-signal getters - each optional; absence disables that warning signal (owner, 2026-09-09).
+# Per-signal getters - each optional; absence disables that warning signal (agent, 2026-09-09).
 [instance.wiring.warn_co2]
 source = "scd30"
 field = "CO2"

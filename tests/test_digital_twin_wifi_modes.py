@@ -23,9 +23,9 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
-from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime, driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -51,7 +51,6 @@ if TYPE_CHECKING:
 
 _WAIT_POLL_S = 0.1
 _WAIT_TIMEOUT_S = 25.0
-_RUN_BOUND_S = 200.0
 _POOL = 16  # rp2's alarm pool: digital_twin/machine.py's _ALARM_POOL_SIZE
 # The WiFi service's own sleeps run this many times faster: its periods and settles are not under test, its transitions.
 _SLEEP_SCALE = 5
@@ -152,11 +151,6 @@ async def _driven(clock: DrivenTime, what: str, coro: "Coroutine[object, object,
     return await task
 
 
-def _driven_modules() -> "list[object]":
-    # Every src module holding asyncio and the twin's machine and network: one clock for each sleep and tick read.
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
-
-
 async def _first_attempt(clock: DrivenTime, conn: "WifiService") -> None:
     started = await _wait_until(clock, lambda: len(conn._wlan.connect_calls) > 0)
     assert started, "(c) the boot streak never made its first attempt"
@@ -166,11 +160,11 @@ def _run_scaled(device: str, scenario: "Callable[[str, DrivenTime], Coroutine[ob
     # The scenario on one driven clock over every module holding asyncio (the device's module loaded first), the WiFi
     # service's sleeps scaled down on it; each module's own view is back after it.
     run_generic_integration.load_module("sensortask_" + device)
-    with DrivenTime(*_driven_modules(), sleeps=True) as clock:
+    with DrivenTime(*driven_modules(), sleeps=True) as clock:
         held = asy_wifi_service.asyncio  # type: ignore[attr-defined]
         asy_wifi_service.asyncio = _ScaledAsyncio(clock)  # type: ignore[assignment, attr-defined]
         try:
-            run_timed(scenario(device, clock), timeout_s=_RUN_BOUND_S)
+            run(scenario(device, clock))
         finally:
             asy_wifi_service.asyncio = held  # type: ignore[attr-defined]
 

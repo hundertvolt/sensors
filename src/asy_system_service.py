@@ -200,7 +200,7 @@ class SystemService:
         self._reset_timer = Timer()
         self._ntp_is_synced = asy_ntp_callback
         self._start_time_set = False
-        # None until _status_loop() resolves it (owner, 2026-07-18) - a later change to this value signals a reboot happened.
+        # None until _status_loop() resolves it once per boot (the owner's code, 8c4a73d; None: agent, 2026-07-18) - a later change to this value signals a reboot happened.
         self._boot_signature: int | None = None
         self._watchdog = watchdog
         self._phase = 0  # the reset sequence's phase (_PHASE_*), 0 while no reset is due
@@ -306,7 +306,7 @@ class SystemService:
             self.pr.err_s("Task", name, "ended: returned", errno=_ERR_TASK_RETURNED)
 
     async def _ntp_boot_signature(self) -> int | None:
-        # None if not synced yet - a failing NTP callback counts as not synced (owner, 2026-07-18);
+        # None if not synced yet - a failing NTP callback counts as not synced (agent, 2026-07-18);
         # the caller falls back to random after _NTP_WAIT_TIME.
         try:
             synced = await self._ntp_is_synced()

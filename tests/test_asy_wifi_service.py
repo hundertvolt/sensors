@@ -63,7 +63,6 @@ _STA_DISCONNECT_WAIT_ITERS: int = src_int("src/asy_wifi_service.py", "_STA_DISCO
 _STA_RETRY_AFTER_LOSS_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STAT_JOINED_NO_IP: int = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
 
-_CONNECT_BOUND_S = 2.0
 _SENT_POLL_MS = 10
 _SENT_POLL_TRIES = 100
 _OFF_SUBNET_WAIT_S = 0.2
@@ -144,10 +143,6 @@ def _on_the_ap(client: WifiService) -> "_FakeWLAN":
 _scratch = TmpScratch("wifi")
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
 class _FakeLED:
     # Structurally satisfies asy_wifi_service.py's LEDControl Protocol (on/off/toggle) with no real
     # GPIO pin, same spirit as the fake network.WLAN. raise_on models a genuinely misbehaving
@@ -199,7 +194,7 @@ def _make_client(
     debug: "int | None" = None,
 ) -> WifiService:
     if cfg_path is None:
-        cfg_path = _tmp_cfg_dir()
+        cfg_path = _scratch.dir()
     client = WifiService(
         WifiConfig("SensorNode", "12345678", conn_fail_to_hotspot, hotspot_time_min),
         ext_led=ext_led,
@@ -220,7 +215,7 @@ def _make_client_with_json(  # parameters/defaults mirror _make_client() above, 
     max_module_error: int = 5,
     debug: "int | None" = None,
 ) -> WifiService:
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_WIFI.cfg", "w") as f:
         f.write(json_text)
     return _make_client(
@@ -236,7 +231,7 @@ def _make_client_with_json(  # parameters/defaults mirror _make_client() above, 
 def _make_invalid_cfg_client() -> WifiService:
     # A directory where ConfigManager expects a plain file - same technique as
     # test_asy_ntp_client.py's own _make_invalid_cfg_client().
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     os.mkdir(cfg_path + "config_WIFI.cfg")
     return _make_client(cfg_path=cfg_path)
 
@@ -304,7 +299,7 @@ def test_a_per_device_hostname_and_hotspot_password_replace_the_shared_defaults(
     # buildgen passes devices/*.toml's own [device].hostname/hotspot_password here. Before this
     # existed the two TOML fields were validated and then reached nothing, so every device booted
     # as "SensorNode" whatever its own file said.
-    client = WifiService(WifiConfig("SensorStationTest", "hunter2hunter2", 5, 5), cfg_path=_tmp_cfg_dir())
+    client = WifiService(WifiConfig("SensorStationTest", "hunter2hunter2", 5, 5), cfg_path=_scratch.dir())
     run(client.cfgmgr.setup())
     values = run(client.cfgmgr.get_dict(["Hostname", "HotspotPW"]))
     assert values == {"Hostname": "SensorStationTest", "HotspotPW": "hunter2hunter2"}
@@ -314,7 +309,7 @@ def test_an_injected_value_still_goes_through_the_schema_bounds() -> None:
     # Only the default moves - the validation rungs are the same ones a REST PUT hits, so a build
     # that injected a 3-character hotspot password must not produce a device the CYW43 cannot bring
     # up. It falls back to the schema's own default rather than accepting it.
-    client = WifiService(WifiConfig("", "short", 5, 5), cfg_path=_tmp_cfg_dir())  # too short, which is the point of the test
+    client = WifiService(WifiConfig("", "short", 5, 5), cfg_path=_scratch.dir())  # too short, which is the point of the test
     run(client.cfgmgr.setup())
     values = run(client.cfgmgr.get_dict(["Hostname", "HotspotPW"]))
     assert values == {"Hostname": "SensorNode", "HotspotPW": "12345678"}
@@ -1288,7 +1283,7 @@ def test_get_hotspot_stations_releases_the_lock_when_cancelled_mid_call() -> Non
 def test_cancelling_a_wifi_task_at_each_await_leaves_the_mode_lock_free() -> None:
     # Fresh clients over one stored config, each sleep one yield: the STA attempt (no verdict, so every poll is a cancel
     # point), the silent mode's due attempt and the flash task. A cancel touches no LED, so it stays as the cancel found it.
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_WIFI.cfg", "w") as f:
         f.write(_stored_json(led_on=True))
     leds: list[_FakeLED] = []
@@ -2516,7 +2511,7 @@ def test_handle_sta_connection_result_disconnected_calls_on_sta_disconnected() -
 def test_apply_initial_led_config_missing_config_logs_in_both_layers_and_deactivates() -> None:
     # With the configuration unreadable, LEDWifiOn takes its schema default (on), so the deactivated
     # pattern shows - the same fallback every unreadable config value takes.
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     os.mkdir(cfg_path + "config_WIFI.cfg")
     client = _make_client(cfg_path=cfg_path, ext_led=_FakeLED())
     run(client.pr.setup())
@@ -2640,7 +2635,7 @@ def test_a_configured_ssid_whose_second_streak_fails_goes_silent() -> None:
 
 
 def test_the_first_streak_persists_its_fallback_and_the_second_its_silent_entry_once() -> None:
-    # The two owner-designed transitions leave a trace in the WIFI history, so it says why a unit was offline.
+    # The two transitions of the owner's Wi-Fi as built (owner, 2026-10-28) leave a trace in the WIFI history, so it says why a unit was offline.
     client = _make_client(conn_fail_to_hotspot=2)
     run(client.pr.setup())
     for _ in range(2):
@@ -3805,7 +3800,7 @@ def test_connect_loop_gives_up_after_repeated_hardware_failures_and_persists_bot
 
     async def scenario() -> "ErrorLog":
         task = asyncio.create_task(client._connect_loop())
-        await asyncio.wait_for(task, _CONNECT_BOUND_S)  # must actually complete, not loop forever
+        await task  # must actually complete, not loop forever
         return await client.get_error_counter()
 
     with FastAsyncSleep():  # _connect_loop() sleeps its 5 s refresh between cycles
@@ -4869,7 +4864,7 @@ def test_an_over_long_hotspot_password_falls_back_instead_of_invalidating_the_co
     # The upper bound is the rung that matters most: an unsatisfiable default makes ConfigManager
     # answer None to every read, costing the device its whole networking config. buildgen refuses
     # such a value at build time; this is the backstop that keeps a device that got one bootable.
-    client = WifiService(WifiConfig("SensorNode", "p" * 64, 5, 5), cfg_path=_tmp_cfg_dir())
+    client = WifiService(WifiConfig("SensorNode", "p" * 64, 5, 5), cfg_path=_scratch.dir())
     run(client.cfgmgr.setup())
     assert run(client.cfgmgr.get_dict(["HotspotPW"])) == {"HotspotPW": "12345678"}
 
@@ -4878,7 +4873,7 @@ def test_a_persisted_rename_survives_a_later_build_injecting_a_different_default
     # The reason these arrive as defaults rather than fixed values: a device renamed through the web
     # UI must keep that name across a reflash whose TOML says something else. Two constructions over
     # one config directory is exactly what that reflash looks like from the config file's side.
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     first = WifiService(WifiConfig("SensorStationTest", "12345678", 5, 5), cfg_path=cfg_path)
 
     async def rename() -> "WriteValidity":
@@ -5040,7 +5035,7 @@ def test_a_stored_over_long_ssid_and_password_never_reach_connect() -> None:
 
 def test_a_stored_over_long_hostname_falls_back_to_the_devices_own_default() -> None:
     # The fallback is the LIVE schema's default, i.e. buildgen's per-device hostname, not "SensorNode".
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_WIFI.cfg", "w") as f:
         f.write('{"SSID": "HomeNet", "PW": "secret123", "Country": "DE", "Hostname": "' + "ä" * 17 + '", "LEDWifiOn": true, "HotspotPW": "12345678"}')
     client = WifiService(WifiConfig("SensorStationTest", "12345678", 5, 5), cfg_path=cfg_path)

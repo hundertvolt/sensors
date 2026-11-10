@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-_RUN_LIMIT_S = 10
 # Scenario timings, virtual ms unless named host: test inputs, none a bound on how long a run may take.
 _SLEEP_MS = 30
 _POLL_MS = 2  # the waiter's round, as dev's link polls inside a transaction
@@ -82,7 +81,7 @@ def test_a_sleep_wakes_at_its_virtual_time_and_never_before_the_host_reaches_it(
         # The host read from the clock's origin, not from t0: virtual time lags the host while a task is runnable.
         return time.ticks_diff(module.time.ticks_ms(), t0), clock.elapsed, time.ticks_diff(time.ticks_ms(), clock._origin)
 
-    slept, virtual, host = run(_on_clock(module, scenario), _RUN_LIMIT_S)
+    slept, virtual, host = run(_on_clock(module, scenario))
     assert slept == _SLEEP_MS, f"a {_SLEEP_MS} ms sleep woke at virtual +{slept} ms"
     assert host >= virtual, f"virtual time ran ahead of the host: {virtual} virtual ms at {host} host ms from the origin"
 
@@ -100,7 +99,7 @@ def test_sleeps_due_at_one_time_wake_in_the_order_they_slept() -> None:
         for task in tasks:
             await task
 
-    run(_on_clock(module, scenario), _RUN_LIMIT_S)
+    run(_on_clock(module, scenario))
     assert order == [0, 1, 2], f"three sleeps due at one time woke in the order {order}"
 
 
@@ -118,7 +117,7 @@ def test_a_tasks_compute_and_its_turns_on_the_loop_spend_no_virtual_time() -> No
         await other
         return spent, host
 
-    spent, host = run(_on_clock(module, scenario), _RUN_LIMIT_S)
+    spent, host = run(_on_clock(module, scenario))
     assert host >= _COMPUTE_ROUNDS, f"the compute took only {host} host ms"
     assert spent == 0, f"{_COMPUTE_ROUNDS} compute rounds ({host} host ms) spent {spent} virtual ms"
 
@@ -141,7 +140,7 @@ def test_a_host_stall_before_an_answer_spends_none_of_the_deadline_the_answer_be
         await task
         return got
 
-    assert run(_on_clock(module, scenario), _RUN_LIMIT_S) is True, f"a {_HOST_STALL_MS} ms host stall spent the waiter's {_DEADLINE_MS} ms deadline"
+    assert run(_on_clock(module, scenario)) is True, f"a {_HOST_STALL_MS} ms host stall spent the waiter's {_DEADLINE_MS} ms deadline"
 
 
 def test_a_flash_hold_spends_the_deadline_it_outlasts() -> None:
@@ -167,7 +166,7 @@ def test_a_flash_hold_spends_the_deadline_it_outlasts() -> None:
         return got, clock.elapsed
 
     assert _HOLD_AT_MS + hold_ms > _DEADLINE_MS, f"the hold ({hold_ms} ms) does not outlast the deadline"
-    got, elapsed = run(_on_clock(module, scenario), _RUN_LIMIT_S)
+    got, elapsed = run(_on_clock(module, scenario))
     assert got is False, f"a {hold_ms} ms flash hold at virtual {_HOLD_AT_MS} ms left the {_DEADLINE_MS} ms deadline unspent"
     assert elapsed >= _HOLD_AT_MS + hold_ms, f"the clock reached {elapsed} virtual ms, short of the hold's end"
 
@@ -190,7 +189,7 @@ def test_a_task_outside_the_lent_modules_that_never_stops_being_runnable_does_no
         await spinner
         return woke
 
-    assert run(_on_clock(module, scenario), _RUN_LIMIT_S) == _SLEEP_MS, "a spinning task outside the lent modules held the clock"
+    assert run(_on_clock(module, scenario)) == _SLEEP_MS, "a spinning task outside the lent modules held the clock"
 
 
 def test_a_float_delay_is_refused_as_the_real_sleep_refuses_it() -> None:
@@ -206,7 +205,7 @@ def test_a_float_delay_is_refused_as_the_real_sleep_refuses_it() -> None:
     async def scenario(_clock: DrivenClock) -> "tuple[str, str]":
         return await refusal(asyncio.sleep_ms), await refusal(module.asyncio.sleep_ms)
 
-    real, lent = run(_on_clock(module, scenario), _RUN_LIMIT_S)
+    real, lent = run(_on_clock(module, scenario))
     assert real == lent == "TypeError", f"a 1.5 ms delay: the real sleep {real}, the lent one {lent}"
 
 
@@ -248,7 +247,7 @@ def test_a_cancel_landing_as_the_drivers_timed_wait_ends_still_ends_the_drive() 
         await sleeper
         return ended, module.asyncio is asyncio
 
-    ended, handed_back = run(go(), _RUN_LIMIT_S)
+    ended, handed_back = run(go())
     assert ended, f"a cancel of the driver at its timed wait's end did not end the drive within {_END_ROUNDS} rounds"
     assert handed_back, "the drive's end did not hand the real asyncio back"
 
@@ -274,7 +273,7 @@ def test_release_hands_the_sleeps_back_wakes_every_parked_one_and_steps_no_tick(
             sleeper.cancel()
         return module.asyncio is asyncio, woken, time.ticks_diff(module.time.ticks_ms(), before)
 
-    handed_back, woken, step = run(go(), _RUN_LIMIT_S)
+    handed_back, woken, step = run(go())
     assert handed_back, "the driver's end did not hand the real asyncio back"
     assert woken, "a parked sleep stayed parked after the release"
     assert step >= 0, f"the ticks stepped back by {-step} ms at the release"

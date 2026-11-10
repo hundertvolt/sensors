@@ -39,6 +39,9 @@ class _Listener:
         self.heads: list[bytes] = []
         self.stop = threading.Event()
 
+    def close(self) -> None:
+        self._sock.close()
+
     def port(self) -> int:
         port: int = self._sock.getsockname()[1]
         return port
@@ -59,9 +62,6 @@ class _Listener:
                     head += chunk
                 self.heads.append(head.split(b"\r\n\r\n")[0] + b"\r\n\r\n")
                 conn.sendall(_REPLY)
-
-    def close(self) -> None:
-        self._sock.close()
 
 
 def _clients(port: int) -> "dict[str, Callable[[], object]]":

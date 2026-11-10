@@ -10,25 +10,11 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
 
 ## Refactor targets not yet done
 
-- **Mypy shall be configured to disallow `Any` types** (owner-specified). Configured: all three
-  passes run full `--strict` (`disallow_any_generics` included) plus `disallow_any_explicit = true`
-  (`pyproject.toml`'s `[tool.mypy]`, `digital_twin/typecheck.ini`, `host_typecheck.ini`). What
-  remains is each pass's baseline of modules still exempted through a per-module
-  `disallow_any_explicit = false` override; a module leaves it once its explicit `Any` is gone, and
-  the list only shrinks, pinned by `tests_scripts/test_mypy_any_baseline.py`. The owner's later word
-  supersedes the 2026-09-11 deferral to a dedicated session (owner, 2026-09-28: "do it in this
-  audit"). Most of what is left
-  is test code: monkeypatch and wrapper classes duck-typing a real MicroPython object, which need a
-  typing strategy (e.g. `Protocol` classes and `__getattr__` delegation) rather than a flag flip.
+None open.
 
 ## Open questions (need owner input or further investigation)
 
-- **Config-schema migration is a real data-loss risk on the *current deployed* codebase** —
-  `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
-  missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
-  values. No legacy config migration: legacy units get fresh setup at reflash (owner, 2026-09-26);
-  from the release on, a renamed key or file needs a migration, pinned by a golden stored-config
-  fixture (owner, 2026-09-26).
+None open.
 
 ## Real-hardware work still owed
 
@@ -66,9 +52,8 @@ gates, traps).
   scratch region, the part's top 256 bytes above every chunk, and never calls `get_chunk()`, so
   production's error logs are safe). Its first run on silicon with the synchronous path is owed.
   Expected: one command within one UART poll floor (80 B at 115200 baud, 6,944 µs,
-  SPECIFICATION.md J.6), and a log entry's 51 commands within 5,000 µs (Part F.3's
-  `stall.fram_entry`, `l3.fram_entry_budget_us`); the SGP40 backup's 8,000 µs acceptance has no
-  device-script check yet. Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM chip models
+  SPECIFICATION.md J.6), and a log entry's 51 commands recorded for Part F.3's `stall.fram_entry`,
+  which holds the chunk path's silicon figures. Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM chip models
   no wire time).
 - **The two unfed boot stretches, measured** — a `dev` boot log with a `ticks_ms()` stamp at every
   watchdog feed, taken in a hardware session (zero wear): the stretch from `WDT()` to the first
@@ -83,7 +68,9 @@ gates, traps).
   (`tests/test_digital_twin_sensortask_integration.py`, `would_have_triggered_count` 0); that proves
   the sequence, not rp2 timing, so the figures are silicon-only.
 - **The supervisor's scan budget, measured** — one pass with every supervised task ended at once,
-  timed on `dev` with SYSTEM's entries on FRAM (Part N `system.scan_budget`); no script yet, zero wear.
+  timed on `dev` with SYSTEM's entries on FRAM (Part N `system.scan_budget`): the default flash tier's
+  `flash/test_task_supervisor.py::test_one_supervisor_pass_with_every_task_ended_stays_inside_the_watchdog`
+  (device script `supervisor_scan_timing.py`), zero wear.
 - **The on-target no-yield stretches and a flash write's loop gap** — on `dev`,
   `flash/test_memory_stress.py`'s `test_routine_no_yield_stretches_stay_under_the_gc_term` (the
   default flash tier, zero wear) and `test_flash_write_loop_gap_is_recorded` (one scratch flash
@@ -114,8 +101,7 @@ gates, traps).
   `bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`
   (`--allow-persistence-write`): three hard resets 25 s apart across the SGP40's 60 s backup
   cadence. Expected: the SGP40 log empty, FRAM's log holding nothing beyond `E FRAM_STATUS_BYTE`
-  and `W FRAM_BLOCK_INVALID` (owner, 2026-09-13, on the torn-write trace: "Settled as acceptable
-  degradation rather than a robustness gap"), saved before it is cleared, a fresh backup completing
+  and `W FRAM_BLOCK_INVALID` (agent, 2026-10-22), saved before it is cleared, a fresh backup completing
   after the last reset and no task ended. Wear: 2 flash writes (the `BackupPeriod` change and its
   restore); FRAM writes are not wear. Twin row: none (its twin record: the module needs the bench
   bridge).
@@ -137,18 +123,6 @@ gates, traps).
   cadence facts, cycles near 600 expected; the figures go into SPECIFICATION.md M.3 (no pass threshold: a
   dropped soft-timer tick is not mitigated in software, owner, 2026-07-18, `f3924e1`). Wear: none (FRAM writes
   are not wear; read the FRAM logs first). Twin row: none (the twin's timers model no rp2 drop).
-- **Whether the SCD30 keeps the ambient pressure across a power cycle** — on `dev`, the manual
-  tier's power-cycle step (`tests_hardware/manual/manual_persistence.py`, run through
-  `scripts/run_manual_hardware_tests.sh`; every power-cut test there takes it) reads `GET /sensors`'
-  SCD30 `AmbPres` before the cut and again once the board serves, writes nothing itself, and reports
-  whether the product's boot sends 0x0010 (read from `src/asy_scd30_driver.py`'s `setup()` at run
-  time). Still owed, with no instrument yet: one `AmbPres` PUT before the cut, read back after it
-  (one SCD30 NVM write, `--allow-persistence-write`). Expected: none stated, since Interface
-  Description 1.4.1 documents only the measurement status as persisted; both readings and whether
-  the boot sends 0x0010 go into SPECIFICATION.md M.2, and the fidelity row moves to measured, or to
-  not relied on when the boot sends 0x0010 (SCD30 Interface Description 1.4.1). Wear: the step none
-  (`real_fram_persistence_across_power_cycle` writes FRAM only); the owed PUT one SCD30 NVM write.
-  Twin row: the fidelity table's SCD30 pressure-persistence assumption (`digital_twin/README.md`).
 - **The modlwip send stall, reproduced and then the override proven (owner, 2026-09-30)** — on
   `dev`, `errcount` read and saved first (CLAUDE.md's FRAM rule). (1) Flash a control image: the
   pinned tree built without `apply_modlwip_eagain_override()` (the build code changed in a throwaway
@@ -226,11 +200,6 @@ gates, traps).
   `flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake`). Expected: none stated; the
   probe's `G01`/`G02` facts are reported only, and the fidelity row stays an assumption unless they
   settle it.
-- **The SGP40's reaction to an unknown command** — on `dev`, a device script sending one undefined
-  16-bit command and then a measure command, recording whether the measure answers normally; the
-  datasheet states no reaction, the twin ignores it. Expected: none stated; the answer is recorded,
-  and the fidelity row follows it. Wear: none. Twin row: the fidelity table's
-  SGP40 unknown-command assumption. Needs that device script.
 - **The BMP3XX's real calibration block** — on `dev`, the 21 calibration bytes from register 0x31
   (`asy_bmp3xx_driver.py`'s `_REGISTER_CAL_DATA`) printed once by a device script, so the twin's
   synthetic block can be checked against a real one. The probe reads it
@@ -246,15 +215,16 @@ gates, traps).
   `GET /status`'s `ResetReason` reads 2. Wear: none (no flash write; leaving BOOTSEL needs the owner
   or `picotool reboot`). Twin row: the fidelity table's BOOTSEL row.
 - **Every reset code read back through `/status`** — `bench/test_reset_reasons.py` on `dev`, the
-  session saving `errcount` and the raw FRAM first: the harness hard reset (a watchdog reset with no
-  record), the bootloader reboot, the supervisor's escalation reboot, the starved-watchdog fallback,
-  an invalid record, an incomplete command, a hang in each boot phase, a C-stack exhaustion and a
-  console interrupt, each read back as `GET /status`'s `ResetReason`; `tests_hardware/README.md`'s
-  "Reset codes proven on the bench" fills from the run. Expected: each `ResetReason` the code its
-  reset fixes (`bench/test_reset_reasons.py`, from `src/asy_system_service.py`'s constants): 2 the
-  harness hard reset, 4 the bootloader reboot, 5 the escalation reboot with SYSTEM's escalation
-  entry, 6 the starved-watchdog fallback, 0 an invalid record, 9 an incomplete command, 10 + phase a
-  hang in boot phases 1-5, 20 a C-stack exhaustion, 21 a console interrupt; the board serving after
+  session saving `errcount` and the raw FRAM first: the harness hard reset (its `mpremote` Ctrl-C
+  ends `main.py` first), the bootloader reboot, the supervisor's escalation reboot, the
+  starved-watchdog fallback, an invalid record, an incomplete command, a hang in each boot phase, a
+  C-stack exhaustion and a console interrupt, each read back as `GET /status`'s `ResetReason`;
+  `tests_hardware/README.md`'s "Reset codes proven on the bench" fills from the run. Expected: each
+  `ResetReason` the code its reset fixes (`bench/test_reset_reasons.py`, from
+  `src/asy_system_service.py`'s constants): 2 the bootloader reboot (the bootrom's own reboot leaves
+  no record), 5 the escalation reboot with SYSTEM's escalation entry, 6 the starved-watchdog
+  fallback, 0 an invalid record, 9 an incomplete command, 10 + phase a hang in boot phases 1-5, 20 a
+  C-stack exhaustion, 21 a console interrupt and the harness hard reset; the board serving after
   each. Wear: no owned write (the tests carry no wear marker). Twin row: each script's twin run.
 - **The UART receive ring under the bench's interrupts-off windows** — on `dev`, the responder's
   `rx_ring` is the 512 B default (`devices/dev.toml`, J.6), whose bound a continuous sender passes
@@ -310,13 +280,13 @@ gates, traps).
   scripts under `--twin`).
 - **The bench `ResetErrors` budget** — on `dev`, after the round's FRAM evidence is saved: the
   `ResetErrors` sweep timed three times each against 0, 1, 2, 3 and 4 concurrent `GET /status`
-  readers, on the concurrent reset the owner chose (owner, 2026-09-26). Then the bench analogue of
+  readers, on the reset one source after another (owner, 2026-11-07). Then the bench analogue of
   the twin's per-sweep budget check goes into `tests_hardware/error_log_helpers.py`, beside its 30 s
   timeout, which alone asserts nothing about elapsed time. Expected: a curve that leaves room for a
   budget below the server's 15 s `outer_cap_s` that "reliably won't fail the pipeline accidentally
   with a false positive" and "will reliably fail if something really went wrong" (the owner's
   standing requirement as BACKLOG.md recorded it on 2026-09-17, `569c6bb`). Last measured 2026-09-25
-  on the one-after-another reset since replaced: about 3.5 s per reader, three readers at
+  on an earlier one-after-another reset: about 3.5 s per reader, three readers at
   13.2-14.7 s, four past the connection ceiling. Wear: none (the clears are FRAM writes). Twin row:
   `_RESET_ERRORS_BUDGET_S` in `scripts/_digital_twin_ci_suite.py`.
 - **S4, the six-hour soak** — on `dev`, after the round's FRAM evidence is saved and on top of a
@@ -377,22 +347,31 @@ gates, traps).
   entries only; FRAM writes are not wear). Twin row: none; the mock tier covers the logic
   (`tests/test_asy_uart_comm.py`'s `test_a_drain_that_hits_its_bound_persists_the_drain_warning` and
   `test_a_boot_drain_that_hits_its_bound_persists_nothing`).
-- **Build-environment changes since the clean-chroot legs were last satisfied** (2026-09-12: trixie
-  on the bench Pi4, GCC 14.2.0, lint and typecheck clean, then `env --tier generic` end to end; noble
-  the same day in the `--arch=arm64` ports-mirror form). The owner's next run follows README.md
-  "Build-environment verification" at the current head (the periodic-check rule: CLAUDE.md), which
-  covers every later change; this entry holds only what changes how a run goes. A change that needs
-  nothing new installed, no new host requirement and no recipe step gets no line here.
-  - **Attempted 2026-11-06 on the bench Pi4, neither leg satisfied**: noble failed the pytest tier for
-    want of Node (the recipe then ran `uv sync` alone; its `env --tier generic` step installs the pinned
-    Node since 2026-11-07); trixie (GCC 14.2.0, Node 24) passed the pytest tier (6,931) and had 16
-    MicroPython-tier failures (twin watchdog feed gaps of 6.9-15.3 s, one loop-lag bound) at 16 test
-    jobs on 4 cores, read as host load and not yet separated from code by a lower-parallelism run.
-  - **Installed now that 2026-09-12 did not**: Node 24 (`.nvmrc`, then 22) and the refreshed npm tree;
-    uv exactly 0.8.17 (`pyproject.toml`'s `[tool.uv] required-version`, pinned in the recipe); the
+- **Build-environment changes since the clean-chroot legs were last satisfied** (noble 2026-11-07 on
+  the bench Pi4 in the `--arch=arm64` ports-mirror form: `env --tier generic`, lint and typecheck
+  clean, `scripts/test.sh` green at 4 and at 16 test jobs with its scratch in RAM; trixie 2026-09-12
+  on the bench Pi4, GCC 14.2.0, lint and typecheck clean, then `env --tier generic` end to end). The
+  owner's next run follows README.md "Build-environment verification" at the current head (the
+  periodic-check rule: CLAUDE.md), which covers every later change; this entry holds only what changes
+  how a run goes. A change that needs nothing new installed, no new host requirement and no recipe
+  step gets no line here.
+  - **Trixie on 2026-11-07, not satisfied** (a fresh chroot, GCC 14.2.0, `scripts/test.sh`'s scratch
+    still on the microSD): `env --tier generic`, lint and typecheck clean; at 4 test jobs the pytest
+    tier passed (6,966) and the MicroPython tier 5,838 tests, with 8 twin scenario-harness failures
+    read as the card's write stalls, which the noble leg's scratch in RAM removed (inferred for
+    trixie, not re-run there: a fresh chroot is the heaviest card write; owner, 2026-11-07: "too
+    heavy write cycles should not be conducted allover again...").
+  - **Installed now that 2026-09-12 did not**: the `.nvmrc` Node (then 22) and the refreshed npm tree;
+    uv exactly as `pyproject.toml`'s `[tool.uv] required-version` names it (pinned in the recipe); the
     refreshed dev-group pins, `coverage` among them; the stub post-releases `toolchain/versions.toml`'s
     `[stubs]` names; a third Unix-port binary, `build-lwip`, so a from-scratch run builds the Unix port
     three times.
+  - **Moved after both legs (2026-11-10), Python tools**: uv 0.8.17 → 0.13.7 (the recipe's `pip install`,
+    `uv.lock` rewritten at lock revision 5) and the dev group's mypy 2.4.1, ruff 0.17.4, pytest 9.2.0,
+    coverage 7.17.2, zizmor 1.32.0 and types-pyserial 3.5.0.20261104.
+  - **Moved after both legs (2026-11-10), Node**: Node 24 → 26 (`.nvmrc`; `env` fetches `latest-v26.x`)
+    and the regenerated npm tree, Stylelint 18 and Playwright 1.65 among it, whose Chromium 158 `env`
+    downloads.
   - **Host requirements, present on both targets**: `flock` (util-linux), coreutils' `timeout`, a
     writable `${XDG_RUNTIME_DIR:-/tmp}` for the port locks, and a copied tree that is a git checkout
     with its own `.git`.
@@ -400,10 +379,11 @@ gates, traps).
     the `[lwip]` table and its readback through the C compiler CMake recorded, the patched `modlwip.c`
     copy in every rp2 image and in `build-lwip` (SPECIFICATION.md B.14.4), the Unix variant header's
     GC mark stack (B.14.6) and two-byte qstr lengths (F.7 row 32, read back by each Unix build's version
-    probe), bounded and retried network steps and apt calls, `sudo --preserve-env`, the
-    tier command table, Node's checksum-verified install. The host lwIP build has met only GCC 13.3 on x86-64, and
-    only the GCC 14 leg exercises the mbedtls `-Wno-array-bounds` rule. Two readings are owed too: the
-    apt-get(8), apt.conf(5) and dpkg(1) pages behind the installer's apt download/install split, and
+    probe), bounded and retried network steps, apt as one non-fatal update and one install with no
+    wall-clock limit (apt's own retries and stall timeout, `apt_options()`; newer than both legs),
+    `sudo --preserve-env`, the tier command table, Node's checksum-verified install. The host lwIP
+    build has met GCC 13 on x86-64 and arm64 and GCC 14.2 on arm64 (both 2026-11-07 legs), and only
+    the GCC 14 leg exercises the mbedtls `-Wno-array-bounds` rule. One reading is owed too:
     `sudo -k`'s exact semantics for the passwordless-sudo probe.
   - **A reused chroot**: a changed `toolchain/micropython_overrides.py` makes `scripts/_unix_port.sh
     ensure` rebuild the three Unix binaries once; a binary from before the settrace split is detected
@@ -424,11 +404,6 @@ gates, traps).
   wired-together (buildgen-generated) module against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). Comes out when
   that audit closes.
-- **SystemService's settings store grows with device-wide settings** — the timezone offsets
-  (`GMTOffset`/`DSTOffset`) now held by `NTPClient`'s config, future rsyslog settings;
-  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py`'s `_VAL_DEBUG_LEVEL`).
-  Owner-deferred goal (owner-confirmed, 2026-08-11, `249f2ae`: 'per the owner's explicit intent,
-  this is meant to grow into a general, module-independent system-settings store', paraphrase).
 - **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
   one reliably exists** (owner, 2026-07-24, `cc911be`: 'Don't treat the current state as
   permanently accepted risk'; confirmed by the owner, 2026-09-29). Today's list, each backstopped by

@@ -17,9 +17,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/, for the shared summary block
-
-from _summary_block import Summary, from_run_record  # type: ignore[import-not-found]
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # the repo root, for the shared summary block
+from scripts._summary_block import Summary, from_run_record
 
 # Skip-gating marker -> the option (argparse dest) that runs it: its skip is expected only while
 # that option is unset. The wear gates deselect instead and reach the verdict as deselections.
@@ -41,21 +40,13 @@ PERMANENT_SKIPS = (
 _NOT_COVERED = "not covered by this run"
 
 
-def _flag(dest: str) -> str:
-    return "--" + dest.replace("_", "-")
-
-
-def _load(path: Path) -> "dict[str, object]":
-    try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return record if isinstance(record, dict) else {}
-
-
 def _entries(record: "dict[str, object]", key: str) -> "list[dict[str, object]]":
     value = record.get(key)
     return [e for e in value if isinstance(e, dict)] if isinstance(value, list) else []
+
+
+def _flag(dest: str) -> str:
+    return "--" + dest.replace("_", "-")
 
 
 def _judge_skip(nodeid: str, reason: str, markers: "list[str]", options: "dict[str, object]") -> "tuple[str, str]":
@@ -71,8 +62,25 @@ def _judge_skip(nodeid: str, reason: str, markers: "list[str]", options: "dict[s
     return "failed", f"unexpected skip: {reason}"
 
 
+def _load(path: Path) -> "dict[str, object]":
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def _not_a_run(summary: Summary, record: "dict[str, object]") -> int:
+    # A collection pass ran nothing: its deselections are listed, nothing is judged.
+    block = _CollectionOnly(runner=summary.runner, levels=summary.levels)
+    for entry in _entries(record, "deselected"):
+        block.add("deselected", str(entry.get("nodeid")), str(entry.get("by") or "runner selection"))
+    block.print(0)
+    return 0
+
+
 @dataclass
-class _Verdict(Summary):  # type: ignore[misc]  # Summary is Any to mypy: scripts/ is not on host_typecheck.ini's mypy_path
+class _Verdict(Summary):
     # pytest's own nonzero exit is propagated unchanged, so its Result names it rather than reading
     # pytest's 2 (interrupted) or 4 (its usage error) as this block's usage-error or NOT CLEAN code.
     pytest_exit: int = 0
@@ -130,18 +138,9 @@ def judge(record_path: Path, pytest_exit: int, runner: str, levels: str, not_cle
     return exit_code
 
 
-class _CollectionOnly(Summary):  # type: ignore[misc]
+class _CollectionOnly(Summary):
     def result(self, exit_code: int) -> str:
         return "NOT A RUN (collection only)"
-
-
-def _not_a_run(summary: Summary, record: "dict[str, object]") -> int:
-    # A collection pass ran nothing: its deselections are listed, nothing is judged.
-    block = _CollectionOnly(runner=summary.runner, levels=summary.levels)
-    for entry in _entries(record, "deselected"):
-        block.add("deselected", str(entry.get("nodeid")), str(entry.get("by") or "runner selection"))
-    block.print(0)
-    return 0
 
 
 def main(argv: "list[str] | None" = None) -> int:

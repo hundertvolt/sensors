@@ -37,7 +37,7 @@ _READ_AFTER_BOOT = (
 )
 _SEED = (code("E", "TEST_SEED_A"), code("E", "TEST_SEED_B"), code("E", "TEST_SEED_C"))  # the erase script's ring
 _RR_WATCHDOG, _RR_REBOOT, _RR_CONFIG_RESET, _RR_FRAM_ERASED, _RR_COMMAND_INCOMPLETE = (module_int_const(SRC_DIR, "asy_system_service.py", name) for name in ("_RR_WATCHDOG", "_RR_REBOOT", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED", "_RR_COMMAND_INCOMPLETE"))
-# The erase's own feed cadence: one feed per 256 B unit or chunk, each well under this (agent, 2026-10-14; owner-reviewed, 2026-11-06).
+# The erase's own feed cadence: one feed per 256 B unit or chunk, each well under this (agent, 2026-10-14).
 _ERASE_FEED_GAP_MAX_MS = 100
 _SCRIPT_TIMEOUT_S = 90.0
 _REFUSAL_SCRIPT_TIMEOUT_S = 120.0

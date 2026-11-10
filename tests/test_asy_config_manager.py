@@ -14,7 +14,6 @@ from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 
 import asy_config_manager as cm
-import asy_print_log
 from asy_print_log import LogConfig
 
 try:
@@ -63,19 +62,6 @@ _LARGE_SAME_TYPE_SCHEMA: "cm.ConfigSchema" = (
     _VAL_I1 + _VAL_I2 + _VAL_I3 + _VAL_I4 + _VAL_I5 + _VAL_I6 + _VAL_I7 + _VAL_I8
 )
 _LARGE_MIXED_SCHEMA: "cm.ConfigSchema" = _VAL_INT + _VAL_FLOAT + _VAL_STR + _VAL_BOOL + _VAL_I1 + _VAL_I2 + _VAL_I3 + _VAL_I4
-
-
-class _PrintRecorder:
-    # Shadows print() inside asy_print_log only, so every console line a logger emits is captured.
-    def __init__(self) -> None:
-        self.lines: list[tuple[object, ...]] = []
-        asy_print_log.print = self  # type: ignore[attr-defined]
-
-    def __call__(self, *args: object, **_kwargs: object) -> None:
-        self.lines.append(args)
-
-    def restore(self) -> None:
-        del asy_print_log.print  # type: ignore[attr-defined]
 
 
 def _tmp_path(name: str) -> str:
@@ -2428,14 +2414,14 @@ class _MemoryErrorJson:
             raise MemoryError("simulated allocation failure")
         return json.dumps(obj)
 
-    def loads(self, text: str) -> object:
-        decoded: object = json.loads(text)
-        return decoded
-
     def load(self, stream: object) -> object:
         if self.raise_on_load:
             raise MemoryError("simulated allocation failure")
         decoded: object = json.load(stream)
+        return decoded
+
+    def loads(self, text: str) -> object:
+        decoded: object = json.loads(text)
         return decoded
 
 
@@ -3052,11 +3038,10 @@ def test_delete_file_removes_once_and_reports_a_failure() -> None:
         stand_in = _RemoveFailingOs(failures)
         original_os = cm.os
         cm.os = stand_in  # type: ignore[assignment]
-        recorder = _PrintRecorder()
         try:
-            assert run(mgr.delete_file()) is deleted, failures
+            with record_prints() as recorder:
+                assert run(mgr.delete_file()) is deleted, failures
         finally:
-            recorder.restore()
             cm.os = original_os
         try:
             assert stand_in.calls == 1, failures  # one remove, no retry

@@ -48,6 +48,40 @@ def _coerce(raw: str) -> "int | float":
         return float(raw)
 
 
+def check_requires_tags(tags: "tuple[RequiresTag, ...]", bus_table: "TomlDoc", device: str, instance_label: str, bus_name: str) -> None:
+    for tag in tags:
+        actual = bus_table.get(tag.field)
+        if actual is None:
+            raise BuildError(
+                device,
+                f"bus.{bus_name} is missing field {tag.field!r}, required by {instance_label} ({tag.raw!r})",
+                rule="requires.missing-bus-field",
+                fix=f"declare {tag.field} on [bus.{bus_name}] so that {tag.field} {tag.op} {tag.value}",
+                instance=instance_label,
+                field=tag.field,
+            )
+        # Compared only as a number: _check_bus_tables() validates only the bus fields it knows by
+        # name, and Python would compare a bool as 0/1.
+        if not isinstance(actual, (int, float)) or isinstance(actual, bool):
+            raise BuildError(
+                device,
+                f"bus.{bus_name}.{tag.field}={actual!r} is not comparable to {instance_label}'s requirement {tag.raw!r} (wrong type)",
+                rule="requires.not-comparable",
+                fix=f"write bus.{bus_name}.{tag.field} as a number",
+                instance=instance_label,
+                field=tag.field,
+            )
+        if not _OPS[tag.op](actual, tag.value):
+            raise BuildError(
+                device,
+                f"bus.{bus_name}.{tag.field}={actual!r} does not satisfy {instance_label}'s requirement {tag.raw!r}",
+                rule="requires.unsatisfied",
+                fix=f"set bus.{bus_name}.{tag.field} so that {tag.field} {tag.op} {tag.value}, or move {instance_label} to a bus that meets it",
+                instance=instance_label,
+                field=tag.field,
+            )
+
+
 def parse_requires_tags(path: Path, device: str, instance_label: str) -> tuple[RequiresTag, ...]:
     tokens = iter_comment_tokens(path, device, instance_label)
     tags = []
@@ -87,37 +121,3 @@ def parse_requires_tags(path: Path, device: str, instance_label: str) -> tuple[R
         tags.append(RequiresTag(m.group("field"), m.group("op"), value, m.group(0).strip()))
     check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches, _SPECS)
     return tuple(tags)
-
-
-def check_requires_tags(tags: "tuple[RequiresTag, ...]", bus_table: "TomlDoc", device: str, instance_label: str, bus_name: str) -> None:
-    for tag in tags:
-        actual = bus_table.get(tag.field)
-        if actual is None:
-            raise BuildError(
-                device,
-                f"bus.{bus_name} is missing field {tag.field!r}, required by {instance_label} ({tag.raw!r})",
-                rule="requires.missing-bus-field",
-                fix=f"declare {tag.field} on [bus.{bus_name}] so that {tag.field} {tag.op} {tag.value}",
-                instance=instance_label,
-                field=tag.field,
-            )
-        # Compared only as a number: _check_bus_tables() validates only the bus fields it knows by
-        # name, and Python would compare a bool as 0/1.
-        if not isinstance(actual, (int, float)) or isinstance(actual, bool):
-            raise BuildError(
-                device,
-                f"bus.{bus_name}.{tag.field}={actual!r} is not comparable to {instance_label}'s requirement {tag.raw!r} (wrong type)",
-                rule="requires.not-comparable",
-                fix=f"write bus.{bus_name}.{tag.field} as a number",
-                instance=instance_label,
-                field=tag.field,
-            )
-        if not _OPS[tag.op](actual, tag.value):
-            raise BuildError(
-                device,
-                f"bus.{bus_name}.{tag.field}={actual!r} does not satisfy {instance_label}'s requirement {tag.raw!r}",
-                rule="requires.unsatisfied",
-                fix=f"set bus.{bus_name}.{tag.field} so that {tag.field} {tag.op} {tag.value}, or move {instance_label} to a bus that meets it",
-                instance=instance_label,
-                field=tag.field,
-            )

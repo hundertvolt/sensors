@@ -22,9 +22,10 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import DrivenWall, load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _ntp_responder import NtpResponder  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config, write_responder_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -54,7 +55,7 @@ if TYPE_CHECKING:
     from typing import TypeVar
 
     from _fake_time import DrivenTime
-    from launch import _Plan
+    from run_generic_integration import _Plan
 
     T = TypeVar("T")
 
@@ -84,7 +85,7 @@ async def _set_clock(module: "ModuleType") -> None:
 
 def _backup_after_a_backward_step_on(device: str) -> None:
     # The test above on one device, each boot on one driven clock: the SGP40's 1 s reset and datasheet waits pass in
-    # driven time, as the backup's age reads only the wall clock (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+    # driven time, as the backup's age reads only the wall clock (agent, 2026-10-27).
     cfg_path = _scratch.dir()
     machine.configure_fram_state_path(cfg_path + "fram_state.json")
     load_device(device)  # the modules the clock drives, loaded
@@ -142,10 +143,10 @@ def _backup_after_a_backward_step_on(device: str) -> None:
         entry = (await sgp.get_error_counter())["SGP40"]
         return (await sgp.get_mem_status())[1], [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W"]
 
-    stamp = run_timed(_on_driven_clock(backed_up), 3 * _WAIT_TIMEOUT_S)
-    refused, warnings = run_timed(_on_driven_clock(lambda clock: restored(clock, 60)), 3 * _WAIT_TIMEOUT_S)
+    stamp = run(_on_driven_clock(backed_up))
+    refused, warnings = run(_on_driven_clock(lambda clock: restored(clock, 60)))
     assert (refused, warnings.count(code("W", "SGP_BACKUP_AGE"))) == (None, 1), (refused, warnings)
-    kept, _warnings = run_timed(_on_driven_clock(lambda clock: restored(clock, 0)), 3 * _WAIT_TIMEOUT_S)
+    kept, _warnings = run(_on_driven_clock(lambda clock: restored(clock, 0)))
     assert kept == stamp, f"BackupMaxAge 0 restored {kept}, not the backup of {stamp}"
 
 
@@ -171,7 +172,7 @@ async def _boot(device: str, cfg_path: "str | None" = None) -> "ModuleType":
 def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleType, DrivenTime], Coroutine[object, object, T]]") -> "T":
     # The device's real main() beside the responder (test_digital_twin_ntp.py's shape): the responder's config, a station to
     # join, the product's port 123 mapped to the responder's and the wall clock installed; the product's waits and the
-    # responder's rounds pass on one driven clock, driven by `scenario` (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+    # responder's rounds pass on one driven clock, driven by `scenario` (agent, 2026-10-27).
     cfg_path = _scratch.dir()
     machine.reset_peripherals()
     network.reset_test_state()
@@ -191,7 +192,7 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
         return webserver is not None and id(webserver) != earlier
 
     async def whole() -> "T":
-        with redirect_udp_port(asy_ntp_client, 123, responder.port), DrivenWall(*_driven_modules(), sleeps=True) as clock:
+        with redirect_udp_port(asy_ntp_client, 123, responder.port), DrivenWall(*driven_modules("_ntp_responder"), sleeps=True) as clock:
             boot = module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
             tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(boot)]
             try:
@@ -203,7 +204,7 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
                 await cancel_all(tasks)
 
     try:
-        return run_timed(whole(), 3 * _WAIT_TIMEOUT_S)
+        return run(whole())
     finally:
         responder.close()
 
@@ -220,12 +221,6 @@ async def _driven(clock: "DrivenTime", what: str, coro: "Coroutine[object, objec
     await clock.run_until(task.done, int(_WAIT_TIMEOUT_S * 1000))
     assert task.done(), what
     return await task
-
-
-def _driven_modules() -> "list[object]":
-    # Every src module holding asyncio, the twin's machine and network, and the responder: one clock for each sleep
-    # and tick read, a reply on loopback reaching the client at its next driven poll.
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("_ntp_responder", "machine", "network")) and getattr(m, "asyncio", None) is asyncio]
 
 
 async def _driven_until(clock: "DrivenTime", holds: "Callable[[], Coroutine[object, object, bool]]", what: str) -> None:
@@ -277,7 +272,7 @@ def _offset_change_on(device: str) -> None:
 
 async def _on_driven_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, T]]") -> "T":
     # `scenario` with every driven module on one DrivenWall, put back after.
-    with DrivenWall(*_driven_modules(), sleeps=True) as clock:
+    with DrivenWall(*driven_modules("_ntp_responder"), sleeps=True) as clock:
         return await scenario(clock)
 
 
@@ -307,7 +302,7 @@ def _stepped_stamps_on(device: str) -> None:
             await cancel_all(tasks)
         return seen
 
-    for wall, stamp in run_timed(scenario(), 3 * _WAIT_TIMEOUT_S):
+    for wall, stamp in run(scenario()):
         assert isinstance(stamp, int) and abs(stamp - wall) <= 1, f"{device}: a sample stamped {stamp} under a clock reading {wall}"
 
 
@@ -389,7 +384,7 @@ def test_cettime_follows_the_clock_across_the_march_switch_both_ways() -> None:
             seen.append((_wall_clock.epoch_seconds(*local[:6]) - clock.time(), cast("int", expected)))
         return seen
 
-    for got, expected in run_timed(scenario(), _WAIT_TIMEOUT_S):
+    for got, expected in run(scenario()):
         assert abs(got - expected) <= 1, f"cettime() offset {got}, not {expected}"
 
 

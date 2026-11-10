@@ -4,16 +4,18 @@
 
 import asyncio
 import json
+import time
 from collections import namedtuple
 
 from _async_harness import cancel, run
+from _crc8 import crc8
 from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_builders import make_fram_manager
 from _schema_cases import declared_fields, domain_cases, special_alone
-from _src_const import src_const, src_int
+from _src_const import src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
@@ -54,24 +56,12 @@ _scratch = TmpScratch("sgp40")
 _SHARED_CFG_DIR = _scratch.dir()
 
 
-_CRC_POLY = 0x31  # datasheet Table 7
 _EVENT_WAIT_S = 1
-
-
-def _crc8(data: bytes) -> int:
-    # Independent CRC-8 reimplementation for building fixtures - not the driver's own
-    # crc_checks.CRC8, so a bug shared between the two couldn't hide behind a self-consistent test.
-    crc = 0xFF
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = ((crc << 1) ^ _CRC_POLY) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
-    return crc
 
 
 def _word(value: int) -> bytes:
     payload = bytes([(value >> 8) & 0xFF, value & 0xFF])
-    return payload + bytes([_crc8(payload)])
+    return payload + bytes([crc8(payload)])
 
 
 _BACKUP_COUNTER_MAX: int = src_int("src/asy_sgp40_driver.py", "_BACKUP_COUNTER_MAX")
@@ -80,7 +70,6 @@ _MEASURE_WAIT_MS: int = src_int("src/asy_sgp40_driver.py", "_MEASURE_WAIT_MS")
 _SELF_TEST_WAIT_MS: int = src_int("src/asy_sgp40_driver.py", "_SELF_TEST_WAIT_MS")
 _SERIAL_READ_WAIT_MS: int = src_int("src/asy_sgp40_driver.py", "_SERIAL_READ_WAIT_MS")
 _VOC_SETTLED_SAMPLES: int = src_int("src/asy_sgp40_driver.py", "_VOC_SETTLED_SAMPLES")
-_STACK_EXHAUSTED = src_const("src/asy_print_log.py", "_STACK_EXHAUSTED")  # the interpreter's own C-stack overflow text
 # The datasheet's maxima the waits must cover: Table 8's command durations, Table 3's soft reset time tSR.
 _SERIAL_READ_MAX_MS = 1
 _SELF_TEST_MAX_MS = 320
@@ -127,7 +116,7 @@ def test_a_defaulted_source_returns_the_same_object_every_call_rather_than_alloc
 
 
 def test_crc8_helper_matches_datasheet_example() -> None:
-    assert _crc8(b"\xbe\xef") == 0x92
+    assert crc8(b"\xbe\xef") == 0x92
 
 
 def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str":
@@ -2540,14 +2529,10 @@ class _OldTime:
     # So utc_now()'s own `time` (asy_base_classes') is replaced for the one write, giving an old but
     # valid, correctly CRC-covered timestamp.
     def gmtime(self, *args: object) -> object:
-        import time as _real_time
-
-        return _real_time.gmtime(*args)  # type: ignore[arg-type]
+        return time.gmtime(*args)  # type: ignore[arg-type]
 
     def mktime(self, t: object) -> int:
-        import time as _real_time
-
-        return _real_time.mktime(t) - 999999  # type: ignore[arg-type]
+        return time.mktime(t) - 999999  # type: ignore[arg-type]
 
 
 def test_fram_restore_rejects_backup_older_than_backup_max_age() -> None:
@@ -3181,57 +3166,6 @@ def test_read_sgp_logs_sgp_algo_state_when_deserialize_fails() -> None:
     assert _last_err(log, "ErrType") == "E"
 
 
-async def _overflow(*_args: object, **_kwargs: object) -> None:
-    raise RuntimeError(_STACK_EXHAUSTED)
-
-
-class _OverflowingSource:
-    async def get_data(self) -> object:
-        raise RuntimeError(_STACK_EXHAUSTED)
-
-
-def _cleared_after(name: str) -> None:
-    assert asy_print_log.fatal_reported() is True, name
-    asy_print_log._fatal = False  # as at boot, for the next handler
-
-
-def test_every_broad_handler_records_a_c_stack_overflow_for_the_supervisor() -> None:
-    # Each still answers its failure value and runs on; first it records the overflow, which the supervisor reboots on.
-    reader = _make_reader()
-    for name, failed in (("setup", False), ("turn_heater_off", False)):
-        real = getattr(reader._sgp, name)
-        setattr(reader._sgp, name, _overflow)
-        try:
-            assert run(reader._init_sgp() if name == "setup" else reader._recover_device()) is failed, name
-        finally:
-            setattr(reader._sgp, name, real)
-        _cleared_after(name)
-    reader._sgp.measure_index_and_raw = _overflow  # type: ignore[assignment, method-assign]
-    data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
-    assert (data.VOC, compensated) == (None, True)
-    _cleared_after("measure_index_and_raw")
-    reader._temperature = ValueRef(_OverflowingSource(), "Temp")
-    assert run(reader._compensation()) == (None, None)
-    _cleared_after("get_data")
-
-    manager, chip = make_fram_manager()
-    run(manager.setup())
-    _write_one_backup(manager, samples=60)
-    state = ["unsynced"]
-
-    async def ntp() -> bool:
-        if state[0] == "raise":
-            raise RuntimeError(_STACK_EXHAUSTED)
-        return False
-
-    restoring = _restore_rig(chip, ntp)
-    with UTCValid():
-        assert _restore_cycle(restoring) is False  # the wait begins
-        state[0] = "raise"
-        assert _restore_cycle(restoring) is False
-    _cleared_after("ntp_synced")
-
-
 def test_read_sgp_completes_a_pending_reset_even_when_the_i2c_read_fails() -> None:
     reader = _make_reader()
     run(reader.reset_voc(flag=True))
@@ -3311,7 +3245,7 @@ def test_touches_only_its_own_address_except_reset_which_touches_only_the_genera
             fake_bus.read_queue.append(_word(0x8000))
         with FastAsyncSleep():
             run(getattr(sgp, name)(*args))
-        assert {entry[1] for entry in fake_bus.log} == {0x59}, (name, list(fake_bus.log))
+        assert {entry[1:2] for entry in fake_bus.log} == {(0x59,)}, (name, list(fake_bus.log))
     sgp = _make_sgp()
     fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
     with FastAsyncSleep():
@@ -3323,7 +3257,7 @@ def test_touches_only_its_own_address_except_reset_which_touches_only_the_genera
         queue_successful_init(fake_bus)
         with FastAsyncSleep():
             run(getattr(sgp, name)())
-        assert {entry[1] for entry in fake_bus.log} == {0x59, 0x00}, name
+        assert {entry[1:2] for entry in fake_bus.log} == {(0x59,), (0x00,)}, name
 
 
 def test_init_sgp_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:

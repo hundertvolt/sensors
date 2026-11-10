@@ -1,11 +1,12 @@
 """Twin-process helpers shared by the L2 suite and the host-side scenario harness: launch the twin runner as a
-subprocess, wait for it, end it, read its log and its machine-read lines, and speak HTTP to it. CPython,
-stdlib only; every check stays with its caller, these only report what they saw."""
+subprocess, wait for it, end it, read its log and its machine-read lines, and speak HTTP to it. CPython, stdlib
+and buildgen's src-constant reader; every check stays with its caller, these only report what they saw."""
 
 import contextlib
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import time
@@ -17,15 +18,19 @@ from typing import IO, NamedTuple, TypeAlias
 
 import tomllib
 
+from buildgen.validate import module_int_const
+
 JSONValue: TypeAlias = bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"] | None
 JSONObject: TypeAlias = dict[str, JSONValue]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = REPO_ROOT / "src"
 RUNNER = "digital_twin/run_generic_integration.py"
 LAYOUT_FILE = REPO_ROOT / "scripts" / "micropypath.toml"
 # The marker pair every memory gate matches (CLAUDE.md), from its one definition, which test.sh and tests_js read too.
 MEMORY_ERROR_MARKERS: "tuple[str, ...]" = tuple(str(marker) for marker in json.loads((REPO_ROOT / "scripts" / "memory_markers.json").read_text(encoding="utf-8")))
 
+COMMANDED_RESET_MARGIN_S = 10.0  # past a commanded reset's own shutdown and delay, for the relaunch to be seen
 # The runner's own exit codes (digital_twin/run_generic_integration.py), pinned equal by an L0 test.
 EXIT_SIMULATED_RESET = 3
 EXIT_SIMULATED_BOOTLOADER = 4
@@ -108,8 +113,6 @@ class ShutdownLine:
     flash_stall_longest_ms: int
     fram_writes: int  # the twin FRAM chip's payload writes; fram_writes_by counts both copies of each logger's chunk
     fram_writes_by: dict[str, int]
-    fram_silent_writes: int  # the payload writes issued while the chip was silent, and the WRENs: the attempts
-    fram_silent_wrens: int
     largest_free_block_bytes: int
     uart: dict[str, UartCounts] = field(default_factory=dict)
     fram_writes_unattributed: int = 0  # writes past the chip's per-address bound: fram_writes_by is short by these
@@ -123,7 +126,7 @@ class ResetLine(NamedTuple):
 
 
 _SHUTDOWN_RE = re.compile(r"\] shutdown: (.*)$")
-_SHUTDOWN_INTS = ("would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "wdt_timeout_ms", "public_destinations_refused", "flash_stall_longest_ms", "gc_block_bytes", "fram_writes", "fram_silent_writes", "fram_silent_wrens")
+_SHUTDOWN_INTS = ("would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "wdt_timeout_ms", "public_destinations_refused", "flash_stall_longest_ms", "gc_block_bytes", "fram_writes")
 _MAX_FREE_RE = re.compile(r"\bmax free sz: (\d+)\s*$")  # micropython.mem_info()'s GC summary, in heap blocks (py/gc.c)
 _FRAM_BY_RE = re.compile(r"^(\w+):(\d+)$")
 _UART_RE = re.compile(r"^(\w+):transfers=(-?\d+),failures=(-?\d+),overruns=(-?\d+)$")
@@ -199,6 +202,17 @@ def _uart_counts(tokens: list[str]) -> dict[str, UartCounts]:
             raise ValueError(f"the shutdown line names uart instance {key} twice")
         found[key] = UartCounts(int(match.group(2)), int(match.group(3)), int(match.group(4)))
     return found
+
+
+def commanded_reset_deadline_s() -> float:
+    # A commanded reset runs the controlled shutdown (its first step may wait one supervisor period), then the delay.
+    return src_int("asy_system_service.py", "_RESET_DELAY") + src_int("asy_system_service.py", "_TASK_CHECK_TIME") + COMMANDED_RESET_MARGIN_S
+
+
+def errcount_counter(entry: JSONValue) -> int:
+    # An errcount entry's counter, or -1 for an entry or counter that is not there, which no assertion reads as 0.
+    value = entry.get("counter") if isinstance(entry, dict) else None
+    return value if isinstance(value, int) else -1
 
 
 def errcount_entry(status: int, body: JSONValue, name: str) -> JSONObject:
@@ -329,7 +343,6 @@ def parse_shutdown_line(log_text: str) -> ShutdownLine | None:
         would_have_triggered_count=ints["would_have_triggered_count"], feed_count=ints["feed_count"], largest_feed_gap_ms=ints["largest_feed_gap_ms"],
         wdt_timeout_ms=ints["wdt_timeout_ms"], mem_backup_r0=r0, public_destinations_refused=ints["public_destinations_refused"],
         flash_stall_longest_ms=ints["flash_stall_longest_ms"], fram_writes=ints["fram_writes"], fram_writes_by=_fram_writes_by(fields),
-        fram_silent_writes=ints["fram_silent_writes"], fram_silent_wrens=ints["fram_silent_wrens"],
         largest_free_block_bytes=int(max_free.group(1)) * ints["gc_block_bytes"], uart=_uart_counts(uart_tokens), fram_writes_unattributed=unattributed,
     )
 
@@ -340,6 +353,15 @@ def read_log(log_path: Path) -> str:
         return log_path.read_text(errors="replace", encoding="utf-8")
     except FileNotFoundError:
         return ""
+
+
+def save_fram_evidence(evidence: Path, errcount: JSONValue, state_dir: Path) -> None:
+    # Before any erasefram (CLAUDE.md's FRAM-log rule): the errcount table read over REST and a copy of the FRAM state file.
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "errcount.json").write_text(json.dumps(errcount, indent=2), encoding="utf-8")
+    fram = state_paths(state_dir).fram
+    if fram.exists():
+        shutil.copy2(fram, evidence / fram.name)
 
 
 def send_line(run: TwinRun, line: str) -> None:
@@ -393,6 +415,11 @@ def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[s
     log_file = log_path.open("w", encoding="utf-8")  # closed by shutdown()/wait_exit(), which end the process first
     proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
     return TwinRun(proc=proc, log_path=log_path, log_file=log_file, device=launch.device, state_dir=state_dir)
+
+
+def src_int(filename: str, name: str) -> int:
+    # A product constant read from its source by buildgen's own reader, never a copy that could drift.
+    return module_int_const(SRC_DIR, filename, name)
 
 
 def state_paths(state_dir: Path) -> StatePaths:

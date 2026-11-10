@@ -15,7 +15,7 @@ import tomllib
 from _script_loader import load_script_module
 from _toml_fixtures import TomlDoc, TomlValue, array_at, base_doc, dump_toml, instance_of, instances, table, table_at, with_uart_pair, write_doc
 
-from buildgen import api_reference, buildspec, codegen, definitions, generate, model, validate
+from buildgen import api_reference, buildspec, codegen, generate, model, validate
 from buildgen.errors import BuildError
 from buildgen.requires_tag import check_requires_tags, parse_requires_tags
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 _REPO = Path(__file__).resolve().parent.parent
 _DEVICE = "contract"
-_PREFIX = {"generate": "buildgen: ", "definitions": "buildgen: ", "batch": "error: ", "direct": ""}
+_PREFIX = {"generate": "buildgen: ", "batch": "error: ", "direct": ""}
 _SCD30 = "asy_scd30_driver.py"
 _SCD30_TRIGGER_LIMITS = "# @limits trigger_s 1..1800"
 _SCD30_TIMEOUT_TAG = "# @requires bus.timeout>=200000"
@@ -203,7 +203,7 @@ def _tag_row(old: str, new: str, where: str = "/scd30") -> Row:
 
 def _web_row(new: str, old: str = '# @web MeasInterval section=sensors submitGroup=self label="Measurement Interval" unit="s"', where: str = "/scd30.MeasInterval") -> Row:
     # A plant in one scd30 @web tag, read by the website definitions build.
-    return Row("definitions", f"[{_DEVICE}{where}] ", edits=((_SCD30, old, new),))
+    return Row("batch", f"[{_DEVICE}{where}] ", edits=((_SCD30, old, new),))
 
 
 _X_DRIVER = 'from asy_base_classes import SensorReader\n\n_NAME = "X"\n'
@@ -288,27 +288,27 @@ _ROWS: "dict[str, Row]" = {
         where="/scd30",
     ),
     # buildgen/schema_ast.py and buildgen/definitions.py
-    "schema.unreadable": Row("definitions", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "_VAL_TEMP_OFFSET = ", '_VAL_X = const((("X", "int", 1, None, None, _UNDEFINED),))\n_VAL_TEMP_OFFSET = '),)),
-    "schema.malformed": Row("definitions", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "_VAL_TEMP_OFFSET = ", '_VAL_X = const((("X", "int", 1, None, None),))\n_VAL_TEMP_OFFSET = '),)),
-    "schema.value-not-json": Row("definitions", f"[{_DEVICE}.MeasInterval] ", edits=((_SCD30, '(("MeasInterval", "int", None, 2, 1800, None),)', '(("MeasInterval", "int", None, b"\\x00", 1800, None),)'),)),
-    "web.schema-field-untagged": Row("definitions", f"[{_DEVICE}/scd30.AmbPres] ", edits=((_SCD30, "# @web AmbPres section=sensors", "# AmbPres section=sensors"),)),
-    "web.special-unlabelled": Row("definitions", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, _AMB_PRES_SPECIAL, ""),)),
-    "web.special-not-in-schema": Row("definitions", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:""="Open network" special:"guest"="Guest"'),)),
-    "web.kind-unresolved": Row("definitions", f"[{_DEVICE}.ContMeas] ", edits=((_SCD30, '_CONT_MEAS_FIELD: "FieldSchema" = ("ContMeas", "bool", None, None, None, None)\n', ""), (_SCD30, " kind=toggle", ""))),
-    "web.enum-without-choices": Row("definitions", f"[{_DEVICE}.ContMeas] ", edits=((_SCD30, "kind=toggle", "kind=enum"),)),
-    "web.group-undeclared": Row("definitions", f"[{_DEVICE}] ", edits=(("asy_system_service.py", '# @web-group section=system submitGroup=settings label="System Settings" submit=true\n', ""),)),
-    "web.group-declared-twice": Row("definitions", f"[{_DEVICE}] ", edits=(("asy_ntp_client.py", "", '\n# @web-group section=system submitGroup=settings label="System Settings" submit=true\n'),)),
+    "schema.unreadable": Row("batch", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "_VAL_TEMP_OFFSET = ", '_VAL_X = const((("X", "int", 1, None, None, _UNDEFINED),))\n_VAL_TEMP_OFFSET = '),)),
+    "schema.malformed": Row("batch", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "_VAL_TEMP_OFFSET = ", '_VAL_X = const((("X", "int", 1, None, None),))\n_VAL_TEMP_OFFSET = '),)),
+    "schema.value-not-json": Row("batch", f"[{_DEVICE}.MeasInterval] ", edits=((_SCD30, '(("MeasInterval", "int", None, 2, 1800, None),)', '(("MeasInterval", "int", None, b"\\x00", 1800, None),)'),)),
+    "web.schema-field-untagged": Row("batch", f"[{_DEVICE}/scd30.AmbPres] ", edits=((_SCD30, "# @web AmbPres section=sensors", "# AmbPres section=sensors"),)),
+    "web.special-unlabelled": Row("batch", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, _AMB_PRES_SPECIAL, ""),)),
+    "web.special-not-in-schema": Row("batch", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:""="Open network" special:"guest"="Guest"'),)),
+    "web.kind-unresolved": Row("batch", f"[{_DEVICE}.ContMeas] ", edits=((_SCD30, '_CONT_MEAS_FIELD: "FieldSchema" = ("ContMeas", "bool", None, None, None, None)\n', ""), (_SCD30, " kind=toggle", ""))),
+    "web.enum-without-choices": Row("batch", f"[{_DEVICE}.ContMeas] ", edits=((_SCD30, "kind=toggle", "kind=enum"),)),
+    "web.group-undeclared": Row("batch", f"[{_DEVICE}] ", edits=(("asy_system_service.py", '# @web-group section=system submitGroup=settings label="System Settings" submit=true\n', ""),)),
+    "web.group-declared-twice": Row("batch", f"[{_DEVICE}] ", edits=(("asy_ntp_client.py", "", '\n# @web-group section=system submitGroup=settings label="System Settings" submit=true\n'),)),
     # Every notification field tag turned hidden: the autoConfig group stays declared with no field left in it.
-    "web.group-without-fields": Row("definitions", f"[{_DEVICE}] ", subs=(("asy_notification_service.py", r"^# @web (\w+) .*$", r'# @web \1 hidden="test"'),)),
-    "web.instance-group-missing": Row("definitions", f"[{_DEVICE}/scd30] ", edits=((_SCD30, '# @web-group section=measurements submitGroup=self label="SCD30 — CO2, Temperature, Humidity"\n', ""),)),
-    "web.maintenance-tag-missing": Row("definitions", f"[{_DEVICE}/sgp40] ", edits=(("asy_sgp40_driver.py", "section=status submitGroup=maintenance", "section=status submitGroup=elsewhere"),)),
-    "web.codes-unknown-table": Row("definitions", f"[{_DEVICE}.FRCState] ", edits=((_SCD30, "codes=FRCState", "codes=NoSuchTable"),)),
+    "web.group-without-fields": Row("batch", f"[{_DEVICE}] ", subs=(("asy_notification_service.py", r"^# @web (\w+) .*$", r'# @web \1 hidden="test"'),)),
+    "web.instance-group-missing": Row("batch", f"[{_DEVICE}/scd30] ", edits=((_SCD30, '# @web-group section=measurements submitGroup=self label="SCD30 — CO2, Temperature, Humidity"\n', ""),)),
+    "web.maintenance-tag-missing": Row("batch", f"[{_DEVICE}/sgp40] ", edits=(("asy_sgp40_driver.py", "section=status submitGroup=maintenance", "section=status submitGroup=elsewhere"),)),
+    "web.codes-unknown-table": Row("batch", f"[{_DEVICE}.FRCState] ", edits=((_SCD30, "codes=FRCState", "codes=NoSuchTable"),)),
     "web.string-key-off-string": Row(
-        "definitions", f"[{_DEVICE}.MeasInterval] ",
+        "batch", f"[{_DEVICE}.MeasInterval] ",
         edits=((_SCD30, '# @web MeasInterval section=sensors submitGroup=self label="Measurement Interval" unit="s"', '# @web MeasInterval section=sensors submitGroup=self label="Measurement Interval" unit="s" shape=hostLabel'),),
     ),
-    "web.quoted-special-off-string": Row("definitions", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, ' special:0="Compensation', ' special:"0"="Compensation'),)),
-    "web.string-special-unquoted": Row("definitions", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:open="Open network"'),)),
+    "web.quoted-special-off-string": Row("batch", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, ' special:0="Compensation', ' special:"0"="Compensation'),)),
+    "web.string-special-unquoted": Row("batch", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:open="Open network"'),)),
     "web.key-needs-number": _web_row('# @web MeasInterval section=sensors submitGroup=self kind=string label="Measurement Interval" unit="s" resolution=1'),
     "web.ignored-when-set-unknown": _web_row("ignoredWhenSet=NoSuchField", old="ignoredWhenSet=AmbPres", where="/scd30.Altitude"),
     # buildgen/validate.py: [device]
@@ -484,8 +484,6 @@ def _run(row: Row, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypat
         return 0, "", built
     if row.entry == "generate":
         code = generate.main(argv)
-    elif row.entry == "definitions":
-        code = definitions.main(argv)
     else:
         (tmp_path / "ext").symlink_to(_REPO / "ext")
         script = load_script_module(_REPO / "scripts" / "_generate_sensortask_modules.py", "_generate_sensortask_modules")

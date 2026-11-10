@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from http_client import JSONObject
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("network_neopixel", "ci_suite._run_9_ntp_unreachable")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("network", "ci_suite._run_9_ntp_unreachable")
 
 # ---------------------------------------------------------------------------
 # Real STA connect/disconnect against a genuine AP: real SEEKING->ESTABLISHED

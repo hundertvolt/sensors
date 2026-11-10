@@ -100,10 +100,6 @@ def _make_ntp_stub(
 _scratch = TmpScratch("sysservice")
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
 _SEQUENCES: "dict[int, list[asyncio.Task[object]]]" = {}  # each service's shutdown sequences, as track_starts() records them
 microtest.after_each(_SEQUENCES.clear)  # kept, every service, its rig and its chip would outlive the test
 
@@ -125,7 +121,7 @@ def _make_service(  # keywords mirror SystemService.__init__()'s own
         ntp, _calls = _make_ntp_stub(synced=False)
     svc = SystemService(
         ntp, watchdog=watchdog, storage=storage, level_setters=level_setters, config_stores=config_stores,
-        reset_reason=reset_reason, cfg_path=_tmp_cfg_dir() if cfg_path is None else cfg_path, log=log,
+        reset_reason=reset_reason, cfg_path=_scratch.dir() if cfg_path is None else cfg_path, log=log,
     )
     _SEQUENCES[id(svc)] = track_starts(svc, "_shutdown_sequence")
     svc._tick = ManualTick()  # the status pass runs where a test pumps it
@@ -785,7 +781,7 @@ def test_a_second_reboot_request_neither_deinits_nor_rearms() -> None:
 def test_a_raising_flush_never_stops_the_other_stores_or_the_arm() -> None:
     events: list[str] = []
     stores = [_Store("A", events), _Store("B", events, raise_on_flush=True), _Store("C", events)]
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), config_stores=lambda: stores)  # type: ignore[arg-type, return-value]
+    svc = _make_service(cfg_path=_scratch.dir(), config_stores=lambda: stores)  # type: ignore[arg-type, return-value]
     run(svc.setup())
 
     async def scenario() -> None:
@@ -803,7 +799,7 @@ def test_the_record_precedes_the_flush_and_the_pause_follows_it() -> None:
     manager, _chip = make_fram_manager()
     events: list[str] = []
     store = _Store("A", events, manager)
-    svc = _make_service(storage=manager, cfg_path=_tmp_cfg_dir(), config_stores=lambda: [store])  # type: ignore[list-item]
+    svc = _make_service(storage=manager, cfg_path=_scratch.dir(), config_stores=lambda: [store])  # type: ignore[list-item]
     run(svc.setup())
 
     async def scenario() -> None:
@@ -853,7 +849,7 @@ def test_a_fault_in_the_reset_task_is_logged_and_the_watchdog_still_resets() -> 
     machine.reset_count = 0
     wdt = machine.WDT()
     store = _CloseRaisingStore("A", [])
-    svc = _make_service(watchdog=wdt, log=LogConfig(None, 10, _ERR), cfg_path=_tmp_cfg_dir(), config_stores=lambda: [store])  # type: ignore[list-item]
+    svc = _make_service(watchdog=wdt, log=LogConfig(None, 10, _ERR), cfg_path=_scratch.dir(), config_stores=lambda: [store])  # type: ignore[list-item]
     run(svc.setup())
 
     async def scenario() -> None:
@@ -889,9 +885,9 @@ def _file_count(path: str) -> int:
 
 
 def test_a_write_accepted_inside_the_countdown_is_on_flash_before_the_reset() -> None:
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     store = _real_store(path)
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), config_stores=lambda: [store])
+    svc = _make_service(cfg_path=_scratch.dir(), config_stores=lambda: [store])
     run(svc.setup())
     machine.reset_count = 0
 
@@ -1082,15 +1078,11 @@ class _Rig:
             log = LogConfig(self.manager, 10, level)
         doubles: list[_Store | cm.ConfigManager] = [_Store(n, self.events, probe=self._supervisor) for n in ("A", "B", "C")[: stores if isinstance(stores, int) else 0]]
         self.stores: list[_Store | cm.ConfigManager] = doubles if isinstance(stores, int) else list(stores)
-        self.svc = _make_service(watchdog=self.wdt, storage=self.manager, log=log, cfg_path=_tmp_cfg_dir(), config_stores=lambda: self.stores)  # type: ignore[arg-type, return-value]  # a _Store stands in for a ConfigManager
+        self.svc = _make_service(watchdog=self.wdt, storage=self.manager, log=log, cfg_path=_scratch.dir(), config_stores=lambda: self.stores)  # type: ignore[arg-type, return-value]  # a _Store stands in for a ConfigManager
         run(self.svc.setup())
         self.starters: list[Callable[[], asyncio.Task[None]]] = [_sleeping(self.events, "t" + str(n)) for n in range(tasks)]
         if self.manager is not None:
             self._record_quiesce(self.manager)
-
-    def _supervisor(self) -> str:
-        task = self.svc._supervisor_task
-        return "sup=none" if task is None else "sup=done" if task.done() else "sup=running"
 
     def _record_quiesce(self, manager: FRAMManager) -> None:
         # The sequence's step 3, recorded: the storage pause; no chunk operation is ever in flight to wait out.
@@ -1102,8 +1094,12 @@ class _Rig:
 
         manager.set_pause = pause  # type: ignore[method-assign]
 
-    def steps(self) -> "list[str]":
-        return [e.split(" ")[0] for e in self.events]
+    def _supervisor(self) -> str:
+        task = self.svc._supervisor_task
+        return "sup=none" if task is None else "sup=done" if task.done() else "sup=running"
+
+    async def settle(self) -> None:
+        await _sequence_done(self.svc)
 
     async def start(self, *, supervise: bool = True) -> "asyncio.Task[None] | None":
         # main()'s last two steps: start_tasks(), then supervise_tasks() as a task, past the supervisor's first pass.
@@ -1121,8 +1117,8 @@ class _Rig:
         await asyncio.sleep(0)
         return sup
 
-    async def settle(self) -> None:
-        await _sequence_done(self.svc)
+    def steps(self) -> "list[str]":
+        return [e.split(" ")[0] for e in self.events]
 
     async def stop(self, sup: "asyncio.Task[None] | None") -> None:
         # Ends what the scenario started: supervise_tasks() (the supervisor with it), the reset task, the supervised tasks.
@@ -1209,7 +1205,7 @@ def test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_wi
 
 def test_reset_to_defaults_deletes_every_config_file_whatever_its_state() -> None:
     # A readable file, an unparseable one the boot repaired, and one setup() could not read: all deleted, none read.
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     good = _named_store(path, "GOOD", 7)
     with open(path + "config_BAD.cfg", "w") as f:
         f.write("{not json")
@@ -1264,7 +1260,7 @@ def test_an_erased_chip_boots_like_a_new_one() -> None:
     rig.svc.pr.err_s("an entry the erase must remove", errno=code("E", "CALLBACK"))
     _drive(rig, "_RR_FRAM_ERASED")
     manager = _same_chip_manager(rig.chip)
-    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None), cfg_path=_tmp_cfg_dir())
+    svc = _make_service(storage=manager, log=LogConfig(manager, 10, None), cfg_path=_scratch.dir())
     run(svc.setup())
     assert svc.pr.initialized is True
     assert run(svc.get_error_counter())["SYSTEM"]["ErrCount"] == 0
@@ -1465,7 +1461,7 @@ def test_a_store_running_on_config_the_flash_lacks_reads_9_unless_a_config_reset
 
 def test_a_staged_write_the_shutdown_cannot_put_on_flash_reads_9_unless_a_config_reset_deletes_it() -> None:
     for purpose in _PURPOSES:
-        path = _tmp_cfg_dir()
+        path = _scratch.dir()
         store = cm.ConfigManager(path + "config_LOST.cfg", _VAL_COUNT, "LOST")
         run(store.setup())
         rig = _Rig(stores=[store])
@@ -1506,7 +1502,7 @@ class _RemoveRefusingOs:
 
 
 def test_a_file_that_cannot_be_deleted_ends_the_reset_in_code_9() -> None:
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     keep, gone = _named_store(path, "KEEP", 4), _named_store(path, "GONE", 6)
     rig = _Rig(stores=[keep, gone])
     cm.os = _RemoveRefusingOs(path + "config_KEEP.cfg")  # type: ignore[assignment]
@@ -1717,7 +1713,7 @@ def test_a_power_cut_anywhere_in_the_erase_leaves_each_ring_whole_or_blank() -> 
 def test_a_power_cut_while_config_files_are_deleted_leaves_a_bootable_state() -> None:
     names = ("ONE", "TWO", "THREE")
     for k in range(len(names) + 1):
-        path = _tmp_cfg_dir()
+        path = _scratch.dir()
         stores = [_named_store(path, n, 2 + i) for i, n in enumerate(names)]
         rig = _Rig(stores=stores)
         cm.os = _RemoveRefusingOs(cut_after=k)  # type: ignore[assignment]
@@ -1776,7 +1772,7 @@ def test_a_supervisor_that_already_ended_lets_the_sequence_proceed_without_a_par
 
 
 def test_a_write_staged_before_the_command_is_on_flash_at_the_arm_and_a_later_one_is_refused() -> None:
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     store = _real_store(path)
     rig = _Rig(stores=[store])
     at_arm = [-1]
@@ -1922,19 +1918,13 @@ def _gate_entry_write(rig: _Rig, entry: str) -> "tuple[asyncio.Event, asyncio.Ev
 
 
 async def _until_armed(svc: SystemService) -> None:
-    for _ in range(_RUN_BOUND_S * 100):
-        if svc._phase >= _PHASE_ARMED:
-            return
+    while svc._phase < _PHASE_ARMED:
         await _real_time(_POLL_MS)
-    raise AssertionError("the escalation never armed its reset")
 
 
 async def _until_reached(reached: asyncio.Event) -> None:
-    for _ in range(_RUN_BOUND_S * 100):
-        if reached.is_set():
-            return
+    while not reached.is_set():
         await _real_time(_POLL_MS)
-    raise AssertionError("the supervisor never escalated")
 
 
 def test_a_command_during_the_escalations_entry_write_is_refused_and_the_escalation_resets() -> None:
@@ -2026,9 +2016,7 @@ def test_the_escalation_decides_and_records_the_reset_before_its_entry_write() -
 
     async def scenario() -> None:
         sup = await rig.start()
-        for _ in range(_RUN_BOUND_S * 100):
-            if _armed(rig.svc):
-                break
+        while not _armed(rig.svc):
             await _real_time(_POLL_MS)
         await rig.stop(sup)
 
@@ -2067,9 +2055,7 @@ def test_the_systems_own_log_reset_is_refused_from_the_reset_decision_on() -> No
 
     async def scenario() -> "ErrorLog":
         sup = await rig.start()
-        for _ in range(_RUN_BOUND_S * 100):
-            if _armed(rig.svc):
-                break
+        while not _armed(rig.svc):
             await _real_time(_POLL_MS)
         await rig.stop(sup)
         return await rig.svc.get_error_counter()
@@ -2219,7 +2205,7 @@ def test_a_hang_in_any_step_is_never_fed() -> None:
     rig.starters[1] = _sleeping(rig.events, "t1", stubborn_until=unstick)
     _hang(rig, "_BOOTLOADER", nothing, unstick=unstick)
     # S5, config reset: a store whose file lock is held for good.
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     store = _named_store(path, "HELD", 4)
     rig = _Rig(stores=[store])
 
@@ -2982,10 +2968,10 @@ def test_three_deaths_stay_inside_the_budget_and_decay() -> None:
 
 
 def test_the_escalation_flushes_a_staged_write_and_stops_feeding_for_good() -> None:
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     store = _real_store(path)
     wdt = machine.WDT()
-    svc = _make_service(watchdog=wdt, cfg_path=_tmp_cfg_dir(), config_stores=lambda: [store])
+    svc = _make_service(watchdog=wdt, cfg_path=_scratch.dir(), config_stores=lambda: [store])
     run(svc.setup())
     calls = [0]
 
@@ -3085,7 +3071,7 @@ def test_get_config_faults_names_each_faulted_store_once_in_list_order() -> None
         ("CLEAN", '{"Count": 4}'), ("UNREAD", '{"Count": 4}'), ("MISSING", None), ("PARSE", "{not json"), ("EXTRA", '{"Count": 4, "Old": 1}'),
         ("REFUSED", '{"Count": 99}'), ("NOKEY", "{}"),
     ]
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     svc, stores = _boot_with_stores(path, files)
     assert svc.get_config_faults() == ["UNREAD", "PARSE", "REFUSED"], svc.get_config_faults()
     by_name = {s.module_name: s for s in stores}
@@ -3112,7 +3098,7 @@ def _rest_rig() -> "tuple[_Rig, Microdot, SensorReaderConfig, str]":
     # A rig whose stores are SYSTEM's own and a real config module's (owner_lock = its PUT lock), served by a real
     # WebserverService whose system command callback answers like the generated one.
     rig = _Rig(stores=0)
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     module = SensorReaderConfig(_Meas(None), "RESTMOD", _VAL_COUNT, cfg_path=path)
     run(module.setup())
     rig.stores += [rig.svc.cfgmgr, module.cfgmgr]
@@ -3640,14 +3626,14 @@ def _recorder(calls: "list[int]") -> "Callable[[int], None]":
 
 
 def test_setup_resolves_cfgmgr_and_reads_the_default_level_on_first_boot() -> None:
-    svc = _make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     run(svc.setup())
     assert svc.cfgmgr.valid is True
     assert run(svc.get_dict_cfg()) == {"SYSTEM": {"DebugLevel": 0}}
 
 
 def test_setup_sets_up_its_own_logger_first() -> None:
-    svc = _make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     before = svc.pr.initialized  # __init__ never sets the logger up
     run(svc.setup())
     assert svc.cfgmgr.valid is True
@@ -3655,7 +3641,7 @@ def test_setup_sets_up_its_own_logger_first() -> None:
 
 
 def test_setup_leaves_an_unusable_store_invalid_and_still_sets_up_the_logger() -> None:
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     os.mkdir(cfg_path + "config_SYSTEM.cfg")  # a directory where the settings file belongs
     try:
         svc = _make_service(cfg_path=cfg_path)
@@ -3668,7 +3654,7 @@ def test_setup_leaves_an_unusable_store_invalid_and_still_sets_up_the_logger() -
 
 
 def test_get_dict_cfg_answers_the_nested_shape_or_the_unavailable_marker() -> None:
-    svc = _make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     marker = run(svc.get_dict_cfg())
     assert marker == {"SYSTEM": {"error": "unavailable"}} == {"SYSTEM": {"error": UNAVAILABLE}}  # before setup(): the store is not valid
     run(svc.setup())
@@ -3677,7 +3663,7 @@ def test_get_dict_cfg_answers_the_nested_shape_or_the_unavailable_marker() -> No
 
 def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() -> None:
     calls: list[int] = []
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_recorder(calls)])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [_recorder(calls)])
     run(svc.setup())
     # First boot writes and uses the schema default (0); the registry is still called once, unchanged default or not.
     assert calls == [0]
@@ -3685,16 +3671,16 @@ def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() 
 
 class _UnreadableOs:
     # Stands in for asy_config_manager's `os`: the config file exists but every stat() fails with EIO.
-    def stat(self, _path: str) -> "tuple[int, ...]":
-        raise OSError(5, "EIO")
-
     def __getattr__(self, name: str) -> object:
         return getattr(os, name)
+
+    def stat(self, _path: str) -> "tuple[int, ...]":
+        raise OSError(5, "EIO")
 
 
 def test_an_unreadable_store_keeps_the_constructed_level() -> None:
     calls: list[int] = []
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), log=LogConfig(None, 10, 3), level_setters=lambda: [_recorder(calls)])
+    svc = _make_service(cfg_path=_scratch.dir(), log=LogConfig(None, 10, 3), level_setters=lambda: [_recorder(calls)])
     original = cm.os
     cm.os = _UnreadableOs()  # type: ignore[assignment]
     try:
@@ -3710,7 +3696,7 @@ def test_an_unreadable_store_keeps_the_constructed_level() -> None:
 
 
 def test_a_stored_level_wins_over_the_constructed_one() -> None:
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_SYSTEM.cfg", "w") as f:
         f.write('{"DebugLevel": 4}')
     holder: list[SystemService] = []
@@ -3726,7 +3712,7 @@ def test_a_stored_level_wins_over_the_constructed_one() -> None:
 def test_set_dict_cfg_persists_and_calls_every_setter() -> None:
     calls_a: list[int] = []
     calls_b: list[int] = []
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_recorder(calls_a), _recorder(calls_b)])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [_recorder(calls_a), _recorder(calls_b)])
     run(svc.setup())
     assert _set_level(svc, _ALL) == {"DebugLevel": "Valid"}
     assert calls_a == [0, _ALL]  # once from setup()'s own push, once from this call
@@ -3736,7 +3722,7 @@ def test_set_dict_cfg_persists_and_calls_every_setter() -> None:
 
 def test_an_out_of_range_level_is_invalid_and_never_reaches_the_registry() -> None:
     calls: list[int] = []
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_recorder(calls)])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [_recorder(calls)])
     run(svc.setup())
     calls.clear()  # drop setup()'s own push of the default, isolate this call's own effect
     assert _set_level(svc, 99) == {"DebugLevel": "Invalid"}  # outside the schema's 0-5 range
@@ -3745,12 +3731,12 @@ def test_an_out_of_range_level_is_invalid_and_never_reaches_the_registry() -> No
 
 
 def test_a_level_written_before_setup_fails_every_key() -> None:
-    svc = _make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     assert _set_level(svc, _ALL) == {"DebugLevel": "Failed"}  # cfgmgr.valid is False before setup()
 
 
 def test_a_level_without_any_registered_setters_still_persists() -> None:
-    svc = _make_service(cfg_path=_tmp_cfg_dir())
+    svc = _make_service(cfg_path=_scratch.dir())
     run(svc.setup())
     assert _set_level(svc, _WARN) == {"DebugLevel": "Valid"}
     assert run(svc.get_dict_cfg()) == {"SYSTEM": {"DebugLevel": _WARN}}
@@ -3763,7 +3749,7 @@ def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
         raise RuntimeError("simulated bad setter")
 
     svc = _make_service(
-        cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_recorder(calls), _raising_setter, _recorder(calls)],
+        cfg_path=_scratch.dir(), level_setters=lambda: [_recorder(calls), _raising_setter, _recorder(calls)],
     )
     run(svc.setup())
     assert _set_level(svc, _WARN) == {"DebugLevel": "Valid"}  # persistence itself is unaffected
@@ -3774,14 +3760,14 @@ def test_a_bad_setter_persists_one_callback_entry() -> None:
     def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_raising_setter])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [_raising_setter])
     run(svc.setup())
     _set_level(svc, _WARN)
     assert _persisted(svc)[-1] == code("E", "CALLBACK")
 
 
 def test_the_debug_level_survives_a_simulated_reboot() -> None:
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     svc = _make_service(cfg_path=cfg_path)
 
     async def first_boot() -> None:
@@ -3812,7 +3798,7 @@ def test_the_level_setters_provider_is_resolved_once_in_setup() -> None:
         resolved[0] += 1
         return [_recorder(calls)]
 
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), level_setters=provider)
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=provider)
     assert resolved[0] == 0
     run(svc.setup())
     assert resolved[0] == 1
@@ -3831,7 +3817,7 @@ def test_the_config_stores_provider_is_resolved_once_in_setup() -> None:
         resolved[0] += 1
         return [store]  # type: ignore[list-item]
 
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), config_stores=provider)
+    svc = _make_service(cfg_path=_scratch.dir(), config_stores=provider)
     assert resolved[0] == 0
     run(svc.setup())
     assert resolved[0] == 1
@@ -3848,7 +3834,7 @@ def test_the_config_stores_provider_is_resolved_once_in_setup() -> None:
 def test_pr_logger_reflects_the_live_debug_level_via_the_registry() -> None:
     # (exactly what every generated module's _collect_level_setters() does for every module, sysfunct's own included)
     holder: list[SystemService] = []
-    svc = _make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [holder[0].pr.set_level])
+    svc = _make_service(cfg_path=_scratch.dir(), level_setters=lambda: [holder[0].pr.set_level])
     holder.append(svc)
     run(svc.setup())
     _set_level(svc, _ERR)
@@ -3861,7 +3847,7 @@ def test_pr_logger_reflects_the_live_debug_level_via_the_registry() -> None:
 
 
 def test_a_fresh_filesystem_writes_the_settings_file_once() -> None:
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with WriteCountingOpen(cm) as counter:
         run(_make_service(cfg_path=cfg_path).setup())
         run(_make_service(cfg_path=cfg_path).setup())

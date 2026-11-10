@@ -84,140 +84,6 @@ class Probe:
         return self.received / self.seconds if self.seconds > 0 else float("inf")
 
 
-def warn(message: str) -> None:
-    print(f"::warning::{message}", flush=True)
-
-
-def emit(path: "Path | None", **values: object) -> None:
-    # Step outputs: appended to $GITHUB_OUTPUT when given, else printed.
-    lines = "".join(f"{name.replace('_', '-')}={value}\n" for name, value in values.items())
-    if path is None:
-        print(lines, end="", flush=True)
-    else:
-        with path.open("a", encoding="utf-8") as out:
-            out.write(lines)
-
-
-def parse_print_uris(text: str) -> "tuple[list[Planned], list[str]]":
-    # apt-get --print-uris prints `'URI' FILE SIZE HASH` per archive (apt-private/private-install.cc); other lines are
-    # apt's own chatter. A quoted line that does not parse is returned, so the caller can name it.
-    planned, unparsed = [], []
-    for line in text.splitlines():
-        if not line.startswith("'"):
-            continue
-        found = _LINE.match(line)
-        if found is None or not _FILE.match(found["file"]):
-            unparsed.append(line)
-            continue
-        digest = _SHA256.match(found["hash"])
-        planned.append(Planned(found["uri"], found["file"], int(found["size"]), digest[1].lower() if digest else ""))
-    return sorted(planned, key=lambda item: item.file), unparsed
-
-
-def cache_key(prefix: str, planned: "Iterable[Planned]") -> str:
-    # The exact archives, in a fixed order: a changed version changes the key, a reordered set does not.
-    lines = sorted(f"{item.file} {item.size} {item.sha256}\n" for item in planned if item.sha256)
-    return prefix + hashlib.sha256("".join(lines).encode()).hexdigest()
-
-
-def write_manifest(path: Path, planned: "list[Planned]") -> None:
-    path.write_text(json.dumps([asdict(item) for item in planned], indent=1) + "\n", encoding="utf-8")
-
-
-def read_manifest(path: Path) -> "list[Planned]":
-    return [Planned(str(item["uri"]), str(item["file"]), int(item["size"]), str(item["sha256"])) for item in json.loads(path.read_text(encoding="utf-8"))]
-
-
-def verified(path: Path, item: Planned) -> bool:
-    # True only for a regular file of the index's size and SHA-256: apt itself checks a pre-placed archive's size alone.
-    if not item.sha256 or not path.is_file() or path.stat().st_size != item.size:
-        return False
-    digest = hashlib.sha256()
-    with path.open("rb") as data:
-        while chunk := data.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest() == item.sha256
-
-
-def dry_run_packages(text: str) -> "list[str] | None":
-    # The packages `npx playwright install-deps --dry-run` reports missing (its `apt-get install -s` Inst lines), [] when
-    # it reports none; None for output in a form this reader does not know.
-    lines = [line.rstrip() for line in text.splitlines()]
-    if _DRY_RUN_NONE in lines:
-        return []
-    for index, line in enumerate(lines):
-        found = _DRY_RUN_MISSING.match(line)
-        if found is None:
-            continue
-        names = [entry.strip() for entry in lines[index + 1 : index + 1 + int(found[1])] if re.fullmatch(r"  [a-z0-9][a-z0-9.+:-]*", entry)]
-        return names if len(names) == int(found[1]) else None
-    return None
-
-
-def copy_in(planned: "list[Planned]", cache_dir: Path) -> "list[Path]":
-    # The cached archives safe to place in apt's archive folder: each checked against the fresh index's SHA-256.
-    keep = []
-    for item in planned:
-        path = cache_dir / item.file
-        if verified(path, item):
-            keep.append(path)
-        elif path.exists():
-            warn(f"cached {item.file} does not match the index's size and SHA-256: left out, apt fetches it")
-    return keep
-
-
-def copy_out(planned: "list[Planned]", archives: Path, cache_dir: Path) -> "tuple[int, int]":
-    # Copies each archive apt fetched into the cache folder, drops what the set no longer holds; (copied, missing).
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    wanted = {item.file for item in planned if item.sha256}
-    for stale in sorted(p for p in cache_dir.iterdir() if p.name not in wanted):
-        if stale.is_file():
-            stale.unlink()
-    copied = missing = 0
-    for item in planned:
-        if not item.sha256 or verified(cache_dir / item.file, item):
-            continue
-        source = archives / item.file
-        if verified(source, item):
-            partial = cache_dir / f".{item.file}.partial"
-            shutil.copyfile(source, partial)
-            partial.replace(cache_dir / item.file)
-            copied += 1
-        else:
-            missing += 1
-    return copied, missing
-
-
-def parse_mirror_list(text: str) -> "list[Mirror] | None":
-    # The runner's apt-mirrors.txt: one URI per line, tab, optional `priority:N` tags; '#' and empty lines skipped
-    # (apt's methods/mirror.cc). Any other tag or form returns None, so the list is never edited on a guess.
-    mirrors = []
-    for number, line in enumerate(text.split("\n")):
-        if not line or line.startswith("#"):
-            continue
-        uri, _, tags = line.partition("\t")
-        if not _MIRROR.match(uri):
-            return None
-        priority = _NO_PRIORITY
-        for tag in tags.split():
-            found = _PRIORITY.match(tag)
-            if found is None:
-                return None
-            priority = int(found[1])
-        mirrors.append(Mirror(number, uri, priority))
-    return mirrors or None
-
-
-def apt_order(mirrors: "list[Mirror]") -> "list[Mirror]":
-    # apt tries the lowest priority first; equal priorities it shuffles, which file order stands in for here.
-    return sorted(mirrors, key=lambda mirror: mirror.priority)
-
-
-def without(text: str, dropped: "list[Mirror]") -> str:
-    lines = {mirror.line for mirror in dropped}
-    return "\n".join(line for number, line in enumerate(text.split("\n")) if number not in lines)
-
-
 class _ProbeHTTP(http.client.HTTPConnection):
     # Keeps its socket after a `Connection: close` response detaches it, so each read gets the time left to the cap.
     probe_sock: "socket.socket | None" = None
@@ -279,6 +145,70 @@ def fetch(url: str, *, cap_s: float, budget: int) -> Probe:
         return Probe(url, received, time.monotonic() - start, str(exc) or type(exc).__name__)
 
 
+def _cli_check(args: argparse.Namespace) -> int:
+    planned = read_manifest(args.manifest)
+    have = {Path(entry.decode()).name for entry in args.have.read_bytes().split(b"\0") if entry} if args.have.is_file() else set()
+    rule = Rule(cap_s=args.cap_s, floor=args.min_bytes_per_s, bound_s=args.bound_s, bound_from=args.bound_from, margin=args.margin)
+    new_text = check(planned, have, args.mirror_list, rule, force=args.force)
+    if new_text is not None:
+        args.out.write_text(new_text, encoding="utf-8")
+        print(f"== {args.mirror_list} from here on:\n{new_text.rstrip()}", flush=True)
+    return 0
+
+
+def _cli_copy_in(args: argparse.Namespace) -> int:
+    planned = read_manifest(args.manifest)
+    keep = copy_in(planned, args.cache_dir)
+    args.list.write_bytes(b"".join(str(path).encode() + b"\0" for path in keep))
+    print(f"== {len(keep)} of {len(planned)} archives from the cache", flush=True)
+    emit(args.github_output, restored=len(keep), remaining=len(planned) - len(keep))
+    return 0
+
+
+def _cli_copy_out(args: argparse.Namespace) -> int:
+    planned = read_manifest(args.manifest)
+    copied, missing = copy_out(planned, args.archives, args.cache_dir)
+    cacheable = sum(1 for item in planned if item.sha256)
+    print(f"== {copied} archives copied to {args.cache_dir}, {missing} of {cacheable} missing", flush=True)
+    emit(args.github_output, complete=str(bool(cacheable) and missing == 0).lower(), copied=copied)
+    return 0
+
+
+def _cli_dry_run_packages(args: argparse.Namespace) -> int:
+    names = dry_run_packages(args.dry_run.read_text(encoding="utf-8"))
+    if names is None:
+        # stdout carries only the names, so the caller's $(...) never takes a message for one.
+        print(f"{args.dry_run}: Playwright's dry-run output is in a form this reader does not know", file=sys.stderr)
+        return 1
+    print(" ".join(names), flush=True)
+    return 0
+
+
+def _cli_plan(args: argparse.Namespace) -> int:
+    planned, unparsed = parse_print_uris(args.uris.read_text(encoding="utf-8"))
+    for line in unparsed:
+        warn(f"an apt-get --print-uris line this reader does not know, left out of the plan: {line}")
+    write_manifest(args.manifest, planned)
+    uncached = [item.file for item in planned if not item.sha256]
+    if uncached:
+        warn(f"no SHA-256 in the index for {', '.join(uncached)}: never cached")
+    size = sum(item.size for item in planned)
+    print(f"== {len(planned)} archives to fetch, {size} bytes", flush=True)
+    emit(args.github_output, key=cache_key(args.key_prefix, planned) if planned else "", restore_prefix=args.key_prefix, planned=len(planned))
+    return 0
+
+
+def _kb(rate: float) -> str:
+    return "inf" if rate == float("inf") else f"{rate / 1000:.0f} kB/s"
+
+
+def _positive(text: str) -> float:
+    value = float(text)
+    if not value > 0:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a positive number")
+    return value
+
+
 def _relative(uri: str, list_path: Path, mirrors: "list[Mirror]") -> "str | None":
     # The archive's path under a mirror: apt prints a mirror-list source as mirror+file:<list>/<path>.
     for base in (f"mirror+file:{list_path}/", *(mirror.uri.rstrip("/") + "/" for mirror in mirrors)):
@@ -287,27 +217,34 @@ def _relative(uri: str, list_path: Path, mirrors: "list[Mirror]") -> "str | None
     return None
 
 
-def _kb(rate: float) -> str:
-    return "inf" if rate == float("inf") else f"{rate / 1000:.0f} kB/s"
-
-
 @dataclass(frozen=True)
 class Rule:
     # How fast a mirror must be: the probe's cap, the floor, the bound of the step that fetches what the cache does not
-    # hold (bound_from names its tunable for the log) and the margin.
+    # hold, if the caller has one (bound_from names its tunable for the log), and the margin.
     cap_s: float
     floor: float
-    bound_s: float
-    bound_from: str
+    bound_s: float | None
+    bound_from: str | None
     margin: float = RATE_MARGIN
 
     def __post_init__(self) -> None:
-        if not self.bound_s > 0:
+        if self.bound_s is not None and not self.bound_s > 0:
             raise ValueError(f"a fetching step's bound must be positive, not {self.bound_s}")
 
     def required(self, to_fetch: int) -> float:
-        # The rate that moves to_fetch bytes inside bound_s / margin, never under the floor.
-        return max(self.floor, self.margin * to_fetch / self.bound_s)
+        # The rate that moves to_fetch bytes inside bound_s / margin, never under the floor; the floor alone without one.
+        return self.floor if self.bound_s is None else max(self.floor, self.margin * to_fetch / self.bound_s)
+
+
+def apt_order(mirrors: "list[Mirror]") -> "list[Mirror]":
+    # apt tries the lowest priority first; equal priorities it shuffles, which file order stands in for here.
+    return sorted(mirrors, key=lambda mirror: mirror.priority)
+
+
+def cache_key(prefix: str, planned: "Iterable[Planned]") -> str:
+    # The exact archives, in a fixed order: a changed version changes the key, a reordered set does not.
+    lines = sorted(f"{item.file} {item.size} {item.sha256}\n" for item in planned if item.sha256)
+    return prefix + hashlib.sha256("".join(lines).encode()).hexdigest()
 
 
 def check(planned: "list[Planned]", have: "set[str]", list_path: Path, rule: Rule, *, force: bool = False, fetcher: "Fetcher" = fetch) -> "str | None":
@@ -334,7 +271,10 @@ def check(planned: "list[Planned]", have: "set[str]", list_path: Path, rule: Rul
         return None
     to_fetch = sum(item.size for item, _ in candidates if item.file not in have)
     required = rule.required(to_fetch)
-    print(f"== required rate {_kb(required)}: {rule.margin:g} x {to_fetch} bytes still to fetch over the {rule.bound_s:g} s bound ({rule.bound_from}), floor {_kb(rule.floor)}", flush=True)
+    if rule.bound_s is None:
+        print(f"== required rate {_kb(required)}: the floor, no bound given, for {to_fetch} bytes still to fetch", flush=True)
+    else:
+        print(f"== required rate {_kb(required)}: {rule.margin:g} x {to_fetch} bytes still to fetch over the {rule.bound_s:g} s bound ({rule.bound_from}), floor {_kb(rule.floor)}", flush=True)
     budget = int(rule.cap_s * required)
     large = [pair for pair in candidates if pair[0].size >= budget]
     item, rel = min(large, key=lambda pair: pair[0].size) if large else max(candidates, key=lambda pair: pair[0].size)
@@ -367,64 +307,127 @@ def check(planned: "list[Planned]", have: "set[str]", list_path: Path, rule: Rul
     return without(text, dropped)
 
 
-def _cli_plan(args: argparse.Namespace) -> int:
-    planned, unparsed = parse_print_uris(args.uris.read_text(encoding="utf-8"))
-    for line in unparsed:
-        warn(f"an apt-get --print-uris line this reader does not know, left out of the plan: {line}")
-    write_manifest(args.manifest, planned)
-    uncached = [item.file for item in planned if not item.sha256]
-    if uncached:
-        warn(f"no SHA-256 in the index for {', '.join(uncached)}: never cached")
-    size = sum(item.size for item in planned)
-    print(f"== {len(planned)} archives to fetch, {size} bytes", flush=True)
-    emit(args.github_output, key=cache_key(args.key_prefix, planned) if planned else "", restore_prefix=args.key_prefix, planned=len(planned))
-    return 0
+def copy_in(planned: "list[Planned]", cache_dir: Path) -> "list[Path]":
+    # The cached archives safe to place in apt's archive folder: each checked against the fresh index's SHA-256.
+    keep = []
+    for item in planned:
+        path = cache_dir / item.file
+        if verified(path, item):
+            keep.append(path)
+        elif path.exists():
+            warn(f"cached {item.file} does not match the index's size and SHA-256: left out, apt fetches it")
+    return keep
 
 
-def _cli_dry_run_packages(args: argparse.Namespace) -> int:
-    names = dry_run_packages(args.dry_run.read_text(encoding="utf-8"))
-    if names is None:
-        # stdout carries only the names, so the caller's $(...) never takes a message for one.
-        print(f"{args.dry_run}: Playwright's dry-run output is in a form this reader does not know", file=sys.stderr)
-        return 1
-    print(" ".join(names), flush=True)
-    return 0
+def copy_out(planned: "list[Planned]", archives: Path, cache_dir: Path) -> "tuple[int, int]":
+    # Copies each archive apt fetched into the cache folder, drops what the set no longer holds; (copied, missing).
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    wanted = {item.file for item in planned if item.sha256}
+    for stale in sorted(p for p in cache_dir.iterdir() if p.name not in wanted):
+        if stale.is_file():
+            stale.unlink()
+    copied = missing = 0
+    for item in planned:
+        if not item.sha256 or verified(cache_dir / item.file, item):
+            continue
+        source = archives / item.file
+        if verified(source, item):
+            partial = cache_dir / f".{item.file}.partial"
+            shutil.copyfile(source, partial)
+            partial.replace(cache_dir / item.file)
+            copied += 1
+        else:
+            missing += 1
+    return copied, missing
 
 
-def _cli_copy_in(args: argparse.Namespace) -> int:
-    planned = read_manifest(args.manifest)
-    keep = copy_in(planned, args.cache_dir)
-    args.list.write_bytes(b"".join(str(path).encode() + b"\0" for path in keep))
-    print(f"== {len(keep)} of {len(planned)} archives from the cache", flush=True)
-    emit(args.github_output, restored=len(keep), remaining=len(planned) - len(keep))
-    return 0
+def dry_run_packages(text: str) -> "list[str] | None":
+    # The packages `npx playwright install-deps --dry-run` reports missing (its `apt-get install -s` Inst lines), [] when
+    # it reports none; None for output in a form this reader does not know.
+    lines = [line.rstrip() for line in text.splitlines()]
+    if _DRY_RUN_NONE in lines:
+        return []
+    for index, line in enumerate(lines):
+        found = _DRY_RUN_MISSING.match(line)
+        if found is None:
+            continue
+        names = [entry.strip() for entry in lines[index + 1 : index + 1 + int(found[1])] if re.fullmatch(r"  [a-z0-9][a-z0-9.+:-]*", entry)]
+        return names if len(names) == int(found[1]) else None
+    return None
 
 
-def _cli_check(args: argparse.Namespace) -> int:
-    planned = read_manifest(args.manifest)
-    have = {Path(entry.decode()).name for entry in args.have.read_bytes().split(b"\0") if entry} if args.have.is_file() else set()
-    rule = Rule(cap_s=args.cap_s, floor=args.min_bytes_per_s, bound_s=args.bound_s, bound_from=args.bound_from, margin=args.margin)
-    new_text = check(planned, have, args.mirror_list, rule, force=args.force)
-    if new_text is not None:
-        args.out.write_text(new_text, encoding="utf-8")
-        print(f"== {args.mirror_list} from here on:\n{new_text.rstrip()}", flush=True)
-    return 0
+def emit(path: "Path | None", **values: object) -> None:
+    # Step outputs: appended to $GITHUB_OUTPUT when given, else printed.
+    lines = "".join(f"{name.replace('_', '-')}={value}\n" for name, value in values.items())
+    if path is None:
+        print(lines, end="", flush=True)
+    else:
+        with path.open("a", encoding="utf-8") as out:
+            out.write(lines)
 
 
-def _cli_copy_out(args: argparse.Namespace) -> int:
-    planned = read_manifest(args.manifest)
-    copied, missing = copy_out(planned, args.archives, args.cache_dir)
-    cacheable = sum(1 for item in planned if item.sha256)
-    print(f"== {copied} archives copied to {args.cache_dir}, {missing} of {cacheable} missing", flush=True)
-    emit(args.github_output, complete=str(bool(cacheable) and missing == 0).lower(), copied=copied)
-    return 0
+def parse_mirror_list(text: str) -> "list[Mirror] | None":
+    # The runner's apt-mirrors.txt: one URI per line, tab, optional `priority:N` tags; '#' and empty lines skipped
+    # (apt's methods/mirror.cc). Any other tag or form returns None, so the list is never edited on a guess.
+    mirrors = []
+    for number, line in enumerate(text.split("\n")):
+        if not line or line.startswith("#"):
+            continue
+        uri, _, tags = line.partition("\t")
+        if not _MIRROR.match(uri):
+            return None
+        priority = _NO_PRIORITY
+        for tag in tags.split():
+            found = _PRIORITY.match(tag)
+            if found is None:
+                return None
+            priority = int(found[1])
+        mirrors.append(Mirror(number, uri, priority))
+    return mirrors or None
 
 
-def _positive(text: str) -> float:
-    value = float(text)
-    if not value > 0:
-        raise argparse.ArgumentTypeError(f"{text!r} is not a positive number")
-    return value
+def parse_print_uris(text: str) -> "tuple[list[Planned], list[str]]":
+    # apt-get --print-uris prints `'URI' FILE SIZE HASH` per archive (apt-private/private-install.cc); other lines are
+    # apt's own chatter. A quoted line that does not parse is returned, so the caller can name it.
+    planned, unparsed = [], []
+    for line in text.splitlines():
+        if not line.startswith("'"):
+            continue
+        found = _LINE.match(line)
+        if found is None or not _FILE.match(found["file"]):
+            unparsed.append(line)
+            continue
+        digest = _SHA256.match(found["hash"])
+        planned.append(Planned(found["uri"], found["file"], int(found["size"]), digest[1].lower() if digest else ""))
+    return sorted(planned, key=lambda item: item.file), unparsed
+
+
+def read_manifest(path: Path) -> "list[Planned]":
+    return [Planned(str(item["uri"]), str(item["file"]), int(item["size"]), str(item["sha256"])) for item in json.loads(path.read_text(encoding="utf-8"))]
+
+
+def verified(path: Path, item: Planned) -> bool:
+    # True only for a regular file of the index's size and SHA-256: apt itself checks a pre-placed archive's size alone.
+    if not item.sha256 or not path.is_file() or path.stat().st_size != item.size:
+        return False
+    digest = hashlib.sha256()
+    with path.open("rb") as data:
+        while chunk := data.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest() == item.sha256
+
+
+def warn(message: str) -> None:
+    print(f"::warning::{message}", flush=True)
+
+
+def without(text: str, dropped: "list[Mirror]") -> str:
+    lines = {mirror.line for mirror in dropped}
+    return "\n".join(line for number, line in enumerate(text.split("\n")) if number not in lines)
+
+
+def write_manifest(path: Path, planned: "list[Planned]") -> None:
+    path.write_text(json.dumps([asdict(item) for item in planned], indent=1) + "\n", encoding="utf-8")
 
 
 def main(argv: "list[str] | None" = None) -> int:
@@ -447,8 +450,8 @@ def main(argv: "list[str] | None" = None) -> int:
     probe.add_argument("--out", type=Path, required=True)
     probe.add_argument("--cap-s", type=float, default=PROBE_CAP_S)
     probe.add_argument("--min-bytes-per-s", type=float, default=MIN_BYTES_PER_S, help="the floor of the required rate")
-    probe.add_argument("--bound-s", type=_positive, required=True, help="the bound of the step that fetches what is left")
-    probe.add_argument("--bound-from", required=True, help="the tunable that bound comes from, for the log")
+    probe.add_argument("--bound-s", type=_positive, help="the bound of the step that fetches what is left; without it the floor alone decides")
+    probe.add_argument("--bound-from", help="the tunable that bound comes from, for the log")
     probe.add_argument("--margin", type=_positive, default=RATE_MARGIN)
     probe.add_argument("--force", action="store_true", help="probe even when the cache holds every planned archive")
     out = commands.add_parser("copy-out", help="copy what apt fetched into the cache folder")

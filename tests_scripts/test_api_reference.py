@@ -1,6 +1,6 @@
 """The generated per-device REST reference (buildgen.api_reference, SPECIFICATION.md A.8): byte-identical over two
-generations, every ROUTES entry and no other route, every `@web` field under its route, the source's result words
-and envelope codes; and a build that cannot read its route table or meets an unregistered route fails loudly."""
+generations and equal to the release's tests_scripts/fixtures/api_reference/<device>.json, every ROUTES entry and no
+other, every `@web` field under its route, the source's result words and codes; a build that cannot read them fails."""
 
 import ast
 import json
@@ -24,6 +24,8 @@ from buildgen.web_tag import SELF_GROUP, parse_web_tags
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC = _REPO_ROOT / "src"
+_FIXTURES = _REPO_ROOT / "tests_scripts" / "fixtures" / "api_reference"
+_REGENERATE = "PYTHONPATH=. uv run python tests_scripts/test_api_reference.py --regenerate"
 _WEBSERVER = "asy_webserver_service.py"
 _UART_LINK = "asy_uart_link_driver.py"  # the bench link brings its own routes, listed after the webserver's
 # The tagged services every device has, never [[instance]] entries (buildgen/definitions.py scans the same three).
@@ -156,6 +158,14 @@ def test_two_generations_are_byte_identical(generations: "tuple[dict[str, str], 
     first, second = generations
     assert first[device] == second[device]
     assert first[device] == api_reference_json(generate_api_reference(_model(device), _SRC)), "the in-process generation differs from a fresh interpreter's"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_reference_is_the_release_fixture(references: "dict[str, dict[str, object]]", device: str) -> None:
+    # From the release on, a changed route or key ships with its migration (SPECIFICATION.md H.3).
+    fixture = _FIXTURES / f"{device}.json"
+    assert fixture.is_file(), f"no release reference {fixture.relative_to(_REPO_ROOT)} - write it with `{_REGENERATE}`"
+    assert references[device] == json.loads(fixture.read_text(encoding="utf-8")), f"{device}'s REST reference is not {fixture.relative_to(_REPO_ROOT)}: ship its migration in the same commit, then `{_REGENERATE}`"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -395,3 +405,11 @@ def test_a_hidden_field_is_on_no_route(references: "dict[str, dict[str, object]]
                 own = keys & hidden if group["key"] == spec.resolved_name else set()
                 shown += sorted(f"{route['method']} {route['path']} {group['key']}.{key}" for key in own | (keys & {f"{spec.resolved_name}_{name}" for name in hidden}))
     assert not shown, shown
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["--regenerate"]:
+        sys.exit(f"usage: {_REGENERATE}")
+    _FIXTURES.mkdir(parents=True, exist_ok=True)
+    for name in DEVICE_NAMES:
+        (_FIXTURES / f"{name}.json").write_text(api_reference_json(generate_api_reference(_model(name), _SRC)) + "\n", encoding="utf-8")

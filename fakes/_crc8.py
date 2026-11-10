@@ -1,4 +1,6 @@
-"""Independent CRC-8 reimplementation (Sensirion polynomial 0x31, init 0xFF) shared by `_sgp40_chip.py`/`_scd30_chip.py` — deliberately not importing `src/crc_checks.py`'s own CRC8, so a bug shared between the twin's response-building and the driver's validation can't hide behind a self-consistent round trip."""
+"""Independent CRC-8 reimplementation (Sensirion polynomial 0x31, init 0xFF) shared by the twin's SGP40/SCD30 chip fakes
+and the unit tests' fixtures: not `src/crc_checks.py`'s own CRC8, so a bug shared between a fake's or fixture's frame
+and the driver's validation can't hide behind a self-consistent round trip."""
 
 _CRC_POLY = 0x31  # Sensirion CRC-8: 0x31, init 0xFF (SGP40 datasheet Table 7, SCD30 Interface Description 1.1.3)
 

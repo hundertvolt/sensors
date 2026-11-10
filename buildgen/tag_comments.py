@@ -27,16 +27,6 @@ def _looks_like_requires_payload(text: str) -> bool:
     return bool(_PAYLOAD_DOTTED_RE.search(text) and _PAYLOAD_NUMBER_RE.search(text))
 
 
-def _payload_words(text: str) -> "tuple[bool, list[str]]":
-    # Whether the comment carried the "@" sigil, plus whatever follows its leading word.
-    stripped = text.lstrip("#").strip()
-    at_sign = stripped.startswith("@")
-    if at_sign:
-        stripped = stripped[1:].lstrip()
-    m = _LEADING_WORD_RE.match(stripped)
-    return at_sign, (stripped[m.end():].split() if m else [])
-
-
 def _looks_like_wiring_payload(text: str) -> bool:
     # Every element of a wiring tag is a bare word, so sentence punctuation rules a comment out
     # at once. Past that the bar depends on the sigil: nobody writes "@wiring" in prose, so with
@@ -122,23 +112,7 @@ KNOWN_TAGS = (
 )
 KNOWN_TAG_NAMES = tuple(spec.name for spec in KNOWN_TAGS)
 
-
-def specs_for(name: str) -> "tuple[TagSpec, ...]":
-    # The one registered spec of a family, for its grammar module's near-miss check. An empty
-    # tuple would switch that check off silently, so an unregistered name is a generator bug.
-    specs = tuple(spec for spec in KNOWN_TAGS if spec.name == name)
-    if len(specs) != 1:
-        raise BuildInternalError(f"tag family {name!r} is not in KNOWN_TAGS")
-    return specs
-
 _SHORT_TAG_NAME_LEN = 4  # 3-4 letters (the planned "@web") only tolerates one typo, see below
-
-
-# Generous enough to catch one missing/extra/swapped letter (e.g. "require", "requries",
-# "reqiures"), scaled down for a short tag name: two edits away from a 3-4 letter name (the planned
-# "@web") is most of the dictionary, so a short name only tolerates one.
-def _max_typo_distance(tag_name: str) -> int:
-    return 1 if len(tag_name) <= _SHORT_TAG_NAME_LEN else 2
 
 # The rough shape a real tag's payload has, in two forms: an identifier plus a comparison-like
 # operator, value optional so a truncated one counts, or a dotted reference plus a number, so a
@@ -177,36 +151,6 @@ class CommentToken:
     # statement is indented, but is still module level) - see iter_comment_tokens().
 
 
-def _levenshtein(a: str, b: str) -> int:
-    if a == b:
-        return 0
-    if not a:
-        return len(b)
-    if not b:
-        return len(a)
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a, start=1):
-        cur = [i] + [0] * len(b)
-        for j, cb in enumerate(b, start=1):
-            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb))
-        prev = cur
-    return prev[-1]
-
-
-def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[CommentToken]":
-    # Every real COMMENT token in `path`, tokenize-based (not per-line regex) so a "#" inside a
-    # string/docstring is never mistaken for a real comment. Each token also carries whether it sits
-    # inside a class/function body rather than at module level.
-    try:
-        source = path.read_bytes()
-    except OSError as e:
-        raise BuildError(device, f"cannot read {path}: {e}", rule="src.unreadable", fix=f"restore {path.name} in the source directory", instance=instance_label) from e
-    try:
-        return list(_comment_tokens(source))
-    except (IndentationError, SyntaxError, tokenize.TokenError) as e:
-        raise BuildError(device, f"{path} has a syntax error: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=instance_label) from e
-
-
 @functools.lru_cache(maxsize=1024)
 def _comment_tokens(source: bytes) -> "tuple[CommentToken, ...]":
     # Keyed on the file's bytes, so every tag family and every device reading one driver tokenizes it
@@ -238,18 +182,66 @@ def _comment_tokens(source: bytes) -> "tuple[CommentToken, ...]":
     return tuple(tokens)
 
 
-def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":
-    # The comment's opening word plus whether it carried the "@" sigil - "@" itself is one of the
-    # dimensions a typo can drop, so the two are reported separately rather than the sigil being a
-    # precondition for seeing the word at all.
-    stripped = comment_text.lstrip("#").strip()
+@functools.lru_cache(maxsize=1024)
+def _first_near_miss(tokens: "tuple[CommentToken, ...]", exact_matches: "frozenset[tuple[int, int]]", specs: "tuple[TagSpec, ...]") -> "tuple[int, str, str, str] | None":
+    # The first near miss as (line, family, kind, stripped text), or None. Cached by the tokens
+    # themselves, so every family and device scanning one unchanged driver pays once.
+    for tok in tokens:
+        if (tok.lineno, tok.col) in exact_matches:
+            continue
+        word, at_sign = find_leading_word(tok.text)
+        if word is None:
+            continue
+        lower = word.lower()
+        for spec in specs:
+            known = spec.name
+            structured = spec.looks_like_payload(tok.text)
+            # An exact tag name gets whatever leniency its own family allows; a merely typo'd word
+            # never does - it needs the family's full strict shape.
+            exact_evidence = spec.is_attempt(tok.text)
+            if lower == known:
+                if not exact_evidence:
+                    break  # prose merely naming this tag - and not a typo of any other one either
+                return tok.lineno, known, "malformed" if at_sign else "missing-sigil", tok.text.strip()
+            # A typo'd word is only ever a near miss *with* the sigil: "required"/"require" are
+            # within edit distance 2 of "requires" but are also ordinary English a prose comment can
+            # legitimately open with, so demanding the "@" there is what keeps this false-positive free.
+            if at_sign and structured and _levenshtein(lower, known) <= _max_typo_distance(known):
+                return tok.lineno, known, "misspelled", tok.text.strip()
+    return None
+
+
+def _levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        cur = [i] + [0] * len(b)
+        for j, cb in enumerate(b, start=1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb))
+        prev = cur
+    return prev[-1]
+
+
+# Generous enough to catch one missing/extra/swapped letter (e.g. "require", "requries",
+# "reqiures"), scaled down for a short tag name: two edits away from a 3-4 letter name (the planned
+# "@web") is most of the dictionary, so a short name only tolerates one.
+def _max_typo_distance(tag_name: str) -> int:
+    return 1 if len(tag_name) <= _SHORT_TAG_NAME_LEN else 2
+
+
+def _payload_words(text: str) -> "tuple[bool, list[str]]":
+    # Whether the comment carried the "@" sigil, plus whatever follows its leading word.
+    stripped = text.lstrip("#").strip()
     at_sign = stripped.startswith("@")
     if at_sign:
         stripped = stripped[1:].lstrip()
-    # The word stops at the first non-word character, so "@requires:"/"@requires(bus.x>=1)" still
-    # read as "requires" rather than as some unrecognizable near-word.
     m = _LEADING_WORD_RE.match(stripped)
-    return (m.group(0) if m else None, at_sign)
+    return at_sign, (stripped[m.end():].split() if m else [])
 
 
 def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: str, instance_label: str, exact_matches: "set[tuple[int, int]]", specs: "tuple[TagSpec, ...] | None"=None) -> None:
@@ -289,30 +281,38 @@ def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: s
     )
 
 
-@functools.lru_cache(maxsize=1024)
-def _first_near_miss(tokens: "tuple[CommentToken, ...]", exact_matches: "frozenset[tuple[int, int]]", specs: "tuple[TagSpec, ...]") -> "tuple[int, str, str, str] | None":
-    # The first near miss as (line, family, kind, stripped text), or None. Cached by the tokens
-    # themselves, so every family and device scanning one unchanged driver pays once.
-    for tok in tokens:
-        if (tok.lineno, tok.col) in exact_matches:
-            continue
-        word, at_sign = find_leading_word(tok.text)
-        if word is None:
-            continue
-        lower = word.lower()
-        for spec in specs:
-            known = spec.name
-            structured = spec.looks_like_payload(tok.text)
-            # An exact tag name gets whatever leniency its own family allows; a merely typo'd word
-            # never does - it needs the family's full strict shape.
-            exact_evidence = spec.is_attempt(tok.text)
-            if lower == known:
-                if not exact_evidence:
-                    break  # prose merely naming this tag - and not a typo of any other one either
-                return tok.lineno, known, "malformed" if at_sign else "missing-sigil", tok.text.strip()
-            # A typo'd word is only ever a near miss *with* the sigil: "required"/"require" are
-            # within edit distance 2 of "requires" but are also ordinary English a prose comment can
-            # legitimately open with, so demanding the "@" there is what keeps this false-positive free.
-            if at_sign and structured and _levenshtein(lower, known) <= _max_typo_distance(known):
-                return tok.lineno, known, "misspelled", tok.text.strip()
-    return None
+def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":
+    # The comment's opening word plus whether it carried the "@" sigil - "@" itself is one of the
+    # dimensions a typo can drop, so the two are reported separately rather than the sigil being a
+    # precondition for seeing the word at all.
+    stripped = comment_text.lstrip("#").strip()
+    at_sign = stripped.startswith("@")
+    if at_sign:
+        stripped = stripped[1:].lstrip()
+    # The word stops at the first non-word character, so "@requires:"/"@requires(bus.x>=1)" still
+    # read as "requires" rather than as some unrecognizable near-word.
+    m = _LEADING_WORD_RE.match(stripped)
+    return (m.group(0) if m else None, at_sign)
+
+
+def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[CommentToken]":
+    # Every real COMMENT token in `path`, tokenize-based (not per-line regex) so a "#" inside a
+    # string/docstring is never mistaken for a real comment. Each token also carries whether it sits
+    # inside a class/function body rather than at module level.
+    try:
+        source = path.read_bytes()
+    except OSError as e:
+        raise BuildError(device, f"cannot read {path}: {e}", rule="src.unreadable", fix=f"restore {path.name} in the source directory", instance=instance_label) from e
+    try:
+        return list(_comment_tokens(source))
+    except (IndentationError, SyntaxError, tokenize.TokenError) as e:
+        raise BuildError(device, f"{path} has a syntax error: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=instance_label) from e
+
+
+def specs_for(name: str) -> "tuple[TagSpec, ...]":
+    # The one registered spec of a family, for its grammar module's near-miss check. An empty
+    # tuple would switch that check off silently, so an unregistered name is a generator bug.
+    specs = tuple(spec for spec in KNOWN_TAGS if spec.name == name)
+    if len(specs) != 1:
+        raise BuildInternalError(f"tag family {name!r} is not in KNOWN_TAGS")
+    return specs

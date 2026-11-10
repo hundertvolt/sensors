@@ -1,4 +1,4 @@
-"""Bench-tier tests for real WiFi outage and flap (owner, 2026-09-01), NTP/DNS servers answering garbage
+"""Bench-tier tests for real WiFi outage and flap, NTP/DNS servers answering garbage
 (SPECIFICATION.md F.1, UDP on rp2/lwIP), the admission ceiling on silicon, malformed requests and slowloris. DHCP is
 not fault-injected: a documented known limitation (owner, 2026-09-26; tests_hardware/README.md)."""
 
@@ -334,7 +334,7 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 
 
 # ---------------------------------------------------------------------------
-# A config-level NTP fault rather than a network-level one (owner, 2026-09-02): PUT a garbage NTPHost on a live link,
+# A config-level NTP fault rather than a network-level one: PUT a garbage NTPHost on a live link,
 # watch the DNS failure degrade cleanly, restore, confirm recovery. The PUT's post function, ntp_force_sync(), clears
 # Synced before the attempt, so the failure takes the unsynced backoff and arms no retry timer.
 # ---------------------------------------------------------------------------

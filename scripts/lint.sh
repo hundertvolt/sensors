@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Every non-type lint pass: ruff over the eight scopes plus the generated device modules, shellcheck over scripts/,
+# Every non-type lint pass: ruff over the nine scopes plus the generated device modules, shellcheck over scripts/,
 # actionlint + zizmor over the workflows, the method-assign guard and the gc-site checker - all stay fully clean.
 # `ruff format` is unused (agent, 2026-07-13).
 set -euo pipefail
@@ -46,7 +46,7 @@ uv run --no-sync scripts/_generate_sensortask_modules.py || status=1
 _check_end generation
 
 _check_begin
-ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts build/generated_src || status=1
+ruff check src tests digital_twin fakes tests_hardware buildgen scripts toolchain tests_scripts build/generated_src || status=1
 _check_end ruff
 
 # scripts/ only: the legacy tree (legacy/, its legacy/firmware/build-*.sh included) is never in a lint scope

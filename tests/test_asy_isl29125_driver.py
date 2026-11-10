@@ -165,19 +165,6 @@ async def _push(callback: "PushFct", value: "CfgValue") -> bool:
     return await callback(value)
 
 
-def _record_reads(i2c: I2C) -> "list[object]":
-    # Every buffer object the fake bus's readfrom_into() is handed, in call order; the reads themselves unchanged.
-    received: list[object] = []
-    real_read = fake(i2c).readfrom_into
-
-    def recording(address: int, buf: object, stop: bool = True) -> None:
-        received.append(buf)
-        real_read(address, buf, stop)
-
-    fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
-    return received
-
-
 def _threshold_bursts(i2c: I2C) -> "list[bytes]":
     return [payload for register, payload in register_writes(i2c) if register == _REG_THRESHOLDS]
 
@@ -280,15 +267,13 @@ def ready_protocol() -> "tuple[I2C, ISL29125_I2C]":
 
 
 def ready_reader(name: str, **kwargs: "object") -> "tuple[I2C, ISL29125_Reader]":
-    import time as _time
-
     i2c, reader = _make_reader(name, **kwargs)  # type: ignore[arg-type]  # **object forwarding, checked at each call site
     with FastAsyncSleep():
         assert run(init_reader(reader, i2c)) is True
     # init's CONFIG1 burst legitimately leaves a settle pending, and these tests run in zero wall
     # clock - so the first conversion is marked complete here rather than every test sleeping 303ms.
     # The settle behaviour has its own tests (test_no_sample_is_reported_during_the_settle_window).
-    reader._isl._settle_until_ms = _time.ticks_ms()
+    reader._isl._settle_until_ms = time.ticks_ms()
     # 0x00 is read-only as the device ID and write-only as the reset command on real hardware, a
     # split tests/machine.py's flat register dict cannot model - so setup()'s reset write leaves
     # 0x46 where the ID should be. Restored so a later device-ID re-read sees a real chip.
@@ -3022,30 +3007,6 @@ def test_a_failed_status_read_drops_the_whole_sample_without_storing_or_raising(
     assert code("E", "ISL_STATUS_READ") in errors(counters)
     assert run(reader.get_data()).Lux is None, "a sample was stored from a cycle whose status read never succeeded"
     assert _threshold_bursts(i2c) == [], "the range was evaluated on data that was never read"
-
-
-def test_a_stack_overflow_caught_by_either_read_handler_is_reported_for_the_supervisor() -> None:
-    # The status read's own handler and the cycle's outer one drop the sample and log as for any failed read, so the
-    # loop runs on; a C-stack overflow caught by either is also recorded for the supervisor's reboot, a routine error not.
-    _i2c, reader = ready_reader("stack_overflow_read")
-    real = {"read_status": reader._isl.read_status, "read_counts": reader._isl.read_counts}
-
-    def cycle_raising(method: str, error: BaseException, logged_as: str) -> bool:
-        async def raising() -> object:
-            raise error
-
-        setattr(reader._isl, method, raising)
-        with FastAsyncSleep():
-            assert run(reader._read_isl())[:5] == (None, None, None, None, None)
-        setattr(reader._isl, method, real[method])
-        assert errors(run(reader.get_error_counter()))[-1] == code("E", logged_as)
-        reported = fatal_reported()
-        asy_print_log._fatal = False  # the next case starts from a clear flag, as microtest's after-each hook leaves it
-        return reported
-
-    assert cycle_raising("read_status", RuntimeError("CRC check failed while reading data"), "ISL_STATUS_READ") is False
-    assert cycle_raising("read_status", stack_overflow(), "ISL_STATUS_READ") is True
-    assert cycle_raising("read_counts", stack_overflow(), "READ") is True
 
 
 def test_the_filter_coefficient_rejects_values_outside_its_band_with_bad_arg() -> None:

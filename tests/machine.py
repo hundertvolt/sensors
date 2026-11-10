@@ -17,7 +17,32 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from typing import Any, ClassVar
+    from typing import ClassVar, Generic, Literal, TypeVar, overload
+
+    from _mpy_shed.time_mp import _TicksMs
+    from rp2 import DMA
+
+    _T = TypeVar("_T")
+    # Each bus fake's call record, (operation, its arguments...), as its methods append it.
+    I2CEntry = (
+        tuple[Literal["deinit", "scan"]]
+        | tuple[Literal["init"], int, int]
+        | tuple[Literal["readfrom_into", "writeto"], int, bytes, bool]
+        | tuple[Literal["readfrom_mem"], int, int, int, int]
+        | tuple[Literal["writeto_mem"], int, int, bytes, int]
+    )
+    SPIEntry = (
+        tuple[Literal["deinit"]]
+        | tuple[Literal["init"], int, int, int, int, int]
+        | tuple[Literal["readinto"], int, int]
+        | tuple[Literal["write", "write_readinto"], bytes]
+    )
+    UARTEntry = tuple[Literal["deinit"]] | tuple[Literal["read", "readinto", "readline"], int] | tuple[Literal["write"], bytes]
+    Mem32Entry = tuple[Literal["read", "write"], int, int]
+else:
+    from _twin_common import Generic
+
+    _T = None
 
 
 _NUM_BANK0_GPIOS = 30  # pico-sdk rp2040 platform_defs.h:40: GPIO0-29, the ids machine_pin_find() accepts
@@ -73,8 +98,8 @@ class Pin:
     # Per GPIO id, shared by every Pin object on it: its configuration, the level the outside world puts on the line
     # (test-only, default 1: the bus pull-ups) and every level the code drove onto it.
     _states: "ClassVar[dict[int, _PinState]]" = {}
-    _external: "ClassVar[dict[int, int | Callable[[int, _CallLog], int]]]" = {}
-    _value_logs: "ClassVar[dict[int, _CallLog]]" = {}
+    _external: "ClassVar[dict[int, int | Callable[[int, _CallLog[int]], int]]]" = {}
+    _value_logs: "ClassVar[dict[int, _CallLog[int]]]" = {}
 
     def __init__(self, id: "int | str | Pin", mode: "int | None" = _OMITTED, pull: "int | None" = _OMITTED, *, value: object = _OMITTED, alt: int = _OMITTED) -> None:
         self.id = Pin._find(id)
@@ -116,7 +141,7 @@ class Pin:
         return 1 if level else 0
 
     @classmethod
-    def set_external_level(cls, id: int, level: "int | Callable[[int, _CallLog], int]") -> None:
+    def set_external_level(cls, id: int, level: "int | Callable[[int, _CallLog[int]], int]") -> None:
         # Test-only: what the outside world drives onto line `id`; a callable is asked on every read
         # with (id, the line's value log), so a test can script a slave releasing SDA after k clocks.
         cls._external[id] = level
@@ -225,7 +250,7 @@ class Pin:
         return state.level
 
     @classmethod
-    def value_log(cls, id: int) -> "_CallLog":
+    def value_log(cls, id: int) -> "_CallLog[int]":
         # Test-only: the last levels value()/on()/off()/toggle() drove onto line `id`, oldest first.
         log = cls._value_logs.get(id)
         if log is None:
@@ -249,14 +274,14 @@ _WIRE_CHUNK = 512  # bytes per storage chunk of a wire log
 _RX_INFLIGHT_MAX = 4096  # bytes waiting on the wire to a UART with its interrupt off; more is an overrun
 
 
-class _CallLog:
+class _CallLog(Generic[_T]):
     # A record that grows to `maxlen` entries, then overwrites its oldest in place: fixed occupancy once
     # full, so a long run neither exhausts the heap nor frees half of it at once (a swing a heap test reads
     # as retention). Reads - len(), iteration, [i], slices, == - see the entries oldest first.
     def __init__(self, maxlen: int = _LOG_MAXLEN) -> None:
         self.maxlen = maxlen
         self.dropped = 0  # assertable: a test reading the whole log can tell it is not the whole log
-        self._chunks: list[list[Any]] = []
+        self._chunks: list[list[_T]] = []
         self._n = 0
         self._head = 0  # once full: the slot holding the oldest entry
 
@@ -266,7 +291,14 @@ class _CallLog:
     def __eq__(self, other: object) -> bool:
         return self._ordered() == other
 
-    def __getitem__(self, index: "int | slice") -> "Any":
+    if TYPE_CHECKING:
+
+        @overload
+        def __getitem__(self, index: int) -> _T: ...
+        @overload
+        def __getitem__(self, index: "slice[int | None, int | None, int | None]") -> "list[_T]": ...
+
+    def __getitem__(self, index: "int | slice[int | None, int | None, int | None]") -> "_T | list[_T]":
         if isinstance(index, slice):
             return self._ordered()[index]
         position = index + self._n if index < 0 else index
@@ -275,17 +307,17 @@ class _CallLog:
         slot = (self._head + position) % self._n
         return self._chunks[slot // _LOG_CHUNK][slot % _LOG_CHUNK]
 
-    def __iter__(self) -> "Iterator[Any]":
+    def __iter__(self) -> "Iterator[_T]":
         return iter(self._ordered())
 
     def __len__(self) -> int:
         return self._n
 
-    def _ordered(self) -> "list[Any]":
+    def _ordered(self) -> "list[_T]":
         flat = [entry for chunk in self._chunks for entry in chunk]
         return flat[self._head :] + flat[: self._head]
 
-    def append(self, entry: object) -> None:
+    def append(self, entry: _T) -> None:
         # Stored in fixed-size chunks, so a long log never reallocates one large contiguous block (a full
         # one-list log doubled to 32 kB mid-run, which a fragmented coverage-build heap could not supply).
         if self._n < self.maxlen:
@@ -303,7 +335,7 @@ class _CallLog:
         self._n = 0
         self._head = 0
 
-    def count(self, entry: object) -> int:
+    def count(self, entry: _T) -> int:
         return sum(chunk.count(entry) for chunk in self._chunks)
 
 
@@ -404,7 +436,7 @@ class I2C:
             self._fresh = False
             self.deinit_called = False
             self.deinit_count = 0
-            self.log = _CallLog()
+            self.log: _CallLog[I2CEntry] = _CallLog()
             self.registers: dict[tuple[int, int], bytearray] = {}  # register runs: a run's bytes are consecutive registers
             self.read_queue: list[bytes] = []  # its raw-transaction counterpart: readfrom_into() has no register to key off
             self.read_queue_by_address: dict[int, list[bytes]] = {}  # per-address queue, checked before the shared one
@@ -633,7 +665,7 @@ class SPI:
         self.firstbit = firstbit
         self.deinit_called = False
         self.deinit_count = 0
-        self.log = _CallLog()
+        self.log: _CallLog[SPIEntry] = _CallLog()
         self.read_queue: list[bytes] = []
         self.rx_overrun = False  # convenience: EIO on every DMA-path read, like I2C's `busy`
         self.rx_overrun_remaining = 0  # counted counterpart: N transient overruns, then the bus recovers
@@ -721,8 +753,8 @@ class SPI:
         self.log.append(("write_readinto", out))
 
 
-# Claimed rp2.DMA channels by number: tests/rp2.py registers here, so a UART can find the channel draining it.
-_DMA_CHANNELS: "dict[int, Any]" = {}
+# Claimed rp2.DMA channels by number: fakes/rp2.py registers here, so a UART can find the channel draining it.
+_DMA_CHANNELS: "dict[int, DMA]" = {}
 _UART_BASES = (0x40034000, 0x40038000)  # UART0/UART1 register blocks; UARTDR at offset 0 (RP2040 datasheet 4.2.8)
 _UARTRSR = 0x004  # read as UARTRSR, written as UARTECR (any write clears the four error bits)
 _UARTIMSC = 0x038
@@ -751,7 +783,7 @@ class UART(io.IOBase):
     TEST_API = (
         "id", "tx", "rx", "baudrate", "bits", "parity", "stop", "rxbuf", "txbuf", "timeout", "timeout_char", "invert",
         "deinit_called", "deinit_count", "log", "rx_queue", "writable", "write_limit", "tx_pending_rounds", "rx_api_calls",
-        "rx_rate", "rx_stall_ms", "rx_fifo_dropped", "rsr", "imsc", "dmacr", "would_have_blocked_bytes",
+        "rx_rate", "rx_fifo_dropped", "rsr", "imsc", "dmacr", "would_have_blocked_bytes",
         "real_poll_queries", "feed_rx", "plant_rx_error", "poll_mask", "ioctl",
     )  # fmt: skip
     _MP_STREAM_POLL = 3  # py/stream.h:39
@@ -808,7 +840,7 @@ class UART(io.IOBase):
         self.invert = invert
         self.deinit_called = False
         self.deinit_count = 0
-        self.log = _CallLog()
+        self.log: _CallLog[UARTEntry] = _CallLog()
         self.rx_queue = bytearray()
         self.writable = True
         self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()
@@ -816,7 +848,6 @@ class UART(io.IOBase):
         self.tx_pending_rounds = 0  # test-only: txdone() answers False this many calls first
         self.rx_api_calls = 0  # every any()/read()/readinto()/readline() and POLLIN poll: a DMA reader makes none
         self.rx_rate = 0.0  # test-only: arrival bytes/ms with the interrupt off; 0 is the line rate, inf unpaced
-        self.rx_stall_ms = 0  # test-only: the next register read first lets this many ms of arrivals land
         self.rx_fifo_dropped = 0  # bytes lost to a full FIFO, each also setting OE
         self.rsr = 0
         self._inbound = bytearray()  # on the wire, not yet arrived
@@ -857,7 +888,7 @@ class UART(io.IOBase):
             raise ValueError(f"{name} too large")
         return max(size, cls._MIN_BUFFER_SIZE)
 
-    def _channel(self) -> "Any":
+    def _channel(self) -> "DMA | None":
         if not self.dmacr & _DMACR_RXDMAE:
             return None
         for channel in _DMA_CHANNELS.values():
@@ -928,12 +959,11 @@ class UART(io.IOBase):
         if rate == _RX_UNPACED:
             n = len(self._inbound)
         else:
-            elapsed = now - self._rx_clock + self.rx_stall_ms
+            elapsed = now - self._rx_clock
             self._rx_credit += max(elapsed, 0) * rate
             n = min(int(self._rx_credit), len(self._inbound))
             self._rx_credit -= n
         self._rx_clock = now
-        self.rx_stall_ms = 0
         arrived = self._inbound[:n]
         self._inbound = self._inbound[n:]  # MicroPython bytearray has no slice-delete, unlike CPython
         if not self._inbound:
@@ -1272,7 +1302,7 @@ class Timer:
         self.mode = self.PERIODIC
         self.callback: Callable[[Timer], None] | None = None
         self.deinit_called = False
-        self.arms = _CallLog()  # (clock_ms, period, mode) per init(), the newest _LOG_MAXLEN
+        self.arms: _CallLog[tuple[int, int, int]] = _CallLog()  # (clock_ms, period, mode) per init(), the newest _LOG_MAXLEN
         if mode is not None or callback is not None or period is not None or tick_hz is not None or freq is not None or hard is not None:
             self.init(  # may raise OSError - propagates before this instance is registered
                 mode=self.PERIODIC if mode is None else mode,
@@ -1385,7 +1415,7 @@ class WDT:
         self.id = id
         self.timeout = timeout
         self.feed_count = 0
-        self.feed_times = _CallLog()  # time.ticks_ms() at each feed, the newest _LOG_MAXLEN: gaps between feeds read back
+        self.feed_times: _CallLog[_TicksMs] = _CallLog()  # time.ticks_ms() at each feed, the newest _LOG_MAXLEN: gaps between feeds read back
 
     def feed(self) -> None:
         self.feed_count += 1
@@ -1399,7 +1429,7 @@ class _Mem32:
     TEST_API = ("log",)
 
     def __init__(self) -> None:
-        self.log = _CallLog(_MEM32_LOG_MAXLEN)
+        self.log: _CallLog[Mem32Entry] = _CallLog(_MEM32_LOG_MAXLEN)
 
     def __getitem__(self, address: int) -> int:
         if address == _WATCHDOG_REASON:
@@ -1488,9 +1518,17 @@ def bootloader() -> None:
     raise SimulatedBootloaderEntryError("machine.bootloader() never returns")
 
 
-def mem_backup(region: int = 0) -> "Any":
+if TYPE_CHECKING:
+    # -1 is also an int: mypy's documented form for a Literal overload ahead of its wider sibling.
+    @overload
+    def mem_backup(region: "Literal[-1]") -> "tuple[memoryview, memoryview]": ...  # type: ignore[overload-overlap]
+    @overload
+    def mem_backup(region: int = 0) -> memoryview: ...
+
+
+def mem_backup(region: int = 0) -> "memoryview | tuple[memoryview, memoryview]":
     # extmod/machine_mem.c:135-148: one region's view, or (for -1) a tuple of every region's; any other index
-    # outside the table raises. Typed Any because the real answer's type depends on the argument.
+    # outside the table raises.
     if region == -1:
         return _REGION_VIEWS
     if region < 0 or region >= len(_REGION_VIEWS):

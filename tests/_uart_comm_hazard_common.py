@@ -2,7 +2,7 @@
 in both, imported by test_uart_comm_hazard.py and test_uart_comm_cancel_sweep.py (SPECIFICATION.md Part J.7)."""
 
 from _async_harness import run
-from _uart_comm_harness import RUN_LIMIT_S, Pair, PollRoundClock, accept_set, echo_get
+from _uart_comm_harness import Pair, PollRoundClock, accept_set, echo_get
 
 from crc_checks import CRC16
 
@@ -27,14 +27,24 @@ if TYPE_CHECKING:
 _TIMEOUT_MS = 30
 _PAYLOAD = 8
 
-_EXCHANGE_LIMIT_S = 20
-_STEP_BOUND_S = 5
 
-
-# Every check runs both with and without a CRC (agent, 2026-09-12; owner-reviewed, 2026-11-06) - the dev wiring selects
+# Every check runs both with and without a CRC (agent, 2026-09-12) - the dev wiring selects
 # CRCPass, but a CRC changes which corruptions are detectable at all
 # (SPECIFICATION.md Part E.8). `crc()` builds a fresh instance per pair: CRCBase carries state.
 CRC_MODES = (("nocrc", None), ("crc16", CRC16))
+
+
+def _bind(check: "Callable[[CrcMaker], object]", crc: "CrcMaker", *, own_clock: bool) -> "Callable[[], None]":
+    # Every other check runs on the poll-round clock too: on the wall clock one host stall past a reply budget
+    # fails a live exchange, so the verdict would depend on host load (SPECIFICATION.md Part J.7).
+    def run_one() -> None:
+        if own_clock:
+            check(crc)
+            return
+        with PollRoundClock():
+            check(crc)
+
+    return run_one
 
 
 def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None, answer: bytes = b"v", *, debug: int | None = None) -> Pair:
@@ -43,7 +53,7 @@ def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None, answer: b
         payload_size=_PAYLOAD, timeout=_TIMEOUT_MS if timeout_ms is None else timeout_ms,
         get_callback=echo_get(answer), set_callback=accept_set(), crc_a=maker(), crc_b=maker(), debug=debug,
     )
-    assert run(pair.setup(), RUN_LIMIT_S) is True
+    assert run(pair.setup()) is True
     return pair
 
 
@@ -58,16 +68,3 @@ def register_both_crc_modes(namespace: "dict[str, object]", mode_specific: "dict
             if mode_specific.get(stem, label) != label:
                 continue
             namespace[f"test_{stem}_{label}"] = _bind(check, crc, own_clock=stem in own_clock)
-
-
-def _bind(check: "Callable[[CrcMaker], object]", crc: "CrcMaker", *, own_clock: bool) -> "Callable[[], None]":
-    # Every other check runs on the poll-round clock too: on the wall clock one host stall past a reply budget
-    # fails a live exchange, so the verdict would depend on host load (SPECIFICATION.md Part J.7).
-    def run_one() -> None:
-        if own_clock:
-            check(crc)
-            return
-        with PollRoundClock():
-            check(crc)
-
-    return run_one

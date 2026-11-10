@@ -1,5 +1,5 @@
 """Times one FRAM command and one log entry's whole chunk write, as its commands, on the real chip: the host checks the
-command against one UART poll floor (SPECIFICATION.md J.6) and the entry against its budget. Writes only inside its
+command against one UART poll floor (SPECIFICATION.md J.6) and records the entry (F.3). Writes only inside its
 declared scratch region, above every chunk; never calls get_chunk()."""
 
 import asyncio
@@ -26,8 +26,6 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 _SCRATCH_REGIONS = ((BENCH["fram_max_size"] - 0x100, 0x100),)  # the part's top 256 B, above every chunk
 _SCRATCH_ADDR = _SCRATCH_REGIONS[0][0]
 _UART_FLOOR_US = 80 * 10 * 1_000_000 // 115_200  # 80 B of 8N1 at 115200 baud (J.6): 6,944 us
-# @tunable l3.fram_entry_budget_us = 5000
-_ENTRY_BUDGET_US = 5000  # a log entry's chunk write on the chip (SPECIFICATION.md F.3's stall.fram_entry row)
 _ENTRY_PAYLOAD = 13  # a ten-slot history's block: its "<H" count, ten slots and CRC8; the status pair follows it
 
 
@@ -65,7 +63,6 @@ async def _main() -> None:
     fact("read_us", time.ticks_diff(t2, t1))
     fact("entry_us", entry_us)
     fact("uart_floor_us", _UART_FLOOR_US)
-    fact("entry_budget_us", _ENTRY_BUDGET_US)
     done()
 
 

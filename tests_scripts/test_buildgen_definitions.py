@@ -17,7 +17,7 @@ import pytest
 import tomllib
 from _devices import DEVICE_NAMES, device_toml, devices_with
 
-from buildgen.definitions import SCHEMA_VERSION, _build_field_def, _DriverTags, definitions_for_toml, generate_definitions, main, uart_initiator_name
+from buildgen.definitions import SCHEMA_VERSION, _build_field_def, _DriverTags, _measurements_and_sensors_sections, _notification_section, _resolved_key, definitions_for_toml, generate_definitions, uart_initiator_name
 from buildgen.driver_registry import DriverInfo
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import generate_device
@@ -321,15 +321,6 @@ def test_the_last_task_end_row_says_what_it_reports(repo_root: Path, src_dir: Pa
 
 # The label the page shows for each service word.
 _SYSTEM_CMD_LABELS = {"reboot": "Reboot", "bootloader": "Reboot into bootloader", "mempause": "Pause backups for 5 minutes", "resetconfig": "Reset to defaults", "erasefram": "Erase FRAM"}
-
-
-def _one_line_error(capsys: pytest.CaptureFixture[str]) -> str:
-    # A user error prints one line - what, where, the fix - and no traceback (SPECIFICATION.md L.5).
-    err = capsys.readouterr().err
-    assert "Traceback" not in err, err
-    assert err.count("\n") == 1 and err.startswith("buildgen: "), err
-    assert " - fix: " in err, err
-    return err
 
 
 def _opt_str(value: "JsonValue") -> "str | None":
@@ -1233,8 +1224,6 @@ def test_mandatory_group_declared_but_no_fields_reference_it_fails_loud(tmp_path
 def test_resolved_key_fails_loud_if_resolved_name_still_unset() -> None:
     # _resolved_key()'s own invariant guard - buildgen.validate._resolve_instances()
     # always sets resolved_name before definitions generation ever runs on a real model.
-    from buildgen.definitions import _resolved_key
-
     spec = InstanceSpec(driver="scd30", name_ext="", fields={}, wiring={}, order_index=0)  # resolved_name defaults to None
     with pytest.raises(BuildInternalError, match="resolved_name unresolved before definitions generation"):
         _resolved_key(spec, "fixture")
@@ -1243,8 +1232,6 @@ def test_resolved_key_fails_loud_if_resolved_name_still_unset() -> None:
 def test_measurements_and_sensors_sections_fails_loud_if_driver_info_still_unset() -> None:
     # _measurements_and_sensors_sections()'s own invariant guard - same
     # always-resolved-by-validate.py reasoning as _resolved_key() above.
-    from buildgen.definitions import _measurements_and_sensors_sections
-
     spec = InstanceSpec(driver="scd30", name_ext="", fields={}, wiring={}, order_index=0, resolved_name="SCD30")  # driver_info defaults to None
     model = DeviceModel(device="fixture", path=Path("fixture.toml"), doc={"device": {"name": "fixture"}}, instances={("scd30", ""): spec}, construction_order=[("scd30", "")])
     with pytest.raises(BuildInternalError, match="driver_info unresolved before definitions generation"):
@@ -1253,8 +1240,6 @@ def test_measurements_and_sensors_sections_fails_loud_if_driver_info_still_unset
 
 def test_notification_section_fails_loud_if_driver_info_still_unset() -> None:
     # _notification_section()'s own invariant guard, same reasoning as above.
-    from buildgen.definitions import _notification_section
-
     spec = InstanceSpec(driver="notification", name_ext="", fields={}, wiring={}, order_index=0)  # driver_info defaults to None
     model = DeviceModel(device="fixture", path=Path("fixture.toml"), doc={"device": {"name": "fixture"}}, instances={("notification", ""): spec}, construction_order=[("notification", "")])
     with pytest.raises(BuildInternalError, match="driver_info unresolved before definitions generation"):
@@ -1268,22 +1253,14 @@ def test_no_notification_instance_omits_notification_section(src_dir: Path) -> N
     assert {_str(s["key"]) for s in _sections(generated)} == {"measurements", "sensors", "networking", "system", "status"}
 
 
-# ---------------------------------------------------------------------------
-# CLI (scripts/build_website.sh's own build-time invocation, and manual use) -
-# mirrors test_buildgen_generate.py's own CLI coverage.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("toml", [*DEVICE_NAMES, "multi_instance"])
-def test_cli_output_equals_the_graph_ordered_build(repo_root: Path, src_dir: Path, fixtures_dir: Path, tmp_path: Path, toml: str) -> None:
-    # The CLI and the build agree on group order: both order sensor cards by the construction graph,
+def test_definitions_for_toml_equals_the_graph_ordered_build(src_dir: Path, fixtures_dir: Path, toml: str) -> None:
+    # The TOML entry and the build agree on group order: both order sensor cards by the construction graph,
     # which the multi-instance fixture is the one input to make visible.
     toml_path = device_toml(toml) if toml in DEVICE_NAMES else fixtures_dir / f"{toml}.toml"
-    out_file = tmp_path / "definitions.json"
-    assert main([str(toml_path), "--out", str(out_file)]) == 0
     model = build_model(toml_path, src_dir)
     build_construction_order(model)
-    assert json.loads(out_file.read_text(encoding="utf-8")) == json.loads(json.dumps(generate_definitions(model, src_dir)))
+    assert definitions_for_toml(toml_path, src_dir) == generate_definitions(model, src_dir)
 
 
 def test_definitions_refuse_a_model_that_skipped_the_construction_order(src_dir: Path) -> None:
@@ -1294,51 +1271,8 @@ def test_definitions_refuse_a_model_that_skipped_the_construction_order(src_dir:
         generate_definitions(model, src_dir)
 
 
-def test_cli_prints_to_stdout_when_out_is_omitted(capsys: pytest.CaptureFixture[str]) -> None:
-    exit_code = main([str(device_toml(DEVICE_NAMES[0]))])
-    assert exit_code == 0
-    printed = json.loads(capsys.readouterr().out)
-    assert printed["device"]["id"] == DEVICE_NAMES[0]
-
-
 @pytest.fixture
 def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
 
 
-def test_cli_reports_a_build_error_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main([str(tmp_path / "no-such-device.toml")]) == 1
-    assert _one_line_error(capsys).startswith("buildgen: [no-such-device] ")
-
-
-def test_cli_reports_a_definitions_error_in_one_line(tmp_path: Path, src_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    patched_src = tmp_path / "src"
-    shutil.copytree(src_dir, patched_src)
-    system = patched_src / "asy_system_service.py"
-    text = system.read_text(encoding="utf-8")
-    line = next(line for line in text.splitlines(keepends=True) if line.startswith("# @web-group section=system submitGroup=settings "))
-    system.write_text(text.replace(line, "", 1), encoding="utf-8")
-    assert main([str(device_toml(DEVICE_NAMES[0])), "--src-dir", str(patched_src)]) == 1
-    assert "no @web-group tag declares section='system'" in _one_line_error(capsys)
-
-
-def test_cli_reports_an_unwritable_output_in_one_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    out = tmp_path / "no-such-dir" / "definitions.json"
-    assert main([str(device_toml(DEVICE_NAMES[0])), "--out", str(out)]) == 1
-    assert f"cannot write {out}" in _one_line_error(capsys)
-    assert not out.parent.exists()
-
-
-def test_cli_never_leaves_a_partial_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    # The file is written beside the target and renamed over it: a failed rename keeps the old file and no temporary.
-    out = tmp_path / "definitions.json"
-    out.write_text("old", encoding="utf-8")
-
-    def refuse(_src: object, _dst: object) -> None:
-        raise PermissionError(13, "injected for the rename")
-
-    monkeypatch.setattr("os.replace", refuse)
-    assert main([str(device_toml(DEVICE_NAMES[0])), "--out", str(out)]) == 1
-    assert "injected for the rename" in _one_line_error(capsys)
-    assert out.read_text(encoding="utf-8") == "old"
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["definitions.json"]

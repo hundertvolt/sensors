@@ -91,7 +91,7 @@ def _make_bmp_reader(cfg_path: str, max_module_error: int = 1) -> BMP3XX_Reader:
 
 
 def _make_conn() -> WifiService:
-    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=_tmp_cfg_dir())
+    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=_scratch.dir())
     run(conn.setup())
     return conn
 
@@ -101,7 +101,7 @@ def _make_ntp(
 ) -> NTPClient:
     # The generated build_system() wiring (buildgen/codegen.py): the three providers passed positionally, the real
     # bound methods, not a lambda standing in for them.
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         f.write(f'{{"NTPHost": "{ntp_host}", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0, "DNSFallback": ""}}')
     ntp = NTPClient(
@@ -160,10 +160,6 @@ async def _one_supervisor_pass(svc: SystemService, starts: "list[asyncio.Task[No
         await asyncio.sleep(_START_POLL_S)
     await cancel(svc_task)
     return len(starts)
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
 
 
 def _wlan(conn: WifiService) -> "_FakeWLAN":
@@ -502,7 +498,7 @@ _BMP_ADDR = 0x77
 
 
 def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_up() -> None:
-    reader = _make_bmp_reader(_tmp_cfg_dir(), max_module_error=1)  # gives up on the 2nd consecutive real failure
+    reader = _make_bmp_reader(_scratch.dir(), max_module_error=1)  # gives up on the 2nd consecutive real failure
     fake_i2c: FakeI2C = reader._bmp._i2c_bmp3xx.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_BMP_ADDR)  # every real bus op fails - setup() itself never succeeds
     svc = SystemService(_never_synced)
@@ -544,7 +540,7 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
     #
     # test_asy_scd30_driver.py uses the identical NAK-the-address setup at the module level, just without a
     # real supervisor watching it.
-    reader = _make_scd30_reader(_tmp_cfg_dir(), max_module_error=1)
+    reader = _make_scd30_reader(_scratch.dir(), max_module_error=1)
     fake_i2c: FakeI2C = reader._scd._i2c_scd30.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_SCD30_ADDR)  # every real bus op fails - init itself never succeeds
     svc = SystemService(_never_synced)
@@ -573,7 +569,7 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
 
 
 def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up() -> None:
-    reader = _make_sgp40_reader(_tmp_cfg_dir(), max_module_error=1)
+    reader = _make_sgp40_reader(_scratch.dir(), max_module_error=1)
     fake_i2c: FakeI2C = reader._sgp._i2c_sgp40.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_SGP40_ADDR)  # every real bus op fails - init itself never succeeds
     svc = SystemService(_never_synced)

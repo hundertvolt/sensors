@@ -1,6 +1,6 @@
 """Whole-tree contract for asyncio's unretrieved-task-exception handler (SPECIFICATION.md Part F.1): only the firmware's
-start_tasks() installs one, and only where none is set; both handler bodies are allocation-free and never
-raise by construction; every PC entry point installs the always-printing PC report before the firmware starts."""
+start_tasks() installs one, and only where none is set; its body, which the PC tiers install at level 1, is
+allocation-free and never raises by construction; every PC entry point installs it before the firmware starts."""
 
 import ast
 from pathlib import Path
@@ -23,9 +23,7 @@ _INSTALLER = "start_tasks"
 _HANDLER_FILE = "src/asy_print_log.py"  # print() lives only in the logger module (test_code_conventions.py)
 _HANDLER_CLASS = "PrintLog"
 _FIRMWARE_HANDLER = "report_unretrieved"
-_PC_FILE = "digital_twin/unix_port_unretrieved_report.py"
 _PC_MODULE = "unix_port_unretrieved_report"
-_PC_HANDLER = "report_unretrieved"
 _PC_INSTALL = "install"
 _MICROTEST_FILE = "tests/microtest.py"
 _MICROTEST_RUN = "run"
@@ -279,11 +277,10 @@ def test_only_start_tasks_installs_a_handler_and_only_where_none_is_set(firmware
     assert not findings, "\n".join(findings)
 
 
-@pytest.mark.parametrize(("path", "owner_class", "name"), [(_HANDLER_FILE, _HANDLER_CLASS, _FIRMWARE_HANDLER), (_PC_FILE, None, _PC_HANDLER)])
-def test_each_handler_body_is_allocation_free_and_never_raises(path: str, owner_class: str | None, name: str) -> None:
-    func = _function(ast.parse((REPO_ROOT / path).read_text(encoding="utf-8")), name, owner_class)
-    assert func is not None, f"{path} defines no {name}()"
-    findings = handler_body_findings(path, func)
+def test_the_handler_body_is_allocation_free_and_never_raises() -> None:
+    func = _function(ast.parse((REPO_ROOT / _HANDLER_FILE).read_text(encoding="utf-8")), _FIRMWARE_HANDLER, _HANDLER_CLASS)
+    assert func is not None, f"{_HANDLER_FILE} defines no {_FIRMWARE_HANDLER}()"
+    findings = handler_body_findings(_HANDLER_FILE, func)
     assert not findings, "\n".join(findings)
 
 
@@ -451,6 +448,7 @@ def test_per_test_scratch_under_tests_tmp_is_not_scanned(tmp_path: Path) -> None
 
 _DEVICE_SCRIPTS = "tests_hardware/device_scripts"
 _FIRMWARE_MODULE_PREFIX = "sensortask_"
+_SHARED = REPO_ROOT / _DEVICE_SCRIPTS / "_shared"  # what a script's `# @include _shared/<name>.py` inlines at render
 
 
 def _device_aliases(tree: ast.Module) -> frozenset[str]:
@@ -486,6 +484,18 @@ def _installed_handler(stmt: ast.stmt) -> str | None:
     return arg.id if isinstance(arg, ast.Name) else None
 
 
+def _shared_installer(stmt: ast.stmt, shared: Path) -> "tuple[ast.Module, ast.stmt] | None":
+    # A first statement calling a function a _shared include defines: that function's first statement, in its own tree.
+    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and isinstance(stmt.value.func, ast.Name)):
+        return None
+    for path in sorted(shared.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == stmt.value.func.id and node.body:
+                return tree, node.body[0]
+    return None
+
+
 def _fixed_error_level_log(tree: ast.Module, name: str) -> bool:
     # `<name> = PrintLog(level=<int >= 1>, ...)` at module level: asy_print_log.py's report_unretrieved() prints at
     # level >= _LOG_ERR (1), so a log fixed at that level reports at every DebugLevel the board's config holds.
@@ -496,7 +506,7 @@ def _fixed_error_level_log(tree: ast.Module, name: str) -> bool:
     return False
 
 
-def device_script_findings(label: str, tree: ast.Module) -> list[str]:
+def device_script_findings(label: str, tree: ast.Module, shared: Path = _SHARED) -> list[str]:
     findings: list[str] = []
     functions = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     aliases = _device_aliases(tree)
@@ -505,12 +515,15 @@ def device_script_findings(label: str, tree: ast.Module) -> list[str]:
         if not calls:
             continue
         body = [s for s in func.body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
-        handler = _installed_handler(body[0]) if body else None
+        first, log_tree = (body[0], tree) if body else (None, tree)
+        if first is not None and _installed_handler(first) is None and (included := _shared_installer(first, shared)):
+            log_tree, first = included
+        handler = _installed_handler(first) if first is not None else None
         if handler is None:
             findings.append(f"{label}:{func.lineno} {func.name}() runs the firmware's main() without first installing an always-printing report")
             continue
         if handler.endswith(".report_unretrieved"):
-            if not _fixed_error_level_log(tree, handler.split(".", 1)[0]):
+            if not _fixed_error_level_log(log_tree, handler.split(".", 1)[0]):
                 findings.append(f"{label}:{func.lineno} installs {handler}, whose log is no module-level PrintLog at a fixed level >= 1")
             continue
         report = functions.get(handler)
@@ -564,6 +577,18 @@ def test_the_products_report_on_a_fixed_error_level_log_counts_and_a_silent_one_
     assert device_script_findings("product.py", tree) == []
     silent = device_script_findings("silent.py", ast.parse(_PRODUCT_REPORT_SCRIPT.replace("level=1", "level=0")))
     assert len(silent) == 1 and "no module-level PrintLog at a fixed level >= 1" in silent[0], silent
+
+
+def test_the_products_report_through_a_shared_include_counts(tmp_path: Path) -> None:
+    (tmp_path / "unretrieved.py").write_text(
+        "import asyncio\nfrom asy_print_log import PrintLog\n\n_REPORT = PrintLog(level=1, name='U:')\n\n\n"
+        "def report_unretrieved():\n    asyncio.get_event_loop().set_exception_handler(_REPORT.report_unretrieved)\n", encoding="utf-8",
+    )
+    script = "import _bench_device as device\n\n\nasync def _run():\n    {}()\n    await device.main()\n"
+    assert device_script_findings("shared.py", ast.parse(script.format("report_unretrieved")), tmp_path) == []
+    assert "without first installing" in device_script_findings("other.py", ast.parse(script.format("other")), tmp_path)[0]
+    (tmp_path / "unretrieved.py").write_text((tmp_path / "unretrieved.py").read_text(encoding="utf-8").replace("level=1", "level=0"), encoding="utf-8")
+    assert "no module-level PrintLog at a fixed level >= 1" in device_script_findings("shared.py", ast.parse(script.format("report_unretrieved")), tmp_path)[0]
 
 
 @pytest.mark.parametrize(

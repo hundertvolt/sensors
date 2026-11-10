@@ -321,7 +321,7 @@ board's filesystem and REPL ("Real hardware access").
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
+Ruff and mypy checks, scoped to nine directories — `src/`, `tests/`, `digital_twin/`, `fakes/`,
 `buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the legacy tree,
 `legacy/`, is never covered) — shellcheck over `scripts/`, actionlint +
 zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually; ruff and
@@ -342,7 +342,8 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
                             # builds that interpreter automatically on first run (see SPECIFICATION.md Part E) -
                             # plus tests_scripts/, a CPython/pytest suite covering the host-only build
                             # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py),
-                            # and the host-side twin scenario harness once per device; it builds what it
+                            # and the host-side twin scenario harness once per hardware family
+                            # (SPECIFICATION.md E.2.1); it builds what it
                             # lacks, and rebuilds frozen_modules/frozen_html.py from the first device of
                             # devices/*.toml every run
 scripts/test.sh --coverage # same but the scenario harness, plus line coverage reports for src/, digital_twin/,
@@ -375,7 +376,8 @@ ships, and the suite has to pass both ways; a value that is not an integer, or f
 rp2040's own 32-bit machine word, is rejected up front before the run touches anything, rather than
 failing inside the runner once per test file; see "Memory-safety discipline" in CLAUDE.md for why
 both runs are required and which one proves what). Every `tests/test_*.py` file runs as its own
-interpreter process (a file marked `PER_DEVICE = True` once per device, with `TEST_DEVICE` set) and
+interpreter process (a file marked `PER_DEVICE = True` once per hardware family, with `TEST_DEVICE`
+set to the family's first device) and
 prints its `PASS`/`FAIL`/`SKIP` lines and its count, each prefixed with the file's name in brackets,
 a per-device job's with its device too (e.g. `[test_sensortask[dev]]`), since several files' output
 interleaves when they run concurrently; a file collecting no test fails. The run ends with the summary block every
@@ -443,7 +445,7 @@ tests under a real MicroPython Unix-port interpreter), html-validate, and Stylel
 `.nvmrc`-pinned Node into `$PICO_TOOLCHAIN_DIR/node` when the host has none, then runs `npm ci` and
 downloads the Playwright Chromium build Vitest needs, failing by name when that download fails. Node comes from nodejs.org (checksum-verified
 against the release SHASUMS), deliberately **not** from apt: Debian trixie ships Node 20 while this
-repo pins 24, so `apt install nodejs` would silently install a version the repo says not to use.
+repo pins 26, so `apt install nodejs` would silently install a version the repo says not to use.
 The release's SHASUMS256.txt is fetched once per install and the tarball checked against it before
 anything is unpacked; the tree is unpacked aside, renamed into place and recorded in
 `node/node-record.json`. A Node already on `PATH` that matches the pin is used as-is and never
@@ -652,11 +654,12 @@ scripts/run_unix_port_integration.sh --device <name> --host 0.0.0.0 --port 8080 
 - `--host HOST` / `--port PORT` — bind address (default `localhost:8080`).
 - `--duration SECONDS` — exit after a fixed run instead of serving forever.
 - `--seed N` — seed every chip's random value walk for a reproducible run.
-- `--fault DEVICE:OP[:TIMES]` (repeatable) — same shape as `digital_twin/launch.py`'s `--fault`
-  below.
+- `--fault DEVICE:OP[:TIMES[:MATCH]]` (repeatable) — a one-shot or N-shot bus fault (`TIMES`
+  default 1, or `stack`; `MATCH` hex); `_FAULT_DEVICE_OPS` lists every pair, and an op rp2 cannot
+  fail on is refused.
 - `--hang DEVICE:OP:SECONDS[:TIMES]` (repeatable) — script a bus operation to hang instead of
   raising, for timeout-path testing.
-- `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome, same values as below.
+- `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome, in order: `success`, `no_ap` or `connect_fail`.
 - `--fram-state-path PATH` / `--scd30-state-path PATH` / `--mem-backup-state-path PATH` — the JSON
   file that chip's state (or the watchdog scratch registers', which carry the reset reason) persists
   to across runs; by default `digital_twin/fram_state.json`, `digital_twin/scd30_state.json` and
@@ -676,27 +679,6 @@ The automated HTTP+memory-trend soak check runs host-side, driving its requests 
 than sharing the twin's own heap: `scripts/_digital_twin_ci_suite.py --micropython-bin <path> --device
 <device>` (its Run 11) - see `digital_twin/README.md`'s "Automated CI suite" section.
 
-Start the twin's standalone CLI demo (no website, twin only) directly with the same Unix-port binary
-`scripts/test.sh` builds:
-
-```sh
-uv run scripts/_generate_sensortask_modules.py   # writes every device's wiring plan
-$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/launch.py \
-    --wiring-plan build/generated_src/sensortask_<device>_wiring_plan.json \
-    --seed 42 --duration 3 --no-wdt-feed --wifi-outcome success --fault scd30:writeto:1
-```
-
-(use `$PICO_TOOLCHAIN_DIR` instead of `$HOME/pico-toolchain` if you've overridden it — see
-`scripts/test.sh`'s own `toolchain_dir` resolution for the exact path; run
-`uv run toolchain/setup_toolchain.py` first if the binary doesn't exist yet). `--wiring-plan` is
-required, so the board it wires is always a named device's; every flag: "Command-line reference"
-below.
-
-This standalone launcher is twin-only (no `src/` import). To instead run a device's real,
-buildgen-generated module against the twin, see `digital_twin/README.md`'s own "Swapping the
-twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based invocation, not this
-launcher.
-
 **Automated CI suite** — an unattended, CI-gating form of the manual walkthrough below:
 drives `digital_twin/run_generic_integration.py` through its runs and asserts every step: fresh
 boot, every GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection, settings/error
@@ -705,7 +687,7 @@ persistence across a real reboot, the reset reasons and system commands, soak at
 suite" lists each run), then the scenario harness's (`scripts/_digital_twin_scenarios.py`) DNS scenarios,
 which need port 53 alone (`scripts/test.sh` runs the rest). It runs against the device named by its
 required argument, at both GC stages and both parts unless `--gc-threshold` or `--part` names one — CI
-runs one job per device and stage. Builds the Unix
+runs one job per hardware family and stage. Builds the Unix
 port and the real website for that device first if either is missing (same
 `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 
@@ -1073,22 +1055,6 @@ Print the resolved MicroPython board's serial path.
 - `-h`, `--help`: print the help
 
 </details>
-<details><summary><code>digital_twin/launch.py</code></summary>
-
-`micropython digital_twin/launch.py --wiring-plan PATH [options]`, under the Unix-port binary: the
-twin alone, no website ("Digital twin").
-- `--wiring-plan PATH`: the device's generated wiring-plan JSON (required)
-- `--seed N`: seed every chip's random value walk
-- `--duration SECONDS`: stop after this long (default: until interrupted)
-- `--no-wdt-feed`: never feed the watchdog, to watch it trip
-- `--fault DEVICE:OP[:TIMES[:MATCH]]`: a one-shot or N-shot bus fault (repeatable); `_FAULT_DEVICE_OPS` lists every pair, and an op rp2 cannot fail on is refused
-- `--hang DEVICE:OP:SECONDS[:TIMES]`: a blocking hang instead (repeatable)
-- `--wifi-outcome OUTCOME`: a scripted `WLAN.connect()` outcome (repeatable): `success`, `no_ap`, `wrong_password`, `connect_fail`
-- `--fram-state-path PATH`, `--scd30-state-path PATH`, `--mem-backup-state-path PATH`: where that state persists (defaults `digital_twin/fram_state.json`, `digital_twin/scd30_state.json`, `digital_twin/mem_backup_state.json`; `""` keeps it in memory)
-- `-h`, `--help`: print the help and exit 0
-
-</details>
-
 ## Build-environment verification
 
 The owner's periodic check of the build environment in a genuinely clean chroot (CLAUDE.md's
@@ -1142,7 +1108,7 @@ fi
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
 # uv as pyproject.toml's [tool.uv] required-version names it (any other uv refuses to sync), with pip
 # where the sandbox's egress policy blocks astral.sh.
-chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv==0.8.17"
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv==0.13.7"
 # sudo: toolchain/setup_toolchain.py's ensure_apt_packages() always prepends it, and minbase lacks it.
 # libcap2-bin (setcap, for the port-53 DNS test) is in versions.toml's apt_packages too; it stays here
 # because a reused chroot with a built toolchain skips that install and fails late.
@@ -1205,6 +1171,49 @@ mismatch against the ordinary-sandbox run.
 `toolchain/versions.toml`. What a passing run shows: SPECIFICATION.md Part B.6; what has been checked:
 Part B.7.
 
+## Release
+
+This release is 2.0: the merge into `main`, tagged `v2.0` on that merge commit (`buildgen/version.py`,
+SPECIFICATION.md L.7). A legacy unit moves to it by a reflash and a fresh
+setup, with nothing migrated ("Moving a legacy unit to this firmware" above). The figures
+SPECIFICATION.md Part N still marks *estimated* await their silicon runs, listed in BACKLOG.md's
+"Real-hardware work still owed".
+
+### Changes from the legacy firmware
+
+Compared with the legacy firmware (`legacy/firmware/`), this release:
+
+- **Runs on** MicroPython v1.29.0 (legacy: 1.24.1) with its lwIP 2.2.1, cyw43-driver v1.1.1 and
+  pico-sdk 2.3.0, and serves through Microdot v2.7.0 (legacy: an untagged snapshot after v2.0.6).
+- **Serves one REST API** of six endpoints, `/measurements`, `/sensors`, `/networking`, `/system`,
+  `/status` and `/notification`; legacy's `/net/*`, `/time/*`, `/sensors/*`, `/led/*` and `/system/*`
+  paths are gone and its keys renamed (`Sys_Uptime` is `SysUptime`). The reference is generated per
+  device (SPECIFICATION.md A.8); the release's copy is `tests_scripts/fixtures/api_reference/`.
+- **Reports more in `GET /status`**: `ResetReason` (why the board last reset), `MemFree`,
+  `UnixTime`, `LastTaskEnd` (the supervised task that ended last and when; legacy's `Task_LastErr`
+  held its number) and every module's error history under `errcount`, where legacy kept a counter per
+  sensor; `SystemCmd` adds `resetconfig` and `erasefram` to `reboot`, `bootloader` and `mempause`.
+- **Behaves differently**: an automatic-notification window whose On time is later than its Off time
+  runs over midnight; a configuration file is written only when a value changes, or once per boot to
+  repair a damaged one; a system command or a supervisor reboot records its reset reason, writes
+  pending configuration and pauses storage before the reset, keeping the event loop running until it
+  fires.
+- **Corrects**, each with its regression test:
+  - SCD30: a `TempOffset` reaches the sensor rounded to the nearest 0.01 °C instead of truncated (130
+    of 2,001 two-decimal values landed one step low); a reading outside the datasheet's measurement
+    ranges is rejected as a failed read; `WetBulb` is published only inside its formula's validated
+    range, 5-99 %RH (legacy from 0.5 %RH).
+  - SGP40: a failed measurement read no longer corrupts the next setup's serial and self-test
+    commands; out-of-range compensation values are clamped instead of wrapping; the VOC fixed-point
+    helpers wrap and report overflow exactly as Sensirion's C reference.
+  - BMP3XX: `MeanAtmTemp` below −40 °C is refused instead of silently blanking the sea-level
+    pressure; a `PresOffset` that moves pressure outside the formula's range logs a warning instead of
+    silently publishing `SLPres` `None`.
+  - ISL29125: in the new automatic range (`RangeAuto`), a scene the peak rule overrules does not fire
+    the interrupt every PRST window.
+  - The system: `SysUptime` counts measured time from the tick counter, never timer wake-ups; a
+    restart of the uptime task keeps the uptime and the boot signature.
+
 ## Further reading
 
 Every supporting document, licence file and reference text in the repo; a new one joins this map in
@@ -1234,6 +1243,16 @@ the same change.
   BACKLOG.md's "Real-hardware work still owed" says what is owed, this file how.
 - **[`.claude/skills/integrate-module/SKILL.md`](.claude/skills/integrate-module/SKILL.md)** — the
   integrate-module skill: the inputs a session gathers for a new module, pointing into Part K.
+- **[`.claude/skills/work-routines/SKILL.md`](.claude/skills/work-routines/SKILL.md)** — running the
+  checks and reading their logs, `errcount` saves and rerun selections down to the deciding lines
+  (`scripts/_run_checks.sh`, `_log_verdict.py`, `_errcount_digest.py`, `_failed_tests.py`); its
+  [`references/symptoms.md`](.claude/skills/work-routines/references/symptoms.md) lists the causes
+  already found, to check before re-diagnosing a symptom.
+- **[`.claude/skills/bench-routines/SKILL.md`](.claude/skills/bench-routines/SKILL.md)** — the order
+  of work for a bench session on the real dev board and how a code session reads what it hands back;
+  `tests_hardware/README.md` stays the technical reference.
+- **[`.claude/skills/tree-care/SKILL.md`](.claude/skills/tree-care/SKILL.md)** — setting up, checking
+  and cleaning a working tree and its host (`scripts/_preflight.sh`, `scripts/_tidy.sh`).
 - **`legacy/README.md`** — the reference-only legacy tree: `legacy/firmware/` (what the owner's legacy
   units run, MicroPython 1.24.1, with `legacy/firmware/update_and_install.txt`) and
   `legacy/dev_drivers/` (the dev unit's 2026-08-27 snapshot).

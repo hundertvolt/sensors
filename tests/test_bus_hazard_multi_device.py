@@ -48,6 +48,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
 
+    from machine import I2CEntry
+
     from asy_config_manager import ConfigSchema
     from asy_fram_manager import FRAMChunk, FRAMManager
 
@@ -61,8 +63,6 @@ _BMP_ADDR = 0x77
 _SGP_ADDR = 0x59
 _ISL_ADDR = 0x44  # hard-wired (FN8424 p15), sharing i2c1 with SCD30 and SGP40 where a TOML puts it there
 _GENERAL_CALL_ADDR = 0x00
-# How long a sibling's loop may take to finish beside a faulting device; a lock the fault stranded never finishes.
-_ISOLATION_BOUND_S = 5
 # The BMP3XX pressure the catalog's planted calibration and ADC bytes give, by hand: BMP388 datasheet §9.1 and §9.3
 # (its temperature is the catalog's BMP_EXPECTED_TEMPERATURE).
 _BMP_EXPECTED_PRESSURE_HPA = 713.765147356092
@@ -264,10 +264,7 @@ def test_sgp40_bus_fault_does_not_corrupt_or_stall_a_concurrent_isl29125_read() 
             await asyncio.sleep(0)
 
     async def bounded() -> None:
-        try:
-            await asyncio.wait_for(_gather(isl_loop(), sgp_loop()), _ISOLATION_BOUND_S)
-        except asyncio.TimeoutError:
-            raise AssertionError("the shared I2C lock was not released after the SGP40's EIO - the ISL29125 loop never finished") from None
+        await _gather(isl_loop(), sgp_loop())  # a lock the EIO left held hangs the ISL29125 loop
 
     with FastAsyncSleep():
         run(bounded())
@@ -644,10 +641,7 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
             fram._read_address(0, bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
         except OSError:
             raised = True
-        try:
-            await asyncio.wait_for(neighbour_writes(), _ISOLATION_BOUND_S)
-        except asyncio.TimeoutError:
-            raise AssertionError("the shared SPI lock was not released after the FRAM's overrun - the neighbour never wrote") from None
+        await neighbour_writes()  # a lock the overrun left held hangs the neighbour
         return raised
 
     assert run(scenario())
@@ -799,7 +793,7 @@ def _assert_recovery_between(i2c: I2C, address: int, trigger: bytes) -> None:
     log = list(fake(i2c).log)  # a snapshot of the ring log, oldest first
     first = log.index(("writeto", address, trigger, True))
     init = next(i for i in range(first, len(log)) if log[i][0] == "init")
-    last = max(i for i in range(first + 1, len(log)) if log[i][0] == "readfrom_into" and log[i][1] == address)
+    last = max(i for i in range(first + 1, len(log)) if log[i][0:2] == ("readfrom_into", address))
     assert first < init < last, f"the recovery did not land between the two halves: {log[first : last + 1]}"
 
 
@@ -955,7 +949,7 @@ async def _recover_between_halves(i2c: I2C, target: int, trigger: bytes, read: "
         bus.writeto = real_writeto  # type: ignore[method-assign]
 
 
-def _register_reads_unbroken(log: "list[tuple[object, ...]]", address: int) -> int:
+def _register_reads_unbroken(log: "list[I2CEntry]", address: int) -> int:
     # Every no-stop register-address write to `address` is followed at once by its readfrom_into, never by
     # a sibling's transfer between the two. Returns how many such reads the log holds.
     count = 0

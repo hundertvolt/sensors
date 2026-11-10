@@ -33,6 +33,15 @@ def _collect_imports(node: ast.AST, out: "set[str]") -> None:
         _collect_imports(child, out)
 
 
+@functools.lru_cache(maxsize=256)
+def _imports_in(text: str) -> "frozenset[str]":
+    # Each file's own imports, walked once per text (parse_source's key) rather than once per device and
+    # closure step; an edited file is a new key, so never answered stale.
+    names: set[str] = set()
+    _collect_imports(parse_source(text), names)
+    return frozenset(names)
+
+
 def _local_imports_of(module: str, roots: "tuple[Path, ...]", device: str = "<src>") -> "set[str]":
     for root in roots:
         path = root / f"{module}.py"
@@ -44,15 +53,6 @@ def _local_imports_of(module: str, roots: "tuple[Path, ...]", device: str = "<sr
                 raise BuildError(device, f"{path} has a syntax error: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=module) from e
             return _with_a_file(set(_imports_in(text)), roots)
     return set()
-
-
-@functools.lru_cache(maxsize=256)
-def _imports_in(text: str) -> "frozenset[str]":
-    # Each file's own imports, walked once per text (parse_source's key) rather than once per device and
-    # closure step; an edited file is a new key, so never answered stale.
-    names: set[str] = set()
-    _collect_imports(parse_source(text), names)
-    return frozenset(names)
 
 
 def _with_a_file(names: "set[str]", roots: "tuple[Path, ...]") -> "set[str]":

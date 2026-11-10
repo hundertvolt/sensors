@@ -8,12 +8,12 @@ import time
 
 import _bench_device as device  # rendered: the bench device's generated module
 
-from asy_print_log import PrintLog
 from asy_webserver_service import ROUTES, WebserverService, _StaticRoutes
 
 # @include _shared/facts.py
 # @include _shared/map_dump.py
 # @include _shared/watchdog.py
+# @include _shared/unretrieved.py
 
 try:
     from typing import TYPE_CHECKING
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
     from _shared.facts import done, fact
     from _shared.map_dump import dump
+    from _shared.unretrieved import report_unretrieved
     from _shared.watchdog import arm, fed_sleep_ms
     from bench_facts import BenchFacts
     from machine import WDT
@@ -54,8 +55,6 @@ _ROUTES = (
     (_StaticRoutes, ("get_index", "get")),
 )
 _failure_maps = [0]
-# The product's own unretrieved-task report at the error level, so it prints whatever level the board's config holds.
-_REPORT = PrintLog(level=1, name="UNRETRIEVED TASK EXCEPTION:")
 
 
 def _dumping_on_failure(route: "_Route") -> "_Route":
@@ -100,7 +99,7 @@ async def _observe(webserver: "WebserverService", wdt: "WDT") -> None:
 
 
 async def _run() -> None:
-    asyncio.get_event_loop().set_exception_handler(_REPORT.report_unretrieved)  # before main(): the firmware keeps it
+    report_unretrieved()
     fact("gc_threshold", gc.threshold())
     wdt = arm()
     # Production config path: the only writes it can cause are the ones a production boot makes anyway (an absent

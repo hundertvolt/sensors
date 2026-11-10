@@ -6,6 +6,7 @@ Every device's own boot is tests_scripts/test_digital_twin_generated_boot.py's; 
 Run 11."""
 
 import asyncio
+import errno
 import os
 import socket
 import struct
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import ParamSpec, TypeVar
 
-    from launch import _Plan
+    from run_generic_integration import _Plan
 
     T = TypeVar("T")
     P = ParamSpec("P")
@@ -45,16 +46,16 @@ patch_asy_udp_socket_for_unix_port()  # before any UDPSocket exists (_unix_port_
 import _flash_stall  # noqa: E402 - imported after the prewarm and the UDP shim
 import _unix_port_udp_addr_shim  # noqa: E402 - imported after the prewarm and the UDP shim
 import _wall_clock  # noqa: E402 - imported after the prewarm and the UDP shim
-import launch  # noqa: E402 - imported after the prewarm and the UDP shim
 import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration as runner  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_tree import require_fresh  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _recording_print import record_prints  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
 from _strict_json import strict_loads  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_common import Injections, StatePaths  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -73,18 +74,13 @@ require_fresh()  # the smoke boot loads a generated module and its plan
 microtest.after_each(machine.reset_test_state)
 microtest.after_each(network.reset_test_state)
 
-_RUN_BOUND_S = 5.0
-_MAIN_RUN_BOUND_S = 15.0
-_PROMPT_BOUND_MS = 100  # an entry, or a released hold, that finishes at once
 _CLEARER_RUN_MS = 20
 _REACHED_LIMIT_MS = 1000  # the bound on the wait for a started task to reach its observable point
 _PROBE_LEAD_MS = 5  # the lag probe's first sleep is under way, its due time passed, when the stall begins
-_DROP_CLEAR_BOUND_MS = 2000
 _REARM_RUN_MS = 20
 _STALL_MS = 20
 _LAG_RUN_MS = 50
 _LAG_STEP_MS = 12
-_OFFER_BOUND_MS = 1000
 _TIMER_WATCH_MS = 5
 _SERVED_POLL_MS = 10
 _STOP_WRITE_DELAY_MS = 150
@@ -230,7 +226,6 @@ def test_a_frozen_write_credits_the_watchdog_once_its_timeout_has_passed() -> No
     assert watchdog.credited == 1
 
 
-
 def test_a_frozen_write_ends_as_an_interrupt_once_the_stop_file_exists() -> None:
     # The host's stop file, which the frozen loop cannot poll, ends the freeze as SIGINT would, so the shutdown line prints.
     stop_file = _scratch.dir("freeze") + "/stop"
@@ -286,7 +281,7 @@ def test_parse_args_device_host_port_and_the_run_limits() -> None:
     assert _parse("--stop-file", "").run.stop_file is None
 
 
-def test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers() -> None:
+def test_parse_args_fault_hang_and_wifi_outcome_use_the_vocabulary_parsers() -> None:
     config = _parse("--fault", "sgp40:writeto:2:59", "--hang", "scd30:readfrom_into:0.5", "--wifi-outcome", "no_ap")
     assert config.injections.faults == [("sgp40", "writeto", 2, 0x59, "oserror")]
     assert config.injections.hangs == [("scd30", "readfrom_into", 0.5, 1)]
@@ -316,8 +311,9 @@ def test_a_simulated_reset_maps_to_its_exit_code_and_its_line() -> None:
     reset, bootloader = machine.SimulatedResetError("r"), machine.SimulatedBootloaderEntryError("b")
     assert (runner._exit_code(reset), runner._exit_code(bootloader)) == (3, 4)
     machine.reset_count, machine.bootloader_count = 2, 1
-    assert runner._reset_line("dev", reset) == "digital_twin/run_generic_integration.py [dev] machine reset: kind=reset reset_count=2 bootloader_count=1"
-    assert runner._reset_line("dev", bootloader).endswith("machine reset: kind=bootloader reset_count=2 bootloader_count=1")
+    device = generated_devices()[0]
+    assert runner._reset_line(device, reset) == f"digital_twin/run_generic_integration.py [{device}] machine reset: kind=reset reset_count=2 bootloader_count=1"
+    assert runner._reset_line(device, bootloader).endswith("machine reset: kind=bootloader reset_count=2 bootloader_count=1")
 
 
 class _FakeWatchdog:
@@ -345,7 +341,7 @@ class _OverrunBus:
 
 
 def test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_registers() -> None:
-    watchdog, gaps = _FakeWatchdog(), runner._FeedGaps()
+    watchdog, gaps, device = _FakeWatchdog(), runner._FeedGaps(), generated_devices()[0]
     watchdog.feed_at(1000, 1500, 3500)
     gaps.fold(watchdog)
     watchdog.feed_at(3600, 6600)  # the gap across two folds counts too
@@ -353,11 +349,11 @@ def test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_
     machine.mem_backup(0)[0] = 0xDEADBEEF
     _flash_stall.longest_ms = 7
     try:
-        line = runner._shutdown_line("wozi", watchdog, gaps, [("uart_link_init", _CountedLink(3, 1), _OverrunBus(2))])
+        line = runner._shutdown_line(device, watchdog, gaps, [("uart_link_init", _CountedLink(3, 1), _OverrunBus(2))])
     finally:
         _flash_stall.longest_ms = 0
     assert line == (
-        "digital_twin/run_generic_integration.py [wozi] shutdown: would_have_triggered_count=1 feed_count=5 "
+        f"digital_twin/run_generic_integration.py [{device}] shutdown: would_have_triggered_count=1 feed_count=5 "
         "largest_feed_gap_ms=3000 wdt_timeout_ms=8000 mem_backup: r0=0xdeadbeef,0x00000000,0x00000000,0x00000000 "
         f"public_destinations_refused={_unix_port_udp_addr_shim.public_destinations_refused} flash_stall_longest_ms=7 "
         f"gc_block_bytes={_GC_BLOCK_BYTES} uart=uart_link_init:transfers=3,failures=1,overruns=2"
@@ -403,7 +399,6 @@ def test_an_interrupt_before_the_shutdown_line_leaves_the_handlers_call_to_print
     assert calls[:3] == ["gc summary", "interrupted", "gc summary"] and len(calls) == 4 and calls[3].startswith("sensortask_x shutdown: fram_writes="), calls
 
 
-
 def test_a_feed_span_the_watchdog_dropped_is_no_gap() -> None:
     watchdog, gaps = _FakeWatchdog(), runner._FeedGaps()
     watchdog.feed_at(0, 100)
@@ -415,7 +410,7 @@ def test_a_feed_span_the_watchdog_dropped_is_no_gap() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The config dir, the chip lookup and the fault plumbing the runner shares with launch.py
+# The config dir, the --fault/--hang vocabulary, the chip lookup and the fault plumbing
 # ---------------------------------------------------------------------------
 
 
@@ -431,9 +426,171 @@ def test_ensure_dir_creates_or_keeps_a_dir_and_names_one_it_cannot_create() -> N
         raise AssertionError("a config dir whose parent is missing must be refused, not swallowed")
 
 
-def test_the_runner_shares_launchs_one_chip_lookup_and_fault_plumbing() -> None:
-    for name in ("_collect_chips", "_apply_fault", "_apply_hang", "_shutdown_cleanup", "_pop_value", "parse_fault_spec"):
-        assert getattr(runner, name) is getattr(launch, name), name
+def test_parse_fault_spec_defaults_times_to_one_with_no_match() -> None:
+    assert runner.parse_fault_spec("scd30:writeto") == ("scd30", "writeto", 1, None, "oserror")
+
+
+def test_parse_fault_spec_honors_an_explicit_times_and_a_hex_match() -> None:
+    assert runner.parse_fault_spec("sgp40:readfrom_into:3") == ("sgp40", "readfrom_into", 3, None, "oserror")
+    assert runner.parse_fault_spec("scd30:readfrom_into:3:0x0300") == ("scd30", "readfrom_into", 3, 0x300, "oserror")
+    assert runner.parse_fault_spec("bmp3xx:readfrom_mem:2:f7") == ("bmp3xx", "readfrom_mem", 2, 0xF7, "oserror")
+
+
+def test_parse_fault_spec_and_parse_hang_spec_accept_every_op_of_their_tables() -> None:
+    for device, ops in runner._FAULT_DEVICE_OPS.items():
+        for op in ops:
+            assert runner.parse_fault_spec(f"{device}:{op}") == (device, op, 1, None, "oserror"), (device, op)
+    for device, ops in runner._HANG_DEVICE_OPS.items():
+        for op in ops:
+            assert runner.parse_hang_spec(f"{device}:{op}:0.5") == (device, op, 0.5, 1), (device, op)
+
+
+def test_parse_fault_spec_addresses_an_instance_by_its_instance_key() -> None:
+    assert runner._driver_of("uart_link_init") == "uart_link"  # the longest driver wins over a shorter prefix
+    assert runner._driver_of("scd30_primary") == "scd30"
+    assert runner.parse_fault_spec("scd30_x:writeto") == ("scd30_x", "writeto", 1, None, "oserror")
+    assert runner._driver_of("scd3") is None
+    assert runner.parse_fault_spec("uart_link_resp:silent") == ("uart_link_resp", "silent", 1, None, "oserror")
+    assert runner.parse_hang_spec("scd30_primary:writeto:0.5") == ("scd30_primary", "writeto", 0.5, 1)
+
+
+def test_parse_fault_spec_accepts_times_for_wlan_and_refuses_its_match() -> None:
+    assert runner.parse_fault_spec("wlan:status:2") == ("wlan", "status", 2, None, "oserror")
+    assert "MATCH" in _refused(runner.parse_fault_spec, "wlan:status:2:1")
+
+
+def test_parse_fault_spec_refuses_times_and_match_for_a_persistent_mode() -> None:
+    for spec in ("fram:silent:2", "isl29125:int_stuck_high:0x08", "uart_link:silent:1:2"):
+        assert "mode" in _refused(runner.parse_fault_spec, spec), spec
+
+
+def test_parse_fault_spec_has_no_fram_write_fault() -> None:
+    # rp2's SPI write never raises, so the vocabulary offers no fault there; a hang still stalls it.
+    _refused(runner.parse_fault_spec, "fram:write")
+    assert runner.parse_hang_spec("fram:write:0.1") == ("fram", "write", 0.1, 1)
+
+
+def test_parse_fault_spec_stack_queues_one_stack_exhaustion_on_a_queued_fault_only() -> None:
+    assert runner.parse_fault_spec("sgp40:readfrom_into:stack") == ("sgp40", "readfrom_into", 1, None, "stack")
+    for spec in ("wlan:status:stack", "fram:wren:stack", "sgp40:readfrom_into:stack:0x260F", "fram:silent:stack"):
+        _refused(runner.parse_fault_spec, spec)
+
+
+def test_parse_fault_spec_refuses_a_bad_device_op_shape_times_or_match() -> None:
+    for spec in ("bogus:writeto", "scd30:readfrom_mem", "scd30", "scd30:writeto:2:59:extra", "", "scd30:writeto:x", "scd30:writeto:0", "scd30:writeto:1:zz"):
+        _refused(runner.parse_fault_spec, spec)
+
+
+def test_parse_hang_spec_covers_each_bus_write_op_and_refuses_wlan() -> None:
+    assert runner.parse_hang_spec("bmp3xx:writeto:0.5:2") == ("bmp3xx", "writeto", 0.5, 2)
+    assert runner.parse_hang_spec("isl29125:writeto:0.5") == ("isl29125", "writeto", 0.5, 1)
+    for spec in ("wlan:connect:1", "scd30:writeto:0", "scd30:writeto:1:0", "scd30:writeto"):
+        _refused(runner.parse_hang_spec, spec)
+
+
+class _RecordingInjector:
+    # Records each call in the FaultInjector shape (inject_fault(op, exc_type, *args, times=, match=)).
+    def __init__(self) -> None:
+        self.faults: list[tuple[object, ...]] = []
+        self.hangs: list[tuple[str, float, int]] = []
+
+    def inject_fault(self, op: str, exc_type: "type[BaseException]", *args: object, times: int = 1, match: "int | None" = None) -> None:
+        self.faults.append((op, exc_type, args, times, match))
+
+    def inject_hang(self, op: str, seconds: float, times: int = 1) -> None:
+        self.hangs.append((op, seconds, times))
+
+
+class _FakeChip:
+    def __init__(self) -> None:
+        self.fault = _RecordingInjector()
+        self.silent = False
+        self.drop_next_wren = 0
+        self.modes: list[str] = []
+
+    def configure_fault(self, op: str) -> None:
+        self.modes.append(op)
+
+
+def test_collect_chips_keys_each_wired_chip_by_its_instance_key_through_peripheral() -> None:
+    plan: _Plan = {
+        "device": "fixture-device",
+        "buses": {
+            "i2c0": [{"driver": "scd30", "name_ext": "primary", "address": 0x61, "irq_pin": 2}],
+            "i2c1": [{"driver": "sgp40", "name_ext": "", "address": 0x59}],
+        },
+        "spi": {"spi0": {"driver": "fram", "name_ext": "", "max_size": 0x2000}},
+        "uart": None,
+        "pins": {},
+    }
+    machine.configure_wiring(plan)
+
+    async def scenario() -> None:  # one run: the twin SCD30's refresh timer is a task, ended with the run
+        i2c0 = machine.I2C(0, scl=machine.Pin(13), sda=machine.Pin(12))
+        spi0 = machine.SPI(0, sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
+        chips = runner._collect_chips(plan)  # i2c1 never constructed: skipped, not an error
+        assert sorted(chips) == ["fram", "scd30_primary"], sorted(chips)
+        assert chips["scd30_primary"] is i2c0.devices[0x61]
+        assert chips["fram"] is spi0.device
+
+    run(scenario())
+
+
+def test_apply_fault_queues_a_fresh_oserror_with_times_and_match() -> None:
+    chip = _FakeChip()
+    runner._apply_fault(("sgp40", "writeto", 2, 0x59, "oserror"), _chips(sgp40=chip), network.WLAN(network.STA_IF))
+    assert chip.fault.faults == [("writeto", OSError, (errno.EIO, "digital_twin/run_generic_integration.py --fault sgp40:writeto"), 2, 0x59)]
+
+
+def test_apply_fault_sets_each_mode_and_counted_knob() -> None:
+    isl, fram, link = _FakeChip(), _FakeChip(), _FakeChip()
+    chips = _chips(isl29125=isl, fram=fram, uart_link_init=link)
+    wlan = network.WLAN(network.STA_IF)
+    for spec in ("isl29125:int_stuck_high", "fram:silent", "fram:wren:3", "uart_link_init:silent"):
+        runner._apply_fault(runner.parse_fault_spec(spec), chips, wlan)
+    assert isl.modes == ["isl29125:int_stuck_high"]
+    assert fram.silent and fram.drop_next_wren == 3 and link.silent
+    assert fram.fault.faults == [] and link.fault.faults == []
+
+
+def test_a_stack_fault_raises_one_stack_exhaustion_on_the_chips_next_read() -> None:
+    plan: _Plan = {"device": "fixture-device", "buses": {"i2c0": [{"driver": "sgp40", "name_ext": "", "address": 0x59}]}, "spi": {}, "uart": None, "pins": {}}
+    machine.configure_wiring(plan)
+    bus = machine.I2C(0, scl=machine.Pin(13), sda=machine.Pin(12))
+    runner._apply_fault(runner.parse_fault_spec("sgp40:readfrom_into:stack"), runner._collect_chips(plan), network.WLAN(network.STA_IF))
+    buf = bytearray(3)
+    try:
+        bus.readfrom_into(0x59, buf)
+    except RuntimeError as e:
+        assert str(e) == src_const("src/asy_print_log.py", "_STACK_EXHAUSTED"), e  # test_asy_print_log.py pins it to the real text
+    else:
+        raise AssertionError("the queued stack fault never raised")
+    bus.readfrom_into(0x59, buf)  # one fault, spent
+
+
+def test_apply_fault_arms_wlan_with_its_times_and_bypasses_the_wiring_check() -> None:
+    # wlan is no chip in `chips`, so the guard sits after that branch: in front of it, every --fault wlan:* would raise.
+    wlan = network.WLAN(network.STA_IF)
+    runner._apply_fault(("wlan", "connect", 2, None, "oserror"), {}, wlan)
+    assert wlan.raise_on["connect"] == (OSError, (errno.EIO, "digital_twin/run_generic_integration.py --fault wlan:connect"), 2), wlan.raise_on
+
+
+def test_a_fault_or_hang_naming_a_chip_this_run_never_wired_is_refused_by_name() -> None:
+    # The name parses (it is in the vocabulary) but this run wired no such chip: the refusal names the
+    # asked-for device, what is wired, and which entry point refused it.
+    message = _refused(runner._apply_fault, ("isl29125", "readfrom_mem", 1, None, "oserror"), _chips(scd30=_FakeChip()), network.WLAN(network.STA_IF))
+    assert "isl29125" in message and "scd30" in message and "digital_twin/run_generic_integration.py" in message, message
+    assert "uart_link_init" in _refused(runner._apply_fault, ("uart_link_init", "silent", 1, None, "oserror"), {}, network.WLAN(network.STA_IF))
+    assert "isl29125" in _refused(runner._apply_hang, ("isl29125", "readfrom_mem", 0.1, 1), {})
+    chip = _FakeChip()
+    runner._apply_hang(("scd30", "writeto", 0.1, 2), _chips(scd30=chip))
+    assert chip.fault.hangs == [("writeto", 0.1, 2)]
+
+
+def _chips(**chips: "_FakeChip") -> "dict[str, object]":
+    wired: dict[str, object] = {}
+    wired.update(chips)  # a recording double in each chip fake's place
+    return wired
 
 
 def test_collect_chips_finds_each_chip_through_the_constructed_bus_not_a_wrapper() -> None:
@@ -447,14 +604,14 @@ def test_collect_chips_finds_each_chip_through_the_constructed_bus_not_a_wrapper
     machine.configure_wiring(plan)
     i2c1 = machine.I2C(1, scl=machine.Pin(19), sda=machine.Pin(18))
     spi0 = machine.SPI(0, sck=machine.Pin(2), mosi=machine.Pin(3), miso=machine.Pin(4))
-    chips = launch._collect_chips(plan)
+    chips = runner._collect_chips(plan)
     assert chips == {"sgp40": i2c1.devices[0x59], "fram": spi0.device}, chips
 
 
 def test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name() -> None:
     # bmp3xx is in the vocabulary on every device but wired only where a TOML declares it: the refusal names the
     # device asked for, what is wired, and this entry point.
-    message = _refused(launch._apply_fault, ("bmp3xx", "readfrom_mem", 1, None, "oserror"), {}, network.WLAN(network.STA_IF), source="run_generic_integration.py")
+    message = _refused(runner._apply_fault, ("bmp3xx", "readfrom_mem", 1, None, "oserror"), {}, network.WLAN(network.STA_IF))
     assert "bmp3xx" in message and "digital_twin/run_generic_integration.py" in message, message
 
 
@@ -513,7 +670,7 @@ def test_the_wire_log_clearer_clears_each_bounded_log_in_place() -> None:
             pass
 
     try:
-        run_timed(scenario(), _RUN_BOUND_S)
+        run(scenario())
     finally:
         runner._WIRE_LOG_CLEAR_INTERVAL_MS = saved
     assert (link.a_to_b.wire_log, link.b_to_a.wire_log) == logs, "a cleared log must stay the link's own object"
@@ -540,7 +697,7 @@ def _hang_on(step: str, check: "Callable[[_Booted, _KnobChip], Coroutine[object,
         finally:
             await cancel_all(started + [supervised])
 
-    run_timed(scenario(), _RUN_BOUND_S)
+    run(scenario())
 
 
 class _Store:
@@ -630,7 +787,7 @@ def test_the_rebound_report_announces_itself_once_when_first_entered_then_never_
         assert await _times_out(report(object(), 1))
         assert await _times_out(report(object(), 2))
 
-    run_timed(scenario(), _RUN_BOUND_S)
+    run(scenario())
     assert said == ["HUNG S1"]
 
 
@@ -642,18 +799,18 @@ def test_the_held_system_entry_lands_and_holds_the_reboot_until_its_release() ->
         sysfunct, logger = booted.sysfunct, booted.sysfunct.pr
         release = runner._test_hold_system_entry(_as_module(booted), 25, said.append)
         logger.err_s("Task error counter above", errno=24)  # another errno: no hold
-        await asyncio.wait_for_ms(sysfunct._reboot(5, "Reboot triggered", lambda: None), _PROMPT_BOUND_MS)
+        await sysfunct._reboot(5, "Reboot triggered", lambda: None)
         logger.err_s("C stack exhausted - reboot triggered", errno=25)
         assert logger.written == [24, 25] and said == [], (logger.written, said)  # the entry is written in its call
         held = asyncio.create_task(sysfunct._reboot(20, "Reboot: C stack exhausted", lambda: None))
         assert await wait_for_value(lambda: said, ["ENTRY_HELD"], _REACHED_LIMIT_MS), said
         assert sysfunct.reboots == [5] and not held.done(), sysfunct.reboots
         release()
-        await asyncio.wait_for_ms(held, _PROMPT_BOUND_MS)
+        await held
         assert sysfunct.reboots == [5, 20] and said == ["ENTRY_HELD", "ENTRY_RELEASED"], (sysfunct.reboots, said)
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
-    run_timed(scenario(), _RUN_BOUND_S)
+    run(scenario())
 
 
 class _Holder:
@@ -673,7 +830,7 @@ def test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs
         cleared = asyncio.create_task(runner._test_drop_timer_fire(cast("ModuleType", module), "reset", said.append))
         ticker = machine.Timer(period=_TICKER_PERIOD_MS, callback=lambda _t: ticks.append(1))
         sysfunct._reset_timer.init(period=_DROP_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
-        await asyncio.wait_for_ms(cleared, _DROP_CLEAR_BOUND_MS)
+        await cleared
         during = len(ticks)
         sysfunct._reset_timer.init(period=_REARM_FIRE_MS, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
         await asyncio.sleep_ms(_REARM_RUN_MS)
@@ -681,7 +838,7 @@ def test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs
         await asyncio.sleep_ms(0)  # the deinit's cancel lands before the run ends
         return len(ticks) - during
 
-    after = run_timed(drive(), _RUN_BOUND_S)
+    after = run(drive())
     assert said[0] == "DROP_ARMED reset" and said[1].startswith("FIRE_DROPPED reset callbacks="), said
     assert int(said[1].split("=")[1]) >= 1 and machine.Timer.drop_next_soft_callbacks == 0, (said, machine.Timer.drop_next_soft_callbacks)
     assert fired == [2] and after >= 2, (fired, after)  # the armed fire lost, the next arm's kept, the ticker back
@@ -710,7 +867,7 @@ def test_the_loop_lag_flag_prints_each_windows_maximum_p99_and_samples() -> None
             pass
 
     try:
-        run_timed(drive(), _RUN_BOUND_S)
+        run(drive())
     finally:
         runner._LOOP_LAG_REPORT_MS = report
     windows = [dict(part.split("=") for part in line.split()[1:]) for line in said if line.startswith("LOOP_LAG ")]
@@ -742,7 +899,7 @@ def test_each_loop_lag_line_carries_every_links_transfers_so_far() -> None:
             pass
 
     try:
-        run_timed(drive(), _RUN_BOUND_S)
+        run(drive())
     finally:
         runner._LOOP_LAG_REPORT_MS = report
     counts = [int(dict(part.split("=") for part in line.split()[1:])["uart_link_init"]) for line in said]
@@ -789,7 +946,7 @@ def test_the_uart_driven_clock_lends_the_links_three_modules_one_clock_until_the
         return lent
 
     try:
-        lent = run_timed(scenario(), _RUN_BOUND_S)
+        lent = run(scenario())
         handed_back = [module.asyncio is real for module, (real, _own) in zip(modules, saved)]
     finally:
         for module, (real, own) in zip(modules, saved):
@@ -810,9 +967,9 @@ def test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_
         await asyncio.sleep_ms(runner._READY_POLL_MS * 2)  # two of its polls
         assert initiator._comm.offered == []  # no transfer seen yet: a transaction may be in flight
         initiator._transfers += 1
-        await asyncio.wait_for_ms(offer, _OFFER_BOUND_MS)
+        await offer
 
-    run_timed(scenario(), _RUN_BOUND_S)
+    run(scenario())
     assert initiator._comm.offered == [(0x02, 12193)] and responder._comm.offered == []
     assert said == ["UART_OVER_CAP uart_link_init refused"]
 
@@ -879,7 +1036,7 @@ def test_a_shutdown_hang_arms_once_every_supervised_task_has_started_and_its_can
         assert not lock.locked()
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
-    run_timed(scenario(), _RUN_BOUND_S)
+    run(scenario())
 
 
 def test_the_held_closing_slot_releases_on_its_trigger() -> None:
@@ -890,10 +1047,10 @@ def test_the_held_closing_slot_releases_on_its_trigger() -> None:
         assert await wait_for_value(lambda: booted.webserver.closed, 1, _REACHED_LIMIT_MS)
         assert not closing.done()  # the real close ran; the slot is still held
         release()
-        await asyncio.wait_for_ms(closing, _PROMPT_BOUND_MS)
+        await closing
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
 
-    run_timed(scenario(), _RUN_BOUND_S)
+    run(scenario())
 
 
 def test_each_accepted_socket_is_served_with_its_send_buffer_pinned_at_the_kernels_floor() -> None:
@@ -920,7 +1077,7 @@ def test_each_accepted_socket_is_served_with_its_send_buffer_pinned_at_the_kerne
             await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
         return said + [str(n) for n in booted.webserver.served]
 
-    said = run_timed(scenario(), _RUN_BOUND_S)
+    said = run(scenario())
     assert len(said) == 2 and said[0].startswith("SNDBUF_PINNED "), said
     fields = dict(part.split("=") for part in said[0].split()[1:])
     pinned, accepted = int(fields["bytes"]), int(fields["accepted_bytes"])
@@ -940,9 +1097,9 @@ def test_the_deferred_faults_are_queued_at_the_first_arm_trigger_alone() -> None
     plan: _Plan = {"device": "fixture-device", "buses": {"i2c0": [{"driver": "sgp40", "name_ext": "", "address": 0x59}]}, "spi": {}, "uart": None, "pins": {}}
     machine.configure_wiring(plan)
     machine.I2C(0, scl=machine.Pin(13), sda=machine.Pin(12))
-    chips = launch._collect_chips(plan)
+    chips = runner._collect_chips(plan)
     said: list[str] = []
-    trigger = runner._test_arm_faults(lambda: launch._apply_fault(launch.parse_fault_spec("sgp40:writeto:2"), chips, network.WLAN(network.STA_IF)), said.append)
+    trigger = runner._test_arm_faults(lambda: runner._apply_fault(runner.parse_fault_spec("sgp40:writeto:2"), chips, network.WLAN(network.STA_IF)), said.append)
     assert runner._test_fault_line(chips) == "FAULT_PENDING -"  # nothing queued until the trigger
     trigger()
     assert (runner._test_fault_line(chips), said) == ("FAULT_PENDING sgp40:writeto=2", ["FAULTS_ARMED"])
@@ -957,13 +1114,13 @@ def test_the_status_lines_name_the_gauge_the_backlog_and_each_queued_fault() -> 
         await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
         return line
 
-    assert run_timed(scenario(), _RUN_BOUND_S) == "CONN_SLOTS open=3 backlog=7"
+    assert run(scenario()) == "CONN_SLOTS open=3 backlog=7"
     plan: _Plan = {"device": "fixture-device", "buses": {"i2c0": [{"driver": "sgp40", "name_ext": "", "address": 0x59}]}, "spi": {}, "uart": None, "pins": {}}
     machine.configure_wiring(plan)
     machine.I2C(0, scl=machine.Pin(13), sda=machine.Pin(12))
-    chips = launch._collect_chips(plan)
+    chips = runner._collect_chips(plan)
     assert runner._test_fault_line(chips) == "FAULT_PENDING -"
-    launch._apply_fault(launch.parse_fault_spec("sgp40:writeto:2"), chips, network.WLAN(network.STA_IF))
+    runner._apply_fault(runner.parse_fault_spec("sgp40:writeto:2"), chips, network.WLAN(network.STA_IF))
     assert runner._test_fault_line(chips) == "FAULT_PENDING sgp40:writeto=2"
 
 
@@ -977,7 +1134,7 @@ def test_serving_ends_at_once_when_the_stop_file_already_exists() -> None:
     with open(stop, "w"):
         pass
     start = time.ticks_ms()
-    run_timed(runner._serve_until(_SERVE_BOUND_S, stop), _RUN_BOUND_S)
+    run(runner._serve_until(_SERVE_BOUND_S, stop))
     assert time.ticks_diff(time.ticks_ms(), start) < 1000  # a 30 s bound, left on the first look
 
 
@@ -996,20 +1153,20 @@ def test_serving_ends_once_the_stop_file_appears() -> None:
         await writer
         return time.ticks_diff(time.ticks_ms(), start)
 
-    elapsed = run_timed(scenario(), _RUN_BOUND_S)
+    elapsed = run(scenario())
     assert _STOP_WRITE_DELAY_MS <= elapsed < 3000, elapsed  # after the write, long before the 30 s bound
 
 
 def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
     for stop in (None, _scratch.path("stop_never")):
         start = time.ticks_ms()
-        run_timed(runner._serve_until(_SERVE_SHORT_S, stop), _RUN_BOUND_S)  # two stop-file polls
+        run(runner._serve_until(_SERVE_SHORT_S, stop))  # two stop-file polls
         assert time.ticks_diff(time.ticks_ms(), start) >= 200, stop
 
 
 # ---------------------------------------------------------------------------
 # main() - a real, short, bounded end-to-end smoke boot of a generated module with one injected fault, once per distinct
-# wiring of the FRAM its stores write and the SGP40 the fault arms; main()'s shutdown drains each (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+# wiring of the FRAM its stores write and the SGP40 the fault arms; main()'s shutdown drains each (agent, 2026-10-27).
 # ---------------------------------------------------------------------------
 
 
@@ -1032,7 +1189,7 @@ def _stored_level_boot_on(device: str) -> None:
     setup = asy_wifi_service.WifiService.setup
 
     async def setup_then_hold(self: "asy_wifi_service.WifiService") -> None:
-        # The run ends here (agent, 2026-10-26; owner-reviewed, 2026-11-06): the WIFI store's whole setup inside the window, no later setup or task in it.
+        # The run ends here (agent, 2026-10-26): the WIFI store's whole setup inside the window, no later setup or task in it.
         await setup(self)
         returned.append(self.cfgmgr.valid)
         await asyncio.Event().wait()  # until main()'s shutdown path cancels the boot
@@ -1040,14 +1197,14 @@ def _stored_level_boot_on(device: str) -> None:
     asy_wifi_service.WifiService.setup = setup_then_hold  # type: ignore[method-assign]  # the class the generated module builds
     try:
         with record_prints(echo=True) as printed:
-            run_timed(_until_returned(returned, runner.main(config)), timeout_s=_MAIN_RUN_BOUND_S)
+            run(_until_returned(returned, runner.main(config)))
     finally:
         asy_wifi_service.WifiService.setup = setup  # type: ignore[method-assign]  # as above
     assert returned, f"{device}: the run ended before WifiService.setup() returned"
     # Exact, per layer: the store's own logger holds the one fault and printed it once; the service's own is not read.
     booted = runner._module
     assert booted is not None
-    log = run_timed(booted.conn.cfgmgr.pr.get_log(), _RUN_BOUND_S)["CFGMGR_WIFI"]
+    log = run(booted.conn.cfgmgr.pr.get_log())["CFGMGR_WIFI"]
     entries = [(kind, num) for kind, num in zip(log["ErrType"], log["ErrNum"]) if kind != "N"]
     assert (log["ErrCount"], entries) == (1, [("E", code("E", "CFG_PATH_IS_DIR"))]), (device, log)
     lines = [line for line in printed.lines if line and line[0] == "CFGMGR_WIFI"]
@@ -1157,7 +1314,7 @@ def test_an_interrupt_in_the_shutdown_drain_is_let_through() -> None:
     sys.modules["sensortask_idle"] = _IdleBoot(f"build/generated_src/sensortask_{device}.py")  # type: ignore[assignment]
     runner.asyncio = _InterruptingAsyncio()  # type: ignore[assignment, attr-defined]  # the runner's module global, rebound from outside
     try:
-        run_timed(runner.main(config), timeout_s=_MAIN_RUN_BOUND_S)
+        run(runner.main(config))
         interrupted = False
     except KeyboardInterrupt:
         interrupted = True
@@ -1197,7 +1354,7 @@ def test_main_builds_the_booted_module_at_the_debug_level_asked_for() -> None:
     stand_in = _IdleBoot(f"build/generated_src/sensortask_{device}.py")
     sys.modules["sensortask_idle"] = stand_in  # type: ignore[assignment]
     try:
-        run_timed(runner.main(config), timeout_s=_MAIN_RUN_BOUND_S)
+        run(runner.main(config))
     finally:
         del sys.modules["sensortask_idle"]
         _flash_stall_installed()
@@ -1226,7 +1383,7 @@ def test_the_starting_line_names_a_twin_host_off_the_default_and_only_then() -> 
                 environment=runner.RunEnvironment(_scratch.dir(f"starting_{n}"), True, runner._NO_TEST_FLAGS, None),
             )
             sys.modules["sensortask_idle"] = _IdleBoot(f"build/generated_src/sensortask_{device}.py")  # type: ignore[assignment]
-            run_timed(runner.main(config), timeout_s=_MAIN_RUN_BOUND_S)
+            run(runner.main(config))
     finally:
         del runner.print  # type: ignore[attr-defined]
         _unix_port_udp_addr_shim.twin_host = kept

@@ -448,16 +448,16 @@ class _SilentSocket:
     def __init__(self, _addr: "tuple[str, int]", mode: str = "client", logger: object = None) -> None:
         del mode, logger
 
-    async def write(self, data: bytes, timeout_ms: int = -1) -> int:
-        del timeout_ms
-        return len(data)
+    async def disconnect(self) -> bool:
+        return True
 
     async def recvfrom(self, _n: int, timeout_ms: int = -1) -> "tuple[None, None]":
         _SilentSocket.waits.append(timeout_ms)
         return None, None
 
-    async def disconnect(self) -> bool:
-        return True
+    async def write(self, data: bytes, timeout_ms: int = -1) -> int:
+        del timeout_ms
+        return len(data)
 
 
 def test_resolve_ipv4_asks_each_server_once_for_the_platform_resolvers_resend_interval() -> None:

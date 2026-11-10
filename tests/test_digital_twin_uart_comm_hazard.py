@@ -31,7 +31,6 @@ if TYPE_CHECKING:
 _PAYLOAD = 48
 _BAUD = 115200  # J.6's line rate
 _TIMEOUT_MS = 100
-_RUN_LIMIT_S = 30
 _RECOVERY_ATTEMPTS = 2
 _SETTLE_MS = 5  # the responder's last read after the initiator's call returned (tests/test_uart_comm_hazard.py's)
 _WIRE_POLL_MS = 1  # a real look at the initiator's wire log
@@ -57,8 +56,9 @@ _CLEAR_POINTS = ("before_the_first_frame", "mid_train", "after_the_last_ack")
 microtest.after_each(machine.reset_test_state)
 
 
-async def _get_frame(crc: "CrcMaker") -> bytes:
+def _get_frame(crc: "CrcMaker") -> bytes:
     # A first-chunk GET as a peer starting its own transaction would send it, CRC appended by the bus's own CRC kind.
+    # Plain, not async: on MicroPython an await on a returned bytes loses the task for good, hanging the file.
     frame = bytearray(_POS + _PAYLOAD)
     frame[_UID] = 1
     frame[_CMD] = _CMD_GET
@@ -78,9 +78,9 @@ def _check_both_ends_transmitting(crc: "CrcMaker") -> None:
     pair = _pair(crc)
 
     async def scenario() -> "tuple[bool, list[bool]]":
-        stray = await _get_frame(crc)
+        stray = _get_frame(crc)
         transfer = asyncio.create_task(pair.initiator.uart_set(1, b"x"))
-        while len(pair.wire_from_initiator()) < _frame_len(crc):  # its frame is out: it now awaits the ACK
+        while not transfer.done() and len(pair.wire_from_initiator()) < _frame_len(crc):  # its frame is out: it awaits the ACK
             await asyncio.sleep_ms(_WIRE_POLL_MS)
         pair.fake_b.write(stray)
         first = await transfer
@@ -144,7 +144,7 @@ def _clear_racing(crc: "CrcMaker", point: str) -> None:
         listener = asyncio.create_task(pair.responder.uart_listen())
         transfer = asyncio.create_task(pair.initiator.uart_set(1, _TRAIN))
         if point == "mid_train":
-            while len(pair.wire_from_initiator()) < 2 * _frame_len(crc):  # the second data chunk is on the wire
+            while not transfer.done() and len(pair.wire_from_initiator()) < 2 * _frame_len(crc):  # the second chunk is out
                 await asyncio.sleep_ms(_WIRE_POLL_MS)
             await pair.responder.clear()
         sent = await transfer
@@ -166,7 +166,7 @@ def _clear_racing(crc: "CrcMaker", point: str) -> None:
 
 def _errnos(pair: Pair, name: str) -> "list[int]":
     comm = pair.initiator if name == pair.initiator.name else pair.responder
-    entry = run(comm.get_error_counter(), _RUN_LIMIT_S)[name]
+    entry = run(comm.get_error_counter())[name]
     return [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "E"]
 
 
@@ -178,7 +178,7 @@ def _paced(coro: "Coroutine[object, object, T]") -> "T":
     # On the poll-round clock (SPECIFICATION.md J.7): both ends share this interpreter, so on the wall clock a host
     # stall would spend the peer's reply budget and fail a correct exchange.
     with PollRoundClock():
-        return run(coro, _RUN_LIMIT_S)
+        return run(coro)
 
 
 def _pair(crc: "CrcMaker") -> Pair:
@@ -190,7 +190,7 @@ def _pair(crc: "CrcMaker") -> Pair:
     # budget: both ends and both wire directions at J.6's line rate (attributes, as an init() would undo the DMA routing).
     pair.fake_a.baudrate = pair.fake_b.baudrate = pair.driver_a.baudrate = pair.driver_b.baudrate = _BAUD
     pair.link.a_to_b.baudrate = pair.link.b_to_a.baudrate = _BAUD
-    assert run(pair.setup(), _RUN_LIMIT_S) is True
+    assert run(pair.setup()) is True
     return pair
 
 

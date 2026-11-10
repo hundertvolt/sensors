@@ -73,276 +73,6 @@ class _SessionNote(Protocol):
     def __call__(self, text: str, *, recovery: bool = False, source: str) -> None: ...
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE, else the board's stable /dev/serial/by-id symlink - see harness.resolve_board_device())")
-    parser.addoption("--bench-device", default=None, metavar="NAME", help="the board on the bench; default $BENCH_DEVICE, else the one devices/*.toml with [device].bench = true")
-    parser.addoption("--image-record", default=None, metavar="PATH", help="the image record of the build on the board (default build/firmware-<bench device>.json, beside its .uf2)")
-    parser.addoption("--dut-ip", default=None, metavar="ADDR", help="the DUT's last known address on the bench network; lets the session save /status before anything resets the board")
-    parser.addoption("--lwip-control-image", default=None, metavar="PATH", help="the unpatched control image a phase-C round built in a throwaway worktree; required by the unpatched lwIP test, never defaulted")
-    parser.addoption("--rollover-image", default=None, metavar="PATH", help="the tick-offset test image the rollover round built; required by the rollover test, never defaulted")
-    parser.addoption("--twin", action="store_true", default=False, help="run flash-tier tests and device scripts against the Unix-port twin instead of a board")
-    durations = ", ".join(f"{name}={seconds:.0f} s" for name, seconds in SOAK_DURATION_SECONDS.items())
-    parser.addoption("--soak-duration", choices=sorted(SOAK_DURATION_SECONDS), default=None, help=f"run the soak_duration tests for one named duration ({durations}); scripts/run_bench_soak_tests.sh passes it")
-    parser.addoption("--allow-flash-cycle", action="store_true", default=False, help="one or more reflashes owned by the test (flash wear)")
-    parser.addoption("--allow-multi-day-rollover", action="store_true", default=False, help="the tick-rollover observation on the tick-offset test image, about 2 h; no write of its own")
-    parser.addoption("--allow-neopixel-sweep", action="store_true", default=False, help="~10 minutes of light programs on the NeoPixel-to-ISL29125 rig recorded by the manual tier; no write of its own, its config pushes need --allow-persistence-write")
-    parser.addoption("--allow-persistence-write", action="store_true", default=False, help="the owned flash-filesystem and SCD30 NVM writes listed in tests_hardware/README.md's budget table; shared prerequisite writes run without it")
-    parser.addoption("--allow-scd30-extra-write", action="store_true", default=False, help="on top of --allow-persistence-write: the further SCD30 NVM writes the budget table lists under scd30_extra_write")
-    parser.addoption("--allow-toolchain-reverify", action="store_true", default=False, help="a full toolchain re-verification: network fetches and ~8 min of builds; no board write")
-    parser.addoption("--repair-standard-state", action="store_true", default=False, help="repair a board found outside the standard state; each repair is a listed prerequisite write")
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    markers.register(config)
-    # A thread that dies fails the test it ran under instead of leaving only pytest's warning, so no reader's death
-    # goes unseen (agent, 2026-10-22; owner-reviewed, 2026-11-06); a -W option or a filterwarnings mark, applied after this line, still overrides it.
-    config.addinivalue_line("filterwarnings", "error::pytest.PytestUnhandledThreadExceptionWarning")
-    # The bench board by name: every default-taking harness helper reads $BENCH_DEVICE, so the option is exported for
-    # this session and the previous value restored at its end (an in-process pytest.main() loop must not inherit it).
-    chosen = config.getoption("--bench-device") or os.environ.get("BENCH_DEVICE")
-    if chosen and not (harness.DEVICES_DIR / f"{chosen}.toml").is_file():
-        raise pytest.UsageError(f"--bench-device/$BENCH_DEVICE names {chosen!r}, but there is no devices/{chosen}.toml")
-    config.stash[_BENCH_DEVICE_BEFORE] = os.environ.get("BENCH_DEVICE")
-    if chosen:
-        os.environ["BENCH_DEVICE"] = chosen
-
-
-def pytest_unconfigure(config: pytest.Config) -> None:
-    if _BENCH_DEVICE_BEFORE not in config.stash:  # configure refused the option before exporting anything
-        return
-    before = config.stash[_BENCH_DEVICE_BEFORE]
-    if before is None:
-        os.environ.pop("BENCH_DEVICE", None)
-    else:
-        os.environ["BENCH_DEVICE"] = before
-
-
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    # The wear gates deselect rather than skip, so a run reports its deselected count; each item is
-    # tagged with the flag that would select it, which tells it apart from a runner's -m exclusion.
-    # Only these two options are read at collection: everything else a fixture reads at run time.
-    allow_writes = config.getoption("--allow-persistence-write")
-    allow_extra_write = config.getoption("--allow-scd30-extra-write")
-    kept: list[pytest.Item] = []
-    deselected: list[pytest.Item] = []
-    for item in items:
-        lacks_write_permission = item.get_closest_marker("persistence_write") is not None and not allow_writes
-        lacks_extra_write_permission = item.get_closest_marker("scd30_extra_write") is not None and not allow_extra_write
-        if lacks_write_permission:
-            item.user_properties.append(("deselected_by", "--allow-persistence-write"))
-            deselected.append(item)
-        elif lacks_extra_write_permission:
-            item.user_properties.append(("deselected_by", "--allow-scd30-extra-write"))
-            deselected.append(item)
-        else:
-            kept.append(item)
-    if deselected:
-        config.hook.pytest_deselected(items=deselected)
-    # destructive_last: within its module a marked test runs after the others, the order otherwise kept.
-    module_order: dict[str, int] = {}
-    for item in kept:
-        module_order.setdefault(item.nodeid.split("::", 1)[0], len(module_order))
-    items[:] = sorted(kept, key=lambda item: (module_order[item.nodeid.split("::", 1)[0]], item.get_closest_marker("destructive_last") is not None))
-
-
-@pytest.fixture
-def result_note(request: pytest.FixtureRequest) -> _ResultNote:
-    # A note on the test's own report, which the run record keeps for a passing test too (a print
-    # is dropped by capture). recovery=True marks a pass that needed a recovery step.
-    def _note(text: str, *, recovery: bool = False) -> None:
-        request.node.user_properties.append(("recovery" if recovery else "result_note", text))
-
-    return _note
-
-
-def record_session_note(config: pytest.Config, text: str, *, recovery: bool = False, source: str) -> None:
-    # For session-scoped fixtures, which have no test report: the run-record plugin keeps the note
-    # under session_notes. Without it the note is printed past output capture, never dropped.
-    plugin = config.pluginmanager.get_plugin("_pytest_run_record")
-    if plugin is not None:
-        plugin.add_session_note(config, text, recovery=recovery, source=source)
-        return
-    line = f"{'RECOVERY' if recovery else 'NOTE'} ({source}): {text}"
-    capture = config.pluginmanager.get_plugin("capturemanager")
-    if capture is None:
-        print(line)
-        return
-    with capture.global_and_fixture_disabled():
-        print(line)
-
-
-def report_to_console(config: pytest.Config, message: str) -> None:
-    # Through the terminal reporter, so neither output capture nor -q can hide it.
-    reporter = config.pluginmanager.get_plugin("terminalreporter")
-    if reporter is None:
-        print(message)
-        return
-    for line in message.splitlines():
-        reporter.write_line(line)
-
-
-@pytest.fixture(scope="session")
-def session_note(request: pytest.FixtureRequest) -> _SessionNote:
-    # record_session_note() bound to this session, for a subdirectory's conftest (it cannot import this module).
-    def _note(text: str, *, recovery: bool = False, source: str) -> None:
-        record_session_note(request.config, text, recovery=recovery, source=source)
-
-    return _note
-
-
-@pytest.fixture(scope="session")
-def bench_device_name() -> str:
-    # pytest_configure() exported --bench-device as $BENCH_DEVICE, so the harness's own resolution is the one answer.
-    return harness.bench_device()
-
-
-@pytest.fixture(scope="session")
-def board(request: pytest.FixtureRequest) -> "Iterator[Board | TwinBoard]":
-    if request.config.getoption("--twin"):
-        # A missing Unix-port build fails the twin's first run, never skips it - the run asked for the twin.
-        yield TwinBoard()
-        return
-    b = Board(device=request.config.getoption("--device"))
-    # The passive presence check first: with no serial node there is nothing to start mpremote against.
-    if not (b.is_device_present() and b.is_reachable()):
-        pytest.skip(
-            f"no real board reachable at {b.device} - this fixture only runs against real hardware "
-            "(see tests_hardware/README.md for provisioning). Not a failure: this tier is meant to "
-            "be collectible with nothing attached.",
-        )
-    yield b
-
-
-@pytest.fixture(scope="session")
-def bench(board: Board, request: pytest.FixtureRequest) -> BenchBridge:
-    # Depends on `board` - a bench test needs both the real board over USB and the real WiFi bridge.
-    if request.config.getoption("--twin"):
-        pytest.skip("the twin has no bench bridge")
-    bridge = BenchBridge()
-    if not bridge.is_configured():
-        pytest.skip(
-            "no bench WiFi bridge configured (br0-wifi-ap missing) - run "
-            "`uv run toolchain/setup_toolchain.py env --tier bench` first (see tests_hardware/README.md).",
-        )
-    for removed in bridge.clear_leftovers():  # a killed earlier run's network state, each removal reported
-        record_session_note(request.config, f"removed a leftover: {removed}", source="bench.clear_leftovers")
-    return bridge
-
-
-@pytest.fixture(scope="session")
-def bench_if_configured(request: pytest.FixtureRequest) -> "BenchBridge | None":
-    # The bridge harness.reset_board() kicks: the bench fixture, its leftovers cleared, where its own two tests find one
-    # (no --twin, BenchBridge().is_configured()); None on a flash-only rig or under --twin, never its skip.
-    if request.config.getoption("--twin") or not BenchBridge().is_configured():
-        return None
-    bridge: BenchBridge = request.getfixturevalue("bench")
-    return bridge
-
-
-class Deviation(NamedTuple):
-    # One way the board differs from the standard state: what was read, what the state holds, how it is restored.
-    name: str
-    read: str
-    standard: str
-    remedy: str
-
-
-def standard_state_message(deviations: "Sequence[tuple[str, str, str, str]]") -> str:
-    lines = ["board not in the standard state:"]
-    lines += [f"  - {d.name}: read {d.read}, the standard state holds {d.standard} - {d.remedy}" for d in map(Deviation._make, deviations)]
-    return "\n".join(lines)
-
-
-def exit_on_deviations(config: pytest.Config, deviations: "Sequence[tuple[str, str, str, str]]") -> NoReturn:
-    # One console message through the terminal reporter (output capture and -q cannot hide it), then the failed start.
-    message = standard_state_message(deviations)
-    report_to_console(config, message)
-    pytest.exit(message, returncode=1)
-
-
-@pytest.fixture(scope="session")
-def standard_state_exit(request: pytest.FixtureRequest) -> "Callable[[Sequence[tuple[str, str, str, str]]], NoReturn]":
-    # exit_on_deviations() bound to this session, for a subdirectory's conftest (bench/conftest.py's image check).
-    def _exit(deviations: "Sequence[tuple[str, str, str, str]]") -> NoReturn:
-        exit_on_deviations(request.config, deviations)
-
-    return _exit
-
-
-def parse_board_state(output: str) -> "tuple[int | None, list[str]]":
-    # The read-only exec's two lines: the production DebugLevel (None when the file or the key is absent) and the
-    # root's names. Anything else is a changed exec or a board that did not run it, never a guess.
-    level_lines = [line[len("LEVEL=") :].strip() for line in output.splitlines() if line.startswith("LEVEL=")]
-    file_lines = [line[len("FILES=") :].strip() for line in output.splitlines() if line.startswith("FILES=")]
-    if len(level_lines) != 1 or len(file_lines) != 1:
-        raise HardwareTestFailureError(f"the board-state exec printed no single LEVEL= and FILES= line:\n{output}")
-    files = json.loads(file_lines[0])
-    if not isinstance(files, list) or not all(isinstance(name, str) for name in files):
-        raise HardwareTestFailureError(f"the board-state exec's FILES= is no list of names: {file_lines[0]!r}")
-    level = int(level_lines[0]) if re.fullmatch(r"-?\d+", level_lines[0]) else None
-    return level, files
-
-
-def board_state_deviations(level: "int | None", files: "list[str]", write_protected: object) -> "list[Deviation]":
-    found: list[Deviation] = []
-    if level != _STANDARD_DEBUG_LEVEL:
-        found.append(Deviation("DebugLevel", "absent" if level is None else str(level), str(_STANDARD_DEBUG_LEVEL), _REPAIRED))
-    if write_protected is not False:
-        found.append(Deviation("FRAM write-protect", "set" if write_protected is True else f"unread ({write_protected!r})", "clear", _REPAIRED))
-    scratch = sorted(name for name in files if name.startswith(_SCRATCH_PREFIX) or name == _SCRATCH_DIR)
-    if scratch:
-        found.append(Deviation("scratch files", ", ".join(scratch), "none", _REPAIRED))
-    return found
-
-
-def scd30_deviations(start: "dict[str, object]", end: "dict[str, object]") -> "list[Deviation]":
-    # A test that changed an SCD30 value and did not restore it: the end differs from the session start.
-    return [Deviation(f"SCD30 {key}", repr(end.get(key)), repr(start.get(key)), _RESTORE_SCD30) for key in sorted(set(start) | set(end)) if start.get(key) != end.get(key)]
-
-
-def save_status_over_rest(config: pytest.Config, dut_ip: "str | None") -> "str | None":
-    # GET /status while main.py still serves (the FRAM-backed errcount, the in-RAM ResetReason a raw-REPL entry would
-    # end), or why it was not saved.
-    config.stash[_REST_SAVED] = False
-    if not dut_ip:
-        return "pre-session /status not saved: no reachable --dut-ip"
-    try:
-        error_log_helpers.save_errcount(dut_ip, "session-start")
-    except (OSError, AssertionError, http_client.HTTP_ERROR) as exc:
-        return f"pre-session /status not saved: --dut-ip {dut_ip} did not answer ({exc})"
-    config.stash[_REST_SAVED] = True
-    return None
-
-
-def _board_if_present(request: pytest.FixtureRequest) -> "Board | None":
-    # The autouse session fixtures act only on a real board: without one, each test's own `board` request skips it.
-    if request.config.getoption("--twin"):
-        return None
-    try:
-        board: Board = request.getfixturevalue("board")
-    except pytest.skip.Exception:
-        return None
-    return board
-
-
-@pytest.fixture(scope="session", autouse=True)
-def fram_evidence_saved(request: pytest.FixtureRequest) -> "harness.FramDump | None":
-    # Evidence before anything clears it: /status over REST before the board fixture, whose reachability check is a
-    # raw-REPL exec that stops main.py; then the read-only raw FRAM dump, then the reset the dump needs.
-    config = request.config
-    if config.getoption("--twin"):
-        return None
-    unsaved = save_status_over_rest(config, config.getoption("--dut-ip"))
-    board = _board_if_present(request)
-    if board is None:
-        return None
-    if unsaved:
-        record_session_note(config, unsaved, source="fram_evidence_saved")
-    dump = harness.save_fram_raw(board, "session-start")
-    harness.reset_board(board, request.getfixturevalue("bench_if_configured"))
-    return dump
-
-
 def _get_json(dut_ip: str, path: str) -> "dict[str, object]":
     # One strict GET: a 200 whose body is a JSON object.
     res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_HTTP_READY_PROBE_TIMEOUT_S)
@@ -355,13 +85,23 @@ def _get_json(dut_ip: str, path: str) -> "dict[str, object]":
     return dict(body)
 
 
-def _result_words(res: "http_client.HttpResponse") -> "dict[str, object]":
-    # A PUT's per-field result words ({"result": {...}}), empty when the answer carries none.
+def _bench_instances(driver: str) -> "dict[str, dict[str, bench_facts.Fact]]":
+    # The bench board's instances of one driver by label, from its device TOML through bench_facts, never a literal.
+    instances = bench_facts.build(harness.bench_device())["instances"]
+    if not isinstance(instances, dict):
+        raise HardwareNotAvailableError(f"the bench facts of {harness.device_toml()} carry no instance table")
+    return {label: spec for label, spec in instances.items() if isinstance(spec, dict) and spec.get("driver") == driver}
+
+
+def _board_if_present(request: pytest.FixtureRequest) -> "Board | None":
+    # The autouse session fixtures act only on a real board: without one, each test's own `board` request skips it.
+    if request.config.getoption("--twin"):
+        return None
     try:
-        result = res.json().get("result") if res.status_code == 200 else None
-    except (ValueError, TypeError):
-        result = None
-    return dict(result) if isinstance(result, dict) else {}
+        board: Board = request.getfixturevalue("board")
+    except pytest.skip.Exception:
+        return None
+    return board
 
 
 def _board_state(board: "Board", bench: "BenchBridge | None", dut_ip: "str | None") -> "tuple[int | None, list[str]]":
@@ -378,29 +118,48 @@ def _board_state(board: "Board", bench: "BenchBridge | None", dut_ip: "str | Non
     return level, files
 
 
-def _bench_instances(driver: str) -> "dict[str, dict[str, bench_facts.Fact]]":
-    # The bench board's instances of one driver by label, from its device TOML through bench_facts, never a literal.
-    instances = bench_facts.build(harness.bench_device())["instances"]
-    if not isinstance(instances, dict):
-        raise HardwareNotAvailableError(f"the bench facts of {harness.device_toml()} carry no instance table")
-    return {label: spec for label, spec in instances.items() if isinstance(spec, dict) and spec.get("driver") == driver}
+def _clear_write_protect_exec() -> str:
+    # The bench board's FRAM through the product driver, its pins from the device TOML; one status-register write.
+    facts = bench_facts.build(harness.bench_device())
+    chips, buses = list(_bench_instances("fram").values()), facts["bus"]
+    bus = buses.get(str(chips[0].get("bus"))) if chips and isinstance(buses, dict) else None
+    if not isinstance(bus, dict):
+        raise HardwareNotAvailableError(f"{harness.device_toml()} wires no FRAM on a declared bus, so no write-protect to clear")
+    chip = chips[0]
+    return (
+        "import asyncio, asy_spi_driver\nfrom asy_fram_driver import FRAM_SPI\nfrom asy_print_log import PrintLogHistory\n"
+        f"spi = asy_spi_driver.SPI({bus['id']}, sck_pin={bus['sck_pin']}, mosi_pin={bus['mosi_pin']}, miso_pin={bus['miso_pin']})\n"
+        f"fram = FRAM_SPI(spi, {chip['cs_pin']}, logger=PrintLogHistory(name='FRAMWP'), max_size={facts['fram_max_size']})\n"
+        "async def main():\n  await fram.setup()\n  print('WP_CLEARED=' + str(await fram.set_write_protected(value=False)))\n"
+        "asyncio.run(main())"
+    )
 
 
-def _scd30_snapshot(board: "Board", bench: "BenchBridge | None", dut_ip: "str | None") -> "dict[str, object]":
-    # Over REST the configured values of every SCD30 instance; without a bench what the read-only interval script yields.
-    if dut_ip is not None:
-        body = _get_json(dut_ip, "/sensors")
-        snapshot: dict[str, object] = {}
-        for label, spec in sorted(_bench_instances("scd30").items()):
-            name = str(spec["name"])  # GET /sensors is keyed by the firmware name ("SCD30"), not the TOML label
-            values = body.get(name)
-            if not isinstance(values, dict):
-                raise HardwareTestFailureError(f"GET /sensors carries no {name} object: {values!r}")
-            snapshot.update({f"{label}.{key}": values.get(key) for key in _SCD30_SNAPSHOT})
-        return snapshot
-    facts = scd30_prerequisite.interval_facts(board)
-    harness.reset_board(board, bench)
-    return {f"interval read {key}": value for key, value in facts.items()}
+def _recover_stale_dut_credentials(bench: BenchBridge, note: _ResultNote) -> None:
+    # Last-resort recovery for dut_ip(): the DUT's own hotspot is joined and the bench AP's current credentials PUT to
+    # it. The single radio scans only with the AP down, so the AP goes down first; every path restores the bridge.
+    ssid, password = bench.ap_ssid(), bench.ap_password()
+    candidates = harness.dut_hostname_candidates()  # the hotspot SSID is the Hostname: the TOML's, or the schema default
+    note("stale-credential recovery: one PUT /networking (flash write, pinned prerequisite)", recovery=True)
+    bench.ap_down()
+    try:
+        found: list[str] = []
+
+        def _any_candidate_visible() -> bool:
+            found[:] = [name for name in candidates if bench.is_ssid_visible(name)][:1]
+            return bool(found)
+
+        wait_until(_any_candidate_visible, timeout_s=_HOTSPOT_SCAN_TIMEOUT_S, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description=f"the DUT's own hotspot (one of {list(candidates)}) scannable with the bench AP down")
+        bench.join_dut_hotspot(found[0], harness.hotspot_password(), timeout_s=_JOIN_HOTSPOT_TIMEOUT_S)
+        res = http_client.fetch(bench.gateway_ip(), 80, "PUT", "/networking", {"SSID": ssid, "PW": password}, timeout_s=_PROVISION_PUT_TIMEOUT_S)
+        if res.status_code != 200:
+            raise HardwareTestFailureError(f"PUT /networking during stale-credential recovery failed: {res.status_code} {res.body!r}")
+        result = _result_words(res)
+        accepted = {"Valid", "Unchanged"}
+        if result.get("SSID") not in accepted or result.get("PW") not in accepted:
+            raise HardwareTestFailureError(f"PUT /networking during stale-credential recovery was rejected: {result!r}")
+    finally:
+        bench.leave_dut_hotspot_and_restore_bridge()
 
 
 def _repair(config: pytest.Config, board: "Board", bench: "BenchBridge | None", dut_ip: "str | None", deviations: "list[Deviation]") -> None:
@@ -433,29 +192,30 @@ def _repair(config: pytest.Config, board: "Board", bench: "BenchBridge | None", 
         harness.reset_board(board, bench)
 
 
-# The scratch the hardware tests may leave: config_HWTEST_* files and the hwtest-scratch directory, removed whole.
-_REMOVE_SCRATCH_EXEC = (
-    "import os\ndef rm(p):\n  try:\n    names = os.listdir(p)\n  except OSError:\n    os.remove(p)\n    return\n"
-    "  for n in names:\n    rm(p + '/' + n)\n  os.rmdir(p)\n"
-    f"for n in os.listdir():\n  if n.startswith('{_SCRATCH_PREFIX}') or n == '{_SCRATCH_DIR}':\n    rm(n)\nprint('SCRATCH_REMOVED')"
-)
+def _result_words(res: "http_client.HttpResponse") -> "dict[str, object]":
+    # A PUT's per-field result words ({"result": {...}}), empty when the answer carries none.
+    try:
+        result = res.json().get("result") if res.status_code == 200 else None
+    except (ValueError, TypeError):
+        result = None
+    return dict(result) if isinstance(result, dict) else {}
 
 
-def _clear_write_protect_exec() -> str:
-    # The bench board's FRAM through the product driver, its pins from the device TOML; one status-register write.
-    facts = bench_facts.build(harness.bench_device())
-    chips, buses = list(_bench_instances("fram").values()), facts["bus"]
-    bus = buses.get(str(chips[0].get("bus"))) if chips and isinstance(buses, dict) else None
-    if not isinstance(bus, dict):
-        raise HardwareNotAvailableError(f"{harness.device_toml()} wires no FRAM on a declared bus, so no write-protect to clear")
-    chip = chips[0]
-    return (
-        "import asyncio, asy_spi_driver\nfrom asy_fram_driver import FRAM_SPI\nfrom asy_print_log import PrintLogHistory\n"
-        f"spi = asy_spi_driver.SPI({bus['id']}, sck_pin={bus['sck_pin']}, mosi_pin={bus['mosi_pin']}, miso_pin={bus['miso_pin']})\n"
-        f"fram = FRAM_SPI(spi, {chip['cs_pin']}, logger=PrintLogHistory(name='FRAMWP'), max_size={facts['fram_max_size']})\n"
-        "async def main():\n  await fram.setup()\n  print('WP_CLEARED=' + str(await fram.set_write_protected(value=False)))\n"
-        "asyncio.run(main())"
-    )
+def _scd30_snapshot(board: "Board", bench: "BenchBridge | None", dut_ip: "str | None") -> "dict[str, object]":
+    # Over REST the configured values of every SCD30 instance; without a bench what the read-only interval script yields.
+    if dut_ip is not None:
+        body = _get_json(dut_ip, "/sensors")
+        snapshot: dict[str, object] = {}
+        for label, spec in sorted(_bench_instances("scd30").items()):
+            name = str(spec["name"])  # GET /sensors is keyed by the firmware name ("SCD30"), not the TOML label
+            values = body.get(name)
+            if not isinstance(values, dict):
+                raise HardwareTestFailureError(f"GET /sensors carries no {name} object: {values!r}")
+            snapshot.update({f"{label}.{key}": values.get(key) for key in _SCD30_SNAPSHOT})
+        return snapshot
+    facts = scd30_prerequisite.interval_facts(board)
+    harness.reset_board(board, bench)
+    return {f"interval read {key}": value for key, value in facts.items()}
 
 
 def _vl805_note(config: pytest.Config) -> None:
@@ -474,6 +234,310 @@ def _vl805_note(config: pytest.Config) -> None:
     record_session_note(config, f"vl805_firmware: {match.group(1)}", source="standard_state")
     if version < _VL805_E15_FIXED:
         report_to_console(config, f"warning: the bench host's VL805 firmware {match.group(1)} predates {_VL805_E15_FIXED:08x}, which can hang the RP2040's USB device (RP2040-E15) - update it: sudo rpi-eeprom-update -a")
+
+
+@pytest.fixture(scope="session")
+def bench(board: Board, request: pytest.FixtureRequest) -> BenchBridge:
+    # Depends on `board` - a bench test needs both the real board over USB and the real WiFi bridge.
+    if request.config.getoption("--twin"):
+        pytest.skip("the twin has no bench bridge")
+    bridge = BenchBridge()
+    if not bridge.is_configured():
+        pytest.skip(
+            "no bench WiFi bridge configured (br0-wifi-ap missing) - run "
+            "`uv run toolchain/setup_toolchain.py env --tier bench` first (see tests_hardware/README.md).",
+        )
+    for removed in bridge.clear_leftovers():  # a killed earlier run's network state, each removal reported
+        record_session_note(request.config, f"removed a leftover: {removed}", source="bench.clear_leftovers")
+    return bridge
+
+
+@pytest.fixture(scope="session")
+def bench_device_name() -> str:
+    # pytest_configure() exported --bench-device as $BENCH_DEVICE, so the harness's own resolution is the one answer.
+    return harness.bench_device()
+
+
+@pytest.fixture(scope="session")
+def bench_if_configured(request: pytest.FixtureRequest) -> "BenchBridge | None":
+    # The bridge harness.reset_board() kicks: the bench fixture, its leftovers cleared, where its own two tests find one
+    # (no --twin, BenchBridge().is_configured()); None on a flash-only rig or under --twin, never its skip.
+    if request.config.getoption("--twin") or not BenchBridge().is_configured():
+        return None
+    bridge: BenchBridge = request.getfixturevalue("bench")
+    return bridge
+
+
+@pytest.fixture(scope="session")
+def board(request: pytest.FixtureRequest) -> "Iterator[Board | TwinBoard]":
+    if request.config.getoption("--twin"):
+        # A missing Unix-port build fails the twin's first run, never skips it - the run asked for the twin.
+        yield TwinBoard()
+        return
+    b = Board(device=request.config.getoption("--device"))
+    # The passive presence check first: with no serial node there is nothing to start mpremote against.
+    if not (b.is_device_present() and b.is_reachable()):
+        pytest.skip(
+            f"no real board reachable at {b.device} - this fixture only runs against real hardware "
+            "(see tests_hardware/README.md for provisioning). Not a failure: this tier is meant to "
+            "be collectible with nothing attached.",
+        )
+    yield b
+
+
+def board_state_deviations(level: "int | None", files: "list[str]", write_protected: object) -> "list[Deviation]":
+    found: list[Deviation] = []
+    if level != _STANDARD_DEBUG_LEVEL:
+        found.append(Deviation("DebugLevel", "absent" if level is None else str(level), str(_STANDARD_DEBUG_LEVEL), _REPAIRED))
+    if write_protected is not False:
+        found.append(Deviation("FRAM write-protect", "set" if write_protected is True else f"unread ({write_protected!r})", "clear", _REPAIRED))
+    scratch = sorted(name for name in files if name.startswith(_SCRATCH_PREFIX) or name == _SCRATCH_DIR)
+    if scratch:
+        found.append(Deviation("scratch files", ", ".join(scratch), "none", _REPAIRED))
+    return found
+
+
+@pytest.fixture(scope="session")
+def dut_ip(board: Board, bench: BenchBridge, request: pytest.FixtureRequest) -> str:
+    # The DUT's STA address on the bench bridge network. An exec stops main.py and hard_reset() restarts it, so the
+    # address is read once the log shows the STA connect, then the board is reset and serving is awaited.
+    config = request.config
+    seen: list[str] = []
+
+    def note(text: str, *, recovery: bool = False) -> None:
+        record_session_note(config, text, recovery=recovery, source="dut_ip")
+
+    def sta_connected() -> bool:
+        seen.extend(board.tail_log(duration_s=_STA_TAIL_STEP_S))
+        return "WLAN connection established" in "\n".join(seen)
+
+    harness.kick_then_reset(board, bench)
+    try:
+        harness.recover_by_reset(board, bench, sta_connected, first_wait_s=_IP_AND_HTTP_TIMEOUT_S, retry_wait_s=_IP_AND_HTTP_TIMEOUT_S, skipped="the first STA connect after the session's reset", note=note, description="DUT STA connect")
+    except TimeoutError:
+        # Neither reset helps when the DUT holds stale stored credentials (a bridge recreated with a new SSID/password).
+        _recover_stale_dut_credentials(bench, note)
+        seen.clear()
+        harness.kick_then_reset(board, bench)
+        wait_until(sta_connected, timeout_s=_IP_AND_HTTP_TIMEOUT_S, description="DUT STA connect after stale-credential recovery")
+    try:
+        output = board.exec("import network\nw = network.WLAN(network.STA_IF)\nprint('DUT_IP=' + (w.ifconfig()[0] if w.isconnected() else ''))", timeout_s=_DUT_IP_EXEC_TIMEOUT_S)
+    finally:
+        harness.kick_then_reset(board, bench)
+    ips = [line[len("DUT_IP=") :].strip() for line in output.splitlines() if line.startswith("DUT_IP=")]
+    if not ips or not ips[0]:
+        raise HardwareTestFailureError(f"the log showed 'WLAN connection established' but the board reported no STA address:\n{output}")
+    ip = ips[0]
+    wait_until(
+        lambda: http_client.fetch(ip, 80, "GET", "/status", timeout_s=_HTTP_READY_PROBE_TIMEOUT_S).status_code == 200,
+        timeout_s=_DUT_SERVING_AFTER_STA_S + _IP_AND_HTTP_TIMEOUT_S,
+        poll_interval_s=_HTTP_READY_POLL_S,
+        description=f"DUT serves real HTTP at {ip} (the reset after the address read, the STA reconnect, then {_DUT_SERVING_AFTER_STA_S} s for the webserver: main() starts it before the first NTP sync)",
+    )
+    if not config.stash.get(_REST_SAVED, False):
+        error_log_helpers.save_errcount(ip, "session-start")
+        config.stash[_REST_SAVED] = True
+    return ip
+
+
+def exit_on_deviations(config: pytest.Config, deviations: "Sequence[tuple[str, str, str, str]]") -> NoReturn:
+    # One console message through the terminal reporter (output capture and -q cannot hide it), then the failed start.
+    message = standard_state_message(deviations)
+    report_to_console(config, message)
+    pytest.exit(message, returncode=1)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def fram_evidence_saved(request: pytest.FixtureRequest) -> "harness.FramDump | None":
+    # Evidence before anything clears it: /status over REST before the board fixture, whose reachability check is a
+    # raw-REPL exec that stops main.py; then the read-only raw FRAM dump, then the reset the dump needs.
+    config = request.config
+    if config.getoption("--twin"):
+        return None
+    unsaved = save_status_over_rest(config, config.getoption("--dut-ip"))
+    board = _board_if_present(request)
+    if board is None:
+        return None
+    if unsaved:
+        record_session_note(config, unsaved, source="fram_evidence_saved")
+    dump = harness.save_fram_raw(board, "session-start")
+    harness.reset_board(board, request.getfixturevalue("bench_if_configured"))
+    return dump
+
+
+def parse_board_state(output: str) -> "tuple[int | None, list[str]]":
+    # The read-only exec's two lines: the production DebugLevel (None when the file or the key is absent) and the
+    # root's names. Anything else is a changed exec or a board that did not run it, never a guess.
+    level_lines = [line[len("LEVEL=") :].strip() for line in output.splitlines() if line.startswith("LEVEL=")]
+    file_lines = [line[len("FILES=") :].strip() for line in output.splitlines() if line.startswith("FILES=")]
+    if len(level_lines) != 1 or len(file_lines) != 1:
+        raise HardwareTestFailureError(f"the board-state exec printed no single LEVEL= and FILES= line:\n{output}")
+    files = json.loads(file_lines[0])
+    if not isinstance(files, list) or not all(isinstance(name, str) for name in files):
+        raise HardwareTestFailureError(f"the board-state exec's FILES= is no list of names: {file_lines[0]!r}")
+    level = int(level_lines[0]) if re.fullmatch(r"-?\d+", level_lines[0]) else None
+    return level, files
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE, else the board's stable /dev/serial/by-id symlink - see harness.resolve_board_device())")
+    parser.addoption("--bench-device", default=None, metavar="NAME", help="the board on the bench; default $BENCH_DEVICE, else the one devices/*.toml with [device].bench = true")
+    parser.addoption("--image-record", default=None, metavar="PATH", help="the image record of the build on the board (default build/firmware-<bench device>.json, beside its .uf2)")
+    parser.addoption("--dut-ip", default=None, metavar="ADDR", help="the DUT's last known address on the bench network; lets the session save /status before anything resets the board")
+    parser.addoption("--lwip-control-image", default=None, metavar="PATH", help="the unpatched control image a phase-C round built in a throwaway worktree; required by the unpatched lwIP test, never defaulted")
+    parser.addoption("--rollover-image", default=None, metavar="PATH", help="the tick-offset test image the rollover round built; required by the rollover test, never defaulted")
+    parser.addoption("--twin", action="store_true", default=False, help="run flash-tier tests and device scripts against the Unix-port twin instead of a board")
+    durations = ", ".join(f"{name}={seconds:.0f} s" for name, seconds in SOAK_DURATION_SECONDS.items())
+    parser.addoption("--soak-duration", choices=sorted(SOAK_DURATION_SECONDS), default=None, help=f"run the soak_duration tests for one named duration ({durations}); scripts/run_bench_soak_tests.sh passes it")
+    parser.addoption("--allow-flash-cycle", action="store_true", default=False, help="one or more reflashes owned by the test (flash wear)")
+    parser.addoption("--allow-multi-day-rollover", action="store_true", default=False, help="the tick-rollover observation on the tick-offset test image, about 2 h; no write of its own")
+    parser.addoption("--allow-neopixel-sweep", action="store_true", default=False, help="~10 minutes of light programs on the NeoPixel-to-ISL29125 rig recorded by the manual tier; no write of its own, its config pushes need --allow-persistence-write")
+    parser.addoption("--allow-persistence-write", action="store_true", default=False, help="the owned flash-filesystem and SCD30 NVM writes listed in tests_hardware/README.md's budget table; shared prerequisite writes run without it")
+    parser.addoption("--allow-scd30-extra-write", action="store_true", default=False, help="on top of --allow-persistence-write: the further SCD30 NVM writes the budget table lists under scd30_extra_write")
+    parser.addoption("--allow-toolchain-reverify", action="store_true", default=False, help="a full toolchain re-verification: network fetches and ~8 min of builds; no board write")
+    parser.addoption("--repair-standard-state", action="store_true", default=False, help="repair a board found outside the standard state; each repair is a listed prerequisite write")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    # The wear gates deselect rather than skip, so a run reports its deselected count; each item is
+    # tagged with the flag that would select it, which tells it apart from a runner's -m exclusion.
+    # Only these two options are read at collection: everything else a fixture reads at run time.
+    allow_writes = config.getoption("--allow-persistence-write")
+    allow_extra_write = config.getoption("--allow-scd30-extra-write")
+    kept: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
+    for item in items:
+        lacks_write_permission = item.get_closest_marker("persistence_write") is not None and not allow_writes
+        lacks_extra_write_permission = item.get_closest_marker("scd30_extra_write") is not None and not allow_extra_write
+        if lacks_write_permission:
+            item.user_properties.append(("deselected_by", "--allow-persistence-write"))
+            deselected.append(item)
+        elif lacks_extra_write_permission:
+            item.user_properties.append(("deselected_by", "--allow-scd30-extra-write"))
+            deselected.append(item)
+        else:
+            kept.append(item)
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+    # destructive_last: within its module a marked test runs after the others, the order otherwise kept.
+    module_order: dict[str, int] = {}
+    for item in kept:
+        module_order.setdefault(item.nodeid.split("::", 1)[0], len(module_order))
+    items[:] = sorted(kept, key=lambda item: (module_order[item.nodeid.split("::", 1)[0]], item.get_closest_marker("destructive_last") is not None))
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    markers.register(config)
+    # A thread that dies fails the test it ran under instead of leaving only pytest's warning, so no reader's death
+    # goes unseen (agent, 2026-10-22); a -W option or a filterwarnings mark, applied after this line, still overrides it.
+    config.addinivalue_line("filterwarnings", "error::pytest.PytestUnhandledThreadExceptionWarning")
+    # The bench board by name: every default-taking harness helper reads $BENCH_DEVICE, so the option is exported for
+    # this session and the previous value restored at its end (an in-process pytest.main() loop must not inherit it).
+    chosen = config.getoption("--bench-device") or os.environ.get("BENCH_DEVICE")
+    if chosen and not (harness.DEVICES_DIR / f"{chosen}.toml").is_file():
+        raise pytest.UsageError(f"--bench-device/$BENCH_DEVICE names {chosen!r}, but there is no devices/{chosen}.toml")
+    config.stash[_BENCH_DEVICE_BEFORE] = os.environ.get("BENCH_DEVICE")
+    if chosen:
+        os.environ["BENCH_DEVICE"] = chosen
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    if _BENCH_DEVICE_BEFORE not in config.stash:  # configure refused the option before exporting anything
+        return
+    before = config.stash[_BENCH_DEVICE_BEFORE]
+    if before is None:
+        os.environ.pop("BENCH_DEVICE", None)
+    else:
+        os.environ["BENCH_DEVICE"] = before
+
+
+def record_session_note(config: pytest.Config, text: str, *, recovery: bool = False, source: str) -> None:
+    # For session-scoped fixtures, which have no test report: the run-record plugin keeps the note
+    # under session_notes. Without it the note is printed past output capture, never dropped.
+    plugin = config.pluginmanager.get_plugin("_pytest_run_record")
+    if plugin is not None:
+        plugin.add_session_note(config, text, recovery=recovery, source=source)
+        return
+    line = f"{'RECOVERY' if recovery else 'NOTE'} ({source}): {text}"
+    capture = config.pluginmanager.get_plugin("capturemanager")
+    if capture is None:
+        print(line)
+        return
+    with capture.global_and_fixture_disabled():
+        print(line)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def report_recovery_events(request: pytest.FixtureRequest) -> "Iterator[None]":
+    # Every mpremote recovery the harness made this session reaches the run record as a recovery note.
+    board = _board_if_present(request)
+    yield
+    for event in board.recovery_events if board is not None else []:
+        record_session_note(request.config, event, recovery=True, source="mpremote")
+
+
+def report_to_console(config: pytest.Config, message: str) -> None:
+    # Through the terminal reporter, so neither output capture nor -q can hide it.
+    reporter = config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is None:
+        print(message)
+        return
+    for line in message.splitlines():
+        reporter.write_line(line)
+
+
+@pytest.fixture
+def result_note(request: pytest.FixtureRequest) -> _ResultNote:
+    # A note on the test's own report, which the run record keeps for a passing test too (a print
+    # is dropped by capture). recovery=True marks a pass that needed a recovery step.
+    def _note(text: str, *, recovery: bool = False) -> None:
+        request.node.user_properties.append(("recovery" if recovery else "result_note", text))
+
+    return _note
+
+
+class Deviation(NamedTuple):
+    # One way the board differs from the standard state: what was read, what the state holds, how it is restored.
+    name: str
+    read: str
+    standard: str
+    remedy: str
+
+
+def save_status_over_rest(config: pytest.Config, dut_ip: "str | None") -> "str | None":
+    # GET /status while main.py still serves (the FRAM-backed errcount, the in-RAM ResetReason a raw-REPL entry would
+    # end), or why it was not saved.
+    config.stash[_REST_SAVED] = False
+    if not dut_ip:
+        return "pre-session /status not saved: no reachable --dut-ip"
+    try:
+        error_log_helpers.save_errcount(dut_ip, "session-start")
+    except (OSError, AssertionError, http_client.HTTP_ERROR) as exc:
+        return f"pre-session /status not saved: --dut-ip {dut_ip} did not answer ({exc})"
+    config.stash[_REST_SAVED] = True
+    return None
+
+
+def scd30_deviations(start: "dict[str, object]", end: "dict[str, object]") -> "list[Deviation]":
+    # A test that changed an SCD30 value and did not restore it: the end differs from the session start.
+    return [Deviation(f"SCD30 {key}", repr(end.get(key)), repr(start.get(key)), _RESTORE_SCD30) for key in sorted(set(start) | set(end)) if start.get(key) != end.get(key)]
+
+
+@pytest.fixture(scope="session")
+def session_note(request: pytest.FixtureRequest) -> _SessionNote:
+    # record_session_note() bound to this session, for a subdirectory's conftest (it cannot import this module).
+    def _note(text: str, *, recovery: bool = False, source: str) -> None:
+        record_session_note(request.config, text, recovery=recovery, source=source)
+
+    return _note
+
+
+# The scratch the hardware tests may leave: config_HWTEST_* files and the hwtest-scratch directory, removed whole.
+_REMOVE_SCRATCH_EXEC = (
+    "import os\ndef rm(p):\n  try:\n    names = os.listdir(p)\n  except OSError:\n    os.remove(p)\n    return\n"
+    "  for n in names:\n    rm(p + '/' + n)\n  os.rmdir(p)\n"
+    f"for n in os.listdir():\n  if n.startswith('{_SCRATCH_PREFIX}') or n == '{_SCRATCH_DIR}':\n    rm(n)\nprint('SCRATCH_REMOVED')"
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -531,80 +595,16 @@ def standard_state(request: pytest.FixtureRequest, fram_evidence_saved: "harness
         raise HardwareTestFailureError(standard_state_message(deviations))
 
 
-@pytest.fixture(scope="session", autouse=True)
-def report_recovery_events(request: pytest.FixtureRequest) -> "Iterator[None]":
-    # Every mpremote recovery the harness made this session reaches the run record as a recovery note.
-    board = _board_if_present(request)
-    yield
-    for event in board.recovery_events if board is not None else []:
-        record_session_note(request.config, event, recovery=True, source="mpremote")
-
-
-def _recover_stale_dut_credentials(bench: BenchBridge, note: _ResultNote) -> None:
-    # Last-resort recovery for dut_ip(): the DUT's own hotspot is joined and the bench AP's current credentials PUT to
-    # it. The single radio scans only with the AP down, so the AP goes down first; every path restores the bridge.
-    ssid, password = bench.ap_ssid(), bench.ap_password()
-    candidates = harness.dut_hostname_candidates()  # the hotspot SSID is the Hostname: the TOML's, or the schema default
-    note("stale-credential recovery: one PUT /networking (flash write, pinned prerequisite)", recovery=True)
-    bench.ap_down()
-    try:
-        found: list[str] = []
-
-        def _any_candidate_visible() -> bool:
-            found[:] = [name for name in candidates if bench.is_ssid_visible(name)][:1]
-            return bool(found)
-
-        wait_until(_any_candidate_visible, timeout_s=_HOTSPOT_SCAN_TIMEOUT_S, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description=f"the DUT's own hotspot (one of {list(candidates)}) scannable with the bench AP down")
-        bench.join_dut_hotspot(found[0], harness.hotspot_password(), timeout_s=_JOIN_HOTSPOT_TIMEOUT_S)
-        res = http_client.fetch(bench.gateway_ip(), 80, "PUT", "/networking", {"SSID": ssid, "PW": password}, timeout_s=_PROVISION_PUT_TIMEOUT_S)
-        if res.status_code != 200:
-            raise HardwareTestFailureError(f"PUT /networking during stale-credential recovery failed: {res.status_code} {res.body!r}")
-        result = _result_words(res)
-        accepted = {"Valid", "Unchanged"}
-        if result.get("SSID") not in accepted or result.get("PW") not in accepted:
-            raise HardwareTestFailureError(f"PUT /networking during stale-credential recovery was rejected: {result!r}")
-    finally:
-        bench.leave_dut_hotspot_and_restore_bridge()
-
-
 @pytest.fixture(scope="session")
-def dut_ip(board: Board, bench: BenchBridge, request: pytest.FixtureRequest) -> str:
-    # The DUT's STA address on the bench bridge network. An exec stops main.py and hard_reset() restarts it, so the
-    # address is read once the log shows the STA connect, then the board is reset and serving is awaited.
-    config = request.config
-    seen: list[str] = []
+def standard_state_exit(request: pytest.FixtureRequest) -> "Callable[[Sequence[tuple[str, str, str, str]]], NoReturn]":
+    # exit_on_deviations() bound to this session, for a subdirectory's conftest (bench/conftest.py's image check).
+    def _exit(deviations: "Sequence[tuple[str, str, str, str]]") -> NoReturn:
+        exit_on_deviations(request.config, deviations)
 
-    def note(text: str, *, recovery: bool = False) -> None:
-        record_session_note(config, text, recovery=recovery, source="dut_ip")
+    return _exit
 
-    def sta_connected() -> bool:
-        seen.extend(board.tail_log(duration_s=_STA_TAIL_STEP_S))
-        return "WLAN connection established" in "\n".join(seen)
 
-    harness.kick_then_reset(board, bench)
-    try:
-        harness.recover_by_reset(board, bench, sta_connected, first_wait_s=_IP_AND_HTTP_TIMEOUT_S, retry_wait_s=_IP_AND_HTTP_TIMEOUT_S, skipped="the first STA connect after the session's reset", note=note, description="DUT STA connect")
-    except TimeoutError:
-        # Neither reset helps when the DUT holds stale stored credentials (a bridge recreated with a new SSID/password).
-        _recover_stale_dut_credentials(bench, note)
-        seen.clear()
-        harness.kick_then_reset(board, bench)
-        wait_until(sta_connected, timeout_s=_IP_AND_HTTP_TIMEOUT_S, description="DUT STA connect after stale-credential recovery")
-    try:
-        output = board.exec("import network\nw = network.WLAN(network.STA_IF)\nprint('DUT_IP=' + (w.ifconfig()[0] if w.isconnected() else ''))", timeout_s=_DUT_IP_EXEC_TIMEOUT_S)
-    finally:
-        harness.kick_then_reset(board, bench)
-    ips = [line[len("DUT_IP=") :].strip() for line in output.splitlines() if line.startswith("DUT_IP=")]
-    if not ips or not ips[0]:
-        raise HardwareTestFailureError(f"the log showed 'WLAN connection established' but the board reported no STA address:\n{output}")
-    ip = ips[0]
-    wait_until(
-        lambda: http_client.fetch(ip, 80, "GET", "/status", timeout_s=_HTTP_READY_PROBE_TIMEOUT_S).status_code == 200,
-        timeout_s=_DUT_SERVING_AFTER_STA_S + _IP_AND_HTTP_TIMEOUT_S,
-        poll_interval_s=_HTTP_READY_POLL_S,
-        description=f"DUT serves real HTTP at {ip} (the reset after the address read, the STA reconnect, then {_DUT_SERVING_AFTER_STA_S} s for the webserver: main() starts it before the first NTP sync)",
-    )
-    if not config.stash.get(_REST_SAVED, False):
-        error_log_helpers.save_errcount(ip, "session-start")
-        config.stash[_REST_SAVED] = True
-    return ip
+def standard_state_message(deviations: "Sequence[tuple[str, str, str, str]]") -> str:
+    lines = ["board not in the standard state:"]
+    lines += [f"  - {d.name}: read {d.read}, the standard state holds {d.standard} - {d.remedy}" for d in map(Deviation._make, deviations)]
+    return "\n".join(lines)

@@ -12,8 +12,8 @@ if sys.argv[0].rsplit("/", 1)[0] + "/unixport" not in sys.path:
     sys.path.insert(0, sys.argv[0].rsplit("/", 1)[0] + "/unixport")
 
 import machine
+from _twin_common import pop_value
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
-from launch import _pop_value, _shutdown_cleanup
 from unix_port_poll_prewarm import prewarm_poll_set
 from unix_port_unretrieved_report import install
 
@@ -36,6 +36,15 @@ class _Args:
         self.state_dir = state_dir
 
 
+def _attach_jumper(plan: "dict[str, object]") -> None:
+    # The bench's permanent UART crossover jumper, as on silicon: a plan naming a UART pair has its two buses joined
+    # before the script runs, and UART objects are one per id, so the script's own UART(n) is the jumpered one.
+    pair = plan.get("uart")
+    if isinstance(pair, dict):
+        a, b = (int(str(pair[end])[len("uart") :]) for end in ("initiator_bus", "responder_bus"))
+        machine.attach_crossover_jumper(machine.UART(a), machine.UART(b))
+
+
 def _configure_state(state_dir: "str | None") -> None:
     # One directory per board kept across runs, as silicon keeps its FRAM and SCD30 NVM across a reset: a seed script
     # and the verify script that follows it see one chip. Without it every run starts on blank in-memory chips.
@@ -44,15 +53,6 @@ def _configure_state(state_dir: "str | None") -> None:
     machine.configure_fram_state_path(state_dir + "/fram.bin")
     machine.configure_scd30_state_path(state_dir + "/scd30.json")
     machine.configure_mem_backup_state_path(state_dir + "/mem_backup.json")
-
-
-def _attach_jumper(plan: "dict[str, object]") -> None:
-    # The bench's permanent UART crossover jumper, as on silicon: a plan naming a UART pair has its two buses joined
-    # before the script runs, and UART objects are one per id, so the script's own UART(n) is the jumpered one.
-    pair = plan.get("uart")
-    if isinstance(pair, dict):
-        a, b = (int(str(pair[end])[len("uart") :]) for end in ("initiator_bus", "responder_bus"))
-        machine.attach_crossover_jumper(machine.UART(a), machine.UART(b))
 
 
 def _exit_status(stop: SystemExit) -> int:
@@ -89,9 +89,9 @@ def _parse(argv: "list[str]") -> "_Args | None":
         if arg in ("-h", "--help"):
             return None
         if arg == "--gc-threshold":
-            gc_threshold = int(_pop_value(remaining, arg))
+            gc_threshold = int(pop_value(remaining, arg))
         elif arg == "--state-dir":
-            state_dir = _pop_value(remaining, arg)
+            state_dir = pop_value(remaining, arg)
         elif arg.startswith("-"):
             raise ValueError(f"unknown option {arg}")
         else:
@@ -138,7 +138,8 @@ def main(argv: "list[str]") -> int:
         sys.print_exception(e)
         return 1
     finally:
-        _shutdown_cleanup()
+        machine.flush_fram()  # the chips' persisted state, as the runner's shutdown writes it
+        machine.flush_scd30()
     if watchdog.would_have_triggered_count:
         print(f"{_LINE_PREFIX}: the watchdog would have reset the board {watchdog.would_have_triggered_count} time(s)")
         return _EXIT_WATCHDOG_STARVED

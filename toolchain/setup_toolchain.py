@@ -130,10 +130,6 @@ VERSIONS_PATH = Path(__file__).parent / "versions.toml"
 APT_ACQUIRE_TIMEOUT_S = 30
 
 
-# One apt download attempt's limit: three of them, their pauses and a bounded list update stay well inside
-# a CI job's own limit, and each streams its output, so the last line names a stalled mirror.
-# @tunable tool.apt_step_timeout_s = 150
-_APT_STEP_TIMEOUT_S = 150
 _APT_SUDO_HINT = (
     "if sudo refused --preserve-env, add the proxy variables to env_keep (see the commented example in "
     "/etc/sudoers), or install the packages by hand and pass --skip-apt"
@@ -320,6 +316,24 @@ def _checked_picotool(binary: Path, version_out: str, tier: str) -> str:
     return _first_line(version_out)
 
 
+def _dispatch(args: argparse.Namespace) -> int:
+    if args.command == "board":
+        # Reads /sys and /dev only: no lock, no versions.toml, and stdout carries nothing but the path.
+        print(resolve_pico_device(args.device))
+        return 0
+
+    # One lock around the whole command: run_env() runs run_setup() and then writes <toolchain>/node,
+    # and a second flock() on a new descriptor would make this process refuse itself.
+    with _stop_commands_on_termination(), toolchain_lock(args.toolchain_dir.expanduser().resolve()):
+        versions_path = VERSIONS_PATH
+        versions = load_versions(versions_path)
+        if args.command == "test":
+            return run_test(args, versions)
+        if args.command == "env":
+            return run_env(args, versions_path, versions)
+        return run_setup(args, versions_path, versions)
+
+
 def _fail_on_build_diagnostics(out: str, what: str) -> None:
     # A tool can print an error and still exit 0; every build here is also warning-free, so either
     # word in the output fails it (the locale is forced to C.UTF-8 for this grep, build_env()).
@@ -438,6 +452,19 @@ def _redact(text: str, secrets: tuple[str, ...]) -> str:
         if secret:
             text = text.replace(secret, "***")
     return text
+
+
+def _refuse_held_lock(lock: IO[str], toolchain_dir: Path) -> NoReturn:
+    # A shared hold is a test run's (scripts/_unix_port.sh), which writes no pid: the file then names the last exclusive
+    # holder, long gone, so a lock this process can share is named for what holds it; an exclusive one by its pid.
+    try:
+        fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.seek(0)
+        holder = lock.read().strip() or "unknown"
+        raise SetupError(f"another setup or firmware build (pid {holder}) is using {toolchain_dir} - wait for it to finish, or use another --toolchain-dir") from None
+    fcntl.flock(lock, fcntl.LOCK_UN)
+    raise SetupError(f"a test run is using the Unix ports of {toolchain_dir} (it holds the toolchain lock shared) - wait for it to finish, or use another --toolchain-dir")
 
 
 def _sha256(path: Path) -> str:
@@ -946,16 +973,11 @@ def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
     apt_get = [*_sudo_prefix(env), "apt-get", *apt_options()]
     # Non-fatal: unrelated third-party sources some environments have configured (PPAs etc.)
     # may be blocked or broken without affecting the main archive packages we actually need.
+    run([*apt_get, "update"], check=False, env=env)
+    # Run once, with no wall-clock limit: apt_options() retries a failed fetch and ends a stalled read, a slow live
+    # download finishes, and a CI job's own limit is the backstop.
     try:
-        run([*apt_get, "update"], check=False, env=env, timeout_s=_APT_STEP_TIMEOUT_S)
-    except SetupError as exc:
-        log(f"apt-get update did not finish ({exc}) - going on with the package lists already on this host")
-    # Only the download is retried: it never reaches dpkg, so no retry can kill dpkg mid-configure (that
-    # leaves the package database interrupted until `dpkg --configure -a`). The install then reads the cache.
-    install = ["install", "-y", "--no-install-recommends", *packages]
-    try:
-        run_retried([*apt_get, "install", "--download-only", *install[1:]], env=env, timeout_s=_APT_STEP_TIMEOUT_S)
-        run([*apt_get, *install], env=env)
+        run([*apt_get, "install", "-y", "--no-install-recommends", *packages], env=env)
     except SetupError as exc:
         raise SetupError(f"{exc} - {_APT_SUDO_HINT}") from exc
 
@@ -1369,24 +1391,6 @@ def main() -> int:
         return 1
 
 
-def _dispatch(args: argparse.Namespace) -> int:
-    if args.command == "board":
-        # Reads /sys and /dev only: no lock, no versions.toml, and stdout carries nothing but the path.
-        print(resolve_pico_device(args.device))
-        return 0
-
-    # One lock around the whole command: run_env() runs run_setup() and then writes <toolchain>/node,
-    # and a second flock() on a new descriptor would make this process refuse itself.
-    with _stop_commands_on_termination(), toolchain_lock(args.toolchain_dir.expanduser().resolve()):
-        versions_path = VERSIONS_PATH
-        versions = load_versions(versions_path)
-        if args.command == "test":
-            return run_test(args, versions)
-        if args.command == "env":
-            return run_env(args, versions_path, versions)
-        return run_setup(args, versions_path, versions)
-
-
 def network_env() -> dict[str, str]:
     env = build_env()
     for key in NETWORK_ENV_EXTRA:
@@ -1782,19 +1786,6 @@ def toolchain_lock(toolchain_dir: Path) -> Iterator[None]:
         lock.write(f"{os.getpid()}\n")
         lock.flush()
         yield
-
-
-def _refuse_held_lock(lock: IO[str], toolchain_dir: Path) -> NoReturn:
-    # A shared hold is a test run's (scripts/_unix_port.sh), which writes no pid: the file then names the last exclusive
-    # holder, long gone, so a lock this process can share is named for what holds it; an exclusive one by its pid.
-    try:
-        fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
-    except BlockingIOError:
-        lock.seek(0)
-        holder = lock.read().strip() or "unknown"
-        raise SetupError(f"another setup or firmware build (pid {holder}) is using {toolchain_dir} - wait for it to finish, or use another --toolchain-dir") from None
-    fcntl.flock(lock, fcntl.LOCK_UN)
-    raise SetupError(f"a test run is using the Unix ports of {toolchain_dir} (it holds the toolchain lock shared) - wait for it to finish, or use another --toolchain-dir")
 
 
 def write_freeze_manifest(manifest_path: Path, port_manifest_relpath: str) -> None:

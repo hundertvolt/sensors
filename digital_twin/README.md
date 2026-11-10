@@ -2,7 +2,7 @@
 
 A set of fake `machine`/`network`/`neopixel`/`rp2` modules, sitting at the same raw I2C/SPI/UART
 bus-transaction mocking boundary `tests/machine.py` establishes for unit tests, but built for a
-different purpose: real-time-firing `Timer`s and bounded random-walk sensor values (owner,
+different purpose: real-time-firing `Timer`s and bounded random-walk sensor values (agent,
 2026-08-12), so a full assembled, buildgen-generated `sensortask_<device>.py` module — any real
 device of `devices/*.toml`, or a synthetic fixture — can run under the real MicroPython Unix-port
 interpreter and behave like it's attached to real hardware, not just satisfy a hand-driven test
@@ -62,7 +62,7 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   measurement-interval cadence, exercising the real driver's normal IRQ-driven path; it reports its
   temperature walk less the set temperature offset, as the chip does, and persists its NVM-backed
   settings and measuring status (see "SCD30 persistence" below). `_bmp3xx_chip.py` answers raw ADC
-  bytes found by inverting the real compensation formula (owner, 2026-08-12).
+  bytes found by inverting the real compensation formula (agent, 2026-08-12).
   `_isl29125_chip.py` is **dev-only** (`wozi` does not carry this sensor) and is the one fake whose
   high range's full scale is a deliberately non-nominal multiple of its low range's, so the driver's
   user-triggered gain-ratio calibration (SPECIFICATION.md Part M.1.5) has something real to converge
@@ -128,17 +128,17 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   overrides), so a fixed port made concurrent imports die
   with `EADDRINUSE` (28 of 30 concurrent prewarms; 0 of 30 with the scan), and port 0 is no
   alternative since this port has no `getsockname()`.
-- `unix_port_unretrieved_report.py` — the PC tiers' asyncio exception handler: every task that ends
-  raising with nobody awaiting it prints a fixed `UNRETRIEVED TASK EXCEPTION:` line and its
-  traceback at every DebugLevel, then the handler releases the dead task from asyncio's context dict.
+- `unix_port_unretrieved_report.py` — the PC tiers' asyncio exception handler: the product's
+  `PrintLog.report_unretrieved()` on a level-1 log named `UNRETRIEVED TASK EXCEPTION:`, so every task
+  that ends raising with nobody awaiting it prints that line and its traceback at every DebugLevel.
   `install()` is the first statement of every launcher's `main()` (`run_generic_integration.py`,
-  `launch.py`), of `tests/microtest.py`'s `run()` and of
+  `run_device_script.py`), of `tests/microtest.py`'s `run()` and of
   `tests/_boot_contiguity_probe.py`'s `_main()`; the firmware's `start_tasks()` then keeps
   it instead of installing SYSTEM's level-gated report, so the memory gates still see a task that
   died of an exhausted heap at level 0 (SPECIFICATION.md Parts F.1 and I.4(e)).
-- `network.py` / `neopixel.py` — independent, deliberately duplicated (not reused) copies of
-  `tests/network.py`/`tests/neopixel.py`'s own fakes, for full runtime independence from `tests/`
-  (owner, 2026-08-12). `WLAN` is one object per interface, as cyw43's are: `STA_IF` answers the
+- `network.py` — an independent copy of `tests/network.py`'s fake, for full runtime independence from
+  `tests/` (agent, 2026-08-12); `rp2.py`, `neopixel.py` and `_crc8.py` are one copy each in `fakes/`, which both
+  layouts read. `WLAN` is one object per interface, as cyw43's are: `STA_IF` answers the
   station, any other id the access point, and `deinit()` powers the one radio down for both. A
   station connect moves through a real `STAT_CONNECTING` phase and connects after
   `_CONNECT_DELAY_S` (0.7 s), under `_poll_sta_connect_status()`'s 5 s budget, so a live run's WiFi
@@ -146,7 +146,7 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   unit-test fixture (inert, hand-driven by test code) would. It only fakes *connection
   state* — actual traffic (NTP/DNS/HTTP) goes through the real `socket` module, a genuine wrapper
   around the Unix port's own BSD sockets, reaching the host's real network through every connect
-  phase (owner, 2026-08-12). A connected station reports an address in RFC 5737 TEST-NET-1
+  phase (agent, 2026-08-12). A connected station reports an address in RFC 5737 TEST-NET-1
   (`192.0.2.42`, its DHCP DNS `192.0.2.1`), so no twin run reaches a public resolver; an active
   access point reports cyw43's /24 layout on the host loopback (`127.0.0.1`, the AP its own gateway),
   where every twin client is, since silicon's `192.168.4.1` would put each client off the subnet the
@@ -160,7 +160,7 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   query, and `script_connect_outcomes()` queues connect outcomes. `NeoPixel` stores its pixels as
   micropython-lib's driver does, a GRB `bytearray`, and keeps a bounded log of written frames.
 - `_http_client.py` — minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`: real
-  HTTP over real sockets (owner, 2026-08-13; no HTTP client
+  HTTP over real sockets (agent, 2026-08-13; no HTTP client
   library is frozen into the pinned Unix-port build). Every response it sees is `Connection: close`
   (`asy_webserver_service.py`'s own hook), so it never needs keep-alive support. A connection
   refused at the webserver's ceiling is closed without a response byte, and the peer sees either an
@@ -168,21 +168,13 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   response cut short inside its head or its sized body raises `IncompleteResponseError`; both are
   `OSError` subclasses, so every caller's `except OSError` treats them as the transport failures they
   are, while a non-empty malformed status line still raises `ValueError`. `fetch()` takes a
-  `timeout_s`. `.json()` checks every body with `tests/_strict_json.py` first, since the interpreter's
-  own `json.loads()` accepts a missing or stray comma the browser rejects (SPECIFICATION.md Part F.1);
-  the import sits inside `.json()`, so `_http_client` itself imports without `tests/` on the path;
-  only `.json()` requires it.
+  `timeout_s`. `.json()` checks every body with `fakes/_strict_json.py` first, since the interpreter's
+  own `json.loads()` accepts a missing or stray comma the browser rejects (SPECIFICATION.md Part F.1).
 - `unixport/` — the fake-free directory a unit test may put on its path: the UDP shim (see
   "`unixport/_unix_port_udp_addr_shim.py`" below), the NTP config writer (`_offline_ntp_config.py`)
   and the local NTP responder a booted twin syncs against (`_ntp_responder.py`, owner, 2026-10-02),
   which answers each client request on the loopback with the host's UTC time and whose test knobs
   make it silent, unsynchronised, malformed or implausible.
-- `launch.py` — standalone, `src/`-free CLI demo (`micropython digital_twin/launch.py --wiring-plan
-  PATH [options]`): builds the buses of the device whose plan it is given and periodically drives one
-  real bus-level read per wired SCD30/SGP40/BMP3XX, a `WLAN.connect()` attempt, and WDT feeding.
-  `--fault`/`--hang` drive each chip fake's existing `FaultInjector` (owner, 2026-08-12: chosen over a
-  probabilistic flaky mode). Lighter and
-  narrower in scope than `run_generic_integration.py` below, which boots the real object graph instead.
 - `run_generic_integration.py` — boots **any** `sensortask_<device>` module (most usefully a
   freshly-`buildgen.generate.generate_device()`-generated one), for any real device, against a
   `--wiring-plan` JSON file, resolving the module via `__import__(--module)` instead of a static
@@ -209,9 +201,9 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 
 | Class | Fact on silicon | Twin | Evidence | Proven at | Status |
 |---|---|---|---|---|---|
-| Buses | an I2C transfer takes time; `freq`, `timeout`, clock stretching, repeated start, a stuck SDA, ghost addresses | zero transaction time, none of those | — | L3, L4 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): an electrical verdict is the flash and bench tiers' |
-| Buses | SPI baud rate, mode and a floating MISO | not modelled | — | L3 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): electrical, as above |
-| Buses | several SPI devices share a bus through their chip selects | one device per bus id, no CS routing | the one SPI device promoted is the FRAM | L3 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06) until a second SPI device is promoted, which adds CS routing ("Adding a new chip fake") |
+| Buses | an I2C transfer takes time; `freq`, `timeout`, clock stretching, repeated start, a stuck SDA, ghost addresses | zero transaction time, none of those | — | L3, L4 | accepted (agent, 2026-10-14): an electrical verdict is the flash and bench tiers' |
+| Buses | SPI baud rate, mode and a floating MISO | not modelled | — | L3 | accepted (agent, 2026-10-14): electrical, as above |
+| Buses | several SPI devices share a bus through their chip selects | one device per bus id, no CS routing | the one SPI device promoted is the FRAM | L3 | accepted (agent, 2026-10-14) until a second SPI device is promoted, which adds CS routing ("Adding a new chip fake") |
 | Buses | one static `I2C`/`SPI`/`UART` object per id, re-construction re-initialising it, rp2's pin pairs | the same | `ports/rp2/machine_i2c.c:80-87`, `machine_spi.c:161-167`, `machine_uart.c:469` | L2 | fixed: `D machine::i2c_is_one_object_per_id_keeping_chips_and_log_across_constructions`, `D machine::spi_is_one_object_per_id_that_each_construction_reinitialises`, `D machine_uart::a_second_construction_on_one_bus_id_returns_the_same_live_object` |
 | Buses | `Pin` ids 0-29, the Pico W board and CPU names, pulls cleared on re-configuration, open-drain and alternate-function modes | the same, plus a scripted external line level | `boards/RPI_PICO_W/pins.csv`, `machine_pin.c` | L2 | fixed: `D machine::pin_takes_rp2s_ids_and_names_as_one_object`, `D machine::pin_reconfigured_without_a_pull_loses_it`, `D machine::pin_open_drain_reads_the_wired_and_of_its_drive_and_the_line` |
 | Buses | a NAKed zero-length probe raises `ENODEV`, a NAKed data write `EIO`; `scan()` never raises | the same | `machine_i2c.c:127-145`, `extmod/machine_i2c.c:199-203` | L2 | fixed: `D machine::i2c_an_empty_write_to_an_absent_address_reads_enodev_a_data_write_eio` |
@@ -220,70 +212,70 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Buses | SPI `MSB` 1, `LSB` 0, LSB-first refused | the same | pico-sdk `hardware/spi.h:184-187` | L2 | fixed: `D machine::spi_bit_order_numbers_are_rp2s`, `D machine::spi_init_updates_settings_and_rejects_lsb_first` |
 | Buses | an SPI RX overrun only on a read of 32 bytes or more (the DMA path); a write never raises | the same; a write fault is refused | `machine_spi.c` `dma_min_size_threshold` | L2 | fixed: `D fram::readinto_fault_fires_only_on_a_long_read`, `D fram::write_fault_injection_is_refused` |
 | Buses | a read fills the caller's buffer, never shrinks it | the same | — | L2 | fixed: `D machine::i2c_reads_fill_the_callers_buffer_whatever_its_type` |
-| Buses | UART framing, `txdone()` | wire time counts 10 bits a byte (8N1) whatever framing is set; `txdone()` always `True` | — | L3 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): the link delivers at once; L3 `uart_crossover_*.py` |
+| Buses | UART framing, `txdone()` | wire time counts 10 bits a byte (8N1) whatever framing is set; `txdone()` always `True` | — | L3 | accepted (agent, 2026-10-14): the link delivers at once; L3 `uart_crossover_*.py` |
 | Buses | UART receive: the RX interrupt, a DMA channel or the 32-byte FIFO with OE on overflow, by wire time; `ioctl()` answers `EINVAL` but to POLL | the same | `machine_uart.c:163-176, 694-697` | L2 | fixed: `D machine_uart::delivery_takes_real_wire_time`, `D machine_uart::the_dma_keeps_filling_the_ring_through_a_flash_stall`, `D machine_uart::ioctl_answers_einval_to_get_fileno` |
 | Buses | UART init takes rp2's keywords only | an unknown keyword raises `TypeError` | `machine_uart.c` | L2 | fixed: `D machine_uart::init_refuses_a_keyword_rp2_does_not_take` |
-| Buses | a NeoPixel `write()` busy-waits for the bit stream | returns at once | — | L3 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): timing only, no state |
-| Buses | NeoPixel stores GRB bytes; `__setitem__` writes per component | the same | micropython-lib `neopixel.py:9` | L2 | fixed: `D network_neopixel::neopixel_stores_bytes_in_grb_order_as_the_library_does` |
-| Chips | the SGP40 takes time per command; compensation shifts the raw signal | neither | — | L3 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): the driver waits its datasheet delays regardless |
+| Buses | a NeoPixel `write()` busy-waits for the bit stream | returns at once | — | L3 | accepted (agent, 2026-10-14): timing only, no state |
+| Buses | NeoPixel stores GRB bytes; `__setitem__` writes per component | the same | micropython-lib `neopixel.py:9` | L2 | fixed: `tests/test_fakes.py::test_a_neopixel_stores_grb_bytes_in_a_bytearray` |
+| Chips | the SGP40 takes time per command; compensation shifts the raw signal | neither | — | L3 | accepted (agent, 2026-10-14): the driver waits its datasheet delays regardless |
 | Chips | the SGP40's heater-off returns it to idle | the same | SGP40 datasheet | L2 | fixed: `D sgp40::heater_off_clears_the_pending_measure_reply_and_the_next_measure_answers` |
-| Chips | the SGP40's reaction to an unknown command | ignored, the pending reply kept | the datasheet states none | — | assumption: BACKLOG "The SGP40's reaction to an unknown command" |
+| Chips | after an unknown command the SGP40 answers `ETIMEDOUT` for about 0.5 s and reads again after 528 ms | the same: each transfer times out until 528 ms after it | the bench (dev, 2026-10-29); the datasheet states none | L2 | fixed: `D sgp40::an_unknown_command_times_the_chip_out_until_it_reads_again` |
 | Chips | the SGP40's serial number is hard-coded at production, the same three words on every read (datasheet 3.4) | the same: one serial per chip, drawn at its first read | `sgp40_conformance_probe.py` A02_serial_stable: yes on the bench's part (2026-10-28) | L3 | fixed: `D sgp40::the_serial_number_reads_the_same_three_words_on_every_read` |
 | Chips | the SCD30 measures nothing before continuous measurement starts; soft reset is a power-up; the FRC readback is volatile | the same; the twin starts provisioned (measuring), not datasheet-derived | Interface Description 1.4.1-1.4.6 | L2 | fixed: `D scd30::an_unprovisioned_chip_measures_nothing_until_started`, `D scd30::a_soft_reset_drops_the_unread_measurement_and_the_frc_reference`, `D scd30::the_forced_recalibration_reference_reads_back_the_last_one_until_a_power_up` |
 | Chips | the SCD30's reaction to a wrong argument CRC, an interval outside 2-1800 s or an FRC outside 400-2000 ppm | ignored and counted | the datasheet states none | — | assumption: BACKLOG "The SCD30's reaction to a wrong argument CRC or an out-of-range interval" |
-| Chips | whether the SCD30's 0x0010 ambient-pressure value itself persists in NVM | persisted | Interface Description 1.4.1 names only the measuring status | — | assumption: BACKLOG "Whether the SCD30 keeps the ambient pressure across a power cycle" |
-| Chips | the SCD30's 0x0010 overrides altitude compensation | not modelled | Interface Description 1.4.1 | — | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06) until a driver depends on it |
+| Chips | the SCD30 keeps its 0x0010 ambient pressure through a power cut, as every other setting | persisted | field use (Interface Description 1.4.1 names only the measuring status) | — | accepted (owner, 2026-11-10: "Field proven many times.") |
+| Chips | the SCD30's 0x0010 overrides altitude compensation | not modelled | Interface Description 1.4.1 | — | accepted (agent, 2026-10-14) until a driver depends on it |
 | Chips | the SCD30's temperature offset shifts the reported RH | RH reported as walked | no datasheet gives the formula | — | accepted (owner, 2026-11-06; no datasheet gives the formula): no invented RH model |
 | Chips | the SCD30's NVM writes | counted per NVM command the fake carries out | — | L2 | a test surface, not chip behaviour: `D scd30::nvm_writes_counts_each_accepted_nvm_command_and_nothing_else` |
 | Chips | an SCD30 read with no command pending returns 0xDD bytes | the same | `scd30_conformance_probe.py` C03_read_before_a_command: dd dd dd on the bench's part (2026-10-28) | L3 | fixed: `D scd30::a_read_with_no_command_pending_returns_0xdd_bytes` |
-| Chips | the BMP3XX chip id: 0x60 (BMP390), 0x50 (BMP384, BMP388) | 0x60 only | DS001-DS003 §4.3.1 | L3 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): the driver accepts both |
-| Chips | the BMP3XX calibration block is factory-trimmed | synthetic, round-tripping through the real compensation formula | `D bmp3xx::calibration_block_is_not_degenerate` | — | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06) until the real block is read: BACKLOG "The BMP3XX's real calibration block" |
-| Chips | a BMP3XX conversion takes time; 0xB6 resets OSR and CONFIG | no conversion time; the reset to the register map's values, OSR the bench part's (below) | DS001 | L2, L3 | fixed for the reset: `D bmp3xx::power_cycle_restores_the_power_up_registers_and_keeps_the_walk`, `D bmp3xx::soft_reset_command_restores_command_ready_status`; conversion time accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06), L3 |
+| Chips | the BMP3XX chip id: 0x60 (BMP390), 0x50 (BMP384, BMP388) | 0x60 only | DS001-DS003 §4.3.1 | L3 | accepted (agent, 2026-10-14): the driver accepts both |
+| Chips | the BMP3XX calibration block is factory-trimmed | synthetic, round-tripping through the real compensation formula | `D bmp3xx::calibration_block_is_not_degenerate` | — | accepted (agent, 2026-10-14) until the real block is read: BACKLOG "The BMP3XX's real calibration block" |
+| Chips | a BMP3XX conversion takes time; 0xB6 resets OSR and CONFIG | no conversion time; the reset to the register map's values, OSR the bench part's (below) | DS001 | L2, L3 | fixed for the reset: `D bmp3xx::power_cycle_restores_the_power_up_registers_and_keeps_the_walk`, `D bmp3xx::soft_reset_command_restores_command_ready_status`; conversion time accepted (agent, 2026-10-14), L3 |
 | Chips | a read of a BMP3XX DATA register clears STATUS's drdy_press and drdy_temp (DS001 4.3.3, Table 27) | the same, each bit by its own data registers | `bmp3xx_conformance_probe.py` B07_status_after_data_read: 0x10 on the bench's part (2026-10-28) | L3 | fixed: `D bmp3xx::a_data_read_clears_the_data_ready_bits_it_covers` |
 | Chips | BMP3XX PWR_CTRL keeps press_en and temp_en through a forced conversion and returns to sleep mode alone: 0x13 during it, 0x03 after | 0x03 after; "during" is the no-conversion-time row above | `bmp3xx_conformance_probe.py` B03_pwr_ctrl_during_forced and B05_pwr_ctrl_after_conversion: 0x13 and 0x03 on the bench's part (2026-10-28) | L3 | fixed: `D bmp3xx::pwr_ctrl_reads_sleep_with_both_enables_after_a_forced_conversion` |
 | Chips | after a 0xB6 soft reset the bench's BMP3XX (chip id 0x50) reads OSR 0x00, not the register map's 0x02 (DS001 and DS003) | 0x00, the bench part's value | `bmp3xx_conformance_probe.py` C02_osr_config_after_softreset: 00 00 on the bench's part (2026-10-28) | L3 | fixed: `D bmp3xx::osr_reads_the_bench_parts_0x00_after_power_up_and_a_soft_reset` |
-| Chips | ISL29125 lux response | linear, with a deliberately non-nominal high-range ratio a calibration converges on | SPECIFICATION.md M.1.5 | L2 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): a test needs a ratio to converge on |
+| Chips | ISL29125 lux response | linear, with a deliberately non-nominal high-range ratio a calibration converges on | SPECIFICATION.md M.1.5 | L2 | accepted (agent, 2026-10-14): a test needs a ratio to converge on |
 | Chips | the ISL29125 PRST counter stops at its target | the same | FN8424 | L2 | fixed: `D isl29125::prst_count_stops_at_the_target` |
 | Chips | whether a CONFIG1 write restarts an in-flight ISL29125 conversion | restarted, never tuned to | FN8424 Table 7 says only "ADC start at I2C write 0x01" | — | assumption: BACKLOG "Whether a CONFIG1 write restarts an in-flight ISL29125 conversion" |
-| Chips | the FRAM frames a transaction by CS | by `write()` pairing; opcode, address and data in one `write()` refused | `asy_fram_driver.py` sends them in separate calls under one CS | L2 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): a driver merging them would lose the data, so the fake raises |
+| Chips | the FRAM frames a transaction by CS | by `write()` pairing; opcode, address and data in one `write()` refused | `asy_fram_driver.py` sends them in separate calls under one CS | L2 | accepted (agent, 2026-10-14): a driver merging them would lose the data, so the fake raises |
 | Chips | the FRAM's address wraps at its end | the same | MB85RS datasheets | L2 | fixed: `D fram::a_write_across_the_last_address_wraps_to_address_zero` |
-| Chips | the MB85RS2MTA (`dev`) keeps WEL set after a WRITE or WRSR (continual programming); the MB85RS64V clears it | WEL cleared at every WRITE and WRSR, the MB85RS64V's behaviour, on every chip size | DS501-00032-3v0-E p.6, DS501-00015-4v0-E p.6 | L2 | accepted (agent, 2026-10-27; owner-reviewed, 2026-11-06): the driver's WRDI epilogue clears WEL on both parts, and `stick_next_wrdi` plants the WEL a lost WRDI leaves on the MB85RS2MTA |
+| Chips | the MB85RS2MTA (`dev`) keeps WEL set after a WRITE or WRSR (continual programming); the MB85RS64V clears it | WEL cleared at every WRITE and WRSR, the MB85RS64V's behaviour, on every chip size | DS501-00032-3v0-E p.6, DS501-00015-4v0-E p.6 | L2 | accepted (agent, 2026-10-27): the driver's WRDI epilogue clears WEL on both parts, and `stick_next_wrdi` plants the WEL a lost WRDI leaves on the MB85RS2MTA |
 | Chips | a chip's value ranges | inside its datasheet's ranges; each walk step says "not datasheet-derived" | each fake's constants | L2 | fixed: `D scd30::default_ranges_stay_inside_the_datasheets_own_documented_ranges`, `D sgp40::measure_raw_default_range_stays_inside_the_sgp40_datasheets_own_tick_range` |
 | Chips | a chip re-plugged mid-run powers up | `I2C.unplug()`/`plug()` and each chip's `power_cycle()` | — | L2 only (L4 manual step owed, F.2) | fixed: `D hot_replug::every_bus_attached_driver_recovers_from_a_replug_without_a_reboot`, `D machine::an_unplugged_chip_answers_nothing_until_plugged_back_powered_up` |
-| Runtime | a soft `Timer` callback runs from rp2's scheduler queue, dropped when its 8 entries are full; a hard callback runs in the IRQ | an asyncio task on a wall-clock schedule: no pre-emption, no queue, no drop of its own (the row below), no exact period while the loop is blocked | `ports/rp2/mpconfigport.h:131`, `shared/runtime/mpirq.c:105` | L3, L4 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06) while every product Timer callback stays trivial; `scheduler_saturation_drop.py` (L3, `flash/test_bus_electrical_timing.py`) is a silicon-only exception in the twin record, since a synchronous script gives the twin's Timer tasks no turn |
+| Runtime | a soft `Timer` callback runs from rp2's scheduler queue, dropped when its 8 entries are full; a hard callback runs in the IRQ | an asyncio task on a wall-clock schedule: no pre-emption, no queue, no drop of its own (the row below), no exact period while the loop is blocked | `ports/rp2/mpconfigport.h:131`, `shared/runtime/mpirq.c:105` | L3, L4 | accepted (agent, 2026-10-14) while every product Timer callback stays trivial; `scheduler_saturation_drop.py` (L3, `flash/test_bus_electrical_timing.py`) is a silicon-only exception in the twin record, since a synchronous script gives the twin's Timer tasks no turn |
 | Runtime | a soft `Timer` callback is dropped while the depth-8 scheduler queue is full: `mp_sched_schedule()`'s refusal is ignored, a PERIODIC alarm re-arms, a ONE_SHOT is lost | dropped only when a test sets `Timer.drop_next_soft_callbacks`: the next N soft callbacks of any Timer, a hard one never | `shared/runtime/mpirq.c:105`, `ports/rp2/machine_timer.c:50-60`, `py/scheduler.c:163-181`, `ports/rp2/mpconfigport.h:131` (v1.29.0) | L2 | fixed: `D machine::a_periodic_timer_fires_again_after_its_soft_callbacks_are_dropped`, `D machine::a_dropped_one_shot_never_fires_and_frees_its_alarm_while_a_hard_callback_is_never_dropped` |
 | Runtime | rp2's 16-alarm pool, `OSError(ENOMEM)` past it; a raising soft callback keeps its alarm, a hard one stops it | the same | pico-sdk `pico/time.h:352-362`, `py/scheduler.c:115`, `machine_timer.c:50-60` | L2 | fixed: `D machine::the_seventeenth_alarm_raises_enomem_until_one_is_freed`, `D machine::a_soft_callback_failure_is_printed_and_the_schedule_goes_on`, `D machine::a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm` |
-| Runtime | the finaliser disarms an unreferenced armed Timer | not modelled: the twin's task keeps the Timer referenced | `machine_timer.c:115-116, 161-163` | L1, L3 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): L1 fake-clock tests and L3 `timer_alarm_pool_exhaustion.py` |
-| Runtime | a Pin IRQ runs from the interrupt | synchronously in the caller | — | L3 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06) |
+| Runtime | the finaliser disarms an unreferenced armed Timer | not modelled: the twin's task keeps the Timer referenced | `machine_timer.c:115-116, 161-163` | L1, L3 | accepted (agent, 2026-10-14): L1 fake-clock tests and L3 `timer_alarm_pool_exhaustion.py` |
+| Runtime | a Pin IRQ runs from the interrupt | synchronously in the caller | — | L3 | accepted (agent, 2026-10-14) |
 | Runtime | `machine.reset()`/`bootloader()` end the program | `SimulatedRebootError`, a `BaseException`, ends the loop; the runner exits 3 or 4 | — | L2 | fixed: `D machine::a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow`, `D machine::a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling` |
 | Runtime | `mem_backup()` regions survive a reset and clear at power-on; `reset_cause()`; a console soft reset keeps both regions and the last hard reset's cause | the same, carried to the next launch through a state file; a soft reset is a launch that keeps both | `machine_mem_backup.c:36-40` | L2 | fixed: `D machine::the_twin_meets_the_shared_mem_backup_contract` (`tests/_mem_backup_contract.py`), `D machine::a_flushed_mem_backup_reaches_the_next_launch_once`, `D loop_end::a_console_soft_reset_after_ctrl_c_reads_21` |
 | Runtime | `reset_usb_boot()` loses both scratch regions, and the cause read after BOOTSEL is a watchdog reset | both regions cleared; a watchdog reset | the bench (2026-10-29) | L2 | fixed: `D machine::the_twin_meets_the_shared_mem_backup_contract` (`tests/_mem_backup_contract.py`) |
-| Runtime | the WDT resets the chip | records a would-have-reset and never resets; the runner prints `WATCHDOG_WOULD_TRIGGER` | — | L2 | accepted (owner, 2026-08-12); a reset code reached only through a real watchdog reset is L1's and the bench's |
+| Runtime | the WDT resets the chip | records a would-have-reset and never resets; the runner prints `WATCHDOG_WOULD_TRIGGER` | — | L2 | accepted (agent, 2026-08-12); a reset code reached only through a real watchdog reset is L1's and the bench's |
 | Runtime | the RTC takes no constructor argument, an 8-tuple, recomputes the weekday, its setter returns `None`; a set moves `time.time()` | the same with the runner's wall clock installed; uninstalled it holds a fixed tuple | `machine_rtc.c:52, 64-97`, `ports/rp2/modtime.c:31-43` | L2 | fixed: `D machine::an_installed_clock_makes_an_rtc_set_move_the_wall_clock`, `D machine::an_uninstalled_rtc_keeps_its_tuple_by_rp2s_rules` |
 | Runtime | a flash write holds the loop with interrupts off | a config flush stalls the loop for its pages' erase and program time | `rp2_flash.c:167-173` | L2, L3 | fixed: `D machine_uart::a_config_flush_through_the_installed_open_stalls_once_for_its_pages` |
 | Runtime | power lost at any instruction | lost after the k-th SPI transaction, never mid-byte | — | L2 (mid-byte: L3 `fram_reset_race_*`) | fixed: `D machine::spi_lose_power_after_k_fails_the_next_transaction_with_a_power_loss`, `tests/test_digital_twin_fram_crash_points.py` |
-| Runtime | `ticks_ms()` wraps at 2**30 ms | never reached (the Unix port's period is 2**62) | — | L1 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06): the wrap proofs are L1 fake-clock tests |
+| Runtime | `ticks_ms()` wraps at 2**30 ms | never reached (the Unix port's period is 2**62) | — | L1 | accepted (agent, 2026-10-14): the wrap proofs are L1 fake-clock tests |
 | Runtime | `time.time()` an int, the RTC TZ-free | a float, `TZ=UTC` | SPECIFICATION.md F.7 | — | accepted (owner, 2026-11-06; SPECIFICATION.md F.7) |
 | Runtime | a 32-bit heap of frozen code | a 64-bit heap of source-loaded code | — | L3, L4 | accepted (owner, 2026-11-06; SPECIFICATION.md F.7): a heap figure here is a tripwire only |
 | Runtime | the largest free block after the built graph | not the silicon's: the Unix port keeps every module's bytecode and the fakes' state in its GC heap (about 1.2 MB live after the `dev` load, against the board's 88 KB built graph), in 32-byte blocks | the shutdown line's GC summary and `gc_block_bytes` | L3 | accepted (owner, 2026-11-06; measured 2026-10-15): the twin's figure is a tripwire only; the board's is `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` |
 | Runtime | every rp2 constant the twin models | pinned to its cited source line | v1.29.0 | L2 | fixed: `tests/test_digital_twin_rp2_constants.py` |
 | Network | the radio and lwIP carry the traffic: TCP PCBs, the pbuf pool, `MEM_SIZE`, TIME_WAIT, the backlog, the `ERR_MEM` send path (B.14) | the host's Linux stack carries it; `WLAN` fakes connection state only, the Pico W the only modelled board (owner, 2026-09-26) | — | L4 | accepted (owner, 2026-09-26): every connection-ceiling, hotspot and load verdict is L4's |
-| Network | CYW43 `isconnected()` false positives, spontaneous link loss, DHCP, config validation | not modelled | — | L4 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06) |
-| Network | a STA connect passes through `STAT_CONNECTING` inside the service's 5 s budget | 0.7 s | `network.py` `_CONNECT_DELAY_S` | L2 | fixed: `D network_neopixel::one_connect_phase_fits_the_services_poll_budget` |
-| Network | the AP reports an address and `STAT_GOT_IP`, shares lwIP's one DNS server with STA, truncates its SSID and key | the same, with cyw43's /24 layout on the loopback (`127.0.0.1`), where every twin client is | `cyw43_config.h:194, 206`, `extmod/network_lwip.c:70-73`, `cyw43.h:431-448` | L2 | fixed: `D network_neopixel::the_access_point_comes_up_with_its_address_and_the_shared_dns`, `D network_neopixel::config_truncates_as_cyw43_and_reads_the_essid_back` |
-| Network | `status("rssi")` off STA and `status("stations")` off AP raise; one object per interface; `deinit()` powers the one radio down | the same | `extmod/network_cyw43.c:96-103, 133-137, 363-392` | L2 | fixed: `D network_neopixel::status_answers_by_cyw43s_interface_rules`, `D network_neopixel::one_wlan_object_per_interface_any_other_id_the_access_point`, `D network_neopixel::deinit_powers_the_one_radio_down` |
-| Network | the home network's access point goes away | `set_access_point_up(up=False)`, a twin-only knob: a joined link, addressed or not, drops to `STAT_CONNECTING` (cyw43's LINK_JOIN) and keeps its address, the device's own AP stays up, and the link stays down until the next `connect()` (no firmware rejoin is modelled); a completed connect ends `STAT_NO_AP_FOUND` | `cyw43_ctrl.c:402-413, 434-437, 613-617`, `cyw43_lwip.c:296-298` | L2 | fixed: `D network_neopixel::a_downed_access_point_fails_the_station_until_switched_back`, `D network_neopixel::a_joined_link_with_no_address_holds_status_two` |
-| Network | `connect()` on an inactive STA (never activated, deactivated, or after the radio's `deinit()`) raises `OSError(EPERM)`, before the key check | the same | `cyw43_ctrl.c:637-640`, `extmod/network_cyw43.c:308-311` | L2 | fixed: `D network_neopixel::connect_on_an_inactive_station_raises_eperm` |
-| Network | deactivating the STA leaves the network and takes its netif down with its DHCP: unlinked, unaddressed, a pending connect gone; a link that was joined reads `STAT_CONNECTING` (cyw43's LINK_JOIN) until the DISASSOC event clears the join state | the same, but `STAT_IDLE` at once: a simplification of the twin | `extmod/network_cyw43.c:146-149`, `cyw43_ctrl.c:353-355, 579-582, 666-669`, `cyw43_lwip.c:251-254, 267` (cyw43-driver v1.1.1, as pinned at v1.29.0) | L2 | fixed: `D network_neopixel::deactivating_the_station_drops_its_link_its_address_and_a_pending_connect`; the instant `STAT_IDLE` accepted (agent, 2026-10-21; owner-reviewed, 2026-11-06): no product path reads `status()` between `active(False)` and `deinit()` (`asy_wifi_service.py`'s mode switch) |
-| Network | a hotspot's stations query with the radio down answers 32 entries | 32 one-element tuples of 6 zeroed bytes (silicon leaves them unfilled; the service reads only the count), a twin-only knob | `extmod/network_cyw43.c:371-388` | L2 | fixed: `D network_neopixel::a_chip_down_stations_answer_is_32_unfilled_entries` |
+| Network | CYW43 `isconnected()` false positives, spontaneous link loss, DHCP, config validation | not modelled | — | L4 | accepted (agent, 2026-10-14) |
+| Network | a STA connect passes through `STAT_CONNECTING` inside the service's 5 s budget | 0.7 s | `network.py` `_CONNECT_DELAY_S` | L2 | fixed: `D network::one_connect_phase_fits_the_services_poll_budget` |
+| Network | the AP reports an address and `STAT_GOT_IP`, shares lwIP's one DNS server with STA, truncates its SSID and key | the same, with cyw43's /24 layout on the loopback (`127.0.0.1`), where every twin client is | `cyw43_config.h:194, 206`, `extmod/network_lwip.c:70-73`, `cyw43.h:431-448` | L2 | fixed: `D network::the_access_point_comes_up_with_its_address_and_the_shared_dns`, `D network::config_truncates_as_cyw43_and_reads_the_essid_back` |
+| Network | `status("rssi")` off STA and `status("stations")` off AP raise; one object per interface; `deinit()` powers the one radio down | the same | `extmod/network_cyw43.c:96-103, 133-137, 363-392` | L2 | fixed: `D network::status_answers_by_cyw43s_interface_rules`, `D network::one_wlan_object_per_interface_any_other_id_the_access_point`, `D network::deinit_powers_the_one_radio_down` |
+| Network | the home network's access point goes away | `set_access_point_up(up=False)`, a twin-only knob: a joined link, addressed or not, drops to `STAT_CONNECTING` (cyw43's LINK_JOIN) and keeps its address, the device's own AP stays up, and the link stays down until the next `connect()` (no firmware rejoin is modelled); a completed connect ends `STAT_NO_AP_FOUND` | `cyw43_ctrl.c:402-413, 434-437, 613-617`, `cyw43_lwip.c:296-298` | L2 | fixed: `D network::a_downed_access_point_fails_the_station_until_switched_back`, `D network::a_joined_link_with_no_address_holds_status_two` |
+| Network | `connect()` on an inactive STA (never activated, deactivated, or after the radio's `deinit()`) raises `OSError(EPERM)`, before the key check | the same | `cyw43_ctrl.c:637-640`, `extmod/network_cyw43.c:308-311` | L2 | fixed: `D network::connect_on_an_inactive_station_raises_eperm` |
+| Network | deactivating the STA leaves the network and takes its netif down with its DHCP: unlinked, unaddressed, a pending connect gone; a link that was joined reads `STAT_CONNECTING` (cyw43's LINK_JOIN) until the DISASSOC event clears the join state | the same, but `STAT_IDLE` at once: a simplification of the twin | `extmod/network_cyw43.c:146-149`, `cyw43_ctrl.c:353-355, 579-582, 666-669`, `cyw43_lwip.c:251-254, 267` (cyw43-driver v1.1.1, as pinned at v1.29.0) | L2 | fixed: `D network::deactivating_the_station_drops_its_link_its_address_and_a_pending_connect`; the instant `STAT_IDLE` accepted (agent, 2026-10-21): no product path reads `status()` between `active(False)` and `deinit()` (`asy_wifi_service.py`'s mode switch) |
+| Network | a hotspot's stations query with the radio down answers 32 entries | 32 one-element tuples of 6 zeroed bytes (silicon leaves them unfilled; the service reads only the count), a twin-only knob | `extmod/network_cyw43.c:371-388` | L2 | fixed: `D network::a_chip_down_stations_answer_is_32_unfilled_entries` |
 | Network | a UDP send reaches any address | the UDP shim refuses any destination outside loopback, 0.0.0.0 and TEST-NET-1 through the product's own failure path and counts it | — | L2 | fixed: `D ntp::a_public_destination_is_refused_counted_and_fails_on_the_products_own_path` |
 | Network | an NTP server on the unit's network | the local responder on the loopback | RFC 5905 | L2 | fixed: `D ntp::a_booted_device_syncs_at_its_first_sync_with_a_clean_log` |
-| Persistence | every SCD30 and FRAM a device wires keeps its own state | only the last-wired SCD30 and FRAM instance persist (one module-global handle each) | — | L2 | accepted (agent, 2026-09-13; owner-reviewed, 2026-11-06) while only the two synthetic fixtures wire several; the change wiring a second real instance adds per-instance persistence: `D generic_wiring::flush_scd30_persists_only_the_last_constructed_chip` |
-| Fault surface | a bus fails in many shapes | one generic op-keyed `FaultInjector` queue, not a per-condition simulator, plus the FRAM chip's latch and data knobs (`drop_next_wren`, `stick_next_wrdi`, `corrupt_next_write`) | — | L2 | accepted (agent, 2026-10-14; owner-reviewed, 2026-11-06) for the queue; the FRAM write defences fixed (agent, 2026-10-27; owner-reviewed, 2026-11-06): `D fram::a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_once_per_event_with_the_payload_landed`, `D fram::a_verified_write_the_chip_stored_wrong_fails_once_rewrites_nothing_and_the_next_write_heals` |
-| Fault surface | the port raises only certain faults | faults it cannot produce are refused | — | L2 | fixed: `D fram::write_fault_injection_is_refused`, `D launch::parse_fault_spec_has_no_fram_write_fault` |
-| Fault surface | no rp2 bus call raises a stack overflow | `--fault DEVICE:OP:stack` queues one, a twin-only knob proving the reboot path | `py/runtime.c:1786` | L2 only | fixed: `D launch::a_stack_fault_raises_one_stack_exhaustion_on_the_chips_next_read` |
+| Persistence | every SCD30 and FRAM a device wires keeps its own state | only the last-wired SCD30 and FRAM instance persist (one module-global handle each) | — | L2 | accepted (agent, 2026-09-13) while only the two synthetic fixtures wire several; the change wiring a second real instance adds per-instance persistence: `D generic_wiring::flush_scd30_persists_only_the_last_constructed_chip` |
+| Fault surface | a bus fails in many shapes | one generic op-keyed `FaultInjector` queue, not a per-condition simulator, plus the FRAM chip's latch and data knobs (`drop_next_wren`, `stick_next_wrdi`, `corrupt_next_write`) | — | L2 | accepted (agent, 2026-10-14) for the queue; the FRAM write defences fixed (agent, 2026-10-27): `D fram::a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_once_per_event_with_the_payload_landed`, `D fram::a_verified_write_the_chip_stored_wrong_fails_once_rewrites_nothing_and_the_next_write_heals` |
+| Fault surface | the port raises only certain faults | faults it cannot produce are refused | — | L2 | fixed: `D fram::write_fault_injection_is_refused`, `D run_generic_integration::parse_fault_spec_has_no_fram_write_fault` |
+| Fault surface | no rp2 bus call raises a stack overflow | `--fault DEVICE:OP:stack` queues one, a twin-only knob proving the reboot path | `py/runtime.c:1786` | L2 only | fixed: `D run_generic_integration::a_stack_fault_raises_one_stack_exhaustion_on_the_chips_next_read` |
 | Fault surface | the FRAM chip's writes | `write_count`/`writes_at`, a test surface, not chip behaviour | — | L2 | a test surface: `D fram::payload_writes_are_counted_by_address` |
-| Runtime | the watchdog counts down in hardware, whatever the program does | the countdown is a task on the runner's loop, so it dies with that loop: a runner-cancelled `main()` keeps the loop and the countdown alive | `ports/rp2/machine_wdt.c` | L2 | accepted (agent, 2026-10-26; owner-reviewed, 2026-11-06): `--test-watchdog-fault main-exit` cancels only `main()`, the scenario harness's `watchdog_fault_main_exit` |
+| Runtime | the watchdog counts down in hardware, whatever the program does | the countdown is a task on the runner's loop, so it dies with that loop: a runner-cancelled `main()` keeps the loop and the countdown alive | `ports/rp2/machine_wdt.c` | L2 | accepted (agent, 2026-10-26): `--test-watchdog-fault main-exit` cancels only `main()`, the scenario harness's `watchdog_fault_main_exit` |
 
 The twin's `machine` fake meets the same contract as the unit tier's (`tests/_machine_contract.py`,
 `D machine::the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks`), and every rp2
@@ -331,16 +323,16 @@ unconditional module-level `import frozen_html`, which resolves from that segmen
 `scripts/build_frozen_html.sh`'s own comment for why it can't be `.frozen` itself). Omitting it
 fails the run at import time with `ImportError: no module named 'frozen_html'` before any twin code
 ever runs. `digital_twin` sits between `src` and `frozen_modules`/`.frozen` — never together with
-plain `tests` on the same `MICROPYPATH` (that would let `tests/machine.py`/`tests/network.py`/
-`tests/neopixel.py` shadow this package's own same-named modules, or vice versa, depending on
+plain `tests` on the same `MICROPYPATH` (that would let `tests/machine.py`/`tests/network.py`
+shadow this package's own same-named modules, or vice versa, depending on
 ordering — the two are meant to never be on the same path at once). This is a **separate**
 invocation from `scripts/test.sh`'s own unit layout (the same file's `unit` entry) —
 `scripts/run_unix_port_integration.sh` is not part of `scripts/test.sh`'s own default
 `tests/test_*.py` glob loop (it can run forever in `--duration`-omitted/manual mode, which would
 hang that loop if it were discovered there instead).
 
-`digital_twin/run_generic_integration.py` reuses `launch.py`'s fault, hang and WiFi-outcome parsers
-directly (the same vocabulary). A manual run keeps its state in `digital_twin/` across runs
+`digital_twin/run_generic_integration.py`'s `--fault`/`--hang` drive each chip fake's `FaultInjector` (agent,
+2026-08-12), and `--wifi-outcome` scripts the WLAN's connects. A manual run keeps its state in `digital_twin/` across runs
 (owner, 2026-08-13: "a persistent file inside digital_twin/"): the FRAM image, the SCD30's NVM and
 the watchdog scratch registers in `digital_twin/fram_state.json`, `digital_twin/scd30_state.json` and
 `digital_twin/mem_backup_state.json`, the product's config in `digital_twin/config/`; an automated
@@ -356,7 +348,7 @@ is one poll's reading), via the opt-in `--mem-sample-interval-ms N` flag (prints
 default, no sampling). `--stop-file PATH` makes
 `--duration` an upper bound: the run ends as soon as `PATH` exists, on the same clean path a finished
 duration takes (`tests_scripts/test_digital_twin_generated_boot.py` writes it once its smoke loop is
-done, rather than idling out the bound) (agent, 2026-10-08; owner-reviewed, 2026-11-06). See "Runner flags" below for every flag,
+done, rather than idling out the bound) (agent, 2026-10-08). See "Runner flags" below for every flag,
 and `scripts/_digital_twin_ci_suite.py`'s Run 11 (`_run_11_soak()`) for the actual soak methodology —
 a plain host-side HTTP-cycling loop parsing those `MEM_SAMPLE` lines back out of the twin's
 captured log, the same pattern `_would_have_triggered_count()` already used for the watchdog
@@ -435,9 +427,6 @@ real REST endpoints all return 200 — so a generated module is *run*, not only 
 the same wiring plan `configure_wiring()` was given and reaches each chip through
 `machine.peripheral()`, never through a product wrapper's private attribute.
 
-`launch.py` stays a `src/`-free raw-bus-read demo, for the different, static-demo use case its own
-module docstring gives (no `sensortask_*` import at all).
-
 `compute_twin_wiring()`'s plan (`TwinWiringPlan`: `device`, `buses`, `spi`, `pins`, `uart`,
 `instances`) carries an optional `"uart"` key (`{"initiator_bus", "responder_bus"}`, the two
 generated UART bus globals, each named after its `[bus.<id>]` table — `None` for any device with no
@@ -457,7 +446,7 @@ off the booted module by name, joins their underlying `machine.UART` fakes with
 | `--module NAME` | required | the generated `sensortask_<device>` module to boot |
 | `--wiring-plan PATH` | required | its wiring-plan JSON |
 | `--device LABEL` | the module name | the device name the log lines carry |
-| `--host HOST`, `--port N` | `localhost`, `8080` (owner, 2026-08-13) | where the webserver listens |
+| `--host HOST`, `--port N` | `localhost`, `8080` (agent, 2026-08-13) | where the webserver listens |
 | `--config-dir PATH/` | `digital_twin/config/` | the product's config directory; refused without its trailing `/`, since each config file's name is that path plus `config_<name>.cfg` (`config_filename()` in `src/asy_config_manager.py`) |
 | `--debug-level N` | off, as on the device | every logger built at level N, until the stored `DebugLevel` applies; a level `PrintLog.set_level()` would clamp is refused |
 | `--fram-state-path`, `--scd30-state-path`, `--mem-backup-state-path PATH` | `digital_twin/fram_state.json`, `scd30_state.json`, `mem_backup_state.json` | where that state persists; `""` keeps it in memory |
@@ -496,7 +485,7 @@ The runner prints `WATCHDOG_WOULD_TRIGGER count=<n>` whenever its WDT would have
 one shutdown line naming `would_have_triggered_count`, `feed_count`, `largest_feed_gap_ms`,
 `wdt_timeout_ms`, the kept scratch registers, `public_destinations_refused`, `flash_stall_longest_ms`,
 `gc_block_bytes`, the FRAM chip's payload writes (`fram_writes`, `fram_writes_by` per FRAM-backed
-logger, `fram_silent_writes`, `fram_silent_wrens`, and `fram_writes_unattributed` once the address
+logger, and `fram_writes_unattributed` once the address
 table is full) and, per UART link, its transfers, failures and overruns (laps and receive errors
 counted together). The line comes after a `gc.collect()` and `micropython.mem_info()`'s GC summary,
 whose last line ends `max free sz: <blocks>`; `scripts/_twin_process.py`'s `ShutdownLine` refuses a
@@ -571,8 +560,8 @@ chip's end is refused rather than growing the chip.
 Real SCD30 hardware keeps the measurement interval, ambient pressure, altitude, temperature offset,
 ASC enable and the continuous-measurement status in NVM (Interface Description 1.4.1-1.4.8); the twin
 persists those six on explicit flush, with the same design as FRAM persistence above — never
-automatic. Whether the ambient-pressure value itself persists is an assumption (the datasheet names
-only the status) — fidelity table, BACKLOG row. The live CO2/temperature/humidity readings always
+automatic. The ambient pressure's persistence is field-proven (owner, 2026-11-10; the datasheet names
+only the status). The live CO2/temperature/humidity readings always
 restart fresh on a new process, matching what a real power cycle does to the sensor's in-flight
 measurement state:
 
@@ -624,8 +613,8 @@ A file that boots a device prewarms the poll set, then applies the UDP shim, at 
 (`tests_scripts/test_twin_entry_point_order.py`); before each build it calls
 `machine.reset_peripherals()` and `network.reset_interfaces()`, configures the wiring plan and writes
 the offline NTP config. It registers `machine.reset_test_state` and `network.reset_test_state` with
-`microtest.after_each`, and drives its coroutines through `tests/_async_harness.py`'s `run()`/
-`run_timed()` from synchronous test scope, never a nested `asyncio.run()` (CLAUDE.md).
+`microtest.after_each`, and drives its coroutines through `tests/_async_harness.py`'s `run()`
+from synchronous test scope, never a nested `asyncio.run()` (CLAUDE.md).
 A file marked `PER_DEVICE = True` runs once per generated device, named by `TEST_DEVICE`
 (`scripts/test.sh`); its driver-specific tests run on the device `tests/_twin_devices.py` picks.
 HTTP-driving scenarios run host-side, by `scripts/_digital_twin_scenarios.py` against a runner
@@ -1020,7 +1009,7 @@ bench's slowest legitimate resets, and the reset must also answer `Valid` (SPECI
 
 ### Faults, hangs and modes
 
-`--fault DEVICE:OP[:TIMES[:MATCH]]` (`launch.py` and `run_generic_integration.py`) queues `TIMES`
+`--fault DEVICE:OP[:TIMES[:MATCH]]` (`run_generic_integration.py`) queues `TIMES`
 (default 1) bounded faults on one bus op, each a fresh `OSError` raised by the next matching call,
 `MATCH` a hex command word, register or opcode the call must carry. `--hang
 DEVICE:OP:SECONDS[:TIMES]` queues a real, blocking `time.sleep(SECONDS)` before the next `TIMES`
@@ -1185,10 +1174,10 @@ small, mechanical addition:
    - a `FaultInjector` (`self.fault`, see `_fault_injection.py`) for provoking a bus NAK/
      CRC-corruption/timeout on demand, passed the command word, register or opcode as `key=` on every
      `maybe_raise()`, so a fault can target one command;
-   - a `random_source` constructor seam (owner, 2026-08-12; default `None` → falls back to the real
-     `random` module) so tests can script deterministic values, and `digital_twin/launch.py --seed`
+   - a `random_source` constructor seam (agent, 2026-08-12; default `None` → falls back to the real
+     `random` module) so tests can script deterministic values, and the runner's `--seed`
      can reseed every chip's walk from one shared source;
-   - a `Walk(lo, hi, step)` per value, a bounded random walk (owner, 2026-08-12, round 2): `lo`/`hi`
+   - a `Walk(lo, hi, step)` per value, a bounded random walk (agent, 2026-08-12): `lo`/`hi`
      inside the datasheet's range, citing its page, the step a **not**-datasheet-derived
      physical-plausibility judgment call, said so in a comment;
    - a `timer_factory` if the chip has its own measurement clock (never `import machine` itself),
@@ -1209,9 +1198,8 @@ small, mechanical addition:
    tests if the new chip shares a bus id those tests already probe.
    `tests_scripts/test_twin_fake_catalog.py` fails until the fake, its dispatch and its test exist.
    Every fact the fake does not model is a fidelity-table row.
-4. Update this file's "What's here" list to mention the new chip, and
-   consider whether `digital_twin/launch.py`'s own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read
-   from it too.
+4. Update this file's "What's here" list to mention the new chip, and add its ops to
+   `run_generic_integration.py`'s `_FAULT_DEVICE_OPS`/`_HANG_DEVICE_OPS` where its bus calls can fail or stall.
 5. The new driver's website fields come from its `@web` tags alone (`SPECIFICATION.md` Part H.5/K.4) —
    nothing to edit here or in any definitions file.
 

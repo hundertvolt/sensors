@@ -15,7 +15,7 @@ import machine
 import microtest
 import network
 import run_generic_integration
-from _async_harness import cancel, run_timed
+from _async_harness import cancel, run
 from _boot_recorder import BootRecorder, expected_entries
 from _fake_time import DrivenTime
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, boot_generated, write_error_level_config
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import TypedDict, TypeVar, cast
 
-    from launch import _Plan
+    from run_generic_integration import _Plan
 
     T = TypeVar("T")
 
@@ -51,7 +51,6 @@ else:
 
 require_fresh()  # every scenario boots a generated module and reads its plan
 
-_RUN_TIMEOUT_S = 10.0
 # The product's own maintenance modules, which every generated build_system() constructs whatever its TOML declares.
 _MAINTENANCE = ("conn", "ntp", "sysfunct", "webserver")
 # Where each IRQ-wired driver keeps its line: (the reader's Pin attribute, its chip fake's Pin attribute).
@@ -138,7 +137,7 @@ def _scenario_boot_sequence(device: str) -> None:
         assert entries.index(("call", "ntp_force_sync")) > entries.index(("return", "start_timers")), entries
         assert watchdog.would_have_triggered_count == 0
 
-    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
+    run(scenario())
 
 
 @_register_param("build_system_boots_against_the_real_twin_buses_without_exception")
@@ -154,7 +153,7 @@ def _scenario_boots_against_real_twin_buses(device: str) -> None:
         assert_named_modules_constructed(module, tuple(sorted(set(plan["pins"]) | set(construction) | set(_MAINTENANCE))))
         assert _constructed_names(module) == set(construction) | {"webserver"}, sorted(_constructed_names(module))
 
-    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
+    run(scenario())
 
 
 @_register_param("irq_pins_are_shared_by_chip_fake_and_driver")
@@ -179,7 +178,7 @@ def _scenario_irq_pins_shared(device: str) -> None:
             if driver == "isl29125":
                 assert line.value() == 1, f"{device}'s ISL29125 INT line reads {line.value()} at idle"
 
-    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
+    run(scenario())
 
 
 @_register_param("load_device_returns_the_devices_own_generated_module")
@@ -206,7 +205,7 @@ def _wall() -> "_wall_clock.WallClock | ModuleType":
 
 class DrivenWall(DrivenTime):
     # DrivenTime's ticks and sleeps; time(), gmtime() and localtime() as each module read them before it: the twin wall
-    # clock once installed, its steps included, else the built-in (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+    # clock once installed, its steps included, else the built-in (agent, 2026-10-27).
     def gmtime(self, *secs: int) -> "tuple[int, ...]":
         return tuple(_wall().gmtime(*secs))
 

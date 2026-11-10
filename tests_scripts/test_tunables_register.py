@@ -15,7 +15,7 @@ from buildgen.errors import BuildError
 from buildgen.tag_comments import _levenshtein, _max_typo_distance, iter_comment_tokens
 from buildgen.validate import device_max_connections
 
-_SCAN_DIRS = ("src", "buildgen", "digital_twin", "tests", "tests_scripts", "tests_hardware", "scripts", "toolchain", "js", "tests_js", "devices", ".github")
+_SCAN_DIRS = ("src", "buildgen", "digital_twin", "fakes", "tests", "tests_scripts", "tests_hardware", "scripts", "toolchain", "js", "tests_js", "devices", ".github")
 _SCAN_FILES = ("vitest.config.js",)
 _SKIP_DIRS = frozenset({"__pycache__", "_tmp", "node_modules", ".pytest_cache", ".mypy_cache"})
 _HASH_SUFFIXES = frozenset({".sh", ".yml", ".yaml", ".toml"})

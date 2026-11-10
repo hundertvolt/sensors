@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["coverage==7.16.2"]
+# dependencies = ["coverage==7.17.2"]
 # ///
 """Renders the Unix-port coverage dumps (tests/_coverage_runner.py's JSON) into coverage.py data, then HTML and a
 markdown summary for one traced directory (SPECIFICATION.md E.5)."""

@@ -14,7 +14,6 @@ from pathlib import Path
 import _repo_scan
 import pytest
 from _repo_scan import REPO_ROOT, exit_on_new, git_ignored, git_lines, git_succeeds, is_plain, is_shared_excluded, prose_blocks, read_allowlist, read_text, regenerate_allowlist, repo_files
-from test_legacy_paths import PRE_MOVE_ROOTS
 
 ALLOWLIST = Path(__file__).resolve().parent / "_citation_allowlist.txt"
 _ALLOWLIST_HEADER = (
@@ -29,10 +28,9 @@ _SELF = frozenset({"tests_scripts/test_citations.py", "tests_scripts/_citation_a
 _PATH_TOKEN = re.compile(r"(?<![\w/$~@.:\\-])((?:\./)?\.?[A-Za-z0-9_][\w.\-]*/[^\s`'\"()\[\],;:|=]*)")
 _MD_NAME = re.compile(r"(?<![\w/$~@.:\\-])([A-Za-z0-9_][\w.\-]*\.md)\b")
 _UPSTREAM_ROOTS = frozenset({"py", "ports", "extmod", "lib", "shared", "tools", "docs", "drivers"})
-# Top-level directories since deleted: a citation into one is checked (and misses) instead of being
-# passed over as not a repo path. A directory joins here in the commit that deletes it; the legacy
-# roots moved under legacy/ come from the check that keeps them gone.
-_RETIRED_TOPS = frozenset({"improved-quality", *PRE_MOVE_ROOTS})
+# Top-level directories since deleted or moved under legacy/: a citation into one is checked (and misses) instead of
+# being passed over as not a repo path. A directory joins here in the commit that deletes or moves it.
+_RETIRED_TOPS = frozenset({"improved-quality", "python", "modules", "html_raw", "dev_legacy"})
 _PLACEHOLDER = re.compile(r"[<>{}$\\^+|…]|\.\.\.")
 _GLOB = re.compile(r"[*?]")
 # A file name with a hyphenated suffix glued on ("machine.py-backed") cites the file before it.

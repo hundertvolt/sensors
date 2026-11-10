@@ -1,4 +1,4 @@
-"""Every ruff exemption in pyproject.toml still fires: one ruff run, every exemption lifted, over the eight lint scopes
+"""Every ruff exemption in pyproject.toml still fires: one ruff run, every exemption lifted, over the nine lint scopes
 and a device tree generated here, must show each global code, each per-file code in a file its glob matches, each
 allowed confusable and an F401 naming each allowed-unused-imports module, else the entry goes (SPECIFICATION.md D.6).
 
@@ -18,7 +18,7 @@ from _repo_scan import pinned_ruff
 from buildgen.generate import _output_names, generate_device
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_SCOPES = ("src", "tests", "digital_twin", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
+_SCOPES = ("src", "tests", "digital_twin", "fakes", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
 _GENERATED = "build/generated_src"
 _CONFUSABLE_RULES = ("RUF001", "RUF002", "RUF003")
 

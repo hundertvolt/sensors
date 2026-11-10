@@ -1,4 +1,4 @@
-"""tests/_strict_json.py: accepts exactly RFC 8259 JSON, and rejects each separator slip the
+"""fakes/_strict_json.py: accepts exactly RFC 8259 JSON, and rejects each separator slip the
 interpreter's own lenient json.loads() lets through - which is the whole reason it exists."""
 
 import json

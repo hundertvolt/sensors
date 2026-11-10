@@ -28,10 +28,10 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
-from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime, driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -51,8 +51,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Protocol, TypeVar
 
-    from launch import _Plan
     from machine import WDT
+    from run_generic_integration import _Plan
 
     from asy_print_log import PrintLogHistory
 
@@ -73,7 +73,6 @@ _REC_SDA_LOW = src_int("src/asy_i2c_driver.py", "_REC_SDA_LOW")
 _REC_SCL_HELD = src_int("src/asy_i2c_driver.py", "_REC_SCL_HELD")
 _RELEASE_AFTER = 3  # SCL pulses before the slave lets SDA go: a byte cut short mid-transfer
 _WAIT_S = 60.0
-_RUN_BOUND_S = 60.0
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 _TRANSFERS = ("readfrom_into", "readfrom_mem", "writeto", "writeto_mem")  # every machine.I2C transfer; readfrom_mem_into delegates
@@ -129,11 +128,11 @@ def _new_board() -> None:
 
 def _on_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, T]]") -> "T":
     # One driven clock for every src module holding asyncio and the twin's machine and network (as the timer-pool tier).
-    async def run() -> "T":
-        with DrivenTime(*[m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio], sleeps=True) as clock:
+    async def driven() -> "T":
+        with DrivenTime(*driven_modules(), sleeps=True) as clock:
             return await scenario(clock)
 
-    return run_timed(run(), timeout_s=_RUN_BOUND_S)
+    return run(driven())
 
 
 def _read_since(readers: "list[tuple[str, SensorReader]]", marks: "dict[str, object]") -> "Callable[[], bool]":

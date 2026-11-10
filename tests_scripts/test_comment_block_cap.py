@@ -17,7 +17,7 @@ import pytest
 from _devices import DEVICE_NAMES
 from _repo_scan import REPO_ROOT, is_shared_excluded, python_files, repo_files
 
-SCOPES = ("src", "buildgen", "digital_twin", "toolchain", "scripts", "tests", "tests_scripts", "tests_hardware")
+SCOPES = ("src", "buildgen", "digital_twin", "fakes", "toolchain", "scripts", "tests", "tests_scripts", "tests_hardware")
 CAP = 3
 # A line counts its stripped length over _WRAP_WIDTH, rounded up, so a paragraph packed onto one long line counts by
 # its length (owner, 2026-10-21: "6: c", asked "Count a long comment line as several?", option (c) "the same at 120

@@ -58,25 +58,6 @@ def _blocks(lines: list[str]) -> list[list[str]]:
     return done + list(open_blocks.values())
 
 
-def _cut(line: str) -> str:
-    # One shown line: unprintable characters as "?", a long one cut with a visible mark.
-    line = "".join(c if c.isprintable() and c != "\ufffd" else "?" for c in line)
-    return line if len(line) <= _WIDTH else line[: _WIDTH - 1] + "\u2026"
-
-
-def _counts(line: str) -> str:
-    # "Counts (files): passed 137 · failed 0 · skipped 80 ..." as "files: passed 137, skipped 80", zero fields dropped.
-    unit, _, fields = line.removeprefix("Counts (").partition("): ")
-    kept = [f for f in fields.split(" · ") if not f.endswith(" 0")]
-    return f"{unit}: {', '.join(kept) or 'nothing counted'}"
-
-
-def _flagged(block: list[str]) -> list[str]:
-    # The sections that make even a passing block a finding: a failure, a pass that needed a retry or a recovery, a
-    # check that checked nothing.
-    return [line for line in block if line.partition(":")[0] in _FINDINGS and not line.endswith(": none")]
-
-
 def _condense(block: list[str]) -> list[str]:
     # A clean pass as one line; any other block with empty sections dropped (but "Failed: none"), folded lists
     # counted and long lists cut.
@@ -101,6 +82,19 @@ def _condense(block: list[str]) -> list[str]:
         if not line.endswith(": none") or title == "Failed":
             out.append(_cut(line))
     return out
+
+
+def _counts(line: str) -> str:
+    # "Counts (files): passed 137 · failed 0 · skipped 80 ..." as "files: passed 137, skipped 80", zero fields dropped.
+    unit, _, fields = line.removeprefix("Counts (").partition("): ")
+    kept = [f for f in fields.split(" · ") if not f.endswith(" 0")]
+    return f"{unit}: {', '.join(kept) or 'nothing counted'}"
+
+
+def _cut(line: str) -> str:
+    # One shown line: unprintable characters as "?", a long one cut with a visible mark.
+    line = "".join(c if c.isprintable() and c != "\ufffd" else "?" for c in line)
+    return line if len(line) <= _WIDTH else line[: _WIDTH - 1] + "\u2026"
 
 
 def _extras(lines: list[str], *, blocks: bool) -> tuple[list[str], bool]:
@@ -157,6 +151,12 @@ def _extras(lines: list[str], *, blocks: bool) -> tuple[list[str], bool]:
         out.extend(f"  line {n}: feed gap {gap} of {timeout} ms" for n, _fired, gap, timeout in near[:_HIT_CAP])
         notable |= bool(near)
     return out, notable
+
+
+def _flagged(block: list[str]) -> list[str]:
+    # The sections that make even a passing block a finding: a failure, a pass that needed a retry or a recovery, a
+    # check that checked nothing.
+    return [line for line in block if line.partition(":")[0] in _FINDINGS and not line.endswith(": none")]
 
 
 def read(path: Path) -> tuple[list[str], bool]:

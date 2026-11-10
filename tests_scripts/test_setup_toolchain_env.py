@@ -933,7 +933,7 @@ def test_every_apt_call_times_out_and_retries_a_stalled_fetch(setup_toolchain: M
     timeout = str(setup_toolchain.APT_ACQUIRE_TIMEOUT_S)
     expected = ["-o", f"Acquire::Retries={setup_toolchain.NETWORK_ATTEMPTS - 1}", "-o", f"Acquire::http::Timeout={timeout}", "-o", f"Acquire::https::Timeout={timeout}"]
     apt_calls = [cmd for cmd in recorded_run if "apt-get" in cmd]
-    assert len(apt_calls) == 3, recorded_run  # the list update, the download, the install from the cache
+    assert len(apt_calls) == 2, recorded_run  # the list update and the install
     for cmd in apt_calls:
         at = cmd.index("apt-get") + 1
         assert cmd[at : at + len(expected)] == expected, cmd
@@ -978,14 +978,14 @@ class _FlagOnLine:
     def __init__(self, line: str, flag: Path) -> None:
         self.line, self.flag, self.text = line, flag, ""
 
+    def flush(self) -> None:
+        pass
+
     def write(self, text: str) -> int:
         self.text += text
         if self.line in self.text:
             self.flag.touch()
         return len(text)
-
-    def flush(self) -> None:
-        pass
 
 
 def test_run_streams_each_line_while_the_command_still_runs(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1484,7 +1484,7 @@ def test_the_summary_names_all_three_unix_binaries(setup_toolchain: ModuleType, 
         assert str(unix_dir / name / "micropython") in shown, name
 
 
-# --- apt: a bounded list update, a retried download, one install from the cache -------------------
+# --- apt: a list update and one install, each run once ---------------------------------------------
 
 
 def _only_these_network_variables(monkeypatch: pytest.MonkeyPatch, setup_toolchain: ModuleType, **values: str) -> None:
@@ -1503,9 +1503,9 @@ def test_apt_keeps_the_proxy_in_the_environment_through_sudo(setup_toolchain: Mo
     setup_toolchain.ensure_apt_packages(["git", "cmake"], skip=False)
     sudo = ["sudo", "--preserve-env=DEBIAN_FRONTEND,HTTPS_PROXY,SSL_CERT_FILE", "apt-get", *setup_toolchain.apt_options()]
     tail = ["-y", "--no-install-recommends", "git", "cmake"]
-    assert fake.argvs() == [[*sudo, "update"], [*sudo, "install", "--download-only", *tail], [*sudo, "install", *tail]]
+    assert fake.argvs() == [[*sudo, "update"], [*sudo, "install", *tail]]
     budgets = [call.get("timeout_s") for call in fake.calls]
-    assert budgets == [setup_toolchain._APT_STEP_TIMEOUT_S, setup_toolchain._APT_STEP_TIMEOUT_S, None], "the local install from the downloaded packages is unbounded"
+    assert budgets == [None, None], "no wall-clock limit: apt's own fetch timeout ends a stalled read, a slow live one finishes"
     assert fake.calls[0]["check"] is False, "an unrelated broken source must not stop the install"
     for call in fake.calls:
         env = call["env"]
@@ -1522,32 +1522,13 @@ def test_apt_without_proxy_variables_preserves_only_the_frontend(setup_toolchain
     assert {tuple(argv[:2]) for argv in fake.argvs()} == {("sudo", "--preserve-env=DEBIAN_FRONTEND")}
 
 
-def test_a_stalled_download_is_retried_but_the_install_never_is(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Only the download is retried, and it never reaches dpkg: a retry that killed dpkg mid-configure would leave
-    # the host's package database interrupted until someone runs `dpkg --configure -a`.
-    timed_out = setup_toolchain.SetupError("timed out after 150 s: apt-get install --download-only")
-    fake = _FakeRun({("sudo",): ""})
-    calls: list[list[str]] = []
-
-    def stalls_twice(cmd: list[str], cwd: Path | None = None, **kwargs: object) -> str:
-        calls.append(cmd)
-        if "--download-only" in cmd and sum("--download-only" in c for c in calls) < setup_toolchain.NETWORK_ATTEMPTS:
-            raise timed_out
-        return fake(cmd, cwd, **kwargs)
-
-    monkeypatch.setattr(setup_toolchain, "run", stalls_twice)
-    monkeypatch.setattr(setup_toolchain.time, "sleep", lambda _s: None)
-    setup_toolchain.ensure_apt_packages(["git"], skip=False)
-    assert sum("--download-only" in c for c in calls) == setup_toolchain.NETWORK_ATTEMPTS
-    assert sum("install" in c and "--download-only" not in c for c in calls) == 1
-
-
 def test_a_failed_install_runs_once_and_names_the_ways_out(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # apt retries each failed fetch itself (apt_options()), so the command runs once and names the remedy.
     failed = setup_toolchain.SetupError("command failed (exit 100): sudo apt-get install")
     fake = _FakeRun()
 
     def install_fails(cmd: list[str], cwd: Path | None = None, **kwargs: object) -> str:
-        if "install" in cmd and "--download-only" not in cmd:
+        if "install" in cmd:
             fake(cmd, cwd, **kwargs)
             raise failed
         return fake(cmd, cwd, **kwargs)
@@ -1555,15 +1536,8 @@ def test_a_failed_install_runs_once_and_names_the_ways_out(setup_toolchain: Modu
     monkeypatch.setattr(setup_toolchain, "run", install_fails)
     with pytest.raises(setup_toolchain.SetupError, match=r"exit 100.*env_keep.*--skip-apt"):
         setup_toolchain.ensure_apt_packages(["git"], skip=False)
-    assert sum("install" in argv and "--download-only" not in argv for argv in fake.argvs()) == 1
+    assert sum("install" in argv for argv in fake.argvs()) == 1
 
-
-def test_a_stalled_list_update_is_logged_and_the_install_goes_on(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    fake = _FakeRun({("sudo",): [setup_toolchain.SetupError("timed out after 150 s: sudo apt-get update"), ""]})
-    monkeypatch.setattr(setup_toolchain, "run", fake)
-    setup_toolchain.ensure_apt_packages(["git"], skip=False)
-    assert len(fake.calls) == 3
-    assert "apt-get update did not finish" in capsys.readouterr().out
 
 
 # --- clones, fetches and submodules: retried, an interrupted clone named --------------------------------

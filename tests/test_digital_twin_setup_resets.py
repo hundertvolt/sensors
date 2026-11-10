@@ -27,7 +27,7 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Protocol, TypeVar
 
-    from launch import _Plan
+    from run_generic_integration import _Plan
 
     T = TypeVar("T")
 
@@ -71,7 +71,6 @@ _RESET_WRITES = {
 }
 _READS = ("readfrom_into", "readfrom_mem")  # the twin's read forms; readfrom_mem_into delegates
 _WAIT_S = 60.0
-_RUN_BOUND_S = 60.0
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 
@@ -165,7 +164,7 @@ def test_every_chip_is_reset_once_by_its_setup_after_its_identity_check() -> Non
         with DrivenTime(*[m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio], sleeps=True) as clock:
             return await scenario(clock)
 
-    seen = run_timed(on_clock(), timeout_s=_RUN_BOUND_S)
+    seen = run(on_clock())
     for bus_name, driver, address in _attachments():
         own, reset = _RESET_WRITES[driver]
         target = address if own else 0x00

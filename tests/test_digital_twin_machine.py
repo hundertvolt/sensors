@@ -33,10 +33,14 @@ import _wall_clock
 import machine
 import microtest
 from _async_harness import run
+from _bmp3xx_chip import BMP3XXChip
 from _crc8 import crc8, word
 from _fake_time import DrivenTime
 from _fault_injection import FaultInjector
+from _isl29125_chip import ISL29125Chip
 from _machine_contract import ALL_CHECKS, FAULT_CHECKS
+from _scd30_chip import SCD30Chip
+from _sgp40_chip import SGP40Chip
 from _ticks30 import Ticks30Time
 from _tmp_scratch import TmpScratch
 from _twin_common import COUNTER_CAP, LOG_MAXLEN, BoundedLog, StatePaths, fill_buffer, saturating_add
@@ -66,7 +70,6 @@ _RUN_BOUND_S = 5
 _WDT_FED_TIMEOUT_MS = 100
 _FEED_STEP_MS = 20
 _FEED_ROUNDS = 6
-_DOUBLE_TRIGGER_BOUND_S = 8
 _TIMER_PERIOD_MS = 20
 _BEFORE_DEINIT_MS = 60
 _AFTER_DEINIT_MS = 80
@@ -350,6 +353,7 @@ def test_configure_random_source_threads_through_to_newly_wired_chips() -> None:
     _wire()
     i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
     scd30 = i2c0.devices[0x61]
+    assert isinstance(scd30, SCD30Chip)
     assert scd30._co2 == 400.0  # the CO2 walk's lower bound (_scd30_chip.py's default), the fixed source's uniform(a, b) -> a
 
 
@@ -401,6 +405,7 @@ def test_an_isl29125_board_hands_the_chip_the_same_pin_object_the_driver_constru
     (irq_pin,) = [a["irq_pin"] for a in wiring_plan(_board(_ISL29125_BOARD))["buses"]["i2c1"] if a["driver"] == "isl29125"]
     i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
     chip = i2c.devices[0x44]
+    assert isinstance(chip, ISL29125Chip)
     driver_side = Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP)
     assert chip._int_pin is driver_side
 
@@ -430,8 +435,10 @@ def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> Non
     _wire()
     i2c0b = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
     assert i2c0b is not i2c0a
-    i2c0b.devices[0x61].handle_writeto(bytes([0x46, 0x00]))
-    assert i2c0b.devices[0x61].handle_readfrom_into(3) == word(10)
+    scd30 = i2c0b.devices[0x61]
+    assert isinstance(scd30, SCD30Chip)
+    scd30.handle_writeto(bytes([0x46, 0x00]))
+    assert scd30.handle_readfrom_into(3) == word(10)
 
 
 def test_spi_id0_wires_the_fram_chip() -> None:
@@ -611,7 +618,9 @@ def test_i2c_address_prefixed_writeto_reaches_the_register_handler() -> None:
     _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     assert i2c.writeto(0x77, bytes([0x1C, 0x05]), True) == 2  # OSR register, one payload byte
-    assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == bytes([0x05])
+    bmp = i2c.devices[0x77]
+    assert isinstance(bmp, BMP3XXChip)
+    assert bmp.handle_readfrom_mem(0x1C, 1) == bytes([0x05])
     assert i2c.log[-1] == ("writeto", 0x77, bytes([0x1C, 0x05]), True)
 
 
@@ -648,7 +657,9 @@ def test_i2c_a_general_call_reaches_only_the_chips_that_listen() -> None:
     _wire()
     i2c1 = I2C(1, scl=Pin(19), sda=Pin(18))
     heard: list[bytes] = []
-    i2c1.devices[0x59].handle_general_call = lambda data: heard.append(bytes(data))
+    sgp40 = i2c1.devices[0x59]
+    assert isinstance(sgp40, SGP40Chip)
+    sgp40.handle_general_call = lambda data: heard.append(bytes(data))  # type: ignore[method-assign]
     assert i2c1.writeto(0x00, b"\x06") == 1
     assert heard == [b"\x06"] and i2c1.log[-1] == ("writeto", 0x00, b"\x06", True)
     i2c0 = I2C(0, scl=Pin(13), sda=Pin(12))
@@ -674,7 +685,7 @@ class _ShortChip:
 def test_i2c_reads_fill_the_callers_buffer_whatever_its_type() -> None:
     _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18))
-    i2c.devices[0x10] = _ShortChip()
+    i2c.devices[0x10] = _ShortChip()  # type: ignore[assignment]  # a test chip, outside the wired catalog
     buf = bytearray(b"\xff\xff\xff")
     i2c.readfrom_into(0x10, buf)
     view = memoryview(bytearray(3))
@@ -697,10 +708,12 @@ def test_i2c_register_faults_keep_the_chip_keys() -> None:
 def test_i2c_nack_after_returns_the_short_count_and_records_the_stop() -> None:
     _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
-    osr = i2c.devices[0x77].handle_readfrom_mem(0x1C, 1)  # its reset value, whatever the chip models
+    bmp = i2c.devices[0x77]
+    assert isinstance(bmp, BMP3XXChip)
+    osr = bmp.handle_readfrom_mem(0x1C, 1)  # its reset value, whatever the chip models
     i2c.nack_after[0x77] = 1
     assert i2c.writeto(0x77, bytes([0x1C, 0x07]), True) == 1  # the data byte NACKed
-    assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == osr  # the chip took nothing
+    assert bmp.handle_readfrom_mem(0x1C, 1) == osr  # the chip took nothing
     i2c.nack_after[0x77] = 0
     assert i2c.writeto(0x77, bytes([0x04]), False) == 0  # the register byte NACKed, no stop
     i2c.writeto(0x77, b"", True)  # the STOP the driver sends after a short no-stop write
@@ -820,7 +833,7 @@ def test_wdt_notifies_once_after_a_feed_free_window() -> None:
             await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never noticed a feed-free window")
 
-    run(scenario(), _RUN_BOUND_S)
+    run(scenario())
 
 
 def test_wdt_feed_resets_the_countdown_and_prevents_a_notification() -> None:
@@ -831,7 +844,7 @@ def test_wdt_feed_resets_the_countdown_and_prevents_a_notification() -> None:
             wdt.feed()
         return wdt.would_have_triggered_count
 
-    count = run(scenario(), _RUN_BOUND_S)
+    count = run(scenario())
     assert count == 0  # kept fed the whole time - never should have noticed a gap
 
 
@@ -845,7 +858,7 @@ def test_wdt_keeps_monitoring_after_a_would_have_triggered_notification() -> Non
             await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never reached a second would-have-triggered notification")
 
-    run(scenario(), _DOUBLE_TRIGGER_BOUND_S)
+    run(scenario())
 
 
 def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification() -> None:
@@ -859,7 +872,7 @@ def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notificatio
             await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never noticed a feed-free window")
 
-    log = run(scenario(), _RUN_BOUND_S)
+    log = run(scenario())
     assert log[0] == 2  # the first notification must reflect feed_count as of the unfed stretch
 
 
@@ -873,7 +886,7 @@ def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
             await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("on_would_trigger callback never fired")
 
-    seen = run(scenario(), _RUN_BOUND_S)
+    seen = run(scenario())
     assert seen[0].would_have_triggered_count >= 1
 
 
@@ -885,12 +898,12 @@ class _TaskCounting:
     def __getattr__(self, name: str) -> object:
         return getattr(asyncio, name)
 
+    def get_event_loop(self) -> "_TaskCounting":
+        return self
+
     def create_task(self, coro: "Coroutine[object, object, None]") -> "asyncio.Task[None]":
         self.built += 1
         return asyncio.get_event_loop().create_task(coro)
-
-    def get_event_loop(self) -> "_TaskCounting":
-        return self
 
 
 def test_wdt_a_feed_after_a_stall_past_the_deadline_records_that_window_itself() -> None:
@@ -909,7 +922,7 @@ def test_wdt_a_feed_after_a_stall_past_the_deadline_records_that_window_itself()
         return [counts, list(wdt.would_have_triggered_log)]
 
     with DrivenTime(machine, sleeps=True) as clock:
-        outcome = run(scenario(clock), _RUN_BOUND_S)
+        outcome = run(scenario(clock))
     assert outcome == [[1, 1, 2], [1, 1]], outcome
 
 
@@ -931,7 +944,7 @@ def test_wdt_a_stall_that_a_feeding_task_outlasts_counts_once() -> None:
         return [wdt.would_have_triggered_count, list(wdt.would_have_triggered_log)]
 
     with DrivenTime(machine, sleeps=True) as clock:
-        outcome = run(scenario(clock), _RUN_BOUND_S)
+        outcome = run(scenario(clock))
     assert outcome == [1, [11]], outcome
 
 
@@ -952,7 +965,7 @@ def test_wdt_feeds_build_no_task_and_allocate_nothing() -> None:
     counting = _TaskCounting()
     machine.asyncio = counting  # type: ignore[assignment, attr-defined]  # restored below
     try:
-        grown, allocated = run(scenario(counting), _RUN_BOUND_S)
+        grown, allocated = run(scenario(counting))
     finally:
         machine.asyncio = asyncio  # type: ignore[attr-defined]
     settrace_build = hasattr(sys, "settrace")  # allocates per call and resume, traced or not (SPECIFICATION.md E.5.2)
@@ -1180,7 +1193,7 @@ def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
             await asyncio.sleep_ms(_CHAIN_POLL_MS)
         raise AssertionError("chained timer never completed all steps")
 
-    run(scenario(), _RUN_BOUND_S)  # must not raise "can't cancel self"
+    run(scenario())  # must not raise "can't cancel self"
     assert steps == [0, 1, 2]
 
 
@@ -1216,16 +1229,16 @@ def test_timer_fires_for_real_on_a_short_period() -> None:
             await asyncio.sleep_ms(_FIRE_POLL_MS)
         raise AssertionError("Timer callback never fired")
 
-    run(scenario(), _RUN_BOUND_S)
+    run(scenario())
     assert fired == [1]
 
 
+def test_saturating_add_stops_at_the_shared_counter_cap() -> None:
 # ---------------------------------------------------------------------------
 # The shared twin helpers (_twin_common): the counter cap, the bounded log's drop count, the buffer fill.
 # ---------------------------------------------------------------------------
 
 
-def test_saturating_add_stops_at_the_shared_counter_cap() -> None:
     assert COUNTER_CAP == 0x3FFFFFFF
     assert (saturating_add(5), saturating_add(5, 3)) == (6, 8)
     assert (saturating_add(COUNTER_CAP - 1), saturating_add(COUNTER_CAP), saturating_add(COUNTER_CAP - 2, 5)) == (COUNTER_CAP,) * 3
@@ -1442,7 +1455,7 @@ def test_a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling() 
         sibling.cancel()
 
     try:
-        run(scenario(), _RUN_BOUND_S + 1)
+        run(scenario())
         raise AssertionError("the loop outlived machine.reset()")
     except SimulatedResetError:
         pass
@@ -1511,7 +1524,7 @@ def test_a_fired_one_shot_returns_its_alarm() -> None:
             await asyncio.sleep_ms(_SHORT_PERIOD_MS)
         Timer(mode=Timer.ONE_SHOT, period=1000, callback=lambda _t: None)
 
-    run(scenario(), _RUN_BOUND_S)
+    run(scenario())
     assert fired == [1]
 
 
@@ -1532,7 +1545,7 @@ def test_a_timer_rearming_from_its_own_callback_runs_one_schedule() -> None:
         await asyncio.sleep_ms(_REARM_WINDOW_MS)
         elapsed.append(time.ticks_diff(time.ticks_ms(), start))
 
-    run(scenario(), _RUN_BOUND_S)
+    run(scenario())
     # One loop calls at most once per whole period that really passed: a late wake on a loaded host adds a period.
     assert calls[:1] == ["first"] and len(calls) <= elapsed[0] // _SHORT_PERIOD_MS, (calls, elapsed)
 
@@ -1552,7 +1565,7 @@ def test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on() -> None:
                 return
             await asyncio.sleep_ms(_SHORT_PERIOD_MS)
 
-    reported = _reports_during(lambda: run(scenario(), _RUN_BOUND_S))
+    reported = _reports_during(lambda: run(scenario()))
     assert len(calls) >= 2
     assert reported == [("planted callback failure", False)]
 
@@ -1572,7 +1585,7 @@ def test_a_periodic_timer_fires_again_after_its_soft_callbacks_are_dropped() -> 
             await asyncio.sleep_ms(_SHORT_PERIOD_MS)
         timer.deinit()
 
-    run(scenario(), _RUN_BOUND_S)
+    run(scenario())
     assert drops_left_at_call[:1] == [0], f"the first delivered call came with {drops_left_at_call[:1]} drops still pending"
 
 
@@ -1595,7 +1608,7 @@ def test_a_dropped_one_shot_never_fires_and_frees_its_alarm_while_a_hard_callbac
                 return
             await asyncio.sleep_ms(_SHORT_PERIOD_MS)
 
-    run(scenario(), _RUN_BOUND_S)
+    run(scenario())
     assert (calls, Timer.drop_next_soft_callbacks) == (["hard"], 1)
 
 
@@ -1612,7 +1625,7 @@ def test_a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm() -> Non
         await asyncio.sleep_ms(_SHORT_PERIOD_MS * 5 // 2)  # past where a second call would land
         Timer(period=1000, callback=lambda _t: None)  # the failed schedule's alarm is free again
 
-    reported = _reports_during(lambda: run(scenario(), _RUN_BOUND_S))
+    reported = _reports_during(lambda: run(scenario()))
     assert calls == [1]
     assert reported == [("planted hard callback failure", True)]
 
@@ -1651,7 +1664,7 @@ def test_an_unplugged_chip_answers_nothing_until_plugged_back_powered_up() -> No
     i2c = I2C(1, scl=Pin(19), sda=Pin(18))
     chip = i2c.devices[0x77]
     cycles: list[int] = []
-    chip.power_cycle = lambda: cycles.append(1)
+    chip.power_cycle = lambda: cycles.append(1)  # type: ignore[method-assign]
     i2c.unplug(0x77)
     assert 0x77 not in i2c.scan()
     try:

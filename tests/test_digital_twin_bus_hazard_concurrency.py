@@ -20,11 +20,11 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _crc8 import crc8  # noqa: E402 - imported after the prewarm and the UDP shim; the twin's own CRC-8, independent of src/
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
-from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime, driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fast_sleep import FastAsyncSleep  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -61,8 +61,8 @@ if TYPE_CHECKING:
     from _scd30_chip import SCD30Chip
     from _twin_common import BoundedLog
     from _twin_devices import I2CAttachment, TwinWiringPlan
-    from launch import _Plan
     from machine import WDT
+    from run_generic_integration import _Plan
 
     from asy_base_classes import SensorReader
     from asy_fram_manager import FRAMChunk
@@ -72,13 +72,10 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 _WDT_FEED_INTERVAL_S = 1.0
-_RUN_BOUND_S = 20.0
 _RUN_SECONDS = 9.0
 _ESTABLISHED_POLL_S = 0.5
 _RECONNECT_POLL_S = 1.0
 _FLAP_WINDOW_S = 75.0
-_FLAP_RUN_BOUND_S = 95.0
-_STATE_RUN_BOUND_S = 30.0
 _RECOVERY_OFFSETS = 6
 _RECOVERY_READS = 6
 _COMMAND_WAIT_S = 20.0
@@ -186,7 +183,7 @@ def _driven_modules(device: str) -> "list[object]":
     # The device's generated module loaded, then every src service and driver holding asyncio, and the twin's machine
     # and network: one clock for all of them, the boot's waits and the pause's deadline among their reads.
     load_device(device)
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
+    return driven_modules()
 
 
 async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
@@ -261,13 +258,13 @@ async def _ladder_run(device: str, faults: "dict[int, str]", until_recoveries: i
         await _cancel_started_tasks(module)
 
 
-def _on_each(devices: "list[str]", scenario: "Callable[[str], Coroutine[object, object, None]]", timeout_s: float) -> None:
+def _on_each(devices: "list[str]", scenario: "Callable[[str], Coroutine[object, object, None]]") -> None:
     # One run per device, each after the file's per-test reset: no run inherits the previous device's board, its
     # constructed peripherals or its FRAM state path.
     for device in devices:
         machine.reset_test_state()
         network.reset_test_state()
-        run_timed(scenario(device), timeout_s=timeout_s)
+        run(scenario(device))
 
 
 def _payload(entry: "tuple[object, ...]") -> bytes:
@@ -348,7 +345,7 @@ def _rung_across_offsets(device: str, bus_name: str, siblings: "tuple[str, ...]"
             await asyncio.gather(*(_sibling_reads(device, s, bus, failures) for s in siblings), fire())
 
         with FastAsyncSleep():
-            run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+            run(scenario())
         assert not failures, f"{device} offset {offset}: a sibling read failed beside the rung: {failures}"
         check(built[0])
 
@@ -464,7 +461,7 @@ def _three_concurrent_measurements(device: str) -> None:
 
         await asyncio.gather(*(session(t, rh) for t, rh in inputs))
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
     i2c = built[0]._i2c
     assert i2c is not None
     log = [entry for entry in i2c.log if entry[0] in ("writeto", "readfrom_into") and entry[1] == address]
@@ -478,15 +475,15 @@ def _three_concurrent_measurements(device: str) -> None:
 
 
 def test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
-    # Every device whose plan shares a bus: wozi's SGP40+BMP3xx pairing has no real-hardware proof (wozi is not flashed,
-    # CLAUDE.md), dev's grouping has its bench proof too (tests_hardware/flash/test_bus_concurrency.py).
+    # Every device whose plan shares a bus: a pairing on a device without `bench = true` has no real-hardware proof (it is
+    # never flashed, CLAUDE.md); the bench device's has its bench proof too (tests_hardware/flash/test_bus_concurrency.py).
     for device, bus_name, _occupants in _SHARED:
 
         async def scenario(device: str = device, bus_name: str = bus_name) -> None:
             module, watchdog = await _boot(device, port=_ports.next())
             await _run_real_task_graph_and_assert_healthy(module, watchdog, getattr(module, bus_name)._i2c.log, run_seconds=_RUN_SECONDS)
 
-        run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+        run(scenario())
 
 
 def test_fram_recovers_after_a_write_its_chip_never_enabled() -> None:
@@ -513,7 +510,7 @@ def test_fram_recovers_after_a_write_its_chip_never_enabled() -> None:
         ok = fram_spi.get_values(buf, addr_start=0x100)
         assert ok and bytes(buf) == b"\x01\x02\x03\x04", f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, expected b'\\x01\\x02\\x03\\x04'"
 
-    _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_fram_recovers_after_an_injected_spi_read_fault() -> None:
@@ -545,7 +542,7 @@ def test_fram_recovers_after_an_injected_spi_read_fault() -> None:
         ok = fram_spi.get_values(buf, addr_start=0x200)
         assert ok and bytes(buf) == _SEED, f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, not the pre-fault seeded content"
 
-    _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
@@ -576,7 +573,7 @@ def test_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
         assert chunk.write(payload), "a write is what clears the stuck BUSY status bytes"
         assert chunk.read() == bytearray(payload)
 
-    _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_a_system_entry_and_a_backup_write_from_two_tasks_never_interleave_their_commands() -> None:
@@ -616,13 +613,13 @@ def test_a_system_entry_and_a_backup_write_from_two_tasks_never_interleave_their
         runs = [owner for i, owner in enumerate(owners) if i == 0 or owners[i - 1] != owner]
         assert runs.count("backup") == 1 and runs.count("entry") == 1, f"{device}: {runs}"
 
-    _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect() -> None:
     # Recombination test (owner, 2026-09-04, paraphrase): the wired system tolerates a genuine 60 s wifi_mode_lock hold (the
     # ESTABLISHED-branch retry) under bus load, on the first shared-bus device. The retry waits outside the lock; a forced
-    # failed reconnect runs it, its sleep driven over real SCD30 cycles (agent, 2026-10-21; owner-reviewed, 2026-11-06).
+    # failed reconnect runs it, its sleep driven over real SCD30 cycles (agent, 2026-10-21).
     device, bus_name = _SHARED[0][0], _SHARED[0][1]
     scd30s = [a["address"] for a in wiring_plan(device)["buses"][bus_name] if a["driver"] == "scd30"]
     assert scd30s, f"{device}: no SCD30 on {bus_name} to count the retry's real bus cycles by"
@@ -662,7 +659,7 @@ def test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_dis
             await cancel(feeder)
             await _cancel_started_tasks(module)
 
-    run_timed(scenario(), timeout_s=_FLAP_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_storage_pause_gates_the_real_twin_chip() -> None:
@@ -686,7 +683,7 @@ def test_storage_pause_gates_the_real_twin_chip() -> None:
         assert chunk.write(second) is True
         assert bytes(chunk.read() or b"") == second
 
-    _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_a_timed_storage_pause_ends_by_itself_on_the_next_uptime_pass() -> None:
@@ -715,7 +712,7 @@ def test_a_timed_storage_pause_ends_by_itself_on_the_next_uptime_pass() -> None:
             finally:
                 await cancel(status)
 
-    _on_each(_FRAM_DEVICES, scenario, _STATE_RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
@@ -741,7 +738,7 @@ def test_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
         assert manager.fram.set_write_protected(value=False) is True
         assert bytes(chunk.read() or b"") == payload, "the refusal damaged the stored bytes - it is supposed to be an access gate only"
 
-    _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives() -> None:
@@ -767,7 +764,7 @@ def test_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_surviv
         assert chunk.read() == bytearray(payload)  # absorbed by the block-1 copy
         assert bus.rx_overrun_remaining == 0, "the overrun never fired once the bus was genuinely reachable"
 
-    _on_each(_FRAM_DEVICES, scenario, _RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_storage_pause_does_not_survive_a_simulated_reboot() -> None:
@@ -792,7 +789,7 @@ def test_storage_pause_does_not_survive_a_simulated_reboot() -> None:
         assert chunk2 is not None
         assert bytes(chunk2.read() or b"") == payload, "the chunk bytes should survive the same reboot the pause flag does not"
 
-    _on_each(_FRAM_DEVICES, scenario, _STATE_RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot() -> None:
@@ -820,7 +817,7 @@ def test_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot() -> N
         own = await chunk_after_boot(device, cfg_path, "HAZARD_OWNER_A")  # control: the bytes were never damaged
         assert bytes(own.read() or b"") == payload, "the owner's own history did not survive the foreign read"
 
-    _on_each(_FRAM_DEVICES, scenario, _STATE_RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words() -> None:
@@ -840,7 +837,7 @@ def test_each_shared_bus_is_built_as_its_generated_construction_builds_it() -> N
         async def build(device: str = device, bus_name: str = bus_name, built: "list[asy_i2c_driver.I2C]" = built) -> None:
             built.append(_shared_bus(device, bus_name))  # inside a run: a chip's refresh timer is a task, ended with it
 
-        run_timed(build(), timeout_s=_RUN_BOUND_S)
+        run(build())
         port, scl, sda, frequency, timeout = built[0]._args
         statement = bus_construction(device, bus_name)
         expected = f"{bus_name} = asy_i2c_driver.I2C({port}, {scl}, {sda}, frequency={frequency}" + (")" if timeout is None else f", timeout={timeout})")
@@ -881,7 +878,7 @@ def test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads() -> None:
                 outcome.extend((results[0], bus.recoveries, bus._i2c is fake and fake.devices == chips, [entry[0] for entry in fake.log]))
 
             try:
-                run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+                run(scenario())
             finally:
                 machine.Pin.reset_registry()
             status, recoveries, kept, kinds = outcome
@@ -968,9 +965,9 @@ def test_an_isl29125_reapply_mid_read_leaves_every_twin_sibling_read_valid() -> 
 
     def check(_bus: "asy_i2c_driver.I2C") -> None:
         reader = readers[-1]
-        log = run_timed(reader.get_error_counter(), timeout_s=_RUN_BOUND_S)["ISL29125"]
+        log = run(reader.get_error_counter())["ISL29125"]
         assert [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"] == [code("W", "DEVICE_RECOVERY")], log
-        snapshot = run_timed(reader._isl.get_config_snapshot(), timeout_s=_RUN_BOUND_S)
+        snapshot = run(reader._isl.get_config_snapshot())
         assert bytes(snapshot) == reader._isl.encode_shadow(), "the chip's CONFIG1-3 differ from the shadow after the re-apply"
 
     ran = [(d, b) for d, b, o in _SHARED if "isl29125" in o]
@@ -1017,7 +1014,7 @@ def test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_usable() -> N
                 state.append(await sgp.measure_raw())
 
             with FastAsyncSleep():
-                run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+                run(scenario())
             held_bus, held_device, ended, restored, again = state
             where = f"{device} {bus_name}: the SGP40 cancelled {turns} turns in"
             assert restored, f"{where}: the measure command stayed staged"
@@ -1047,12 +1044,12 @@ def test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers
     # bus keeps reading, and once the fault clears both streaks return to 0.
     device = _ladder_device()
     addresses = {a["driver"]: a["address"] for attachments in wiring_plan(device)["buses"].values() for a in attachments}
-    module, rungs, clears, rebuilds, w15, kept = run_timed(_ladder_run(device, {addresses["sgp40"]: "readfrom_into"}, 1), timeout_s=_STATE_RUN_BOUND_S)
+    module, rungs, clears, rebuilds, w15, kept = run(_ladder_run(device, {addresses["sgp40"]: "readfrom_into"}, 1))
     assert (rungs, clears, rebuilds, w15) == (1, 1, 0, 1), f"expected one bus clear, no controller rebuild and one W15; got {rungs} rung(s), {clears} clear(s), {rebuilds} rebuild(s), {w15} W15 slot(s)"
     assert kept, "the bus rung lost the wired chips"
-    bmp_log = run_timed(module.bmp3xx.get_error_counter(), timeout_s=_RUN_BOUND_S)["BMP3XX"]
+    bmp_log = run(module.bmp3xx.get_error_counter())["BMP3XX"]
     assert bmp_log["ErrCount"] == 0, f"the sibling BMP3XX failed beside the SGP40's fault: {bmp_log}"
-    sgp_log = run_timed(module.sgp40.get_error_counter(), timeout_s=_RUN_BOUND_S)["SGP40"]
+    sgp_log = run(module.sgp40.get_error_counter())["SGP40"]
     heater_offs = [i for i in range(len(sgp_log["ErrNum"])) if sgp_log["ErrType"][i] == "W" and sgp_log["ErrNum"][i] == code("W", "DEVICE_RECOVERY")]
     assert len(heater_offs) == 1, f"the participant rung (heater-off) did not run once before the bus clear: {sgp_log}"
 
@@ -1063,7 +1060,7 @@ def test_two_failing_readers_on_one_bus_run_each_bus_rung_once() -> None:
     # sibling already ran is pinned at the unit tier (test_asy_base_classes.py).
     device = _ladder_device()
     addresses = {a["driver"]: a["address"] for attachments in wiring_plan(device)["buses"].values() for a in attachments}
-    _module, rungs, clears, rebuilds, w15, kept = run_timed(_ladder_run(device, {addresses["sgp40"]: "readfrom_into", addresses["bmp3xx"]: "readfrom_mem"}, 2), timeout_s=_STATE_RUN_BOUND_S)
+    _module, rungs, clears, rebuilds, w15, kept = run(_ladder_run(device, {addresses["sgp40"]: "readfrom_into", addresses["bmp3xx"]: "readfrom_mem"}, 2))
     assert (rungs, clears, rebuilds, w15) == (2, 1, 1, 2), f"expected one clear and one controller rung, each with one W15; got {rungs} rung(s), {clears} clear(s), {rebuilds} rebuild(s), {w15} W15 slot(s)"
     assert kept, "the bus rungs lost the wired chips"
 
@@ -1103,7 +1100,7 @@ def test_two_setups_failing_together_are_each_retried_by_the_restart_with_no_bus
             await cancel(feeder)
             await _cancel_started_tasks(module)
 
-    rungs, kept = run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
+    rungs, kept = run(scenario())
     assert rungs == 0, f"a failed setup ran {rungs} bus rung(s)"
     assert kept, "the restarts lost the wired chips"
 
@@ -1187,7 +1184,7 @@ def test_the_erase_racing_a_logger_write_never_tears_a_chunk() -> None:
         assert unwritten == [], f"the erase never wrote the units at {unwritten[:4]}: a blank byte there is the old one"
         assert all(byte == 0 for start in range(0, chip.size, 4096) for byte in chip.memory[start : start + 4096]), "the erase left a byte unzeroed - a torn chunk survived it"
 
-    _on_each(_FRAM_DEVICES, scenario, _STATE_RUN_BOUND_S)
+    _on_each(_FRAM_DEVICES, scenario)
 
 
 def test_the_erase_feeds_the_watchdog_at_bus_speed() -> None:
@@ -1212,7 +1209,7 @@ def test_the_erase_feeds_the_watchdog_at_bus_speed() -> None:
         assert watchdog.would_have_triggered_count == 0, f"{device}: the erase at bus speed starved the watchdog"
         _assert_no_rollover(chip)
 
-    run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_no_scd30_write_reaches_the_chip_while_a_system_command_runs() -> None:
@@ -1232,7 +1229,7 @@ def test_no_scd30_write_reaches_the_chip_while_a_system_command_runs() -> None:
         ((bus_name, address),) = [(bus, a["address"]) for bus, attachments in sorted(wiring_plan(device)["buses"].items()) for a in attachments if a["driver"] == "scd30"][:1]
         bus = machine.peripheral(bus_name)
         assert isinstance(bus, machine.I2C)
-        chip = bus.devices[address]
+        chip = cast("SCD30Chip", bus.devices[address])
         body: dict[str, object] = {}
         for name, kind, _default, low, _high, _choices in scd30.get_cfg_schema():
             body[name] = True if kind == "bool" else (low + 1.0 if kind == "float" else low + 1)
@@ -1258,7 +1255,7 @@ def test_no_scd30_write_reaches_the_chip_while_a_system_command_runs() -> None:
         return lambda device: one(device, word)
 
     for word in words:
-        _on_each(distinct_wirings("scd30"), on_each_device(word), _STATE_RUN_BOUND_S)
+        _on_each(distinct_wirings("scd30"), on_each_device(word))
 
 
 if __name__ == "__main__":

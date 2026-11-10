@@ -26,19 +26,8 @@ def _json_safe(value: object) -> JSONValue:
     return str(value)
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--run-record", default=None, metavar="PATH", help="write this session's JSON run record to PATH")
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    config.stash.setdefault(_NOTES, [])
-    config.pluginmanager.register(_Recorder(config), "_pytest_run_record_recorder")
-
-
-def add_session_note(config: pytest.Config, text: str, *, recovery: bool = False, source: str = "") -> None:
-    # Records a session-level note (a recovery when `recovery`), written under session_notes.
-    note: JSONValue = {"text": text, "recovery": recovery, "source": source}
-    config.stash.setdefault(_NOTES, []).append(note)
+def _markers(item: pytest.Item) -> list[JSONValue]:
+    return [str(name) for name in sorted({mark.name for mark in item.iter_markers()})]
 
 
 def _reason(report: pytest.TestReport | pytest.CollectReport) -> str:
@@ -53,8 +42,19 @@ def _reason(report: pytest.TestReport | pytest.CollectReport) -> str:
     return text.splitlines()[0] if text else ""
 
 
-def _markers(item: pytest.Item) -> list[JSONValue]:
-    return [str(name) for name in sorted({mark.name for mark in item.iter_markers()})]
+def add_session_note(config: pytest.Config, text: str, *, recovery: bool = False, source: str = "") -> None:
+    # Records a session-level note (a recovery when `recovery`), written under session_notes.
+    note: JSONValue = {"text": text, "recovery": recovery, "source": source}
+    config.stash.setdefault(_NOTES, []).append(note)
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption("--run-record", default=None, metavar="PATH", help="write this session's JSON run record to PATH")
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.stash.setdefault(_NOTES, [])
+    config.pluginmanager.register(_Recorder(config), "_pytest_run_record_recorder")
 
 
 class _Recorder:
@@ -69,9 +69,22 @@ class _Recorder:
     def _entry(self, nodeid: str) -> dict[str, JSONValue]:
         return self.tests.setdefault(nodeid, {"nodeid": nodeid, "outcome": None, "when": None, "reason": "", "markers": [], "user_properties": []})
 
+    def _notes(self) -> list[JSONValue]:
+        notes: list[JSONValue] = self.config.stash.setdefault(_NOTES, [])
+        return notes.copy()
+
     def pytest_collection_finish(self, session: pytest.Session) -> None:
         for item in session.items:
             self._entry(item.nodeid)["markers"] = _markers(item)
+
+    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
+        if report.skipped or report.failed:
+            self.collection.append({"nodeid": report.nodeid, "outcome": "skipped" if report.skipped else "error", "reason": _reason(report)})
+
+    def pytest_deselected(self, items: list[pytest.Item]) -> None:
+        for item in items:
+            by = next((str(value) for key, value in item.user_properties if key == "deselected_by"), "runner selection")
+            self.deselected.append({"nodeid": item.nodeid, "by": by, "markers": _markers(item)})
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         entry = self._entry(report.nodeid)
@@ -89,19 +102,6 @@ class _Recorder:
         else:
             return
         entry.update(outcome=outcome, when=report.when, reason="" if outcome == "passed" else _reason(report))
-
-    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
-        if report.skipped or report.failed:
-            self.collection.append({"nodeid": report.nodeid, "outcome": "skipped" if report.skipped else "error", "reason": _reason(report)})
-
-    def pytest_deselected(self, items: list[pytest.Item]) -> None:
-        for item in items:
-            by = next((str(value) for key, value in item.user_properties if key == "deselected_by"), "runner selection")
-            self.deselected.append({"nodeid": item.nodeid, "by": by, "markers": _markers(item)})
-
-    def _notes(self) -> list[JSONValue]:
-        notes: list[JSONValue] = self.config.stash.setdefault(_NOTES, [])
-        return notes.copy()
 
     def pytest_sessionfinish(self, exitstatus: int) -> None:
         target = self.config.getoption("run_record")

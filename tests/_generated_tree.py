@@ -15,6 +15,10 @@ _LISTED = (("devices", ".toml"), ("buildgen", ".py"), ("src", ".py"), ("ext", ".
 _CHUNK = bytearray(4096)  # one read buffer for every file: hashing allocates no file-sized block
 
 
+def _is_dir(path: str) -> bool:
+    return os.stat(path)[0] & 0xF000 == 0x4000  # S_IFMT, S_IFDIR
+
+
 def _differs(outputs: "list[str]") -> bool:
     # The tree's finished files are not the ones the stamped generation left: one is missing, or a removed device's
     # stayed, which a consumer listing the tree takes for a device. A .tmp is a write before its rename, never imported.
@@ -45,10 +49,6 @@ def _inputs() -> "list[str]":
         fixture = "zz_test_" if directory == "devices" else None
         found.extend(directory + "/" + name for name in os.listdir(directory) if name.endswith(suffix) and not (fixture and name.startswith(fixture)))
     return found
-
-
-def _is_dir(path: str) -> bool:
-    return os.stat(path)[0] & 0xF000 == 0x4000  # S_IFMT, S_IFDIR
 
 
 def _sha256(path: str) -> str:

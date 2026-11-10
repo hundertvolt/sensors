@@ -60,7 +60,7 @@ Three standing practices:
 
 ## Hard rules
 
-- **An owner-authorised exception to a hands-off rule** (owner, 2026-07-30, `1e4cdfe`): for a
+- **An owner-authorised exception to a hands-off rule** (agent, 2026-07-30): for a
   severity-justified fix the owner can authorise a scoped exception to a "don't touch" rule in this
   file — the precedent is the `ConfigManager`/`LockedValue` wrong-module-import fix. It still
   requires the owner's explicit authorization each time, scoped narrowly to the specific fix, not a
@@ -108,57 +108,17 @@ Three standing practices:
   target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.7.0` and
   verified byte-identical to it on 2026-10-06), with upstream's own stubs vendored byte-identical at
   `ext/typings/microdot/` under the same policy (owner, 2026-10-01). No
-  edits, no restyling, ever (owner, 2026-09-25) — any behavior change needed is handled by
+  edits, no restyling, ever (agent, 2026-09-25) — any behavior change needed is handled by
   wrapping/calling it from our own code (see "Microdot / REST layer" below), never by touching these
   files. `src/` and `ext/` are copied flat into one directory and frozen together for the refactored
   firmware build, which is why they live at the same directory depth in the repo.
-- **The UART message protocol (`src/asy_uart_comm.py`) has a second
-  implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
-  timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
-  itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
-  `UART_C_PORT_CHANGELOG.md`** (kept until the post-audit C reconciliation, and deleted there; its
-  source is in the repo since 2026-09-13, `arduino/libraries/Async_UART_Comm/`, and reconciling it
-  is post-audit only (owner, 2026-09-25: 'the C port stays out of scope, anything there is
-  post-audit only')), classified as protocol-level ("must be mirrored in C") or Python-internal ("no
-  C impact") — the second class is logged too, so a future session doesn't re-derive it; the
-  protocol module and the layers below it where a change could reach the wire are in scope, and a
-  changed `const()` wire constant or recovery timing is Class A by definition. Prefer a
-  protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
-  the former keeps a mixed-version pair working, the latter is a coordinated flag-day, which the
-  Python side may lead (owner, 2026-09-11, `6a2d43e`, paraphrase); until the C reconciliation the
-  wire format is not touched (owner, 2026-09-25: 'the UART wire format is not touched'). **The C
-  side's conformance is expected but unverified** — it mirrors the Python implementation's intended
-  behavior, but may not share every known flaw and may have its own, so every Class A entry must be
-  re-verified against that C source whenever it is reconciled. **It is, however,
-  prototypical — exactly like this repo's legacy Python — and the owner holds every unit** (owner,
-  2026-09-11; 2026-09-26: 'I build all sensors and still own all of them'), so no change recorded in
-  the changelog can break a live pair: both sides are reflashed together at reconciliation, and the
-  flag-day framing above is an obligation to record, not a deployment risk to weigh. Real hardware
-  running the C side exists; testing against it belongs to the post-audit reconciliation (owner,
-  2026-09-25), so until then the hardware tests prove Python-to-Python interoperation over the bench
-  crossover jumper only. **The protocol's
-  parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — no version
-  or capability negotiation, now or at the C reconciliation (owner, 2026-09-11; reconciliation
-  clause confirmed 2026-09-26), so a mismatched pair is diagnosed (it looks like a dead link that
-  nonetheless carries bytes), never negotiated. Two further standing facts: the module is
-  **standalone/self-contained** (its BME688/BSEC first use case is out of scope and constrains
-  nothing) (owner, 2026-08-20, `b6cb852`; 2026-09-11, `32b136f`), and it is **strictly
-  initiator/responder, never a symmetric peer** — there is no collision arbitration, so simultaneous
-  initiation is out of contract. Each link receives through a DMA ring, so a flash write holding
-  interrupts off loses no frame (owner, 2026-10-05; SPECIFICATION.md F.5.8). **Only the bench device
-  carries the link: `dev` wires two
-  instances across its permanent crossover jumper** (owner, 2026-09-11, UART promotion 'Target
-  variant. dev, two instances'). Its construction from `devices/dev.toml`'s two `driver =
-  "uart_link"` instances: SPECIFICATION.md J.9 and L.4. **The exerciser is test machinery inside a
-  product module, a deliberate exception**
-  (owner, 2026-10-22, asked whether its hazard mode, test code inside the product module, stays:
-  "the link module is a necessity for testing, and it's testing code inside a module, but for a
-  good reason, and the guard from being included in real deployed firmware is the fact that the
-  module is never included in the config files for deployment boards. So this is a substantial
-  exception from the usual scheme, but for good reasons."). That guard is checked:
-  `tests_scripts/test_uart_link_bench_only.py` fails when a board other than the
-  `[device] bench = true` one declares `uart_link`, or another device's firmware imports or
-  freezes the driver.
+- **The UART message protocol (`src/asy_uart_comm.py`) is a two-implementation contract with its C
+  peer on the Arduino** — its wire format, accept/reject rules and recovery timings are not this
+  repo's to change unilaterally, so **every change to it gets an entry in `UART_C_PORT_CHANGELOG.md`**,
+  Class A ("must be mirrored in C") or Class B ("no C impact"), the second logged too so a future
+  session doesn't re-derive it. The contract and the owner's rulings on it (scope, flag-days, the
+  untouched wire format, the out-of-band parameters, the role model, the bench-only link):
+  SPECIFICATION.md Part J (J.1, J.2, J.6); the exerciser's exception: SPECIFICATION.md D.3.
 - **`dev` meets every device's bar**: its generated config is held to the same standard as every
   device's; a quirk is a defect (owner, 2026-09-26).
 - **A device's result counts only from its own build on its own hardware.** Every device is built
@@ -184,7 +144,6 @@ Three standing practices:
   only when it explains current behavior; it is never a to-do. Don't propose closing any of these
   gaps — the gap is the decision. `legacy/firmware/modules/_boot.py`'s `import sensortask.py`
   (above) is this same rule applied to one specific file, not an exception to it.
-  `tests_scripts/test_legacy_paths.py` fails on any current file naming a pre-move path.
   This does **not** contradict SPECIFICATION.md Part E's testing requirements, which describe what the
   refactored code must have: the rule is "never test
   the legacy code (`legacy/`)", not "defer all tests".
@@ -256,7 +215,7 @@ Three standing practices:
   *worse*, because `ready()` returns `True` with no `await` and the block simply moves into a Python
   loop. The yield lives in `ready()` itself, which every read loop goes through, so the invariant is
   one guarantee in one place rather than a per-call-site obligation. **The mirror-image failure is
-  just as forbidden** (agent, 2026-09-11, extending the owner's rule; owner-reviewed, 2026-11-06): `ready()` polls, so a
+  just as forbidden** (agent, 2026-09-11, extending the owner's rule): `ready()` polls, so a
   listener waiting on traffic that may never come must not idle at the transaction rate — an
   instance takes a second, slower `poll_idle_ms` for a wait with no deadline (Part F.5.9). Full
   account and the measured before/after: SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states
@@ -347,53 +306,17 @@ Three standing practices:
   (SPECIFICATION.md Part B.13).
 - **Memory-safety discipline: design for zero `MemoryError`s first, catch→degrade→restart→watchdog
   as a last-resort backstop, `gc`-default-first, always applied — not only once something has
-  already broken.** Any new function/module that holds, builds, or grows an allocation whose size
-  isn't a small, provably-fixed constant must run stable under all scenarios, worst case included,
-  *before* any exception handling around it is credited as the fix. Catching `(OSError, MemoryError)`
-  and degrading locally is a backstop for genuinely unavoidable conditions: a caught `MemoryError`
-  that merely didn't crash anything is a design defect to fix at its source, never a passing result,
-  and never bubbles into an unguarded crash of an otherwise-healthy request or task; the task
-  supervisor restarts a task that still dies, and the hardware watchdog is the final backstop.
-  **Standing rule, every test, digital-twin runs and real hardware alike (owner, 2026-09-26: 'The
-  firmware must be rock solid without the threshold, and the threshold is finally applied to move it
-  even further into the stable region, but must be tested and verified by itself.')**: the whole
-  suite passes at `gc.threshold(-1)` (MicroPython's own default) with zero `MemoryError`s,
-  caught-and-logged included, and no `gc.collect()` or other nonstandard `gc` setting propping it up,
-  *before* it runs again at the project's `gc.threshold(32768)` (set once by the boot entry, checked),
-  which it must also pass: `scripts/test.sh` is the (e) stage, `GC_THRESHOLD=32768 scripts/test.sh`
-  the (f) stage over every MicroPython file (the host `tests_scripts/` tier, which reads no threshold,
-  runs once, in the (e) stage), plus CI's `unit-tests` and `unit-tests-gc-threshold`. The threshold is defence in
-  depth on an already-safe design, kept because on silicon it carries the boot placement gain into
-  the run phase, and never the fix for a memory-pressure issue: that is relieved at the design level
-  (chunking, reused buffers, streaming — a REST GET whose answer grows with configuration streams
-  through `_stream_dict_response()`). **Every memory gate matches `MemoryError` OR `memory
-  allocation failed`** — `src/` logs `str(e)`, so a caught allocation failure never names the class;
-  no gate narrows back to the class name or to failing files only (a degrade-and-pass is the case the
-  bar is about), and an injection a test makes on purpose is worded clear of both markers.
-  **The firmware calls no `gc.collect()`**: the survivors of `SystemService`'s two one-time lists
-  (`run_setups()` and `start_tasks()`'s starter loop) land low without one since the FRAM path
-  became synchronous (SPECIFICATION.md I.4(f.1)); the bench re-checks that placement on silicon.
-  **Outside the firmware** — tests, the twin, device scripts and tools — `gc.collect()` sets a baseline for a
-  memory measurement or keeps an automatic collection out of a timing window about to be measured,
-  nothing else: never inside a timed window or a watchdog-sensitive stretch, never as a recovery
-  step, never to keep a test green (owner, 2026-09-26 and 2026-09-29, the rule a paraphrase; asked,
-  paraphrase, where `gc.collect()` may still stand: "gc.collect is allowed IN TESTS for getting a
-  clean baseline for memory measurement tests"; asked, paraphrase, whether to remove the three test
-  collects that set no baseline: "a (and be sure they don't do it to get an actual memory baseline
-  or something different which makes sense technically!)"). The one collection inside a timed window
-  is the one being timed (`tests_hardware/device_scripts/loop_stretch_timing.py`), and the twin's
-  Run 11 memory sampler is the one twin exception. The collection is complete when the call returns,
-  so the reading may follow in the next statement (owner, 2026-09-26, on the finding that
-  `gc.collect()` completes before it returns: "interesting, if that holds a real verification, my
-  assumption that it needs time was wrong and you can replace it with the facts you found").
-  `scripts/_check_gc_collect_sites.py` (run by `scripts/lint.sh`) names every allowed site, a
-  `gc.threshold()` set, `gc.disable()` and `gc.enable()` included. The gates and their agreement
-  check, the measured placement gain and the allocation-site catalog: SPECIFICATION.md Part I (I.4
-  the standing scheme, I.4(e) the markers, I.4(f.1) boot placement).
+  already broken.** A caught `MemoryError` that merely didn't crash anything is a design defect to
+  fix at its source, never a passing result; the whole suite passes first at `gc.threshold(-1)` with
+  zero `MemoryError`s, caught-and-logged included, then at the shipped `gc.threshold(32768)`; every
+  memory gate matches `MemoryError` OR `memory allocation failed`; the firmware calls no
+  `gc.collect()`, and outside it a collect only sets a measurement baseline or keeps a collection out
+  of a window about to be timed. The scheme, the owner's rulings on it, the gates and the allowed
+  sites: SPECIFICATION.md Part I (I.4).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
   per-module error logs (`GET /status`'s `errcount`, its FRAM-backed subset)
-  BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (owner,
-  2026-09-25 and 2026-09-26) Which loggers are FRAM-backed follows the implicit FRAM-wiring rule: on a
+  BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (agent,
+  2026-09-25) Which loggers are FRAM-backed follows the implicit FRAM-wiring rule: on a
   device whose TOML wires `fram_target`, every module built after `fram` logs into it, each
   `SensorReaderConfig`'s own `CFGMGR_<name>` logger included, except `CFGMGR_SCD30`, which stays
   RAM-only (owner, 2026-09-29, on the FRC settings: 'no extra FRAM chunk'); each device's resulting
@@ -474,7 +397,8 @@ Three standing practices:
   elsewhere, leaving a short pointer (website-facing facts go to Part H),
   `digital_twin/README.md` for anything `digital_twin/`-specific, or a
   short comment right next to the code it explains — never dropped outright. Comments and logged
-  strings are English (owner, 2026-08-07, `d589d14`, paraphrase). **Exempt, being data rather than
+  strings are English (agent, 2026-11-05: the legacy code it is promoted from carries German comments).
+  **Exempt, being data rather than
   commentary** (the prose introducing each is not): the machine-read tag lines `# @web`, `#
   @web-group`, `# @wiring`, `# @value-wiring`, `# @limits` and `# @requires`, buildgen's input, one
   line per field by construction (SPECIFICATION.md Part L.6.4), `# @tunable` (`// @tunable` in JS),
@@ -494,7 +418,7 @@ Three standing practices:
   several?", option (c) "the same at 120 characters"); and a trailing comment annotates its own code
   line, so it never starts a block.
   `tests_scripts/test_comment_block_cap.py` gates exactly that at zero for Python and shell in all
-  eight scopes and the generated device modules, and checks every file's header is there: a module
+  nine scopes and the generated device modules, and checks every file's header is there: a module
   docstring in Python (ruff's D100/D104 fail a module or package without one too), a comment after the
   shebang in shell, a leading comment in JS, CSS, YAML, TOML and INI, a comment after the doctype in
   `html/index.html`. JS (JSDoc `@param`/`@returns`
@@ -539,12 +463,10 @@ Three standing practices:
   changing the actual test goal."). An expectation is corrected only where datasheet or
   specification proof shows it pinned a defect, together with a regression test for the correct
   behaviour: SPECIFICATION.md E.2.2.
-- **An unrelated issue or CI failure met along the way is recorded** — fixed, or entered in
-  BACKLOG.md with its reason — and never passed over (owner, 2026-09-16, `9894e85`, paraphrase).
 - **Every runner ends with the same summary block** — one PASS/FAIL line, its counts, the failures
   named and the exit code (owner, 2026-09-25; SPECIFICATION.md E.10) — and a gate's verdict is read
   from its exit status or that block, never from a truncated view of its output such as `| tail`; a
-  missing or empty verdict is a failure (agent, 2026-09-24; owner-reviewed, 2026-11-06).
+  missing or empty verdict is a failure (agent, 2026-09-24).
 - **Closing a piece of work** (owner, 2026-09-26, on the pre-merge instructions: "The examples
   contain general project style and quality requirements, so they should be treated as one essential
   part of the big picture - and of course live on in the project docs, but depending on which scope,
@@ -610,15 +532,16 @@ Three standing practices:
   2026-09-10, `bfaf4c6`): re-enable when actionlint accepts `uses: $/…` (checked at each actionlint
   pin bump). **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
-- **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
+- **Scope is nine directories**: `src/`, `tests/`, `digital_twin/`, `fakes/` (the fakes both test
+  tiers import), `buildgen/` (the
   device-TOML-to-firmware-module generator, SPECIFICATION.md Part L.4), `toolchain/`, `scripts/`,
   `tests_scripts/` and `tests_hardware/`, plus the generated `build/generated_src/` in ruff and the
   main mypy pass (`lint.sh` and `typecheck.sh` generate it first, so a finding there is fixed in
   `buildgen/`, never suppressed in the output). A new file in a scope joins ruff and mypy (and, if
-  MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22; owner-reviewed,
-  2026-11-06), and so does every new generator, validator or host module (owner, 2026-09-10,
+  MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22),
+  and so does every new generator, validator or host module (owner, 2026-09-10,
   `fc6afbe`: 'add all build scripts to the full CI'). The legacy tree (`legacy/`) is never in any
-  lint, type or CI scope (legacy rule above). All eight stay fully clean
+  lint, type or CI scope (legacy rule above). All nine stay fully clean
   (`tests_scripts/test_lint_type_scopes.py` checks the scopes). mypy runs three passes, because it
   resolves each module name to one file per run: the main `[tool.mypy]` pass over MicroPython-target
   code against the board stubs (`tests_hardware/` only by its `device_scripts/`),
@@ -639,7 +562,7 @@ Three standing practices:
   (SPECIFICATION.md Part D.6); `tests_scripts/test_ruff_exemptions_live.py` fails on an entry that no
   longer fires.
 - **`scripts/test.sh --coverage` reports line coverage and never gates** — no threshold exists
-  anywhere and none is planned (owner, 2026-09-25); its test result does gate (SPECIFICATION.md Part
+  anywhere and none is planned (agent, 2026-09-25); its test result does gate (SPECIFICATION.md Part
   E.5.3), and the pipeline and its outputs are Part E.5. **Three Unix-port binaries are built**:
   `build-standard`, without `MICROPY_PY_SYS_SETTRACE`, is the rig every plain run uses, and
   `build-settrace`, with it, is `--coverage`'s alone (owner, 2026-09-21); `build-lwip` (owner,
@@ -670,7 +593,7 @@ Three standing practices:
   (SPECIFICATION.md E.3.1's timeout retry rule). **The `needs:` edge is for
   SEQUENCING only — `unit-tests`, `unit-tests-gc-threshold`, `firmware-build-verify` and
   `web-unit-tests` carry `if: ${{ !cancelled() }}` so they still run when the job they follow
-  fails.** (agent, 2026-09-10, `6564ccd`; owner-reviewed, 2026-11-06) `needs:` alone also
+  fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also
   implies success-gating, which was never chosen here (that job's own comment says the sequencing
   "isn't required" for the hang) and would let a red `lint-and-typecheck` silently skip every Python
   test lane, hiding that the tests never ran. Keep the sequencing; never restore the gating.
@@ -691,7 +614,7 @@ Three standing practices:
 - **Known segfault cause: a nested `asyncio.run()` while any other task is still parked segfaults
   the MicroPython Unix port**, deterministically and uncatchably, instead of raising CPython's
   `RuntimeError` (mechanism: SPECIFICATION.md Part F.1). **Rule: a test helper that drives a
-  coroutine (`tests/_async_harness.py`'s `run()`/`run_timed()`, the one `asyncio.run()` caller in
+  coroutine (`tests/_async_harness.py`'s `run()`, the one `asyncio.run()` caller in
   `tests/`, and anything calling a `hazard_pair()`-style builder that runs its own setup) must only
   ever be called from synchronous test-function scope, never from inside a coroutine** - build the
   fixture at the top of the test, then pass it into the one coroutine `run()` drives. The harness
@@ -719,8 +642,8 @@ Three standing practices:
   heap, and its heaviest tests build whole generated object graphs (SPECIFICATION.md Part E.3.1 the
   reason, Part N's `l1.unix_heapsize` row the value). Don't re-diagnose a flaky `MemoryError` in a
   heavy test file as a new code bug before checking the flag is still in place — and don't raise it
-  as a fix (owner, 2026-09-17); a per-file heap override hiding a symptom is never used (owner,
-  2026-09-17, `1e2c001`, paraphrase).
+  as a fix; a per-file heap override hiding a symptom is never used (agent, 2026-09-17; kept as
+  agent design by the owner, 2026-09-26).
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()` reads its
   input as local time through the host's libc and `$TZ`, unlike rp2's TZ-agnostic epoch arithmetic,
   so `src/`'s `time.mktime(time.gmtime())` idiom round-trips only under UTC; `scripts/test.sh`
@@ -739,7 +662,7 @@ Three standing practices:
   degrades to "not connected" rather than failing the boot.
 - **Tuned values carry `@tunable` and a Part N row, both changed in the same change** (owner,
   2026-09-25: 'updated on changing parameters or whenever such parameter is added').
-- **`ruff format` is not used anywhere** (agent, 2026-07-13; owner-reviewed, 2026-11-06) — line breaks are hand-chosen throughout this
+- **`ruff format` is not used anywhere** (agent, 2026-07-13) — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection is `select = ["ALL"]` — every non-preview
   rule ruff ships, narrowed only by an explicitly justified `ignore` list (`pyproject.toml`'s
@@ -854,7 +777,7 @@ what counts as passing: README.md, "Build-environment verification".
   2026-07-13, `dddaafa`); don't re-ask.
 - **Always create a pull request with a meaningful description** when finishing work on a branch —
   summarize what changed and why, not just a file list.
-- **A branch counts green only when CI ran on its head commit** (agent, 2026-09-18; owner-reviewed, 2026-11-06): read the run of
+- **A branch counts green only when CI ran on its head commit** (agent, 2026-09-18): read the run of
   the head commit, not the latest finished one — a run cancelled by a later push says nothing, and
   the web filter re-compares from the last commit CI passed.
 - **Automatically subscribe to the pull request's activity** (review comments, CI results) right

@@ -16,7 +16,7 @@ from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _recording_print import record_prints
 from _schema_cases import declared_fields, domain_cases
-from _src_const import src_const, src_int
+from _src_const import src_int
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from machine import I2C as FakeI2C
@@ -24,7 +24,6 @@ from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
 import asy_config_manager as cm
-import asy_print_log
 import asy_scd30_driver
 from asy_i2c_driver import I2C
 from asy_print_log import LogConfig, PrintLogHistory
@@ -37,9 +36,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine, Sequence
+    from collections.abc import Coroutine, Sequence
 
     from _async_harness import CoroutineOf
+    from machine import I2CEntry
 
     from asy_config_manager import CfgValue, WriteValidity
     from asy_print_log import ErrorLog
@@ -51,7 +51,6 @@ _START_TRIGGER_PERIOD_MS = 500  # pins src/asy_scd30_driver.py _START_TRIGGER_PE
 _CMD_RESPONSE_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_CMD_RESPONSE_WAIT_MS")
 _ASC_ENABLE_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_ASC_ENABLE_WAIT_MS")
 _SOFT_RESET_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_BOOT_UP_MAX_MS") + 1  # the documented < 2 s, plus a tick
-_STACK_EXHAUSTED = src_const("src/asy_print_log.py", "_STACK_EXHAUSTED")  # the interpreter's own C-stack overflow text
 _EVENT_WAIT_S = 1
 
 
@@ -164,11 +163,7 @@ async def _no_reset() -> None:
     return None
 
 
-async def _overflow(*_args: object, **_kwargs: object) -> None:
-    raise RuntimeError(_STACK_EXHAUSTED)
-
-
-def _parse_scd30_log(log: "Sequence[tuple[str, int, bytes, bool]]", read_iterations: int) -> None:
+def _parse_scd30_log(log: "Sequence[I2CEntry]", read_iterations: int) -> None:
     # Command-byte-based proof that same-device ops never interleave on the wire: parses the log into non-
     # overlapping runs and fails on any stray entry. A before/after log-length "span" check was rejected - a
     # coroutine blocked on the lock overlaps the holder's span, which is correct serialization.
@@ -180,7 +175,8 @@ def _parse_scd30_log(log: "Sequence[tuple[str, int, bytes, bool]]", read_iterati
         if entry[0] == "writeto" and bytes(entry[2][:2]) == _WIRE_GET_DATA_READY:
             assert i + 3 < len(log), f"truncated read_measurement() sequence at log index {i}: {log[i:]}"
             assert log[i + 1][0] == "readfrom_into", f"expected readfrom_into at index {i + 1}, got {log[i + 1]}"
-            assert log[i + 2][0] == "writeto" and bytes(log[i + 2][2][:2]) == _WIRE_READ_MEASUREMENT, f"expected writeto(READ_MEASUREMENT) at index {i + 2}, got {log[i + 2]}"
+            command = log[i + 2]
+            assert command[0] == "writeto" and bytes(command[2][:2]) == _WIRE_READ_MEASUREMENT, f"expected writeto(READ_MEASUREMENT) at index {i + 2}, got {command}"
             assert log[i + 3][0] == "readfrom_into", f"expected readfrom_into at index {i + 3}, got {log[i + 3]}"
             reads_parsed += 1
             i += 4
@@ -392,7 +388,7 @@ def test_temperature_offset_rounds_to_the_nearest_tick() -> None:
     # 0.29 * 100 is 28.999999999999996 in double: truncation sends 28, the nearest tick is 29.
     scd, i2c = _make_scd()
     run(scd.set_temperature_offset(0.29))
-    assert i2c.log[-1][2][:4] == bytes([0x54, 0x03, 0x00, 29])
+    assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x54, 0x03, 0x00, 29, crc8_byte(bytes([0x00, 29]))]), True)
 
 
 def test_every_two_decimal_temperature_offset_is_sent_as_typed() -> None:
@@ -403,8 +399,8 @@ def test_every_two_decimal_temperature_offset_is_sent_as_typed() -> None:
     async def sweep() -> int:
         for n in range(65536):  # 0.00-655.35, the schema range, as type_or_range_error() hands each value over
             await scd.set_temperature_offset(n / 100)
-            frame = i2c.log[-1][2]
-            if (frame[2] << 8 | frame[3]) != n or scd._temp_offset_ticks != n:
+            entry = i2c.log[-1]
+            if entry[0] != "writeto" or (entry[2][2] << 8 | entry[2][3]) != n or scd._temp_offset_ticks != n:
                 return n
         return -1
 
@@ -882,10 +878,12 @@ def test_setup_probes_reads_firmware_version_then_soft_resets_and_reads_the_temp
     assert [seconds for _task, seconds, _ms in sleeps.slept].count(_SOFT_RESET_WAIT_MS / 1000) == 1
     ops = [entry[0] for entry in i2c.log]
     assert ops == ["writeto", "writeto", "readfrom_into", "writeto", "writeto", "readfrom_into"]
-    assert i2c.log[0][2] == b""  # I2CDevice.setup()'s device-presence probe
-    assert i2c.log[1][2] == bytes([0xD1, 0x00])  # _CMD_READ_FIRMWARE_VERSION
-    assert i2c.log[3][2] == bytes([0xD3, 0x04])  # _CMD_SOFT_RESET
-    assert i2c.log[4][2] == bytes([0x54, 0x03])  # the temperature offset the range gate adds back
+    assert [entry[2] for entry in i2c.log if entry[0] == "writeto"] == [
+        b"",  # I2CDevice.setup()'s device-presence probe
+        bytes([0xD1, 0x00]),  # _CMD_READ_FIRMWARE_VERSION
+        bytes([0xD3, 0x04]),  # _CMD_SOFT_RESET
+        bytes([0x54, 0x03]),  # the temperature offset the range gate adds back
+    ]
     assert scd._temp_offset_ticks == 450
 
 
@@ -1700,7 +1698,7 @@ def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> 
     for value in (450, 10, 1000, 200, 400, 1):  # TempOffset, MeasInterval, AmbPres, Altitude, ForceCalRef, SelfCal
         i2c.read_queue.append(register_frame(value))
 
-    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], list[tuple[str, int, bytes, bool]]]":
+    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], list[I2CEntry]]":
         with FastAsyncSleep():
             read_task = asyncio.create_task(reader.get_dict_cfg())
             await _settle(3)  # let the read task acquire the lock and begin its first register read
@@ -2241,43 +2239,6 @@ def test_a_full_length_frc_window_keeps_every_stored_sum_a_small_float() -> None
 # _on_invalid_range above only ever exercise the failure branches; only set_altitude has its own
 # success-path round-trip test.
 # ---------------------------------------------------------------------------
-
-
-def test_every_broad_handler_records_a_c_stack_overflow_for_the_supervisor() -> None:
-    # Each still answers its failure value and runs on; first it records the overflow, which the supervisor reboots on.
-    reader = _make_reader()
-    cases: list[tuple[str, Callable[[], Coroutine[object, object, object]], object]] = [
-        ("get_config_snapshot", reader._config_snapshot, None),
-        ("setup", reader._init_scd, False),
-        ("reset", reader._recover_device, False),
-        ("get_altitude", reader.get_altitude, None),
-        ("get_ambient_pressure", reader.get_ambient_pressure, None),
-        ("get_forced_recalibration_reference", reader.get_forced_recalibration_reference, None),
-        ("get_measurement_interval", reader.get_measurement_interval, None),
-        ("get_self_calibration_enabled", reader.get_self_calibration_enabled, None),
-        ("get_temperature_offset", reader.get_temperature_offset, None),
-        ("set_altitude", lambda: reader.set_altitude(100), False),
-        ("set_ambient_pressure", lambda: reader.set_ambient_pressure(1013), False),
-        ("set_forced_recalibration_reference", lambda: reader.set_forced_recalibration_reference(400), False),
-        ("set_measurement_interval", lambda: reader.set_measurement_interval(2), False),
-        ("set_self_calibration_enabled", lambda: reader.set_self_calibration_enabled(True), False),
-        ("set_temperature_offset", lambda: reader.set_temperature_offset(1.0), False),
-        ("stop_continuous_measurement", lambda: reader.stop_continuous_measurement(value=False), False),
-    ]
-    for name, call, failed in cases:
-        real = getattr(reader._scd, name)
-        setattr(reader._scd, name, _overflow)
-        try:
-            assert run(call()) == failed, name
-        finally:
-            setattr(reader._scd, name, real)
-        assert asy_print_log.fatal_reported() is True, name
-        asy_print_log._fatal = False  # as at boot, for the next handler
-    reader._scd.read_measurement = _overflow  # type: ignore[assignment, method-assign]
-    results, new_data = run(reader._read_scd())
-    assert (results[0], new_data) == (None, False)
-    assert asy_print_log.fatal_reported() is True
-    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
 def test_reader_setters_return_true_on_success() -> None:

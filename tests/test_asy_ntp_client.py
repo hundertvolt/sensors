@@ -86,9 +86,7 @@ _SYNC_RETRIES = 3
 # @tunable ntp.async_intervals = 3
 _ASYNC_INTERVALS = 3
 
-_EVENT_WAIT_S = 0.2
 _FAKE_SERVER_POLL_MS = 10
-_FIRED_PROBE_S = 0.05
 _STATE_POLL_MS = 20
 _NO_ANSWER_WAIT_S = 1
 _NO_REPLY_FETCH_TIMEOUT_MS = 100
@@ -139,7 +137,7 @@ def _against_responder(client: NTPClient, responder: NtpResponder, modes: "list[
 
 async def _attempt_ended(finished: asyncio.Event) -> None:
     # An attempt ends within its two fetch timeouts, the write's and the read's.
-    await asyncio.wait_for_ms(finished.wait(), 2 * _FETCH_TIMEOUT_MS)
+    await finished.wait()
     finished.clear()
 
 
@@ -254,7 +252,7 @@ def _make_client(
     if wifi_mode_lock is None:
         wifi_mode_lock = asyncio.Lock()
     if cfg_path is None:
-        cfg_path = _tmp_cfg_dir()
+        cfg_path = _scratch.dir()
     client = NTPClient(
         wifi_mode_lock,
         network_ok if network_available_locked is None else network_available_locked,
@@ -274,6 +272,13 @@ def _make_client(
     run(build())
     client._check = ManualTick()  # the refresh check, stepped by hand
     return client
+
+
+def _fired(client: NTPClient) -> bool:
+    # Whether the sync trigger is set, taken as the sync loop's wait() takes it: the level read, then cleared.
+    fired = client._ntp_sync_trigger_event.state == 1
+    client._ntp_sync_trigger_event.clear()
+    return fired
 
 
 def _check(client: NTPClient) -> ManualTick:
@@ -316,7 +321,7 @@ class _FastRetry:
 
 def _make_client_with_json(json_text: str) -> NTPClient:
     # The file's own content stands: a DNSFallback it omits reads as the schema default.
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         f.write(json_text)
     return _make_client(cfg_path=cfg_path, dns_fallback=None)
@@ -330,7 +335,7 @@ def _make_invalid_cfg_client() -> NTPClient:
     # A directory where ConfigManager expects a plain file - its os.stat() 0x4000 (MP_S_IFDIR)
     # check rejects it and leaves self.valid False, the same "config manager itself is invalid"
     # state the old empty-schema route reproduced before this driver's schema became non-empty.
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     os.mkdir(cfg_path + "config_NTP.cfg")
     return _make_client(cfg_path=cfg_path, dns_fallback=None)
 
@@ -466,10 +471,6 @@ def _timing(
     return NtpTiming(dns_timeout_ms, fetch_timeout_ms)
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
 def _truncated(length: int) -> bytes:
     # A non-zero Stratum whenever the length reaches index 1, so these truncation-length tests are
     # rejected for being too short to reach the Transmit Timestamp, not incidentally for looking
@@ -506,7 +507,7 @@ def test_init_never_synced_before_first_task_run() -> None:
 
 
 def test_init_creates_its_own_config_file_with_schema_defaults() -> None:
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     client = _make_client(cfg_path=cfg_path)
     assert client.cfgmgr.valid is True
     values = run(client.cfgmgr.get_dict(["NTPHost", "NTPOffset", "NTPInterval", "GMTOffset", "DSTOffset", "DNSFallback"]))
@@ -524,7 +525,7 @@ def test_config_persists_across_a_fresh_client_instance_pointed_at_the_same_path
     # Proves config_NTP.cfg is genuinely read from disk at __init__, not just written once and
     # cached in-process - a second, independent client pointed at the same cfg_path must see the
     # same persisted values, not fall back to schema defaults.
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         f.write(_VALID_JSON)
     first = _make_client(cfg_path=cfg_path)
@@ -757,12 +758,7 @@ def test_ntp_force_sync_resets_last_sync_retries_and_fires_the_sync_trigger() ->
         assert not await client.ntp_issynced()  # a settings change clears Synced, as legacy did
         assert await _last_sync(client) is None
         assert client._ntp_retries == 0
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-        except asyncio.TimeoutError:
-            return False
-        else:
-            return True
+        return _fired(client)
 
     assert run(scenario())
 
@@ -1159,10 +1155,7 @@ def test_a_cancelled_fetch_still_disconnects() -> None:
 
     async def scenario() -> bool:
         task = asyncio.create_task(client._fetch_ntp_reply(("192.0.2.123", 123)))
-        try:
-            await asyncio.wait_for(script.parked.wait(), _EVENT_WAIT_S)  # waiting in recvfrom()
-        except asyncio.TimeoutError:
-            pass  # never reached recvfrom(): awaiting the task below surfaces why
+        await script.parked.wait()  # waiting in recvfrom()
         task.cancel()
         try:
             await task
@@ -1492,22 +1485,15 @@ def test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without
     with _SteppedClock():
         client = _make_invalid_cfg_client()
 
-        async def fired() -> bool:
-            try:
-                await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-            except asyncio.TimeoutError:
-                return False
-            return True
-
         async def scenario() -> "tuple[bool, bool]":
             await client._set_synced(value=True)
             task = asyncio.create_task(client._refresh_loop())
             await asyncio.sleep(0)  # the loop zeroes its tick count before the first tick
             client._ntp_sec_count = 12 * 3600 - 2 * _CHECK_INTERVAL_S  # the ticks of 12 h but two, counted
             await tick(_check(client), 1)
-            early = await fired()
+            early = _fired(client)
             await tick(_check(client), 1)
-            due = await fired()
+            due = _fired(client)
             await cancel(task)
             return early, due
 
@@ -1521,11 +1507,7 @@ def test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced() 
     async def scenario() -> bool:
         task = asyncio.create_task(client._refresh_loop())
         await tick(_check(client), 1)
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-            fired = True
-        except asyncio.TimeoutError:
-            fired = False
+        fired = _fired(client)
         task.cancel()
         try:
             await task
@@ -1541,19 +1523,12 @@ def test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynce
     client = _make_client()
     client._retry_wait_s = 40
 
-    async def fired() -> bool:
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
-        except asyncio.TimeoutError:
-            return False
-        return True
-
     async def scenario() -> "list[bool]":
         task = asyncio.create_task(client._refresh_loop())
         results = []
         for ticks in (3, 1, 3, 1):
             await tick(_check(client), ticks)
-            results.append(await fired())
+            results.append(_fired(client))
         task.cancel()
         try:
             await task
@@ -1572,11 +1547,7 @@ def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interv
         await client._set_synced(value=True)
         task = asyncio.create_task(client._refresh_loop())
         await tick(_check(client), 1)  # one tick, well under 1h / 10s-per-tick
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-            fired = True
-        except asyncio.TimeoutError:
-            fired = False
+        fired = _fired(client)
         task.cancel()
         try:
             await task
@@ -1598,11 +1569,7 @@ def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
             task = asyncio.create_task(client._refresh_loop())
             await asyncio.sleep(0)  # the loop starts its cadence before the first tick's time passes
             await tick(_check(client), 360, clock, _CHECK_INTERVAL_S * 1000)
-            try:
-                await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
-                fired = True
-            except asyncio.TimeoutError:
-                fired = False
+            fired = _fired(client)
             task.cancel()
             try:
                 await task
@@ -2243,7 +2210,7 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
         # codebase, which relies on the outer task-supervisor to notice and restart it, not a
         # catch-all here; retrieved explicitly so asyncio doesn't warn about it going unretrieved.
         try:
-            await asyncio.wait_for(task, _EVENT_WAIT_S)
+            await task
             raised = False
         except RuntimeError:
             raised = True
@@ -2262,7 +2229,7 @@ class _SweptSync:
 def test_the_sync_task_survives_a_cancel_at_every_await() -> None:
     # The real _sync_loop() and attempt over the fake socket, its send and receive each a driven 5 ms wait; cancelled at
     # each 1 ms turn, through the sync and into the next trigger wait, every lock is free and every socket torn down.
-    cfg_path = _tmp_cfg_dir()
+    cfg_path = _scratch.dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         f.write(_INTEGRATION_CFG)  # written once: each count's client only reads it
     reply = make_ntp_reply(int(time.time()))
@@ -2308,11 +2275,11 @@ def test_the_sync_task_survives_a_cancel_at_every_await() -> None:
 
 def test_setup_initialises_the_logger_before_any_task() -> None:
     # The boot batch's setup() readies the logger; the sync task never sets it up itself (SPECIFICATION.md A.7).
-    client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, _timing(), cfg_path=_tmp_cfg_dir())
+    client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, _timing(), cfg_path=_scratch.dir())
     before = client.pr.initialized
     run(client.setup())
     assert (before, client.pr.initialized) == (False, True)
-    unset = NTPClient(asyncio.Lock(), lambda: True, lambda: None, _timing(), cfg_path=_tmp_cfg_dir())
+    unset = NTPClient(asyncio.Lock(), lambda: True, lambda: None, _timing(), cfg_path=_scratch.dir())
 
     async def scenario() -> bool:
         task = asyncio.create_task(unset._sync_loop())
@@ -2778,7 +2745,7 @@ def test_write_config_round_trips_a_real_value() -> None:
 
 
 def test_an_unsynced_client_tries_at_every_check_until_an_attempt_fails_then_every_minute() -> None:
-    client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(_DNS_TIMEOUT_MS, _FETCH_TIMEOUT_MS), cfg_path=_tmp_cfg_dir())
+    client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(_DNS_TIMEOUT_MS, _FETCH_TIMEOUT_MS), cfg_path=_scratch.dir())
     assert (client._retry_wait_s, client._unsynced_wait_s) == (_CHECK_INTERVAL_S, 0)
     assert _RETRY_UNSYNCED_S == 60  # owner, 2026-11-03
 
@@ -2881,23 +2848,16 @@ def test_ntp_time_hours_counter_does_not_bank_synced_ticks_toward_the_unsynced_w
     client = _make_client()
     client._retry_wait_s = 30
 
-    async def fired() -> bool:
-        try:
-            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
-        except asyncio.TimeoutError:
-            return False
-        return True
-
     async def scenario() -> "list[bool]":
         await client._set_synced(value=True)
         task = asyncio.create_task(client._refresh_loop())
         await tick(_check(client), 5)
-        results = [await fired()]
+        results = [_fired(client)]
         await client._set_synced(value=False)
         await tick(_check(client), 2)
-        results.append(await fired())
+        results.append(_fired(client))
         await tick(_check(client), 1)
-        results.append(await fired())
+        results.append(_fired(client))
         task.cancel()
         try:
             await task

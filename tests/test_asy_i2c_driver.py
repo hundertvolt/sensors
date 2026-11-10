@@ -1009,7 +1009,7 @@ def test_out_of_range_address_is_transparently_forwarded_not_validated() -> None
     # validity is the real machine.I2C's job, mirrored by the mock rather than duplicated here).
     i2c = _make_i2c()
     assert i2c.writeto(200, b"x") == 1  # not a valid 7-bit address, but not rejected here either
-    assert _fake(i2c).log[-1][1] == 200
+    assert _fake(i2c).log[-1][:2] == ("writeto", 200)
 
 
 # ---------------------------------------------------------------------------

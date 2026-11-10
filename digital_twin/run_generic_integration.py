@@ -29,14 +29,61 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine, Iterable
     from types import ModuleType
-    from typing import NamedTuple, Protocol, TypeVar
+    from typing import NamedTuple, Protocol, TypedDict, TypeVar
 
     from _mpy_shed.time_mp import _TicksMs
-    from launch import FaultSpec, HangSpec, _Chip, _Plan
 
     from asy_print_log import PrintLogHistory
 
     T = TypeVar("T")
+
+    class _AttachmentKeys(TypedDict):
+        # One chip of a plan bus, in buildgen.twin_wiring.compute_twin_wiring()'s shape.
+        driver: str
+        name_ext: str
+        address: int
+
+    class _Attachment(_AttachmentKeys, total=False):
+        irq_pin: int  # scd30 and isl29125 only
+
+    class _SpiAttachment(TypedDict):
+        driver: str
+        name_ext: str
+        max_size: int
+
+    class _UartPair(TypedDict):
+        initiator_bus: str
+        responder_bus: str
+
+    class _Plan(TypedDict):
+        device: str
+        buses: dict[str, list[_Attachment]]
+        spi: dict[str, _SpiAttachment]
+        uart: _UartPair | None
+        pins: dict[str, dict[str, int]]
+
+    class _Injector(Protocol):
+        # The FaultInjector calls the fault plumbing makes.
+        def inject_fault(self, op: str, exc_type: type[BaseException], *args: object, times: int = 1, match: int | None = None) -> None: ...
+
+        def inject_hang(self, op: str, seconds: float, times: int = 1) -> None: ...
+
+        def pending(self, op: str) -> int: ...
+
+    class _Chip(Protocol):
+        # What the fault plumbing reads off every wired chip fake.
+        @property
+        def fault(self) -> _Injector: ...
+
+    class _KnobChip(Protocol):
+        # The mode setters and counted knobs a fault that is no queued exception sets.
+        silent: bool
+        drop_next_wren: int
+
+        def configure_fault(self, op: str) -> None: ...
+
+    FaultSpec = tuple[str, str, int, int | None, str]
+    HangSpec = tuple[str, str, float, int]
 
     class _Build(Protocol):
         def __call__(self, *, watchdog: "machine.WDT", cfg_path: str, debug: int | None, web_host: str, web_port: int) -> "Coroutine[object, object, None]": ...
@@ -96,8 +143,6 @@ if TYPE_CHECKING:
         write_count: int
         writes_at: dict[int, int]
         writes_at_dropped: int
-        silent_write_count: int
-        silent_wren_count: int
 
     class _Direction(Protocol):
         @property
@@ -131,25 +176,8 @@ import machine
 import network
 from _ntp_responder import NtpResponder
 from _offline_ntp_config import write_responder_ntp_config
-from _twin_common import Injections, StatePaths, saturating_add
+from _twin_common import Injections, StatePaths, pop_value, saturating_add
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
-from launch import (  # one implementation of each, in launch.py
-    _FAULT_DEVICE_OPS,
-    _FRAM_STATE_DEFAULT,
-    _MEM_BACKUP_STATE_DEFAULT,
-    _SCD30_STATE_DEFAULT,
-    _apply_fault,
-    _apply_hang,
-    _collect_chips,
-    _driver_of,
-    _parse_wifi_outcome,
-    _pop_value,
-    _positive_int,
-    _shutdown_cleanup,
-    _state_path,
-    parse_fault_spec,
-    parse_hang_spec,
-)
 from unix_port_poll_prewarm import prewarm_poll_set
 from unix_port_unretrieved_report import install
 
@@ -157,6 +185,47 @@ from asy_print_log import PrintLog
 
 _SOURCE = "run_generic_integration.py"
 _LINE_PREFIX = "digital_twin/" + _SOURCE
+
+# The --fault/--hang/--wifi-outcome vocabulary and its plumbing: a chip fake's FaultInjector, a WLAN's raise_on.
+_FAULT_DEVICE_OPS = {
+    "scd30": ("writeto", "readfrom_into"),
+    "sgp40": ("writeto", "readfrom_into", "general_call"),
+    "bmp3xx": ("writeto", "readfrom_mem", "writeto_mem"),
+    "isl29125": ("writeto", "readfrom_mem", "writeto_mem", "int_stuck_high"),
+    "fram": ("readinto", "wren", "silent"),
+    "uart_link": ("silent",),
+    "wlan": ("active", "connect", "disconnect", "deinit", "isconnected", "status", "config", "ifconfig"),
+}
+# Modes, not counted faults: they stay set for the run, so TIMES and MATCH are refused.
+_PERSISTENT_FAULT_OPS = (("isl29125", "int_stuck_high"), ("fram", "silent"), ("uart_link", "silent"))
+_STACK_KIND = "stack"
+_OSERROR_KIND = "oserror"
+# twin-only test knob: no rp2 bus call raises this; it carries a C-stack overflow's exception
+# (py/runtime.c:1786) into one read so the reboot path can be proven at L2
+_STACK_EXHAUSTED_MESSAGE = "maximum recursion depth exceeded"
+
+_HANG_DEVICE_OPS = {
+    # Bus devices only: a WLAN fault is a synchronous raise_on[] check with no blocking HAL call underneath for
+    # time.sleep() to stand in for, so wlan is in --fault's vocabulary and not in this one.
+    "sgp40": ("writeto", "readfrom_into"),
+    "scd30": ("writeto", "readfrom_into"),
+    "bmp3xx": ("writeto", "readfrom_mem", "writeto_mem"),
+    "isl29125": ("writeto", "readfrom_mem", "writeto_mem"),
+    "fram": ("write", "readinto"),
+}
+
+_WIFI_OUTCOME_MAP = {
+    "success": network.STAT_GOT_IP,
+    "no_ap": network.STAT_NO_AP_FOUND,
+    "wrong_password": network.STAT_WRONG_PASSWORD,
+    "connect_fail": network.STAT_CONNECT_FAIL,
+}
+
+# The manual run's persistent defaults (owner, 2026-08-13); "" keeps a chip in memory only.
+_FRAM_STATE_DEFAULT = "digital_twin/fram_state.json"
+_SCD30_STATE_DEFAULT = "digital_twin/scd30_state.json"
+_MEM_BACKUP_STATE_DEFAULT = "digital_twin/mem_backup_state.json"
+
 _PRODUCT_DIRS = ("src", "ext", "generated_src")  # the product's module directories, the ones the wall clock is installed in
 # the manual run's persistent default (owner, 2026-08-13); automated callers pass their own --config-dir
 _CONFIG_DIR_DEFAULT = "digital_twin/config/"
@@ -246,7 +315,6 @@ _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_B
 
 
 _READY_POLL_MS = 20
-_BUILD_WAIT_S = 10.0  # the build's wait, polled or held
 _FREEZE_STEP_MS = 50  # a frozen write's sleep step: how often it looks at the WDT's deadline
 
 
@@ -276,7 +344,10 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --scd30-state-path PATH  persist the SCD30's NVM (default: {_SCD30_STATE_DEFAULT}; "" in memory)
   --mem-backup-state-path PATH  the watchdog scratch registers' file (default: {_MEM_BACKUP_STATE_DEFAULT}; "" in memory)
   --online-ntp             write no NTP config and start no local responder (default: sync against the responder)
-  --seed N, --fault SPEC, --hang SPEC, --wifi-outcome OUTCOME   as digital_twin/launch.py --help
+  --seed N                 random seed for the chip fakes (default: none)
+  --fault DEVICE:OP[:TIMES[:MATCH]]  inject a fault (repeatable; TIMES default 1, or "stack"; MATCH hex)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   script a WLAN connect's outcome, in order: success, no_ap or connect_fail (repeatable)
   --duration SECONDS       serve this long (default: forever); --stop-file PATH ends it once the file exists, either way
   --gc-threshold N         gc.threshold() for the run (default: {_GC_THRESHOLD_DEFAULT})
   --mem-sample-interval-ms N  print a MEM_SAMPLE line every N ms (default: off)
@@ -371,6 +442,69 @@ class _FeedGaps:
 _feed_gaps = _FeedGaps()
 
 
+def _apply_fault(fault: "FaultSpec", chips: "dict[str, object]", wlan: "network.WLAN") -> None:
+    # A chip fake, or (in the runner) a UART link direction: each fault reaches it through the one seam it has.
+    device, op, times, match, kind = fault
+    driver = _driver_of(device)
+    message = f"{_LINE_PREFIX} --fault {device}:{op}"
+    if driver == "wlan":
+        wlan.raise_on[op] = (OSError, (errno.EIO, message), times)
+        return
+    _require_wired(device, chips)
+    chip: _Chip = cast("_Chip", chips[device])
+    knobs: _KnobChip = cast("_KnobChip", chips[device])
+    if (driver, op) == ("isl29125", "int_stuck_high"):
+        knobs.configure_fault(f"{driver}:{op}")
+    elif op == "silent":
+        knobs.silent = True
+    elif (driver, op) == ("fram", "wren"):
+        knobs.drop_next_wren += times
+    elif kind == _STACK_KIND:
+        chip.fault.inject_fault(op, RuntimeError, _STACK_EXHAUSTED_MESSAGE)
+    else:
+        chip.fault.inject_fault(op, OSError, errno.EIO, message, times=times, match=match)
+
+
+def _apply_hang(hang: "HangSpec", chips: "dict[str, object]") -> None:
+    device, op, seconds, times = hang
+    _require_wired(device, chips)
+    chip: _Chip = cast("_Chip", chips[device])
+    chip.fault.inject_hang(op, seconds, times=times)
+
+
+def _boot_held(loop: "asyncio.AbstractEventLoop", module: "_Booted", watchdog: "machine.WDT", config: "RunConfig") -> "tuple[asyncio.Task[None], tuple[asyncio.Event, asyncio.Event]]":
+    # main()'s task, its build_system() returning into a hold _release_after_build() lifts, so the runner's faults reach
+    # the setup batch however few suspensions the boot makes before it (scripts/_digital_twin_ci_suite.py counts on that).
+    built, released = asyncio.Event(), asyncio.Event()
+    real_build = module.build_system
+
+    async def build_then_hold(*, watchdog: "machine.WDT", cfg_path: str, debug: int | None, web_host: str, web_port: int) -> None:
+        await real_build(watchdog=watchdog, cfg_path=cfg_path, debug=debug, web_host=web_host, web_port=web_port)
+        built.set()
+        await released.wait()
+
+    module.build_system = build_then_hold  # the module global main() calls
+    task = loop.create_task(module.main(watchdog=watchdog, cfg_path=config.config_dir, debug=config.debug_level, web_host=config.host, web_port=config.port))
+    return task, (built, released)
+
+
+def _collect_chips(plan: "_Plan") -> "dict[str, object]":
+    # Every chip the plan wires, keyed by its instance key, found through machine.peripheral(); a bus the
+    # booted code never constructed is skipped. The one implementation: the runner imports it.
+    chips: dict[str, object] = {}
+    for bus_name, attachments in plan["buses"].items():
+        bus = machine.peripheral(bus_name)
+        if not isinstance(bus, machine.I2C):
+            continue
+        for attachment in attachments:
+            chips[_instance_key(attachment["driver"], attachment["name_ext"])] = bus.devices[attachment["address"]]
+    for bus_name, spi_attachment in plan["spi"].items():
+        spi = machine.peripheral(bus_name)
+        if isinstance(spi, machine.SPI):
+            chips[_instance_key(spi_attachment["driver"], spi_attachment["name_ext"])] = spi.device
+    return chips
+
+
 def _debug_level(text: str) -> int:
     # --debug-level's value, refused when the product's own clamp (PrintLog.set_level()) would change it.
     try:
@@ -382,6 +516,16 @@ def _debug_level(text: str) -> int:
     if pr.level != level:
         raise ValueError(f"--debug-level {level} is no level the product's loggers take")
     return level
+
+
+def _driver_of(key: str) -> "str | None":
+    # A vocabulary key is a driver name or an instance key <driver>_<name_ext>; the longest match wins, so
+    # uart_link_init resolves to uart_link.
+    found: str | None = None
+    for driver in _FAULT_DEVICE_OPS:
+        if (key == driver or key.startswith(driver + "_")) and (found is None or len(driver) > len(found)):
+            found = driver
+    return found
 
 
 def _ensure_dir(path: str) -> None:
@@ -400,7 +544,7 @@ def _fault_arm(faults: "list[FaultSpec]", chips: "dict[str, object]", wlan: "net
     # The call that queues every --fault on its chip, made here unless deferred (--test-defer-faults arms it at FAULT_ARM).
     def arm() -> None:
         for fault in faults:
-            _apply_fault(fault, chips, wlan, source=_SOURCE)
+            _apply_fault(fault, chips, wlan)
 
     if not deferred:
         arm()
@@ -418,7 +562,7 @@ def _fram_write_fields(module: "object | None", chip: "_FramCounts | None") -> s
     # chunk's two block addresses (one persisted entry counts 2); the remainder is the non-logger writes (SGP40 backup,
     # clears, erase units). Writes past writes_at's bound are unattributed, so the per-logger counts are short by them.
     if chip is None:
-        return " fram_writes=0 fram_writes_by=- fram_silent_writes=0 fram_silent_wrens=0"
+        return " fram_writes=0 fram_writes_by=-"
     counted: dict[int, tuple[str, int]] = {}
     for name in dir(module) if module is not None else ():
         owner = getattr(module, name, None)
@@ -431,8 +575,11 @@ def _fram_write_fields(module: "object | None", chip: "_FramCounts | None") -> s
                 counted[id(logger)] = (logger.name, sum(chip.writes_at.get(addr, 0) for addr in block_addr))
     by = ",".join(f"{name}:{n}" for name, n in sorted(counted.values()) if n) or "-"
     unattributed = f" fram_writes_unattributed={chip.writes_at_dropped}" if chip.writes_at_dropped else ""
-    silent = f" fram_silent_writes={chip.silent_write_count} fram_silent_wrens={chip.silent_wren_count}"
-    return f" fram_writes={chip.write_count} fram_writes_by={by}{silent}{unattributed}"
+    return f" fram_writes={chip.write_count} fram_writes_by={by}{unattributed}"
+
+
+def _instance_key(driver: str, name_ext: str) -> str:
+    return f"{driver}_{name_ext}" if name_ext else driver
 
 
 def _link_directions(module_file: str, link: "machine.UARTLink") -> "dict[str, object]":
@@ -461,13 +608,13 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
-        stall = _positive_int(arg, "N", _pop_value(remaining, arg))
+        stall = _positive_int(arg, "N", pop_value(remaining, arg))
     elif arg == "--test-conn-status-interval-ms":
-        conn = _positive_int(arg, "N", _pop_value(remaining, arg))
+        conn = _positive_int(arg, "N", pop_value(remaining, arg))
     elif arg == "--test-fault-status-interval-ms":
-        fault = _positive_int(arg, "N", _pop_value(remaining, arg))
+        fault = _positive_int(arg, "N", pop_value(remaining, arg))
     elif arg == "--test-shutdown-hang":
-        hang = _pop_value(remaining, arg)
+        hang = pop_value(remaining, arg)
         if hang not in _SHUTDOWN_HANG_STEPS:
             raise ValueError(f"--test-shutdown-hang {hang!r} not recognized - expected one of {_SHUTDOWN_HANG_STEPS}")
     elif arg == "--test-flash-stall-max":
@@ -475,18 +622,18 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
     elif arg == "--test-uart-over-cap":
         over_cap = True
     elif arg == "--test-hold-system-entry":
-        errno_text, _sep, mode = _pop_value(remaining, arg).partition(":")
+        errno_text, _sep, mode = pop_value(remaining, arg).partition(":")
         if mode not in ("", _HOLD_CUT):
             raise ValueError(f"{arg} mode {mode!r} not recognized - expected ERRNO or ERRNO:{_HOLD_CUT}")
         entry = (_positive_int(arg, "ERRNO", errno_text), mode == _HOLD_CUT)
     elif arg == "--test-loop-lag-ms":
-        lag = _positive_int(arg, "N", _pop_value(remaining, arg))
+        lag = _positive_int(arg, "N", pop_value(remaining, arg))
     elif arg == "--test-drop-timer-fire":
-        drop = _pop_value(remaining, arg)
+        drop = pop_value(remaining, arg)
         if drop not in _DROP_TIMER_SITES:
             raise ValueError(f"--test-drop-timer-fire {drop!r} not recognized - expected one of {_DROP_TIMER_SITES}")
     elif arg == "--test-watchdog-fault":
-        wdt_fault = _pop_value(remaining, arg)
+        wdt_fault = pop_value(remaining, arg)
         if wdt_fault not in _WATCHDOG_FAULT_KINDS:
             raise ValueError(f"--test-watchdog-fault {wdt_fault!r} not recognized - expected one of {_WATCHDOG_FAULT_KINDS}")
     elif arg == "--test-defer-faults":
@@ -498,6 +645,22 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
     else:
         return None
     return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, lag, drop, wdt_fault, defer, pin, uart_clock)
+
+
+def _parse_wifi_outcome(value: str) -> int:
+    if value not in _WIFI_OUTCOME_MAP:
+        raise ValueError(f"--wifi-outcome {value!r} not recognized - expected one of {sorted(_WIFI_OUTCOME_MAP)}")
+    return _WIFI_OUTCOME_MAP[value]
+
+
+def _positive_int(flag: str, field: str, text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError as e:
+        raise ValueError(f"{flag} {field} {text!r} is not an integer") from e
+    if value < 1:
+        raise ValueError(f"{flag} {field} must be >= 1, got {value}")
+    return value
 
 
 def _print_boot_phases(device: str) -> None:
@@ -536,6 +699,21 @@ def _print_watchdog_would_trigger(watchdog: "machine.WDT") -> None:
     print(f"WATCHDOG_WOULD_TRIGGER count={watchdog.would_have_triggered_count}")
 
 
+async def _release_after_build(held: "tuple[asyncio.Event, asyncio.Event]") -> None:
+    # Lifts the hold once built: main() resumes at the runner's next suspension, so after everything the runner arms
+    # with no await between it and this call.
+    built, released = held
+    await built.wait()
+    released.set()
+
+
+def _require_wired(device: str, chips: "dict[str, object]") -> None:
+    # A name in the vocabulary is not a chip this run wired: a device carries only what its TOML declares.
+    # Without this the miss is a bare KeyError from inside the fault plumbing, naming nothing (Part L.5).
+    if device not in chips:
+        raise ValueError(f"{_LINE_PREFIX}: --fault/--hang device {device!r} is not wired on this run - wired here: {sorted(chips)}")
+
+
 def _reset_kind(error: "machine.SimulatedRebootError") -> str:
     return "bootloader" if isinstance(error, machine.SimulatedBootloaderEntryError) else "reset"
 
@@ -545,6 +723,13 @@ def _reset_line(device: str, error: "machine.SimulatedRebootError") -> str:
         f"{_LINE_PREFIX} [{device}] machine reset: kind={_reset_kind(error)} reset_count={machine.reset_count} "
         f"bootloader_count={machine.bootloader_count}"
     )
+
+
+def _resolve_device(flag: str, key: str, vocabulary: "dict[str, tuple[str, ...]]") -> str:
+    driver = _driver_of(key)
+    if driver is None or driver not in vocabulary:
+        raise ValueError(f"{flag} device {key!r} not recognized - expected a driver or <driver>_<name_ext> of {sorted(vocabulary)}")
+    return driver
 
 
 async def _serve_until(duration_s: "float | None", stop_file: "str | None") -> None:
@@ -577,6 +762,11 @@ def _shutdown_line(device: str, watchdog: "_Watchdog", gaps: _FeedGaps, links: "
         f"public_destinations_refused={_unix_port_udp_addr_shim.public_destinations_refused} "
         f"flash_stall_longest_ms={_flash_stall.longest_ms} gc_block_bytes={_GC_BLOCK_BYTES}{uarts}"
     )
+
+
+def _state_path(value: str) -> "str | None":
+    # "" means in memory only, as machine.configure_fram_state_path(None) does.
+    return value or None
 
 
 # Test-only instrumentation (owner, 2026-09-30, paraphrase): the runner, never src/ or the image, may rebind a booted
@@ -677,6 +867,23 @@ def _test_flash_stall_max() -> None:
     _flash_stall.use_max = True  # every flush from here on stalls the loop for its datasheet maximum
 
 
+def _test_freeze(watchdog: "machine.WDT | None") -> None:
+    # The loop frozen for good, as a write that never ends freezes silicon: the WDT's countdown task cannot run, so its
+    # elapsed timeout is credited here once; the host's stop file, which the frozen loop cannot poll, ends it as SIGINT.
+    credited = False
+    while True:
+        time.sleep_ms(_FREEZE_STEP_MS)
+        if not credited and watchdog is not None and watchdog._armed_at_ms is not None and time.ticks_diff(time.ticks_ms(), watchdog._armed_at_ms) >= watchdog.timeout:
+            watchdog._record_would_trigger()
+            credited = True
+        if _stop_file is not None:
+            try:
+                os.stat(_stop_file)
+            except OSError:
+                continue
+            raise KeyboardInterrupt
+
+
 async def _test_hang_forever(*_args: object) -> None:
     await asyncio.Event().wait()
 
@@ -704,23 +911,6 @@ def _test_hold_closing_slot(module: "ModuleType") -> "Callable[[], None]":
 
     service._close_writer = close_then_hold
     return release
-
-
-def _test_freeze(watchdog: "machine.WDT | None") -> None:
-    # The loop frozen for good, as a write that never ends freezes silicon: the WDT's countdown task cannot run, so its
-    # elapsed timeout is credited here once; the host's stop file, which the frozen loop cannot poll, ends it as SIGINT.
-    credited = False
-    while True:
-        time.sleep_ms(_FREEZE_STEP_MS)
-        if not credited and watchdog is not None and watchdog._armed_at_ms is not None and time.ticks_diff(time.ticks_ms(), watchdog._armed_at_ms) >= watchdog.timeout:
-            watchdog._record_would_trigger()
-            credited = True
-        if _stop_file is not None:
-            try:
-                os.stat(_stop_file)
-            except OSError:
-                continue
-            raise KeyboardInterrupt
 
 
 def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callable[[str], None]" = print, *, cut: bool = False) -> "Callable[[], None]":
@@ -1016,38 +1206,11 @@ def _uart_links(module_file: str) -> "list[tuple[str, str]]":
     return found
 
 
-async def _wait_until_built(module: "_Booted", timeout_s: float = _BUILD_WAIT_S) -> None:
-    async def poll() -> None:
-        # webserver is the last global build_system() assigns before its setup batch; the runner's own boot holds there
-        # until its faults are armed (_boot_held())
-        while getattr(module, "webserver", None) is None:
-            await asyncio.sleep_ms(_READY_POLL_MS)
-
-    await asyncio.wait_for(poll(), timeout_s)
-
-
-def _boot_held(loop: "asyncio.AbstractEventLoop", module: "_Booted", watchdog: "machine.WDT", config: "RunConfig") -> "tuple[asyncio.Task[None], tuple[asyncio.Event, asyncio.Event]]":
-    # main()'s task, its build_system() returning into a hold _release_after_build() lifts, so the runner's faults reach
-    # the setup batch however few suspensions the boot makes before it (scripts/_digital_twin_ci_suite.py counts on that).
-    built, released = asyncio.Event(), asyncio.Event()
-    real_build = module.build_system
-
-    async def build_then_hold(*, watchdog: "machine.WDT", cfg_path: str, debug: int | None, web_host: str, web_port: int) -> None:
-        await real_build(watchdog=watchdog, cfg_path=cfg_path, debug=debug, web_host=web_host, web_port=web_port)
-        built.set()
-        await released.wait()
-
-    module.build_system = build_then_hold  # the module global main() calls
-    task = loop.create_task(module.main(watchdog=watchdog, cfg_path=config.config_dir, debug=config.debug_level, web_host=config.host, web_port=config.port))
-    return task, (built, released)
-
-
-async def _release_after_build(held: "tuple[asyncio.Event, asyncio.Event]") -> None:
-    # Lifts the hold once built: main() resumes at the runner's next suspension, so after everything the runner arms
-    # with no await between it and this call.
-    built, released = held
-    await asyncio.wait_for(built.wait(), _BUILD_WAIT_S)
-    released.set()
+async def _wait_until_built(module: "_Booted") -> None:
+    # webserver is the last global build_system() assigns before its setup batch; the runner's own boot holds there
+    # until its faults are armed (_boot_held())
+    while getattr(module, "webserver", None) is None:
+        await asyncio.sleep_ms(_READY_POLL_MS)
 
 
 async def _wire_log_clearer(link: "_Link") -> None:
@@ -1082,16 +1245,6 @@ def load_module(name: str) -> "ModuleType":
     # A generated device module by name, at the one named load site (SPECIFICATION.md F.1): this runner's boot, and a
     # twin test that picks its device from the generated plans.
     return __import__(name)
-
-
-def product_modules() -> "list[object]":
-    # The loaded src/ and generated modules; the twin's own and this runner's keep the host's time.
-    found: list[object] = []
-    for module in sys.modules.values():
-        path = getattr(module, "__file__", None) or ""
-        if "/" in path and path.rsplit("/", 2)[-2] in _PRODUCT_DIRS:
-            found.append(module)
-    return found
 
 
 async def main(config: RunConfig) -> None:
@@ -1151,7 +1304,7 @@ async def main(config: RunConfig) -> None:
         wlan = network.WLAN(network.STA_IF)  # the product's own station object: one per interface, as on rp2
         arm_faults = _fault_arm(injections.faults, chips, wlan, deferred=config.instrumentation.defer_faults)
         for hang in injections.hangs:
-            _apply_hang(hang, chips, source=_SOURCE)
+            _apply_hang(hang, chips)
         if injections.wifi_outcomes:
             wlan.script_connect_outcomes(injections.wifi_outcomes)
         tasks.extend(_test_start(config.instrumentation, booted, chips, _uart_counts, main_task, watchdog, arm_faults))
@@ -1206,27 +1359,27 @@ def parse_args(argv: "list[str]") -> RunConfig:
     while remaining:
         arg = remaining.pop(0)
         if arg in _TEXT_FLAGS:
-            text[arg] = _pop_value(remaining, arg)
+            text[arg] = pop_value(remaining, arg)
         elif arg == "--port":
-            port = int(_pop_value(remaining, arg))
+            port = int(pop_value(remaining, arg))
         elif arg == "--online-ntp":
             online_ntp = True
         elif arg == "--seed":
-            seed = int(_pop_value(remaining, arg))
+            seed = int(pop_value(remaining, arg))
         elif arg == "--fault":
-            faults.append(parse_fault_spec(_pop_value(remaining, arg)))
+            faults.append(parse_fault_spec(pop_value(remaining, arg)))
         elif arg == "--hang":
-            hangs.append(parse_hang_spec(_pop_value(remaining, arg)))
+            hangs.append(parse_hang_spec(pop_value(remaining, arg)))
         elif arg == "--wifi-outcome":
-            wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
+            wifi_outcomes.append(_parse_wifi_outcome(pop_value(remaining, arg)))
         elif arg == "--duration":
-            duration = float(_pop_value(remaining, arg))
+            duration = float(pop_value(remaining, arg))
         elif arg == "--gc-threshold":
-            gc_threshold = int(_pop_value(remaining, arg))
+            gc_threshold = int(pop_value(remaining, arg))
         elif arg == "--mem-sample-interval-ms":
-            mem_sample_interval_ms = int(_pop_value(remaining, arg))
+            mem_sample_interval_ms = int(pop_value(remaining, arg))
         elif arg == "--debug-level":
-            debug_level = _debug_level(_pop_value(remaining, arg))
+            debug_level = _debug_level(pop_value(remaining, arg))
         else:
             parsed = _parse_test_flag(arg, remaining, flags)
             if parsed is None:
@@ -1253,6 +1406,74 @@ def parse_args(argv: "list[str]") -> RunConfig:
         run=RunLimits(duration, gc_threshold, mem_sample_interval_ms, text["--stop-file"] or None),  # "" as the state paths
         environment=RunEnvironment(text["--config-dir"], online_ntp, flags, debug_level),
     )
+
+
+def _shutdown_cleanup() -> None:
+    # The one synchronous cleanup every twin exit path runs (SIGINT, a simulated reset in the runner)
+    machine.flush_fram()
+    machine.flush_scd30()
+
+
+def parse_fault_spec(spec: str) -> "FaultSpec":
+    # DEVICE:OP[:TIMES[:MATCH]] -> (device, op, times, match, kind); MATCH is hex, and the literal "stack" in the
+    # TIMES place queues one stack-exhaustion fault instead of an OSError.
+    parts = spec.split(":")
+    if not 2 <= len(parts) <= 4:
+        raise ValueError(f"malformed --fault {spec!r} - expected DEVICE:OP[:TIMES[:MATCH]]")
+    device, op = parts[0], parts[1]
+    driver = _resolve_device("--fault", device, _FAULT_DEVICE_OPS)
+    if op not in _FAULT_DEVICE_OPS[driver]:
+        raise ValueError(f"--fault op {op!r} not recognized for device {device!r} - expected one of {_FAULT_DEVICE_OPS[driver]}")
+    if len(parts) == 2:
+        return device, op, 1, None, _OSERROR_KIND
+    if (driver, op) in _PERSISTENT_FAULT_OPS:
+        raise ValueError(f"--fault {driver}:{op} is a mode that stays set for the run - it takes no TIMES or MATCH")
+    queued = driver != "wlan" and (driver, op) != ("fram", "wren")  # the ops a FaultInjector queue carries
+    if len(parts) == 4 and not queued:
+        raise ValueError(f"--fault {driver}:{op} takes no MATCH - only a queued bus fault is matched by its key")
+    if parts[2] == _STACK_KIND:
+        if not queued or len(parts) == 4:
+            raise ValueError(f"--fault {driver}:{op}:stack needs a queued bus fault and takes no MATCH")
+        return device, op, 1, None, _STACK_KIND
+    times = _positive_int("--fault", "TIMES", parts[2])
+    if len(parts) == 3:
+        return device, op, times, None, _OSERROR_KIND
+    try:
+        match = int(parts[3], 16)
+    except ValueError as e:
+        raise ValueError(f"--fault MATCH {parts[3]!r} is not a hexadecimal key") from e
+    return device, op, times, match, _OSERROR_KIND
+
+
+def parse_hang_spec(spec: str) -> "HangSpec":
+    # --hang DEVICE:OP:SECONDS[:TIMES] queues a real blocking sleep, which _fault_injection.py's
+    # docstring explains is the only faithful way to wedge a bus against the watchdog. TIMES
+    # defaults to 1, since real hardware gets one 8388ms window before the WDT resets it.
+    parts = spec.split(":")
+    if len(parts) not in (3, 4):
+        raise ValueError(f"malformed --hang {spec!r} - expected DEVICE:OP:SECONDS[:TIMES]")
+    device, op = parts[0], parts[1]
+    driver = _resolve_device("--hang", device, _HANG_DEVICE_OPS)
+    if op not in _HANG_DEVICE_OPS[driver]:
+        raise ValueError(f"--hang op {op!r} not recognized for device {device!r} - expected one of {_HANG_DEVICE_OPS[driver]}")
+    try:
+        seconds = float(parts[2])
+    except ValueError as e:
+        raise ValueError(f"--hang SECONDS {parts[2]!r} is not a number") from e
+    if seconds <= 0:
+        raise ValueError(f"--hang SECONDS must be > 0, got {seconds}")
+    times = _positive_int("--hang", "TIMES", parts[3]) if len(parts) == 4 else 1
+    return device, op, seconds, times
+
+
+def product_modules() -> "list[object]":
+    # The loaded src/ and generated modules; the twin's own and this runner's keep the host's time.
+    found: list[object] = []
+    for module in sys.modules.values():
+        path = getattr(module, "__file__", None) or ""
+        if "/" in path and path.rsplit("/", 2)[-2] in _PRODUCT_DIRS:
+            found.append(module)
+    return found
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ error accounting: each module logs through its own `self.pr` (SPECIFICATION.md P
 # Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader instance
 # (SPECIFICATION.md Part C.14.3), mirroring the generated device modules' real registration shape.
 #
-# Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer
+# Only fakes/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer
 # above the raw I2C transaction - the driver's protocol and error handling, the notify poll loop, gating,
 # NeopixelDriver's arbitration and ramp - runs for real.
 
@@ -18,6 +18,7 @@ import struct
 from _async_harness import cancel_all, run
 from _error_codes import code
 from _fake_time import DrivenTime, FakeTime, UTCValid
+from _notification_cycle import cycle
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 
@@ -42,21 +43,6 @@ if TYPE_CHECKING:
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
 # module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("notify_scd30")
-
-
-async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
-    # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
-    # end the loop has not parked on its next cycle yet; then it parks there, FlashInterval after its start.
-    cfg = (await notify.get_dict_cfg())["NOTIFY"]
-    flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
-    assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
-    start = clock.now
-    end = start + flashes * round(flash_dur * 2000)
-    if end > start:
-        await clock.elapse(end - 1 - start)
-        assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
-    await clock.elapse(end - clock.now)
-    assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
 
 
 def _driven() -> DrivenTime:
@@ -85,7 +71,7 @@ def _make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notifica
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
     signal = NotificationSignal("WarnHum", ValueRef(scd_reader, "Hum"), (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
-    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
+    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_scratch.dir())
     run(notify.setup())
     return pixel, notify
 
@@ -94,7 +80,7 @@ def _make_scd_reader() -> "tuple[SCD30_Reader, FakeI2C]":
     # The reader owns config_SCD30.cfg (its FRC settings): a scratch directory, set up as at boot, on a fresh bus 0.
     FakeI2C.reset_id(0)
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir())
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_scratch.dir())
     run(reader.setup())
     return reader, reader._scd._i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]
 
@@ -106,13 +92,9 @@ def _make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notification
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
     signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
+    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_scratch.dir())
     run(notify.setup())
     return pixel, notify
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
 
 
 def crc8_byte(data: bytes) -> int:
@@ -151,7 +133,7 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 1)
+        await cycle(clock, notify, 1)
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock, UTCValid():
@@ -180,7 +162,7 @@ def test_real_humidity_reading_above_threshold_flows_through_to_a_real_ramp() ->
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 1)
+        await cycle(clock, notify, 1)
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock, UTCValid():
@@ -206,7 +188,7 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 0)  # one monitor pass: nothing was triggered, so nothing settles
+        await cycle(clock, notify, 0)  # one monitor pass: nothing was triggered, so nothing settles
         await cancel_all(tasks, settle_yields=1)
 
         scd_log = await scd_reader.get_error_counter()
@@ -257,7 +239,7 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 1)
+        await cycle(clock, notify, 1)
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock, UTCValid():

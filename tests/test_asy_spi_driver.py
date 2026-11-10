@@ -888,7 +888,7 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
     assert not spi.bus_lock.locked()
 
 
-# The synchronous session: the same CS/settle/configure sequence as `async with`, without the lock
+# The synchronous session: the same CS/configure sequence as `async with`, without the lock
 # operations or the coroutines, for a caller that runs it whole; refused while an async session holds the bus.
 
 

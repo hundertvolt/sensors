@@ -5,8 +5,8 @@ A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must l
 the 2026-09-18 heap restructure was held to; what each protocol element is for is
 SPECIFICATION.md A.4 (owner, 2026-09-18).
 
-Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29; owner-reviewed,
-2026-11-06); each chunk's CRC is seeded by its owner (owner, 2026-10-28); the bus runs at 8 MHz (owner, 2026-11-02);
+Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29); each
+chunk's CRC is seeded by its owner (owner, 2026-10-28); the bus runs at 8 MHz (owner, 2026-11-02);
 a read's cross-check reads block 1 whole (agent, 2026-11-07); the bus is configured once (agent, 2026-11-09)."""
 # The recorder decomposes a trace into CS cycles. Every cycle is asserted to be framed by one CS low/high pair with
 # no SPI.init() anywhere (the FRAM, the bus's sole device, configured it at setup), so the goldens below need hold

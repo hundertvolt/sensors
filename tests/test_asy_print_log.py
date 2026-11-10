@@ -44,13 +44,13 @@ class _RaisingFramChunk:
             buf._buf = None  # the shape a failed buffer allocation leaves
         return buf
 
-    def write_into(self, buf: "RegionBuffer") -> bool:
-        if self.raise_on_write:
+    def read_into(self, buf: "RegionBuffer") -> bool:
+        if self.raise_on_read:
             raise self.error
         return True
 
-    def read_into(self, buf: "RegionBuffer") -> bool:
-        if self.raise_on_read:
+    def write_into(self, buf: "RegionBuffer") -> bool:
+        if self.raise_on_write:
             raise self.error
         return True
 
@@ -289,19 +289,19 @@ class _CountingFramChunk:
     def get_buffer(self) -> "RegionBuffer":
         return RegionBuffer(self.size, data_start=0, data_length=self.size)
 
-    def write_into(self, buf: "RegionBuffer") -> bool:
-        self.writes += 1
-        dbuf = buf.get_data_buf()
-        assert dbuf is not None
-        self.last_payload = bytes(dbuf)
-        return self.write_result
-
     def read_into(self, buf: "RegionBuffer") -> bool | None:
         if self.read_result:
             dbuf = buf.get_data_buf()
             assert dbuf is not None
             dbuf[: len(self.stored)] = self.stored
         return self.read_result
+
+    def write_into(self, buf: "RegionBuffer") -> bool:
+        self.writes += 1
+        dbuf = buf.get_data_buf()
+        assert dbuf is not None
+        self.last_payload = bytes(dbuf)
+        return self.write_result
 
 
 def _sustained_identical_code_spends_one_slot(hist: "PrintLogHistory", writes: "_CountingFramChunk | None") -> None:

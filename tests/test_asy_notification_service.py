@@ -111,7 +111,7 @@ def _make_service(
     local_time: "_FakeClock | None" = None,
     signal_cb: "_FakeSignalCb | None" = None,
 ) -> "tuple[NotificationService, _FakeClock, _FakeSignalCb]":
-    path = _tmp_cfg_dir() if cfg_path is None else cfg_path
+    path = _scratch.dir() if cfg_path is None else cfg_path
     clock = local_time if local_time is not None else _FakeClock()
     cb = signal_cb if signal_cb is not None else _FakeSignalCb()
     service = NotificationService(cb, clock.get, signals, cfg_path=path)
@@ -166,10 +166,6 @@ async def _rounds_until(predicate: "Callable[[], bool]") -> bool:
 # ---------------------------------------------------------------------------
 # Signals at construction: validated in order, a refusal printed at once and persisted by setup()
 # ---------------------------------------------------------------------------
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
 
 
 def test_signals_are_accepted_in_tuple_order() -> None:
@@ -465,18 +461,18 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
         def get_buffer(self) -> RegionBuffer:
             return self._buffer
 
-        def write_into(self, buf: RegionBuffer) -> bool:
-            data = buf.get_data_buf()
-            if data is None:
-                return False
-            self.buf[:] = data
-            return True
-
         def read_into(self, buf: RegionBuffer) -> bool:
             data = buf.get_data_buf()
             if data is None:
                 return False
             data[:] = self.buf
+            return True
+
+        def write_into(self, buf: RegionBuffer) -> bool:
+            data = buf.get_data_buf()
+            if data is None:
+                return False
+            self.buf[:] = data
             return True
 
     class _FakeFramManager:
@@ -491,7 +487,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
 
     chunk = _FakeFramChunk()
     fram = _FakeFramManager(chunk)
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     cb1 = _FakeSignalCb()
     clock1 = _FakeClock()
     a1, _ = _make_signal("WarnCO2")
@@ -1179,7 +1175,7 @@ def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_persi
     # only spend the supervisor's reboot budget (Part C.7.2). Every failure still counts.
     cb = _FakeSignalCb()
     clock = _FakeClock()
-    service = NotificationService(cb, clock.get, (), cfg_path=_tmp_cfg_dir())
+    service = NotificationService(cb, clock.get, (), cfg_path=_scratch.dir())
     run(service.setup())
     service.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails (malformed cache)
     store_base = service.cfgmgr.pr._err_count  # the setup's own entries (no config file yet)
@@ -1212,7 +1208,7 @@ def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_persi
 def test_an_unreadable_own_config_logs_one_entry_and_one_line_per_cycle() -> None:
     # Every cycle that meets an unreadable own config persists and prints CFG_READ, in one ring slot by the
     # newest-entry rule; a task restart changes nothing.
-    service = NotificationService(_FakeSignalCb(), _FakeClock().get, (), cfg_path=_tmp_cfg_dir(), log=LogConfig(None, 10, 2))
+    service = NotificationService(_FakeSignalCb(), _FakeClock().get, (), cfg_path=_scratch.dir(), log=LogConfig(None, 10, 2))
     run(service.setup())  # the warning level: the service's console lines print
     service.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails
     base = service.pr._err_count
@@ -1248,7 +1244,7 @@ def test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slo
     # "just don't repeat the same error in the slots. Pure and simple").
     cb = _FakeSignalCb()
     clock = _FakeClock()
-    service = NotificationService(cb, clock.get, (), cfg_path=_tmp_cfg_dir())
+    service = NotificationService(cb, clock.get, (), cfg_path=_scratch.dir())
     run(service.setup())
     saved = service.cfgmgr._cache.pop("FlashBri")
     store_base = service.cfgmgr.pr._err_count  # the setup's own entries (no config file yet)
@@ -1286,7 +1282,7 @@ def test_monitor_loop_self_heals_in_place_once_its_config_reads_again() -> None:
     cb = _FakeSignalCb()
     clock = _FakeClock()
     signal, _fv = _make_signal("WarnCO2", value=2000)  # above the 1600 default threshold
-    service = NotificationService(cb, clock.get, (signal,), cfg_path=_tmp_cfg_dir())
+    service = NotificationService(cb, clock.get, (signal,), cfg_path=_scratch.dir())
     run(service.setup())
     saved = service.cfgmgr._cache.pop("FlashBri")
 

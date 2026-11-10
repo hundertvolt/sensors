@@ -26,14 +26,6 @@ _PRESENT_TIMEOUT_S = 15.0
 _BOOT_TIMEOUT_S = 30.0
 
 
-@pytest.fixture(scope="session")
-def scd30_measuring(board: "Board", session_note: _SessionNote) -> str:
-    # Unmarked and ungated: normally it writes nothing, and its one possible write is a pinned prerequisite.
-    note = scd30_prerequisite.ensure_scd30_measuring(board, _SESSION)
-    session_note(note, source="scd30_measuring")
-    return note
-
-
 @pytest.fixture(scope="session", autouse=True)
 def leave_board_serving(board: "Board", bench_if_configured: "BenchBridge | None", request: pytest.FixtureRequest) -> "Iterator[None]":
     # A device script leaves main.py stopped (an exec ends it), so the run ends with one hard reset (kicked with a
@@ -45,3 +37,11 @@ def leave_board_serving(board: "Board", bench_if_configured: "BenchBridge | None
     reset_board(board, bench_if_configured)
     wait_until(board.is_device_present, timeout_s=_PRESENT_TIMEOUT_S, description="board back on USB after the flash run's final hard reset")
     wait_for_boot(board, _BOOT_TIMEOUT_S)
+
+
+@pytest.fixture(scope="session")
+def scd30_measuring(board: "Board", session_note: _SessionNote) -> str:
+    # Unmarked and ungated: normally it writes nothing, and its one possible write is a pinned prerequisite.
+    note = scd30_prerequisite.ensure_scd30_measuring(board, _SESSION)
+    session_note(note, source="scd30_measuring")
+    return note

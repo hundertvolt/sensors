@@ -9,6 +9,7 @@ import _mem_backup_contract
 import machine
 import network
 import rp2
+from _twin_common import LOG_MAXLEN
 from machine import I2C, RTC, SPI, UART, WDT, Pin, Timer
 from neopixel import NeoPixel
 
@@ -653,12 +654,12 @@ def test_a_neopixel_fill_len_and_timing_follow_the_library() -> None:
 
 def test_a_neopixel_write_log_keeps_the_newest_frames_and_counts_the_rest() -> None:
     strip = NeoPixel(Pin(16), 1)
-    for k in range(4097):
+    for k in range(LOG_MAXLEN + 1):
         strip[0] = (k & 0xFF, 0, 0)
         strip.write()
-    assert (len(strip.writes), strip.writes.dropped) == (4096, 1)
+    assert (len(strip.writes), strip.writes.dropped) == (LOG_MAXLEN, 1)
     assert strip.writes[0] == [(1, 0, 0)]
-    assert strip.writes[-1] == [(4096 & 0xFF, 0, 0)]
+    assert strip.writes[-1] == [(LOG_MAXLEN & 0xFF, 0, 0)]
 
 
 # ---- the per-test reset hook ----------------------------------------------------------------

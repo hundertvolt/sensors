@@ -152,7 +152,7 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
         assert_module_error_log_empty(dut_ip, "SGP40")
         # Three hard resets inside real SPI writes are meant to tear some: only a status byte left neither idle nor
         # uninitialised and the block-invalid repair warning are allowed, and a fresh backup must still complete below
-        # (owner, 2026-09-13, on the torn-write trace: "Settled as acceptable degradation rather than a robustness gap").
+        # (agent, 2026-09-13: three resets during FRAM writes left such entries on the bench).
         assert_module_error_log_clean(dut_ip, "FRAM", allowed_warnings=(code("W", "FRAM_BLOCK_INVALID"),), allowed_errors=(code("E", "FRAM_STATUS_BYTE"),))
 
         # One more real backup completing cleanly after all three resets proves the FRAM subsystem

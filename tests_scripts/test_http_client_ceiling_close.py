@@ -7,16 +7,18 @@ import errno
 import http.client
 import io
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware" / "bench"))
 
 import http_client
+import test_bus_concurrency_under_api_load as bench
 
 # What _serve()'s reject-when-full branch actually looks like from the client: it closes without
 # writing a response, so the kernel's TCP state decides which of these the client sees. The bench
@@ -37,6 +39,12 @@ _REAL_FAILURE_SHAPES = (
     OSError(errno.EHOSTUNREACH, "No route to host"),
     http.client.BadStatusLine("garbage"),
 )
+
+
+class _Notes(list[str]):
+    # A result_note recording each note's text.
+    def __call__(self, text: str, *, recovery: bool = False) -> None:
+        self.append(text)
 
 
 class _Opened:
@@ -69,13 +77,6 @@ class _ReadCounting(io.BytesIO):
         chunk = super().read(size)
         self.consumed += len(chunk)
         return chunk
-
-
-def _bench_module() -> ModuleType:
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware" / "bench"))
-    import test_bus_concurrency_under_api_load as bench
-
-    return bench
 
 
 @pytest.mark.parametrize("exc", _CEILING_SHAPES, ids=lambda e: type(e).__name__)
@@ -169,7 +170,6 @@ def _urlopen_raising(monkeypatch: pytest.MonkeyPatch, exc: BaseException) -> Non
 def test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them(monkeypatch: pytest.MonkeyPatch) -> None:
     # The config-write arms' ceiling-vs-reset discriminator reaches the run record as a test note: a
     # print is dropped by capture on a passing test, so the count must survive there, exact.
-    bench = _bench_module()
     outcomes: list[BaseException | None] = [http_client.CeilingRefusedError("refused"), http_client.CeilingRefusedError("refused"), None]
 
     def fake_fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
@@ -179,46 +179,44 @@ def test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears
         return http_client.HttpResponse(200, {}, b"{}")
 
     monkeypatch.setattr(http_client, "fetch", fake_fetch)
-    monkeypatch.setattr(bench.time, "sleep", lambda _s: None)
-    notes: list[str] = []
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    notes = _Notes()
     bench._take_ceiling_retries()
     assert bench.fetch("dut", 80, "GET", "/sensors").status_code == 200
-    bench._report_ceiling_retries(notes.append, "arm")
-    bench._report_ceiling_retries(notes.append, "again")
+    bench._report_ceiling_retries(notes, "arm")
+    bench._report_ceiling_retries(notes, "again")
     assert notes == ["CEILING_RETRIES arm: {'GET /sensors': 2}", "CEILING_RETRIES again: none"]
 
 
 @pytest.mark.parametrize("failure", [TimeoutError("timed out"), ConnectionResetError(errno.ECONNRESET, "reset inside the body")], ids=["timeout", "cut-short"])
 def test_the_bench_retry_wrapper_never_counts_a_real_failure(monkeypatch: pytest.MonkeyPatch, failure: OSError) -> None:
-    bench = _bench_module()
 
     def fake_fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
         raise failure
 
     monkeypatch.setattr(http_client, "fetch", fake_fetch)
-    notes: list[str] = []
+    notes = _Notes()
     bench._take_ceiling_retries()
     with pytest.raises(type(failure)):
         bench.fetch("dut", 80, "PUT", "/sensors", {"x": 1})
-    bench._report_ceiling_retries(notes.append, "arm")
+    bench._report_ceiling_retries(notes, "arm")
     assert notes == ["CEILING_RETRIES arm: none"]
 
 
 def test_every_bench_test_in_the_module_notes_its_ceiling_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     # Any test's GET workers retry through fetch(), not only the two config-write arms: an autouse
     # fixture notes what is left at the end of every test, so no retried refusal is lost on a pass.
-    bench = _bench_module()
     fixture = bench._ceiling_retries_noted
     assert getattr(fixture, "_fixture_function_marker", None) is not None or hasattr(fixture, "_pytestfixturefunction"), "_ceiling_retries_noted must be a pytest fixture"
-    notes: list[str] = []
-    gen = bench._noted_ceiling_retries(notes.append)
+    notes = _Notes()
+    gen = bench._noted_ceiling_retries(notes)
     next(gen)
     with bench._ceiling_retries_lock:
         bench._ceiling_retries["GET /status"] = 1
     with pytest.raises(StopIteration):
         next(gen)
     assert notes == ["CEILING_RETRIES rest of the test: {'GET /status': 1}"]
-    gen = bench._noted_ceiling_retries(notes.append)
+    gen = bench._noted_ceiling_retries(notes)
     next(gen)
     with pytest.raises(StopIteration):
         next(gen)
