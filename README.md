@@ -321,7 +321,7 @@ board's filesystem and REPL ("Real hardware access").
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
+Ruff and mypy checks, scoped to nine directories — `src/`, `tests/`, `digital_twin/`, `fakes/`,
 `buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the legacy tree,
 `legacy/`, is never covered) — shellcheck over `scripts/`, actionlint +
 zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually; ruff and
@@ -654,11 +654,12 @@ scripts/run_unix_port_integration.sh --device <name> --host 0.0.0.0 --port 8080 
 - `--host HOST` / `--port PORT` — bind address (default `localhost:8080`).
 - `--duration SECONDS` — exit after a fixed run instead of serving forever.
 - `--seed N` — seed every chip's random value walk for a reproducible run.
-- `--fault DEVICE:OP[:TIMES]` (repeatable) — same shape as `digital_twin/launch.py`'s `--fault`
-  below.
+- `--fault DEVICE:OP[:TIMES[:MATCH]]` (repeatable) — a one-shot or N-shot bus fault (`TIMES`
+  default 1, or `stack`; `MATCH` hex); `_FAULT_DEVICE_OPS` lists every pair, and an op rp2 cannot
+  fail on is refused.
 - `--hang DEVICE:OP:SECONDS[:TIMES]` (repeatable) — script a bus operation to hang instead of
   raising, for timeout-path testing.
-- `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome, same values as below.
+- `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome, in order: `success`, `no_ap` or `connect_fail`.
 - `--fram-state-path PATH` / `--scd30-state-path PATH` / `--mem-backup-state-path PATH` — the JSON
   file that chip's state (or the watchdog scratch registers', which carry the reset reason) persists
   to across runs; by default `digital_twin/fram_state.json`, `digital_twin/scd30_state.json` and
@@ -677,27 +678,6 @@ scripts/run_unix_port_integration.sh --device <name> --host 0.0.0.0 --port 8080 
 The automated HTTP+memory-trend soak check runs host-side, driving its requests from the host rather
 than sharing the twin's own heap: `scripts/_digital_twin_ci_suite.py --micropython-bin <path> --device
 <device>` (its Run 11) - see `digital_twin/README.md`'s "Automated CI suite" section.
-
-Start the twin's standalone CLI demo (no website, twin only) directly with the same Unix-port binary
-`scripts/test.sh` builds:
-
-```sh
-uv run scripts/_generate_sensortask_modules.py   # writes every device's wiring plan
-$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/launch.py \
-    --wiring-plan build/generated_src/sensortask_<device>_wiring_plan.json \
-    --seed 42 --duration 3 --no-wdt-feed --wifi-outcome success --fault scd30:writeto:1
-```
-
-(use `$PICO_TOOLCHAIN_DIR` instead of `$HOME/pico-toolchain` if you've overridden it — see
-`scripts/test.sh`'s own `toolchain_dir` resolution for the exact path; run
-`uv run toolchain/setup_toolchain.py` first if the binary doesn't exist yet). `--wiring-plan` is
-required, so the board it wires is always a named device's; every flag: "Command-line reference"
-below.
-
-This standalone launcher is twin-only (no `src/` import). To instead run a device's real,
-buildgen-generated module against the twin, see `digital_twin/README.md`'s own "Swapping the
-twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based invocation, not this
-launcher.
 
 **Automated CI suite** — an unattended, CI-gating form of the manual walkthrough below:
 drives `digital_twin/run_generic_integration.py` through its runs and asserts every step: fresh
@@ -1075,22 +1055,6 @@ Print the resolved MicroPython board's serial path.
 - `-h`, `--help`: print the help
 
 </details>
-<details><summary><code>digital_twin/launch.py</code></summary>
-
-`micropython digital_twin/launch.py --wiring-plan PATH [options]`, under the Unix-port binary: the
-twin alone, no website ("Digital twin").
-- `--wiring-plan PATH`: the device's generated wiring-plan JSON (required)
-- `--seed N`: seed every chip's random value walk
-- `--duration SECONDS`: stop after this long (default: until interrupted)
-- `--no-wdt-feed`: never feed the watchdog, to watch it trip
-- `--fault DEVICE:OP[:TIMES[:MATCH]]`: a one-shot or N-shot bus fault (repeatable); `_FAULT_DEVICE_OPS` lists every pair, and an op rp2 cannot fail on is refused
-- `--hang DEVICE:OP:SECONDS[:TIMES]`: a blocking hang instead (repeatable)
-- `--wifi-outcome OUTCOME`: a scripted `WLAN.connect()` outcome (repeatable): `success`, `no_ap`, `wrong_password`, `connect_fail`
-- `--fram-state-path PATH`, `--scd30-state-path PATH`, `--mem-backup-state-path PATH`: where that state persists (defaults `digital_twin/fram_state.json`, `digital_twin/scd30_state.json`, `digital_twin/mem_backup_state.json`; `""` keeps it in memory)
-- `-h`, `--help`: print the help and exit 0
-
-</details>
-
 ## Build-environment verification
 
 The owner's periodic check of the build environment in a genuinely clean chroot (CLAUDE.md's

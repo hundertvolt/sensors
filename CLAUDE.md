@@ -144,7 +144,6 @@ Three standing practices:
   only when it explains current behavior; it is never a to-do. Don't propose closing any of these
   gaps — the gap is the decision. `legacy/firmware/modules/_boot.py`'s `import sensortask.py`
   (above) is this same rule applied to one specific file, not an exception to it.
-  `tests_scripts/test_legacy_paths.py` fails on any current file naming a pre-move path.
   This does **not** contradict SPECIFICATION.md Part E's testing requirements, which describe what the
   refactored code must have: the rule is "never test
   the legacy code (`legacy/`)", not "defer all tests".
@@ -419,7 +418,7 @@ Three standing practices:
   several?", option (c) "the same at 120 characters"); and a trailing comment annotates its own code
   line, so it never starts a block.
   `tests_scripts/test_comment_block_cap.py` gates exactly that at zero for Python and shell in all
-  eight scopes and the generated device modules, and checks every file's header is there: a module
+  nine scopes and the generated device modules, and checks every file's header is there: a module
   docstring in Python (ruff's D100/D104 fail a module or package without one too), a comment after the
   shebang in shell, a leading comment in JS, CSS, YAML, TOML and INI, a comment after the doctype in
   `html/index.html`. JS (JSDoc `@param`/`@returns`
@@ -533,7 +532,8 @@ Three standing practices:
   2026-09-10, `bfaf4c6`): re-enable when actionlint accepts `uses: $/…` (checked at each actionlint
   pin bump). **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
-- **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
+- **Scope is nine directories**: `src/`, `tests/`, `digital_twin/`, `fakes/` (the fakes both test
+  tiers import), `buildgen/` (the
   device-TOML-to-firmware-module generator, SPECIFICATION.md Part L.4), `toolchain/`, `scripts/`,
   `tests_scripts/` and `tests_hardware/`, plus the generated `build/generated_src/` in ruff and the
   main mypy pass (`lint.sh` and `typecheck.sh` generate it first, so a finding there is fixed in
@@ -541,7 +541,7 @@ Three standing practices:
   MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22),
   and so does every new generator, validator or host module (owner, 2026-09-10,
   `fc6afbe`: 'add all build scripts to the full CI'). The legacy tree (`legacy/`) is never in any
-  lint, type or CI scope (legacy rule above). All eight stay fully clean
+  lint, type or CI scope (legacy rule above). All nine stay fully clean
   (`tests_scripts/test_lint_type_scopes.py` checks the scopes). mypy runs three passes, because it
   resolves each module name to one file per run: the main `[tool.mypy]` pass over MicroPython-target
   code against the board stubs (`tests_hardware/` only by its `device_scripts/`),
@@ -614,7 +614,7 @@ Three standing practices:
 - **Known segfault cause: a nested `asyncio.run()` while any other task is still parked segfaults
   the MicroPython Unix port**, deterministically and uncatchably, instead of raising CPython's
   `RuntimeError` (mechanism: SPECIFICATION.md Part F.1). **Rule: a test helper that drives a
-  coroutine (`tests/_async_harness.py`'s `run()`/`run_timed()`, the one `asyncio.run()` caller in
+  coroutine (`tests/_async_harness.py`'s `run()`, the one `asyncio.run()` caller in
   `tests/`, and anything calling a `hazard_pair()`-style builder that runs its own setup) must only
   ever be called from synchronous test-function scope, never from inside a coroutine** - build the
   fixture at the top of the test, then pass it into the one coroutine `run()` drives. The harness

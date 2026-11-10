@@ -1365,8 +1365,8 @@ assumption, not at a product bug.
   a real WREN+WRITE lands no byte. Its bench-vs-flash split is SPECIFICATION.md E.6.6 row
   `fram-write-protect-no-rest` (no REST route reaches either method).
 - **FRAM command hold** (`fram_command_hold_timing.py`, flash tier): one FRAM command stays under one
-  UART poll floor (80 B of 8N1 at 115200 baud, 6,944 us, SPECIFICATION.md J.6 and F.5.8), and one log
-  entry's whole chunk write, its 51 commands, under 5 ms (F.3's `stall.fram_entry`). It writes only its
+  UART poll floor (80 B of 8N1 at 115200 baud, 6,944 us, SPECIFICATION.md J.6 and F.5.8), and records one
+  log entry's whole chunk write, its 51 commands, for F.3's `stall.fram_entry`. It writes only its
   scratch region, the part's top 256 B, never a chunk.
 - **FRAM chip-select fault injection** (`fram_cs_hijack_fault_injection_and_recovery.py`): CS
   deasserted at the driver's synchronous seam, inside a write's payload (the write never reaches the

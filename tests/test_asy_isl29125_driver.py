@@ -165,19 +165,6 @@ async def _push(callback: "PushFct", value: "CfgValue") -> bool:
     return await callback(value)
 
 
-def _record_reads(i2c: I2C) -> "list[object]":
-    # Every buffer object the fake bus's readfrom_into() is handed, in call order; the reads themselves unchanged.
-    received: list[object] = []
-    real_read = fake(i2c).readfrom_into
-
-    def recording(address: int, buf: object, stop: bool = True) -> None:
-        received.append(buf)
-        real_read(address, buf, stop)
-
-    fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
-    return received
-
-
 def _threshold_bursts(i2c: I2C) -> "list[bytes]":
     return [payload for register, payload in register_writes(i2c) if register == _REG_THRESHOLDS]
 

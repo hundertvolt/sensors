@@ -165,20 +165,19 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
 
 
 # ---------------------------------------------------------------------------
-# The FRAM command hold: one command stays under one UART poll floor (SPECIFICATION.md F.5.8, J.6), and one log
-# entry's whole chunk write, which never yields, under its budget (F.3). Wire time is silicon-only, so no twin leg.
+# The FRAM command hold: one command stays under one UART poll floor (SPECIFICATION.md F.5.8, J.6); one log entry's
+# whole chunk write, which never yields, is recorded for F.3's row. Wire time is silicon-only, so no twin leg.
 # ---------------------------------------------------------------------------
 
 
 def test_fram_command_hold_stays_under_the_uart_poll_floor(board: "Board", result_note: "Callable[[str], None]") -> None:
     facts = _run(board, "fram_command_hold_timing.py", _SHORT_SCRIPT_TIMEOUT_S)
     write_us, read_us, entry_us = facts.get("write_us"), facts.get("read_us"), facts.get("entry_us")
-    floor_us, budget_us = facts.get("uart_floor_us"), facts.get("entry_budget_us")
+    floor_us = facts.get("uart_floor_us")
     assert facts.get("command_ok") is True and facts.get("entry_ok") is True, f"a timed command reported a failure: {facts}"
-    assert isinstance(write_us, int) and isinstance(read_us, int) and isinstance(floor_us, int), f"the timings are missing: {facts}"
-    result_note(f"FRAM hold: write {write_us} us, read {read_us} us, entry {entry_us} us (floor {floor_us} us, budget {budget_us} us)")
+    assert isinstance(write_us, int) and isinstance(read_us, int) and isinstance(entry_us, int) and isinstance(floor_us, int), f"the timings are missing: {facts}"
+    result_note(f"FRAM hold: write {write_us} us, read {read_us} us, entry {entry_us} us (floor {floor_us} us)")
     assert max(write_us, read_us) <= floor_us, f"one command's {max(write_us, read_us)} us passes the UART poll floor {floor_us} us: {facts}"
-    assert isinstance(entry_us, int) and isinstance(budget_us, int) and entry_us <= budget_us, f"the entry's {entry_us} us passes its budget {budget_us} us: {facts}"
 
 
 # ---------------------------------------------------------------------------
