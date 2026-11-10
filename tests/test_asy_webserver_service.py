@@ -1280,7 +1280,7 @@ class _OrderedResetModule(_FakeModule):
 
 
 def test_reset_errors_runs_its_sources_one_after_another() -> None:
-    # One source after another, no task per source (agent, 2026-11-07, under the owner's option B): each reset ends before the next begins.
+    # One source after another, no task per source (owner, 2026-11-07): each reset ends before the next begins.
     events: list[str] = []
     mods = [_OrderedResetModule(n, events) for n in ("A", "B", "C")]
     _service, app = _make_service(error_sources=mods)

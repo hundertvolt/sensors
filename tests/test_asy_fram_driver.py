@@ -294,6 +294,35 @@ def test_a_fully_set_or_clear_status_register_is_not_reported_as_partial() -> No
         assert fram.pr._err_count == 0, hex(status)
 
 
+def test_verify_present_is_true_while_either_part_still_identifies() -> None:
+    for max_size, rdid in ((0x2000, FakeMB85RS64V.RDID), (0x40000, bytes([0x04, 0x7F, 0x48, 0x03]))):
+        fram, chip = _make_fram(max_size=max_size)
+        chip.rdid_response = rdid
+        run(_setup_fram(fram))
+        assert fram.verify_present() is True, hex(max_size)
+        assert fram.initialized is True
+        assert fram.pr._err_count == 0
+
+
+def test_verify_present_false_leaves_the_driver_refusing_until_setup_succeeds_again() -> None:
+    fram, chip = _make_fram()
+    run(_setup_fram(fram))
+    chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # the chip gone or its bus disturbed
+    assert fram.verify_present() is False
+    assert fram.initialized is False
+    assert fram.get_values(bytearray(1), 0) is False
+    chip.rdid_response = FakeMB85RS64V.RDID
+    run(_setup_fram(fram))
+    assert fram.verify_present() is True
+
+
+def test_verify_present_before_setup_returns_false_and_logs_not_init() -> None:
+    fram, chip = _make_fram()
+    assert fram.verify_present() is False
+    assert list(fram.pr.history)[-1] == code("E", "NOT_INIT")
+    assert chip.rdid_count == 0
+
+
 # ---------------------------------------------------------------------------
 # get_values / set_values - guards (initialized, lock, range) and real data
 # ---------------------------------------------------------------------------
@@ -1159,7 +1188,7 @@ def test_get_and_set_values_are_plain_calls_with_no_session_to_take() -> None:
     buf = bytearray(2)
     assert fram.get_values(buf, 0x10) is True
     assert buf == bytearray(b"\x11\x22") == chip.memory[0x10:0x12]
-    assert not hasattr(fram, "verify_present") and not hasattr(fram, "__aenter__")
+    assert not hasattr(fram, "__aenter__")
 
 
 if __name__ == "__main__":
