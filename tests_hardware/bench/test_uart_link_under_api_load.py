@@ -43,7 +43,7 @@ _BURST_WORKERS = 6
 _ECHO_SCRIPT_TIMEOUT_S = 240.0
 # The hazard run (owner, 2026-10-21, asked "Leave the UART hazards under API load untested?": "b - system shall be
 # proven stable unter max load allover"): 208 s at dev's 1000 ms reply budget on the twin's driven clock; the bound
-# leaves silicon's own load room (agent, 2026-10-21; owner-reviewed, 2026-11-06).
+# leaves silicon's own load room (agent, 2026-10-21).
 _HAZARD_RUN_TIMEOUT_S = 600.0
 # One owned flash write a run: GMTOffset (local time only) toggled between its default and the default plus a minute,
 # so no run spends a restore (agent, 2026-11-06).

@@ -67,7 +67,7 @@ coverage_summary_host.md
 # Scratch config files written/removed by tests/test_asy_config_manager.py's real file-I/O tests.
 tests/_tmp/
 
-# The twin entry points' persistent run state (digital_twin/launch.py, run_generic_integration.py): FRAM
+# The twin runner's persistent run state (digital_twin/run_generic_integration.py): FRAM
 # and SCD30 state flushed only at shutdown (owner, 2026-08-12), the mem_backup record kept from a simulated reset
 # to the next launch, and their config_*.cfg files - regenerable, never committed.
 digital_twin/fram_state.json

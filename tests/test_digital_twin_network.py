@@ -1,5 +1,4 @@
-"""Tests for digital_twin/network.py and digital_twin/neopixel.py. neopixel.py is a near-verbatim duplicate of
-tests/neopixel.py, already proven correct there - this file only locks in its basic shape.
+"""Tests for digital_twin/network.py (the one neopixel fake, fakes/neopixel.py, is tests/test_fakes.py's).
 
 network.py's WLAN has real behavioral differences (a real, bounded connect() delay instead of instant/inert) exercised
 for real here, the one genuine wall-clock wait in this file."""
@@ -15,7 +14,6 @@ import network
 from _async_harness import run
 from _src_const import src_int
 from _twin_common import COUNTER_CAP, LOG_MAXLEN
-from neopixel import NeoPixel
 from network import (
     AP_IF,
     STA_IF,
@@ -469,64 +467,6 @@ def test_a_chip_down_stations_answer_is_32_unfilled_entries() -> None:
     assert len(stations) == 32 and all(entry == (bytes(6),) for entry in stations), stations
     wlan.stations_chip_down = False
     assert wlan.status("stations") == [client]
-
-
-class _Pin:
-    # The one Pin method the library calls: init(OUT) at construction (micropython-lib neopixel.py:16).
-    OUT = 1
-
-    def __init__(self) -> None:
-        self.modes: list[int] = []
-
-    def init(self, mode: int) -> None:
-        self.modes.append(mode)
-
-
-def test_neopixel_records_committed_frames() -> None:
-    pin = _Pin()
-    pixel = NeoPixel(pin, 1, bpp=3)
-    assert pin.modes == [_Pin.OUT]
-    pixel[0] = (10, 20, 30)
-    assert pixel[0] == (10, 20, 30)  # readback before the next write() commits it
-    pixel.write()
-    pixel[0] = (0, 0, 0)
-    pixel.write()
-    assert list(pixel.writes) == [[(10, 20, 30)], [(0, 0, 0)]]
-
-
-def test_neopixel_stores_bytes_in_grb_order_as_the_library_does() -> None:
-    # micropython-lib neopixel.py:9, 28-31: an int keeps its low byte (py/binary.c:512-521), a float raises TypeError
-    # at its component, the earlier components already stored.
-    pixel = NeoPixel(_Pin(), 1)
-    pixel[0] = (1, 2, 3)
-    assert pixel.buf == bytearray(b"\x02\x01\x03")
-    pixel[0] = (256, 0, 0)
-    assert pixel[0] == (0, 0, 0)
-    try:
-        pixel[0] = (10, 1.5, 0)  # type: ignore[assignment]
-        raise AssertionError("a float colour was stored")
-    except TypeError:
-        pass
-    assert pixel.buf[1] == 10  # R, stored before G raised
-
-
-def test_neopixel_writes_stays_bounded_across_many_writes() -> None:
-    pixel = NeoPixel(_Pin(), 1, bpp=3)
-    for i in range(LOG_MAXLEN + 50):
-        pixel[0] = (i & 0xFF, 0, 0)
-        pixel.write()
-    assert (len(pixel.writes), pixel.writes.dropped) == (LOG_MAXLEN, 50)
-    assert pixel.writes[-1] == [((LOG_MAXLEN + 49) & 0xFF, 0, 0)]  # most recent write survives
-
-
-def test_neopixel_fault_injection() -> None:
-    pixel = NeoPixel(_Pin(), 1)
-    pixel.raise_on_write = RuntimeError("simulated bit-bang failure")
-    try:
-        pixel.write()
-        raise AssertionError("expected RuntimeError")
-    except RuntimeError:
-        pass
 
 
 def test_country_and_hostname_enforce_the_real_byte_bounds() -> None:

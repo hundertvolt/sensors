@@ -14,7 +14,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 import tomllib
-from _devices import DEVICE_NAMES, device_toml
+from _devices import DEVICE_NAMES, device_toml, distinct_devices
 from _script_loader import load_script_module
 
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
@@ -267,7 +267,7 @@ def test_the_loop_lag_load_spans_the_storm_at_the_longest_read_trigger_and_one_w
     assert max(spans) == harness._LOOP_LAG_LOAD_S, spans
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)  # each device's own bound and link roles
+@pytest.mark.parametrize("device", distinct_devices())  # each device's own bound and link roles
 def test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     # The first LOOP_LAG line after the load's start closes the window open then, which holds the end of boot: its
     # figure is reported beside the load's, never as it, and a line printed before the load counts in neither.
@@ -277,7 +277,7 @@ def test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_bo
     assert evidence.splitlines()[0].split()[1:5] == ["load_max_us=3000", "boot_window_max_us=240000", "straddler_max_us=2000", "settled_max_us=900"], evidence
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)
+@pytest.mark.parametrize("device", distinct_devices())
 @pytest.mark.parametrize(("over", "expected"), [(0, "in the window open when the load began"), (2, "under load"), (4, "under load")], ids=["the boot window", "a load window", "the window straddling the stop"])
 def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], over: int, expected: str) -> None:
     # The window open when the readers stop closes on the next LOOP_LAG line: it holds load, so it is bound as a load window.
@@ -288,7 +288,7 @@ def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(
     assert any(f"lagged {bound_us + 1} us {expected}" in f for f in failures), failures
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)
+@pytest.mark.parametrize("device", distinct_devices())
 @pytest.mark.parametrize(("after", "settles"), [((60000, -1, 60000), True), ((2000, 0, 900), False)], ids=["the window after the straddling one", "one LED frame of lag"])
 def test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, after: "tuple[int, int, int]", settles: bool) -> None:
     # The line after the straddling one closes a window begun after the stop: it settles under one LED frame (the
@@ -298,7 +298,7 @@ def test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame(harness:
     assert (failures == []) if settles else any("did not settle" in f for f in failures), failures
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)
+@pytest.mark.parametrize("device", distinct_devices())
 @pytest.mark.parametrize(("settle", "expected"), [((70000, 900), None), ((None, 900), "in the window after the load"), ((60000, 50000), "did not settle")], ids=["one host stall", "past one DNS query", "a slowed loop"])
 def test_the_settle_window_is_held_at_its_p99_and_its_maximum_to_the_bound(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], settle: "tuple[int | None, int]", expected: "str | None") -> None:
     # One late wake past a frame is the host's and passes; one past a DNS query (and so past every hard bound), or a
@@ -387,7 +387,7 @@ _SHUTDOWN_LINE = (
     " No. of 1-blocks: 14, 2-blocks: 4, max blk sz: 9, max free sz: 64730\n"
     "digital_twin/run_generic_integration.py [fixture_device] shutdown: would_have_triggered_count=0 feed_count=1 largest_feed_gap_ms=1 "
     "wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 "
-    "gc_block_bytes=32 fram_writes=0 fram_writes_by=- fram_silent_writes=0 fram_silent_wrens=0"
+    "gc_block_bytes=32 fram_writes=0 fram_writes_by=-"
 )
 
 

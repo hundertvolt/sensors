@@ -14,7 +14,7 @@ _CHECKS = ("generation", "ruff", "shellcheck", "actionlint", "zizmor", "method-a
 _TOOLS = ("ruff", "shellcheck", "actionlint", "zizmor")
 # What scripts/_check_gc_collect_sites.py reads besides src/, buildgen/ and ext/: its scopes, the devices it generates, and
 # the generator's stamped tree with the stamp's own inputs.
-_GC_CHECK_READS = ("devices", "tests", "digital_twin", "tests_hardware", "build", "toolchain")
+_GC_CHECK_READS = ("devices", "tests", "digital_twin", "fakes", "tests_hardware", "build", "toolchain")
 
 
 def _guard(repo_root: Path) -> str:

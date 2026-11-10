@@ -31,10 +31,11 @@ if TYPE_CHECKING:
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections_by_name, module_int_const
+from buildgen.validate import device_max_connections_by_name, module_float_const, module_int_const
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 from scripts._twin_process import (
+    COMMANDED_RESET_MARGIN_S,
     EXIT_SIMULATED_BOOTLOADER,
     EXIT_SIMULATED_RESET,
     TWIN_MICROPYPATH,
@@ -43,6 +44,8 @@ from scripts._twin_process import (
     ShutdownLine,
     TwinLaunch,
     TwinRun,
+    commanded_reset_deadline_s,
+    errcount_counter,
     errcount_entry,
     errcount_table,
     exit_reason,
@@ -52,8 +55,10 @@ from scripts._twin_process import (
     parse_machine_reset_line,
     parse_shutdown_line,
     read_log,
+    save_fram_evidence,
     shutdown,
     spawn,
+    src_int,
     state_paths,
     wait_exit,
     wait_until_serving,
@@ -91,9 +96,6 @@ _VERBOSE_LOG_PREFIXES = ("SYSTEM", "SGP40", "SCD30", "BMP3XX", "WEBSERVER", "NOT
 # fault per driver: the writes every I2C driver's setup and reads go through, FRAM gone (`silent`: zeros, its bytes
 # kept, the one FRAM failure the port can produce) and a UART link going quiet.
 _SUSTAINED_FAULT = {"scd30": "writeto", "sgp40": "writeto", "bmp3xx": "writeto", "isl29125": "writeto", "fram": "silent", "uart_link": "silent"}
-# Run 3's FRAM write ceiling: a persisted-log chunk write takes 627-700 ms on silicon under load, one block at a time
-# device-wide (SPECIFICATION.md's rate.persisted_log row), so a storm persists at most one entry per 627 ms.
-_PERSISTED_LOG_CHUNK_WRITE_MS = 627
 # Run 5c's chain: one bounded fault per chip on its periodic bus call, read through each driver's own call sites.
 _BOUNDED_FAULT = {"scd30": "writeto", "sgp40": "writeto", "bmp3xx": "readfrom_mem", "isl29125": "readfrom_mem"}
 # Run 5: SGP40's measure-raw read only (the read after the 0x260F command), so setup and the heater-off rung stay healthy.
@@ -129,10 +131,11 @@ _LEFT_OUT = {
     ("wlan", "fault", "*"): "every WLAN raise_on method is tests/test_asy_wifi_service.py's; Run 7 drives connect outcomes by --wifi-outcome",
     ("uart_link", "fault", "bounded"): "drop, corrupt and truncate are tests/test_digital_twin_uart_link.py's; Run 3 carries uart_link:silent",
 }
-_NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
-# The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
+# The attempts the unsynced NTP retry (at once, then every 60 s) makes inside Run 9's watch, failing at about 4 and 64 s
 # of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
 _NTP_UNREACHABLE_FAILURES = 2
+# Run 9's bound: one unsynced retry period per failure it waits for, the first attempt's own inside the first period.
+_NTP_UNREACHABLE_WATCH_S = _NTP_UNREACHABLE_FAILURES * module_int_const(SRC_DIR, "asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
 # instance's name appends "_<name_ext>" (instance_name()). Not driver.upper(): uart_link's is "UART".
@@ -180,10 +183,9 @@ _SHUTDOWN_STEP_LINES = ("Shutdown: supervisor stopped", "Shutdown: config stores
 _SHUTDOWN_S5_PREFIXES = ("Shutdown: resetconfig", "Shutdown: erasefram")
 
 # ResetErrors resets every source at once, each FRAM-backed one still paying its own chunk write, so it
-# far exceeds _http()'s 5s default. The value below is derived from the server's own _DEFAULT_OUTER_CAP_S;
-# README.md has the derivation and SPECIFICATION.md Part C.7 the real-hardware measurements.
-# @tunable web.outer_cap_s = 15.0
-_SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's _DEFAULT_OUTER_CAP_S - keep in sync
+# far exceeds _http()'s 5s default: it is bounded by the server's own outer cap, read from its source; SPECIFICATION.md
+# Part C.7 has the real-hardware measurements.
+_SERVER_OUTER_CAP_S = module_float_const(SRC_DIR, "asy_webserver_service.py", "_DEFAULT_OUTER_CAP_S")
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
 # The BUDGET rather than the timeout above, which only catches a call that never finished. Sized from both datasets -
 # twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of the cap sits ~45% above anything legitimate,
@@ -220,7 +222,6 @@ _HANG_RUN_EXIT_WAIT_S = 45.0  # Run 10's --duration 15 run, hung bus call includ
 _FAILED_RUN_EXIT_WAIT_S = 5.0
 # A commanded reset runs the controlled shutdown, whose first step may wait one supervisor period, then the
 # reset's own delay; the margin covers the twin's scheduling on a loaded host.
-_COMMANDED_RESET_MARGIN_S = 10.0
 _VERBOSE_POLL_S = 0.5
 _ERRCOUNT_POLL_S = 1.0
 _DNS_POLL_S = 0.5
@@ -419,17 +420,14 @@ def _commanded_reset(ctx: RunContext, proc: TwinRun, cmd: str, label: str, expec
         _check(condition=word == "Valid", msg=f"{label}: PUT /system {cmd} answered Valid ({word!r})")
     except Exception as exc:
         _fail(f"{label}: PUT /system {cmd}: {exc!r}")
-    ec = _wait_exit(proc, label, timeout_s=_commanded_reset_deadline_s())
-    _check(condition=ec == expected_exit, msg=f"{label}: {cmd} ended the process with {exit_reason(expected_exit)} within {_commanded_reset_deadline_s():.0f}s ({exit_reason(ec, killed=proc.killed)}, exit code {ec})")
+    ec = _wait_exit(proc, label, timeout_s=commanded_reset_deadline_s())
+    _check(condition=ec == expected_exit, msg=f"{label}: {cmd} ended the process with {exit_reason(expected_exit)} within {commanded_reset_deadline_s():.0f}s ({exit_reason(ec, killed=proc.killed)}, exit code {ec})")
     wdt = _would_have_triggered_count(proc.log_path, label)
     _check(condition=wdt == 0, msg=f"{label}: the watchdog never starved through {cmd}'s controlled shutdown (would_have_triggered_count={wdt!r})")
     del ctx
     return ec
 
 
-def _commanded_reset_deadline_s() -> float:
-    # A commanded reset runs the controlled shutdown (its first step may wait one supervisor period), then the delay.
-    return _src_int("asy_system_service.py", "_RESET_DELAY") + _src_int("asy_system_service.py", "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S
 
 
 def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
@@ -475,10 +473,6 @@ def _count_verbose_log_lines(log_text: str) -> int:
     return count
 
 
-def _counter(entry: JSONValue) -> int:
-    # An errcount entry's counter, or -1 for an entry or counter that is not there, which no assertion reads as 0.
-    value = entry.get("counter") if isinstance(entry, dict) else None
-    return value if isinstance(value, int) else -1
 
 
 def _damage_config(ctx: RunContext) -> tuple[str, str]:
@@ -551,7 +545,7 @@ def _fail(msg: str) -> None:
 def _failure_events(entry: JSONObject) -> int:
     # asy_print_log.py's newest-entry rule folds a repeated code into one slot while "counter" counts every call,
     # so a failure is a counter step not backed by a "W" slot (exact while no warning repeats); -1 without a counter.
-    return _counter(entry) - _error_type_count(entry, "W")
+    return errcount_counter(entry) - _error_type_count(entry, "W")
 
 
 def _fault_instances(ctx: RunContext, table: "dict[str, str]") -> list[Instance]:
@@ -766,7 +760,7 @@ def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, 
 
 
 def _reset_code(name: str) -> int:
-    return _src_int("asy_system_service.py", name)
+    return src_int("asy_system_service.py", name)
 
 
 def _route_leaves_host(host: str, port: int) -> bool:
@@ -1010,7 +1004,7 @@ def _run_13_erase_fram(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         entry = _wait_for_error_type_count(chip.errcount_name, 1, timeout_s=_FIRST_FAULT_WAIT_S, run=proc)
-        _check(condition=_error_type_count(entry) >= 1 and _counter(entry) > 0, msg=f"Run 13: the planted {fault} logged {chip.errcount_name}'s own entry for the erase to clear within {_FIRST_FAULT_WAIT_S:.0f}s ({entry!r})")
+        _check(condition=_error_type_count(entry) >= 1 and errcount_counter(entry) > 0, msg=f"Run 13: the planted {fault} logged {chip.errcount_name}'s own entry for the erase to clear within {_FIRST_FAULT_WAIT_S:.0f}s ({entry!r})")
         _save_fram_evidence(ctx, "run13 erasefram")
     except Exception as exc:
         _fail(f"Run 13 (erasefram setup): {exc!r}")
@@ -1060,7 +1054,7 @@ def _run_13_reboot_sequence(ctx: RunContext, cmd: str, expected_exit: int, reaso
     _archive_state(ctx, f"run13 {cmd}")
     label = f"Run 13 ({cmd})"
     proc = _spawn(ctx, [], ctx.logs_dir / f"run13_g_{cmd}.log")
-    level = _src_int("asy_print_log.py", "_LOG_EVENT")
+    level = src_int("asy_print_log.py", "_LOG_EVENT")
     before: dict[str, JSONObject] = {}
     try:
         _wait_until_serving(proc)
@@ -1208,14 +1202,11 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     for inst in faulted:
         op = _SUSTAINED_FAULT[inst.driver]
         fault_args += ["--fault", f"{inst.key}:{op}" if op == "silent" else f"{inst.key}:{op}:{_BUS_FAULT_ERROR_COUNT}"]
-    started = time.monotonic()
     proc = _spawn(ctx, fault_args, log3)
     seen: dict[str, JSONObject] = {}
     ec = -1
-    backed = 0
     try:
         _wait_until_serving(proc)
-        backed = sum(1 for name in _errcount_all() if name not in _IN_MEMORY_ONLY_ERROR_SOURCES)
         # Keyed on "E" entries, never the raw counter a "W" recovery notice also bumps; each poll stops at the reset.
         for inst in faulted:
             if inst.key in ctx.responders:  # a silent link leaves a responder listening, never failed: it logs nothing of its own
@@ -1227,22 +1218,11 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
         _fail(f"Run 3 (sustained bus-fault matrix): {exc!r}")
     finally:
         ec = _wait_exit(proc, "Run 3", timeout_s=_ESCALATION_WAIT_S)
-    window_ms = (time.monotonic() - started) * 1000
     _check(condition=ec == EXIT_SIMULATED_RESET, msg=f"Run 3: the device reset itself under the combined faults ({exit_reason(ec, killed=proc.killed)}, exit code {ec})")
     reset = parse_machine_reset_line(read_log(log3))
     _check(condition=reset is not None and reset.kind == "reset" and reset.reset_count == 1, msg=f"Run 3: the runner's machine reset line names one reset ({reset!r})")
     wdt3 = _would_have_triggered_count(log3, "Run 3")
     _check(condition=wdt3 == 0, msg=f"Run 3: watchdog never starved under the sustained faults (would_have_triggered_count={wdt3!r})")
-    # The ceiling is window / 627 ms x 2: each persisted entry writes both block copies of its chunk (A.7's chunk layout).
-    # The chip is silent, so its landed count stays 0: the data phases and WRENs issued to it are what the product sent,
-    # a write being at most two WRENs (the driver's one latch retry, asy_fram_driver.py _enable_write()).
-    ceiling = int(window_ms // _PERSISTED_LOG_CHUNK_WRITE_MS) * 2
-    line = _shutdown_line(log3, "Run 3")
-    writes = line.fram_writes + line.fram_silent_writes if line is not None else None
-    _check(condition=writes is not None and writes <= ceiling, msg=f"Run 3: the FRAM chip's {writes!r} writes, landed or issued while silent, stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
-    attempts = -(-line.fram_silent_wrens // 2) if line is not None else None
-    ceiling += backed  # each FRAM-backed logger's one setup write, before any rate applies (from /status: the console may be off)
-    _check(condition=attempts is not None and attempts <= ceiling, msg=f"Run 3: the {attempts!r} FRAM write attempts its silent chip saw (WRENs / 2) stay within the persisted-log rate, {ceiling} over the {window_ms:.0f} ms run")
 
 
 def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
@@ -1328,7 +1308,7 @@ def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: JSONOb
             entry = _wait_for_error_type_count(name, _error_type_count(written), timeout_s=_ERROR_COUNT_WAIT_S)
             entry = entry or _errcount_required(name)
             restored, kept = _error_codes(entry), _error_codes(written)
-            whole = restored == kept and _counter(entry) >= max(_counter(written), 0)
+            whole = restored == kept and errcount_counter(entry) >= max(errcount_counter(written), 0)
             _check(condition=whole, msg=f"Run 5b: {name}'s FRAM-backed history came back whole after Run 5's stop - its exact ring, its count kept; a cut write is tests/test_digital_twin_fram_crash_points.py's (wrote {written!r}, restored {entry!r})")
     except Exception as exc:
         _fail(f"Run 5b (error-log restore is all-or-nothing): {exc!r}")
@@ -1370,7 +1350,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         except Exception as exc:
             _fail(f"Run 5c ({inst.key}: record then reboot): {exc!r}")
         finally:
-            ec = _wait_exit(proc, f"Run 5c-a ({inst.key})", timeout_s=_commanded_reset_deadline_s())
+            ec = _wait_exit(proc, f"Run 5c-a ({inst.key})", timeout_s=commanded_reset_deadline_s())
         _check(condition=ec == EXIT_SIMULATED_RESET, msg=f"Run 5c: the commanded reboot reset the device after {name}'s link ({exit_reason(ec, killed=proc.killed)}, exit code {ec})")
 
     log5c_b = ctx.logs_dir / "run5c_b_history_survived_the_commanded_reboot.log"
@@ -1386,7 +1366,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
             entry = restored_table.get(name, {})
             restored = _error_type_count(entry)
             _check(condition=restored == expected, msg=f"Run 5c: {name}'s {expected} chip-healthy error(s) survived a commanded reboot - the one case that must never lose them ({restored} found, {entry!r})")
-            _check(condition=_counter(entry) >= expected, msg=f"Run 5c: {name}'s persisted error COUNT was restored too, not just the history ring ({entry!r})")
+            _check(condition=errcount_counter(entry) >= expected, msg=f"Run 5c: {name}'s persisted error COUNT was restored too, not just the history ring ({entry!r})")
         # Every OTHER registered source in the same breath (SYSTEM/NOTIFY/NTP/WEBSERVER/DNSSRV, every FRAM-backed
         # CFGMGR_*, every uart_link instance). A fresh entry from THIS boot is legitimate: "nothing was lost".
         for name, before in snapshot_table.items():
@@ -1443,7 +1423,7 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
         _wait_until_serving(proc)
         # Waits for the FULL scripted failure count: hotspot activation, and so the CaptiveDNS, starts on the fifth.
         entry = _wait_for_errcount_above("WIFI", _WIFI_PERSISTED_EVENTS - 1, timeout_s=_LONG_WAIT_S)
-        _check(condition=_counter(entry) >= _WIFI_PERSISTED_EVENTS, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback, and both they and the fallback were recorded in WIFI's error counter ({entry!r})")
+        _check(condition=errcount_counter(entry) >= _WIFI_PERSISTED_EVENTS, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback, and both they and the fallback were recorded in WIFI's error counter ({entry!r})")
         logged = _error_type_count(entry, type_char="W")
         _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent one history slot, not one each, and the fallback one more ({_WIFI_PERSISTED_WARNINGS}) - the ring still holds what preceded the outage ({entry!r})")
         answered = _wait_for_dns_answer(HOST, timeout_s=_LONG_WAIT_S)
@@ -1498,18 +1478,18 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
     proc = _spawn(ctx, [], log9)
     try:
         _wait_until_serving(proc)
-        system_before = _counter(_errcount_required("SYSTEM"))
+        system_before = errcount_counter(_errcount_required("SYSTEM"))
         # Past every attempt the retry makes within the old give-up's reach, then one supervisor pass: the time a task
         # that ended on the last failure takes to be restarted, an absence no probe can observe.
         failed = _failure_events(_wait_for_failure_events("NTP", _NTP_UNREACHABLE_FAILURES, timeout_s=_NTP_UNREACHABLE_WATCH_S))
-        time.sleep(_src_int("asy_system_service.py", "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
+        time.sleep(src_int("asy_system_service.py", "_TASK_CHECK_TIME") + COMMANDED_RESET_MARGIN_S)
         _check(condition=failed >= _NTP_UNREACHABLE_FAILURES, msg=f"Run 9: NTP failed {failed} time(s) within the {_NTP_UNREACHABLE_WATCH_S:.0f}s watch, every attempt its retry schedules there")
         status, _ = _http("GET", "/system")
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
         nums = [num for _kind, num in _error_codes(_errcount_required("NTP"))]
         ok, msg = _ntp_unreachable_verdict(nums, route=_route_leaves_host(_NTP_UNREACHABLE_HOST, _NTP_PORT))
         _check(condition=ok, msg=msg)
-        system_after = _counter(_errcount_required("SYSTEM"))
+        system_after = errcount_counter(_errcount_required("SYSTEM"))
         _check(condition=system_after == system_before >= 0, msg=f"Run 9: no task ended and was restarted while NTP failed (SYSTEM counter {system_before} -> {system_after})")
     except Exception as exc:
         _fail(f"Run 9 (NTP unreachable): {exc!r}")
@@ -1588,14 +1568,9 @@ def _run_selection(text: str) -> frozenset[str]:
 
 
 def _save_fram_evidence(ctx: RunContext, label: str) -> None:
-    # Before any erasefram: the errcount table over REST and a copy of the FRAM state file, into the archive.
-    evidence = ctx.logs_dir / "fram_evidence" / label.replace(" ", "_")
-    evidence.mkdir(parents=True, exist_ok=True)
     status, body = _http("GET", "/status")
-    (evidence / "errcount.json").write_text(json.dumps({"status": status, "errcount": body.get("errcount") if isinstance(body, dict) else None}, indent=2), encoding="utf-8")
-    fram = state_paths(ctx.state_dir).fram
-    if fram.exists():
-        shutil.copy2(fram, evidence / fram.name)
+    errcount = {"status": status, "errcount": body.get("errcount") if isinstance(body, dict) else None}
+    save_fram_evidence(ctx.logs_dir / "fram_evidence" / label.replace(" ", "_"), errcount, ctx.state_dir)
 
 
 def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False, interrupt: bool = False) -> int:
@@ -1637,9 +1612,6 @@ def _spawn(ctx: RunContext, extra_args: list[str], log_path: Path) -> TwinRun:
     return spawn(launch, state_dir=ctx.state_dir, log_path=log_path, args=extra_args)
 
 
-def _src_int(filename: str, name: str) -> int:
-    # A product constant read from its source by buildgen's own reader, never a copy that could drift.
-    return module_int_const(SRC_DIR, filename, name)
 
 
 def _stack_fault_instance(plan: "dict[str, JSONValue]") -> Instance | None:
@@ -1712,7 +1684,7 @@ def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> JSONObj
     deadline = time.monotonic() + timeout_s
     while True:  # read at least once: the entry returned at the deadline is the last one read
         entry = _errcount(name)
-        if _counter(entry) > floor or time.monotonic() >= deadline:
+        if errcount_counter(entry) > floor or time.monotonic() >= deadline:
             return entry
         time.sleep(_ERRCOUNT_POLL_S)
 

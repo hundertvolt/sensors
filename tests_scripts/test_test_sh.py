@@ -1902,7 +1902,7 @@ def test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and
     # SIGINT, which microtest turns into its ABORT line and the summary names; the job leaves nothing running.
     planted = tmp_path / "test_hung.py"
     planted.write_text(_HUNG_FILE, encoding="utf-8")
-    attempt = f'exec env MICROPYPATH="{repo_root / "tests"}:.frozen" "{micropython_bin}" "{planted}"'
+    attempt = f'exec env MICROPYPATH="{repo_root / "tests"}:{repo_root / "src"}:.frozen" "{micropython_bin}" "{planted}"'
     token = uuid.uuid4().hex
     results = _run_file_job(repo_root, tmp_path, attempt, attempt, limits=_JobLimits(timeout_s=2, attempts=1), env={**os.environ, _MARKER_VAR: token})
     left = _processes_carrying(token)

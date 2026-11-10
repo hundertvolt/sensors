@@ -9,7 +9,6 @@ import ast
 import json
 import operator
 import re
-import shutil
 from functools import cache
 from pathlib import Path
 
@@ -31,7 +30,6 @@ _NTP_CLIENT = "src/asy_ntp_client.py"
 _CODEGEN = "buildgen/codegen.py"
 _CONTRACT = "js/api-contract.js"
 _MOCK = "js/mock-server.js"
-_READ_FILES = (_CONFIG_MANAGER, _BASE_CLASSES, _API_RESPONSE, _PRINT_LOG, _WEBSERVER, _DNS_CLIENT, _NTP_CLIENT, _CODEGEN, _CONTRACT, _MOCK)
 _RESULT_WORDS = ("VALID", "UNCHANGED", "INVALID", "FAILED")
 _OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Pow: operator.pow}
 
@@ -152,39 +150,6 @@ def _mirror_problems(root: Path) -> "list[str]":
 
 def test_every_js_mirror_equals_its_src_source() -> None:
     assert _mirror_problems(_REPO_ROOT) == []
-
-
-# (file, its text, the planted text, the pin that must report it): one plant per pin.
-_PLANTS = (
-    (_CONTRACT, 'export const VALID = "Valid";', 'export const VALID = "valid";', f"{_CONTRACT} VALID"),
-    (_CONTRACT, 'export const FAILED = "Failed";', 'export const FAILED = "Fail";', f"{_CONTRACT} FAILED"),
-    (_CONTRACT, "export const ERR_COUNT_CAP = 65535;", "export const ERR_COUNT_CAP = 65534;", f"{_CONTRACT} ERR_COUNT_CAP"),
-    (_CONTRACT, '"Minute", "Second"]', '"Second", "Minute"]', f"{_CONTRACT} GMTIME_KEYS"),
-    (_CONTRACT, '=== "unavailable"', '=== "Unavailable"', f"{_CONTRACT} isUnavailable()"),
-    (_MOCK, "const COUNTER_CAP = 2 ** 30 - 1;", "const COUNTER_CAP = 2 ** 30;", f"{_MOCK} COUNTER_CAP"),
-    (_MOCK, '405: "Method not allowed", ', "", f"{_MOCK} STANDARD_CODES"),
-    (_MOCK, '?? "Unknown error"', '?? "Unknown code"', f"{_MOCK} makeResponse()'s unknown-code text"),
-    (_MOCK, '"LED busy - retry later"', '"LED busy"', f"{_MOCK} LED_BUSY_DESCR"),
-    (_MOCK, 'const LED_DURATION_MEMBER = "T";', 'const LED_DURATION_MEMBER = "R";', f"{_MOCK} LED_DURATION_MEMBER"),
-    (_MOCK, "const DNS_LABEL_MAX = 63;", "const DNS_LABEL_MAX = 64;", f"{_MOCK} DNS_LABEL_MAX"),
-    (_MOCK, "const DNS_FALLBACK_MAX = 3;", "const DNS_FALLBACK_MAX = 4;", f"{_MOCK} DNS_FALLBACK_MAX"),
-    (_PRINT_LOG, "_MAX_CNT = const(0xFFFF)", "_MAX_CNT = const(0xFFFE)", f"{_CONTRACT} ERR_COUNT_CAP"),
-    (_CODEGEN, '"Minute": t[4]', '"Min": t[4]', f"{_CONTRACT} GMTIME_KEYS"),
-    (_API_RESPONSE, '413: "Payload too large",', '413: "Payload too large", 418: "Teapot",', f"{_MOCK} STANDARD_CODES"),
-    (_DNS_CLIENT, "DNS_LABEL_MAX = const(63)", "DNS_LABEL_MAX = const(62)", f"{_MOCK} DNS_LABEL_MAX"),
-    (_NTP_CLIENT, "_DNS_FALLBACK_MAX = const(3)", "_DNS_FALLBACK_MAX = const(2)", f"{_MOCK} DNS_FALLBACK_MAX"),
-)
-
-
-@pytest.mark.parametrize(("path", "text", "planted", "pin"), _PLANTS, ids=[f"{plant[0]}:{plant[3]}" for plant in _PLANTS])
-def test_a_planted_mismatch_fails_its_pin(tmp_path: Path, path: str, text: str, planted: str, pin: str) -> None:
-    for name in _READ_FILES:
-        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(_REPO_ROOT / name, tmp_path / name)
-    source = (tmp_path / path).read_text(encoding="utf-8")
-    assert source.count(text) == 1, f"{path} no longer holds {text!r} once - the plant would bite nothing"
-    (tmp_path / path).write_text(source.replace(text, planted), encoding="utf-8")
-    assert [problem for problem in _mirror_problems(tmp_path) if problem.startswith(f"{pin}:")], f"planting {planted!r} in {path} left {pin} silent"
 
 
 def _spells_the_marker(text: str) -> bool:

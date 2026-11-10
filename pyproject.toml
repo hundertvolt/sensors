@@ -44,7 +44,7 @@ dev = [
 # typeshed, which would break type-checking of this venv's own tools, so scripts/typecheck.sh
 # installs them into typings/ (CLAUDE.md).
 
-# Lint/type scope is the eight directories CLAUDE.md's "Code quality tooling" lists, plus the generated
+# Lint/type scope is the nine directories CLAUDE.md's "Code quality tooling" lists, plus the generated
 # build/generated_src/; the legacy tree (legacy/) is never in scope. tests_hardware/device_scripts/
 # joined after a driver signature change broke two unchecked scripts for a day.
 
@@ -206,7 +206,8 @@ max-returns = 10
 # cannot hold (PERF401; py/compile.c, v1.29.0) and bind or compare the all-interfaces address the code under test uses
 # (S104).
 "tests/**" = ["ARG001", "ARG002", "ARG005", "ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "FBT001", "FBT002", "PERF401", "PLC0415", "PLR2004", "PLW0603", "PT", "PTH", "RUF005", "S101", "S104", "SIM105", "SLF001", "T20", "TRY003"]
-"digital_twin/**" = ["ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "PLR2004", "PLW0603", "PTH", "RUF005", "S101", "SIM105", "SLF001", "T20", "TRY003"]
+"digital_twin/**" = ["ASYNC110", "ASYNC230", "B905", "EM101", "EM102", "PLR2004", "PLW0603", "PTH", "RUF005", "SIM105", "SLF001", "T20", "TRY003"]
+"fakes/**" = ["EM101", "EM102", "PLR2004", "SLF001", "TRY003"]
 # Device scripts run on the board, never under pytest (PT), and await in loops as tests/ does (PERF401); rp2 has no
 # itertools, so pairwise() is unimplementable (RUF007); a script names its rendered includes under `if TYPE_CHECKING:`
 # for mypy alone, the render inlining their definitions (TC004). The tests_hardware/** entry below applies too.
@@ -293,7 +294,7 @@ max-returns = 10
 "digital_twin/_wall_clock.py" = ["B010"]
 # No `from e`: MicroPython prints "exception chaining not supported" for it (B904); tests/ is absent from a standalone
 # twin's path, so _strict_json is imported where it is used (PLC0415, SPECIFICATION.md F.1).
-"digital_twin/_http_client.py" = ["B904", "PLC0415"]
+"digital_twin/_http_client.py" = ["B904"]
 # The armed watchdog the script's checks feed, bound once in _main() (PLW0603).
 "tests_hardware/device_scripts/fram_pause_unpause_and_gating.py" = ["PLW0603"]
 # S603 has no satisfiable form for a subprocess driver; each runs an argv list, never a shell string: build_firmware.py
@@ -335,7 +336,6 @@ max-returns = 10
 # devices/*.toml, a shape these rules do not see.
 #
 # Literal passwords of test doubles and bound checks (the twin's own AP, length limits) - not credentials.
-"digital_twin/launch.py" = ["S105"]
 "tests_scripts/test_buildgen_validate.py" = ["S105"]
 
 [tool.mypy]
@@ -358,17 +358,14 @@ no_site_packages = true
 # A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
 # `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
 # effect during mypy's own directory walk.
-files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts", "build/generated_src"]
+files = ["src", "tests", "digital_twin", "fakes", "tests_hardware/device_scripts", "build/generated_src"]
 # Excluded, each for a reason B.15 states: tests/network.py would hijack the real `network` stub
-# project-wide, so typecheck.sh checks it alone; the twin's fakes collide with tests/machine.py and
-# tests/rp2.py; the rest need the twin's own API, so digital_twin/typecheck.ini checks them.
+# project-wide, so typecheck.sh checks it alone; the twin's machine and network collide with tests/'s;
+# the rest need the twin's own API, so digital_twin/typecheck.ini checks them.
 exclude = [
     "tests/network\\.py$",
     "digital_twin/machine\\.py$",
-    "digital_twin/rp2\\.py$",
     "digital_twin/network\\.py$",
-    "digital_twin/neopixel\\.py$",
-    "digital_twin/launch\\.py$",
     "digital_twin/run_generic_integration\\.py$",
     "digital_twin/run_device_script\\.py$",
     "tests/test_digital_twin_.*\\.py$",

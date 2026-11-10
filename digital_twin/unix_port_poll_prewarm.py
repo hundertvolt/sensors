@@ -1,6 +1,6 @@
 """Workaround for the Unix port's extmod/modselect.c pollfds growth, which corrupts poll objects
 registered over non-fd streams (rp2-immune: compiled out there): grow asyncio's poll set once, before anything
-registers. A known limitation, not reported upstream (owner, 2026-09-29); SPECIFICATION.md F.7 states it."""
+registers. A known limitation, not reported upstream (agent, 2026-09-29); SPECIFICATION.md F.7 states it."""
 
 # asyncio.core is private: reaching its _io_queue is the point (the stubs cover only the public API).
 import asyncio.core as _core  # type: ignore[import-not-found]

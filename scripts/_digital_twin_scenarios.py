@@ -37,11 +37,14 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
 from scripts._twin_process import (
+    COMMANDED_RESET_MARGIN_S,
     TWIN_MICROPYPATH,
     JSONObject,
     JSONValue,
     TwinLaunch,
     TwinRun,
+    commanded_reset_deadline_s,
+    errcount_counter,
     errcount_table,
     exit_reason,
     feed_gap_verdict,
@@ -50,9 +53,11 @@ from scripts._twin_process import (
     parse_machine_reset_line,
     parse_shutdown_line,
     read_log,
+    save_fram_evidence,
     send_line,
     shutdown,
     spawn,
+    src_int,
     state_paths,
     wait_exit,
     wait_until_serving,
@@ -76,7 +81,6 @@ _REFUSAL_ERRORS = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError
 _SHARED_DIR = "shared_boots"  # the shared twins' logs and state, beside the scenarios' own directories
 _TCP_LISTEN = "0A"  # the LISTEN state in /proc/net/tcp (include/net/tcp_states.h)
 
-_REQUEST_TIMEOUT_S = 10.0
 _SERVING_TIMEOUT_S = 30.0
 _LINE_POLL_S = 0.05
 _CONN_STATUS_INTERVAL_MS = 20  # the runner's CONN_SLOTS period: dense enough that a drain is seen within a few polls
@@ -88,7 +92,6 @@ _SLOW_PUT_S = 1.0  # a slow but healthy PUT's pause between its two halves
 _STALL_MS = 200  # the stalled loop's length, past one SYN retry's worth of arrivals queued
 _WATCHDOG_WINDOW_S = 8.5  # past the 8,000 ms watchdog: a hang's window is the property under test, so it is waited out
 _REFUSAL_FEED_S = 10.0  # a refused command never stops the feed: watched past one watchdog period
-_COMMANDED_RESET_MARGIN_S = 10.0
 _PAUSE_COUNTDOWN_S = 15.0
 _HOTSPOT_WAIT_S = 90.0  # five scripted connect failures, then the hotspot and its DNS server
 _UART_LOAD_S = 20.0  # the concurrent-load window
@@ -128,6 +131,7 @@ _SITE_MIN_BYTES = 1000  # a whole page or bundle, not a truncated or empty body
 _ISL_RESOLUTIONS = (12, 16)  # asy_isl29125_driver.py's _RESOLUTIONS
 
 _OUTER_CAP_S = module_float_const(SRC_DIR, _WEBSERVER, "_DEFAULT_OUTER_CAP_S")  # the per-call cap a recovered request answers within
+_REQUEST_TIMEOUT_S = _OUTER_CAP_S  # a request's wait: the server answers or closes inside its own outer cap
 # What the UART load's requests are owed: an admitted one closes by its outer cap and then a reclaim trace held at most
 # one per-call timeout, each timer late by at most one flash hold; a refused one within a per-call timeout and a hold.
 _UART_LOAD_REQUEST_S = _OUTER_CAP_S + module_float_const(SRC_DIR, _WEBSERVER, "_DEFAULT_PER_CALL_TIMEOUT_S") + 2 * module_int_const(SRC_DIR, "asy_uart_comm.py", "_FLASH_HOLD_MAX_MS") / 1000
@@ -347,9 +351,9 @@ class SharedBoot:
             twin = self.stack.enter_context(self.ctx.boot(*_CONN))
             for _key, driver, ext in self.ctx.instances:
                 if driver == "sgp40":  # its first restore logs W65 for the blank backup chunk: the boot's move, never a scenario's
-                    _expect(_wait_entry(twin.port, f"SGP40_{ext}" if ext else "SGP40", kind="W", num=_src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")), "a shared boot's SGP40 never logged W SGP_NO_BACKUP for its blank backup chunk")
+                    _expect(_wait_entry(twin.port, f"SGP40_{ext}" if ext else "SGP40", kind="W", num=src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")), "a shared boot's SGP40 never logged W SGP_NO_BACKUP for its blank backup chunk")
             table = _error_table(twin.port)
-            self.counters = {name: _counter(entry) for name, entry in table.items()}
+            self.counters = {name: errcount_counter(entry) for name, entry in table.items()}
             self.newest = {name: _newest_entries(entry) for name, entry in table.items()}
             self.twin = twin
         return self.twin
@@ -370,7 +374,7 @@ class SharedBoot:
             problems.append(f"no socket listens on port {twin.port}" if queued is None else f"{queued} connection(s) still in the accept queue after {_DRAIN_WAIT_S}s")
         # Read once every slot is back: a connection's own log entry lands before its slot is released.
         table = _error_table(twin.port)
-        counters = {name: _counter(entry) for name, entry in table.items()}
+        counters = {name: errcount_counter(entry) for name, entry in table.items()}
         newest = {name: _newest_entries(entry) for name, entry in table.items()}
         moved = {name: (self.counters.get(name), counters.get(name)) for name in sorted(set(self.counters) | set(counters)) if self.counters.get(name) != counters.get(name)}
         unstated = {name: (*move, newest.get(name, [])) for name, move in moved.items() if name not in item.moves and not self._own_backup(name, move, newest.get(name, []))}
@@ -385,7 +389,7 @@ class SharedBoot:
     def _own_backup(self, name: str, move: "tuple[int | None, int | None]", now: "list[JSONValue]") -> bool:
         # The boot's own background, never a scenario's: an SGP40 that never syncs writes its backup untimestamped (W35)
         # about 90 s after the spawn, then each backup period: one count, a new W35 slot or W35 repeated in place.
-        backup = ["W", _src_int("asy_sgp40_driver.py", "_WRN_SGP_WRITTEN_NO_TS")]
+        backup = ["W", src_int("asy_sgp40_driver.py", "_WRN_SGP_WRITTEN_NO_TS")]
         before = self.newest.get(name, [])
         once = (move[1] or 0) - (move[0] or 0) == 1
         return name.split("_", 1)[0] == "SGP40" and once and now[-1:] == [backup] and (now == before or now[:-1] == before[-1:])
@@ -637,13 +641,13 @@ def _bus_fault_degrades(ctx: Context) -> None:
         while time.monotonic() < deadline and not consumed:
             line = twin.wait_line("FAULT_PENDING", twin.mark(), _DRAIN_WAIT_S) or ""
             pending = next((int(t.split("=")[1]) for t in line.split()[1:] if t.startswith(f"{sgp40}:writeto=")), times)
-            consumed = pending < times and _counter(_errcount(twin.port, "SGP40")) >= 1
+            consumed = pending < times and errcount_counter(_errcount(twin.port, "SGP40")) >= 1
         _expect(consumed, "the injected writes were never consumed by a real read before the GET")
         answer = _request(twin.port, "GET", "/measurements")
         _expect(answer.status == HTTPStatus.OK, f"GET /measurements answered {answer.status} under the fault, never a 500")
         block = _object(answer).get("SGP40")
         _expect(isinstance(block, dict) and all(v is None for k, v in block.items() if k != "TS"), f"SGP40's degraded fields are not all null: {block!r}")
-        _expect(_counter(_errcount(twin.port, "SGP40")) >= 1, "SGP40's error count holds no entry")
+        _expect(errcount_counter(_errcount(twin.port, "SGP40")) >= 1, "SGP40's error count holds no entry")
 
 
 @scenario("client_gone_mid_response_is_counted", family="webserver_requests", needs_site=True)
@@ -672,7 +676,7 @@ def _client_gone_mid_response(ctx: Context) -> None:
         after = _group(_status(twin.port), "networking").get("HTTPDropped")  # served: the reset left the server serving
         _expect(isinstance(before, int) and after == before + 1, f"HTTPDropped {before!r} -> {after!r} after one reset mid-{path}")  # exact, as the refusal's
         newest = _newest_entries(_errcount(twin.port, "WEBSERVER"), 1)
-        _expect(newest == [["W", _src_int(_WEBSERVER, "_WRN_HTTP_PEER_RESET")]], f"WEBSERVER's newest entry is {newest}, not the peer reset")
+        _expect(newest == [["W", src_int(_WEBSERVER, "_WRN_HTTP_PEER_RESET")]], f"WEBSERVER's newest entry is {newest}, not the peer reset")
         pinned = _pinned(twin, 0)
         _expect(len(reset_pinned) == 1 and all(n == floor < accepted for n, accepted in pinned), f"the server's sockets read send buffers {pinned}, not the kernel's floor {floor} below their size at accept()")
 
@@ -709,12 +713,9 @@ def _command_in_the_boot_window(ctx: Context) -> None:
             _expect(_system_cmd(twin.port, cmd) == "Valid", f"{cmd} in the boot window did not answer Valid")
             _exits_with(twin, 3, f"{cmd} in the boot window")
         reason = _reason_after(ctx, state)
-        _expect(reason == _src_int(_SYSTEM, code_name), f"{cmd} in the boot window: the relaunch reads ResetReason {reason!r}")
+        _expect(reason == src_int(_SYSTEM, code_name), f"{cmd} in the boot window: the relaunch reads ResetReason {reason!r}")
 
 
-def _commanded_reset_deadline_s() -> float:
-    # The controlled shutdown's first step may wait one supervisor period, then the reset's own delay.
-    return _src_int(_SYSTEM, "_RESET_DELAY") + _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S
 
 
 def _config_write(port: int, index: int, timeout_s: float = _REQUEST_TIMEOUT_S) -> "tuple[int, JSONValue]":
@@ -724,9 +725,6 @@ def _config_write(port: int, index: int, timeout_s: float = _REQUEST_TIMEOUT_S) 
     return answer.status, _result(answer, "GMTOffset")
 
 
-def _counter(entry: JSONValue) -> int:
-    value = entry.get("counter") if isinstance(entry, dict) else None
-    return value if isinstance(value, int) else -1
 
 
 def _definitions_text(device: str) -> str:
@@ -797,10 +795,10 @@ def _erase_silent_chip(ctx: Context) -> None:
         line = parse_shutdown_line(read_log(twin.run.log_path))
         _expect(line is not None and line.would_have_triggered_count == 0, f"the watchdog starved after a refused erase ({line!r})")
         reason = _reason_after(ctx, state) if escalated else None
-        _expect(not escalated or reason == _src_int(_SYSTEM, "_RR_TASK_BUDGET"), f"the reset after a refused erase reads ResetReason {reason!r}, not the escalation's")
+        _expect(not escalated or reason == src_int(_SYSTEM, "_RR_TASK_BUDGET"), f"the reset after a refused erase reads ResetReason {reason!r}, not the escalation's")
         return
     reason = _reason_after(ctx, state)
-    _expect(reason == _src_int(_SYSTEM, "_RR_COMMAND_INCOMPLETE"), f"an erase that could not finish reads ResetReason {reason!r}")
+    _expect(reason == src_int(_SYSTEM, "_RR_COMMAND_INCOMPLETE"), f"an erase that could not finish reads ResetReason {reason!r}")
 
 
 def _errcount(port: int, name: str) -> JSONObject:
@@ -820,18 +818,18 @@ def _escalation_entry_cut(ctx: Context) -> None:
     """An escalation entry write held inside its first block for good starves the watchdog with code 20 recorded; the cut block is healed and logged."""
     key, _name = _first_instance(ctx, "scd30")
     state = ctx.logs_dir / "state_escalation_cut"
-    errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
-    busy, repaired = _src_int("asy_fram_manager.py", "_ERR_FRAM_STATUS_BYTE"), _src_int("asy_fram_manager.py", "_WRN_FRAM_BLOCK_INVALID")
+    errno = src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
+    busy, repaired = src_int("asy_fram_manager.py", "_ERR_FRAM_STATUS_BYTE"), src_int("asy_fram_manager.py", "_WRN_FRAM_BLOCK_INVALID")
     # Armed once serving: the cut write freezes the whole loop, so a boot that met it first would never serve.
     with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-defer-faults", "--test-hold-system-entry", f"{errno}:cut", state_dir=state) as twin:
         twin.starves_watchdog = True
         since = twin.mark()
         twin.trigger("FAULT_ARM")
-        _expect(twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S) is not None, "the escalation's entry write never reached its first block's busy mark")
-        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, _WATCHDOG_WINDOW_S + _COMMANDED_RESET_MARGIN_S)
+        _expect(twin.wait_line("ENTRY_HELD", 0, src_int(_SYSTEM, "_TASK_CHECK_TIME") + COMMANDED_RESET_MARGIN_S) is not None, "the escalation's entry write never reached its first block's busy mark")
+        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, _WATCHDOG_WINDOW_S + COMMANDED_RESET_MARGIN_S)
         _expect(twin.run.proc.poll() is None and engaged is not None, "the watchdog did not engage behind the held entry write")
     line = parse_shutdown_line(read_log(twin.run.log_path))
-    _expect(line is not None and line.mem_backup_r0[1:2] == (_src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"),), f"the record the watchdog's reset would read is not code 20 ({line!r})")
+    _expect(line is not None and line.mem_backup_r0[1:2] == (src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"),), f"the record the watchdog's reset would read is not code 20 ({line!r})")
     _expect(parse_machine_reset_line(read_log(twin.run.log_path)) is None, "a reset ran past the held entry write")
     with ctx.boot(state_dir=state) as twin:
         table = errcount_table(HTTPStatus.OK, _status(twin.port))
@@ -889,7 +887,7 @@ _CONN = ("--test-conn-status-interval-ms", str(_CONN_STATUS_INTERVAL_MS))
 
 def _exits_with(twin: Twin, expected: int, what: str) -> None:
     twin.exit_claimed = True
-    code = wait_exit(twin.run, _commanded_reset_deadline_s())
+    code = wait_exit(twin.run, commanded_reset_deadline_s())
     _expect(code == expected, f"{what}: {exit_reason(expected)} expected, got {exit_reason(code, killed=twin.run.killed)} (exit code {code})")
     line = parse_shutdown_line(read_log(twin.run.log_path))
     _expect(line is not None and line.would_have_triggered_count == 0, f"{what}: the watchdog starved ({line!r})")
@@ -929,7 +927,7 @@ def _failed_config_snapshot(ctx: Context) -> None:
             verified = log_from(twin.run.log_path, armed).count(_VERIFY_FAILED)
             _expect(left == 0, f"{name}: {left} of {_SNAPSHOT_FAULTS} faults still queued after {_DRAIN_WAIT_S} s of GETs")
             _expect(unavailable >= 1 and unavailable + verified == _SNAPSHOT_FAULTS, f"{name}: {unavailable} GET(s) sent the marker and the verify took {verified} of {_SNAPSHOT_FAULTS} faults")
-            _expect(_has_entry(_errcount(twin.port, name), "E", _src_int(f"asy_{driver}_driver.py", "_ERR_CHIP_GET")), f"{name}'s errcount holds no CHIP_GET entry")
+            _expect(_has_entry(_errcount(twin.port, name), "E", src_int(f"asy_{driver}_driver.py", "_ERR_CHIP_GET")), f"{name}'s errcount holds no CHIP_GET entry")
             block = _object(_request(twin.port, "GET", "/sensors")).get(name)
             _expect(isinstance(block, dict) and block and "error" not in block, f"{name} once its faults are spent: {block!r}")
 
@@ -1053,7 +1051,7 @@ def _hotspot_dns(ctx: Context) -> None:
         answered(answer, "before the flood")
         redirect = _request(twin.port, "GET", "/generate_204")
         _expect(redirect.status == HTTPStatus.FOUND and redirect.headers.get("Location") == "/", f"/generate_204 in the hotspot answered {redirect.status}")
-        before = _counter(_errcount(twin.port, "DNSSRV"))
+        before = errcount_counter(_errcount(twin.port, "DNSSRV"))
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             for _n in range(_DNS_FLOOD_DATAGRAMS):
                 sock.sendto(b"\x00\x01\x02", (HOST, _DNS_PORT))  # shorter than a DNS header: dropped unparsed
@@ -1066,7 +1064,7 @@ def _hotspot_dns(ctx: Context) -> None:
             except BlockingIOError:
                 stray = b""
             _expect(stray == b"", f"the flood was answered: {stray!r}")
-        after = _counter(_errcount(twin.port, "DNSSRV"))
+        after = errcount_counter(_errcount(twin.port, "DNSSRV"))
         _expect(after == before, f"the flood was logged: DNSSRV's count {before} -> {after}")
 
 
@@ -1080,7 +1078,7 @@ def _hung_shutdown_steps(ctx: Context) -> None:
             twin.starves_watchdog = True
             _expect(twin.wait_line(f"HANG {step}", 0, _DRAIN_WAIT_S) is not None, f"{step}: the runner never armed the hang")
             if step == "S1":  # hung once the supervisor's next pass meets the ended task, which the runner's HUNG line marks
-                met = twin.wait_line("HUNG S1", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
+                met = twin.wait_line("HUNG S1", 0, src_int(_SYSTEM, "_TASK_CHECK_TIME") + COMMANDED_RESET_MARGIN_S)
                 _expect(met is not None, "S1: the supervisor's next pass never met the ended task")
             if cmd == "erasefram":
                 _save_fram_evidence(ctx, twin, f"hang_{step}")
@@ -1088,7 +1086,7 @@ def _hung_shutdown_steps(ctx: Context) -> None:
             _expect(_system_cmd(twin.port, cmd) == "Valid", f"{step}: {cmd} did not answer Valid")
             # The step is reached by the reset deadline at the latest; the watchdog engaging within the window past it, with
             # no reset first, is the property under test, so the step ends when the runner prints the engagement.
-            engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, _commanded_reset_deadline_s() + _WATCHDOG_WINDOW_S)
+            engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, commanded_reset_deadline_s() + _WATCHDOG_WINDOW_S)
             _expect(twin.run.proc.poll() is None, f"{step}: the device reset although the step hung ({exit_reason(twin.run.proc.returncode or 0)})")
             _expect(engaged is not None, f"{step} ({cmd}): the watchdog did not engage within the reset deadline and its window")
         line = parse_shutdown_line(read_log(twin.run.log_path))
@@ -1213,11 +1211,11 @@ def _load_while_ntp_is_unreachable(ctx: Context, *, writes: bool) -> None:
         answer = _request(twin.port, "PUT", "/networking", {"SSID": _SSID, "NTPHost": host})
         _expect([_result(answer, "SSID"), _result(answer, "NTPHost")] == ["Valid", "Valid"], f"the station and NTP host PUT answered {answer.status}: {answer.body[:300]!r}")
         _expect(_wait_stored(state, "NTP", "NTPHost", host) and _wait_stored(state, "WIFI", "SSID", _SSID), "the station or the NTP host never reached its config file")
-        before = _counter(_errcount(twin.port, "NTP"))
+        before = errcount_counter(_errcount(twin.port, "NTP"))
     with ctx.boot(state_dir=state) as twin:
         for name in ctx.sensors:
             _expect(_wait_reading(twin.port, name), f"{name} never read, so its task is not on the bus yet")
-        system = _counter(_errcount(twin.port, "SYSTEM"))
+        system = errcount_counter(_errcount(twin.port, "SYSTEM"))
         stop = threading.Event()
         written: list[object] = []
 
@@ -1239,8 +1237,8 @@ def _load_while_ntp_is_unreachable(ctx: Context, *, writes: bool) -> None:
         _expect(all(served.values()), f"a GET route went unserved for the whole load: {served}")
         entry = _errcount(twin.port, "NTP")
         expected, other = (_NTP_NO_REPLY, _NTP_NOT_SENT) if _route_out(host) else (_NTP_NOT_SENT, _NTP_NO_REPLY)
-        _expect(_counter(entry) > before and _has_entry(entry, "E", expected) and not _has_entry(entry, "E", other), f"NTP logged no errno {expected} for {host} past boot 1's count {before}, or errno {other}, which the route rules out: {_counter(entry)}, {_newest_entries(entry, 4)}")
-        _expect(_counter(_errcount(twin.port, "SYSTEM")) == system, "a task ended under the load")
+        _expect(errcount_counter(entry) > before and _has_entry(entry, "E", expected) and not _has_entry(entry, "E", other), f"NTP logged no errno {expected} for {host} past boot 1's count {before}, or errno {other}, which the route rules out: {errcount_counter(entry)}, {_newest_entries(entry, 4)}")
+        _expect(errcount_counter(_errcount(twin.port, "SYSTEM")) == system, "a task ended under the load")
         if writes:
             _expect(thread is not None and not thread.is_alive(), "the writer never ended, so its answers are not all in")
             _expect(written[0] is None and len(written) > 1, f"the writer raised or never wrote: {_statuses(written[:1])}")
@@ -1255,7 +1253,7 @@ def _log_at_error_level(state: Path) -> "tuple[str, ...]":
     # A boot's loggers at warning level, so a caught allocation failure's, error's or warning's line reaches the memory gate
     # (agent, 2026-10-20, extending the owner's option 1, owner, 2026-10-20: "Option 1 is good"):
     # built so by the runner's flag and kept by a stored DebugLevel, planted unless one is stored.
-    level = _src_int("asy_print_log.py", "_LOG_WARN")
+    level = src_int("asy_print_log.py", "_LOG_WARN")
     config = state_paths(state).config_dir
     config.mkdir(parents=True, exist_ok=True)
     stored = config / "config_SYSTEM.cfg"
@@ -1279,7 +1277,7 @@ def _loop_lag_under_load(ctx: Context) -> None:
         loaded = _lag_windows(under_load)
         # The next line closes the window open at the stop, which holds load; the one after it, a window begun after it.
         stopped = twin.wait_lines("LOOP_LAG ", since + len(under_load), 2, 2 * report_s + _DRAIN_WAIT_S)
-        persisted = _counter(_errcount(twin.port, "SGP40")) if sgp40 else _LOOP_LAG_FAULTS
+        persisted = errcount_counter(_errcount(twin.port, "SGP40")) if sgp40 else _LOOP_LAG_FAULTS
     # Each load source shows it ran under the load: every route answered, the storm reached its streak, each link moved.
     _expect(all(served.get(route) for route in _get_routes()), f"GET routes never served under the load: {sorted(r for r in _get_routes() if not served.get(r))}")
     _expect(not sgp40 or f"SGP40 Error counter increased to {_LOOP_LAG_FAULTS}" in under_load, f"the SGP40 fault storm never reached its {_LOOP_LAG_FAULTS}-read streak under the load")
@@ -1341,7 +1339,7 @@ def _mempause_then_reboot(ctx: Context) -> None:
         _exits_with(twin, 3, "reboot with storage paused")
     with ctx.boot(state_dir=state) as twin:
         system = _group(_status(twin.port), "system")
-        _expect(system.get("MemPaused") is False and system.get("ResetReason") == _src_int(_SYSTEM, "_RR_REBOOT"), f"the relaunch reads {system!r}")
+        _expect(system.get("MemPaused") is False and system.get("ResetReason") == src_int(_SYSTEM, "_RR_REBOOT"), f"the relaunch reads {system!r}")
 
 
 def _micropypath(device: str) -> str:
@@ -1587,7 +1585,7 @@ def _refused_config_write(ctx: Context) -> None:
             if _writable(path):
                 raise UnmetPremiseError(f"file modes do not bind for this process (a write probe opened the 0444 {path.name}), so the twin's write cannot be refused")
             _expect(_result(_request(twin.port, "PUT", "/networking", {"NTPOffset": offset + 1}), "NTPOffset") == "Valid", "the refused write's PUT did not answer Valid")
-            _expect(_wait_entry(twin.port, "CFGMGR_NTP", _DRAIN_WAIT_S, num=_src_int("asy_config_manager.py", "_ERR_CFG_FILE_WRITE")), "CFGMGR_NTP holds no CFG_FILE_WRITE entry after the refused write")
+            _expect(_wait_entry(twin.port, "CFGMGR_NTP", _DRAIN_WAIT_S, num=src_int("asy_config_manager.py", "_ERR_CFG_FILE_WRITE")), "CFGMGR_NTP holds no CFG_FILE_WRITE entry after the refused write")
         finally:
             for p, mode in modes:
                 p.chmod(mode)
@@ -1601,7 +1599,7 @@ def _refused_reset_errors(port: int, before: "dict[str, JSONObject]", when: str)
     word = _result(answer, "ResetErrors")
     _expect(answer.status == HTTPStatus.OK and word == "Failed", f"ResetErrors {when} answered {answer.status} {word!r}")
     after = _error_table(port)
-    lowered = {name: (_counter(entry), _counter(after.get(name))) for name, entry in before.items() if _counter(after.get(name)) < _counter(entry)}
+    lowered = {name: (errcount_counter(entry), errcount_counter(after.get(name))) for name, entry in before.items() if errcount_counter(after.get(name)) < errcount_counter(entry)}
     _expect(not lowered, f"ResetErrors {when} lowered error counts (before, after): {lowered}")
 
 
@@ -1642,8 +1640,8 @@ def _reset_errors_not_undone(ctx: Context) -> None:
         _expect(_wait_reading(twin.port, "SGP40"), "SGP40 never read, so its logger's setup never ran")
         entry = _errcount(twin.port, "SGP40")
         # At most this boot's own W65: its restore finds the backup chunk still blank, after the reset or before it.
-        owed = [["W", _src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")]]
-        _expect((_counter(entry), _newest_entries(entry)) in ((0, []), (1, owed)), f"SGP40 holds more than its blank chunk's W SGP_NO_BACKUP after a reset that answered 200 (the restore brought the pre-reset history back?): {entry!r}")
+        owed = [["W", src_int("asy_sgp40_driver.py", "_WRN_SGP_NO_BACKUP")]]
+        _expect((errcount_counter(entry), _newest_entries(entry)) in ((0, []), (1, owed)), f"SGP40 holds more than its blank chunk's W SGP_NO_BACKUP after a reset that answered 200 (the restore brought the pre-reset history back?): {entry!r}")
 
 
 @scenario("reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing", family="system_commands", drivers=("sgp40",))
@@ -1664,13 +1662,13 @@ def _reset_errors_under_the_escalation(ctx: Context) -> None:
     """A ResetErrors while the supervisor writes its stack-exhaustion entry answers Failed; the reboot keeps every entry, code 20."""
     key, name = _first_instance(ctx, "scd30")
     state = ctx.logs_dir / "state_escalation"
-    errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
+    errno = src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
     with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", str(errno), state_dir=state) as twin:
-        held = twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
+        held = twin.wait_line("ENTRY_HELD", 0, src_int(_SYSTEM, "_TASK_CHECK_TIME") + COMMANDED_RESET_MARGIN_S)
         held_at = time.monotonic()
         _expect(held is not None, "the supervisor's escalation never reached its entry write")
         before = _error_table(twin.port)
-        _expect(_counter(before.get(name)) > 0, f"the stack fault logged no {name} entry, so there is nothing to clear ({before.get(name)!r})")
+        _expect(errcount_counter(before.get(name)) > 0, f"the stack fault logged no {name} entry, so there is nothing to clear ({before.get(name)!r})")
         _refused_reset_errors(twin.port, before, "while the escalation writes its entry")
         held_s = time.monotonic() - held_at
         twin.trigger("ENTRY_RELEASE")
@@ -1678,9 +1676,9 @@ def _reset_errors_under_the_escalation(ctx: Context) -> None:
     with ctx.boot(state_dir=state) as twin:
         status = _status(twin.port)
         reason = _group(status, "system").get("ResetReason")
-        _expect(reason == _src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"), f"the relaunch reads ResetReason {reason!r}")
+        _expect(reason == src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"), f"the relaunch reads ResetReason {reason!r}")
         after = errcount_table(HTTPStatus.OK, status)
-        _expect(_counter(after.get(name)) >= _counter(before[name]), f"{name}'s entries did not survive into the reboot ({before[name]!r} -> {after.get(name)!r})")
+        _expect(errcount_counter(after.get(name)) >= errcount_counter(before[name]), f"{name}'s entries did not survive into the reboot ({before[name]!r} -> {after.get(name)!r})")
         _expect(_has_entry(after.get("SYSTEM"), "E", errno), f"SYSTEM's history holds no stack-exhaustion entry ({after.get('SYSTEM')!r})")
 
 
@@ -1691,7 +1689,7 @@ def _reset_errors_under_mempause(ctx: Context) -> None:
     fram = next(key for key, driver, _ext in ctx.instances if driver == "fram")
     with ctx.boot("--fault", f"{key}:writeto:1", "--fault", f"{fram}:wren:2") as twin:
         _expect(_wait_entry(twin.port, name), f"the injected write fault never logged a {name} error, so there is nothing to clear")
-        wel = _src_int("asy_fram_driver.py", "_WRN_FRAM_WEL_NOT_SET")
+        wel = src_int("asy_fram_driver.py", "_WRN_FRAM_WEL_NOT_SET")
         _expect(_wait_entry(twin.port, "FRAM", kind="W", num=wel), "the dropped write-enables never logged a FRAM warning, so its RAM-only log holds nothing")
         before = _error_table(twin.port)
         _expect(_system_cmd(twin.port, "mempause") == "Valid", "mempause did not answer Valid")
@@ -1705,8 +1703,8 @@ def _reset_fire_dropped(ctx: Context) -> None:
         twin.starves_watchdog = True
         since = twin.mark()
         _expect(_system_cmd(twin.port, "reboot") == "Valid", "reboot did not answer Valid")
-        dropped = twin.wait_line("FIRE_DROPPED reset", since, _commanded_reset_deadline_s())
-        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, _commanded_reset_deadline_s() + _WATCHDOG_WINDOW_S)
+        dropped = twin.wait_line("FIRE_DROPPED reset", since, commanded_reset_deadline_s())
+        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, commanded_reset_deadline_s() + _WATCHDOG_WINDOW_S)
         _expect(twin.run.proc.poll() is None, f"the device reset although its reset one-shot's fire was dropped ({exit_reason(twin.run.proc.returncode or 0)})")
         _expect(engaged is not None, "the watchdog did not engage once the reset one-shot's fire was dropped")
         _expect(dropped is not None and int(dropped.split("=")[1]) >= 1, f"the knob dropped nothing before the watchdog engaged: {dropped!r}")
@@ -1806,13 +1804,7 @@ def _run_selection(text: str) -> frozenset[str]:
 
 
 def _save_fram_evidence(ctx: Context, twin: Twin, label: str) -> None:
-    # Before any erasefram: the errcount table over REST and a copy of the FRAM state file (CLAUDE.md's FRAM-log rule).
-    evidence = ctx.logs_dir / f"fram_evidence_{label}"
-    evidence.mkdir(parents=True, exist_ok=True)
-    (evidence / "errcount.json").write_text(json.dumps(_status(twin.port).get("errcount"), indent=2), encoding="utf-8")
-    fram = state_paths(twin.run.state_dir).fram
-    if fram.exists():
-        shutil.copy2(fram, evidence / fram.name)
+    save_fram_evidence(ctx.logs_dir / f"fram_evidence_{label}", _status(twin.port).get("errcount"), twin.run.state_dir)
 
 
 def _send_buffer_floor() -> int:
@@ -1838,7 +1830,7 @@ def _simultaneous_bodies(ctx: Context) -> None:
         _expect(twin.drained(), "the readiness probe's slot never came back")
         writes = _together(ceiling, lambda i: _config_write(twin.port, i))
         _expect(writes == [(HTTPStatus.OK, "Valid")] * ceiling, f"writes: {_statuses(writes)}")
-        cap = _src_int(_WEBSERVER, "_DEFAULT_MAX_CONTENT_LENGTH")
+        cap = src_int(_WEBSERVER, "_DEFAULT_MAX_CONTENT_LENGTH")
         padding = cap - len(json.dumps({"NTPHost": ""}))
 
         def sized(nbytes: int) -> "int | str":
@@ -1979,8 +1971,6 @@ def _slow_put(port: int, delay_s: float) -> int:
     return int(line.split()[1])
 
 
-def _src_int(filename: str, name: str) -> int:
-    return module_int_const(SRC_DIR, filename, name)
 
 
 @scenario("a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection", family="webserver_concurrency", shared=True, moves=("WEBSERVER",))
@@ -2138,11 +2128,11 @@ def _uart_load_round(ctx: Context, hold: int, *, stall_max: bool) -> int:
     with ctx.boot(*_CONN, *fault, "--test-flash-stall-max" if stall_max else "--test-uart-over-cap") as twin:
         _uart_load(ctx, twin)
         if fault:
-            _expect(_counter(_errcount(twin.port, "SGP40")) >= 1, f"{stall} stall: the FRAM-log fault never logged, so no log write ran under the load")
+            _expect(errcount_counter(_errcount(twin.port, "SGP40")) >= 1, f"{stall} stall: the FRAM-log fault never logged, so no log write ran under the load")
         if not stall_max:
             offers = [line.split()[1:] for line in log_from(twin.run.log_path, 0).splitlines() if line.startswith("UART_OVER_CAP ")]
             _expect(sorted(offers) == [[key, "refused"] for key in initiators], f"the over-cap offers ended {offers}, not one refusal per initiating link {initiators}")
-            refusals = {_src_int("asy_uart_comm.py", name) for name in ("_ERR_UART_PAYLOAD_TOO_LARGE", "_ERR_UART_TRANSFER_CAP")}
+            refusals = {src_int("asy_uart_comm.py", name) for name in ("_ERR_UART_PAYLOAD_TOO_LARGE", "_ERR_UART_TRANSFER_CAP")}
             for key in initiators:
                 entry = _errcount(twin.port, f"UART_{links[key]}")
                 history = entry.get("history")
@@ -2169,7 +2159,7 @@ def _uart_load_round(ctx: Context, hold: int, *, stall_max: bool) -> int:
 @scenario("uart_ring_under_concurrent_load", family="uart_load", drivers=("uart_link",))
 def _uart_ring_under_load(ctx: Context) -> None:
     """Both links exercise through a ceiling hammer, FRAM-log writes and config flushes at the typical then the maximum flash stall: no overrun, a train past the cap refused once, the heap unfragmented."""
-    hold = _src_int("asy_uart_comm.py", "_FLASH_HOLD_MAX_MS")
+    hold = src_int("asy_uart_comm.py", "_FLASH_HOLD_MAX_MS")
     typical = _uart_load_round(ctx, hold, stall_max=False)
     longest = _uart_load_round(ctx, hold, stall_max=True)
     _expect(longest > typical, f"the maximum stall's longest flush {longest} ms is no longer than the typical {typical} ms: the flag did not reach the stall")
@@ -2217,7 +2207,7 @@ def _watchdog_fault(ctx: Context, kind: str) -> None:
         at = twin.wait_line(_WATCHDOG_FAULT_LINE, 0, _SERVING_TIMEOUT_S)
         if at is None:
             raise AssertionError(f"{kind}: the runner never reached its fault (no {_WATCHDOG_FAULT_LINE.strip()} line)")
-        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", 0, _WATCHDOG_WINDOW_S + _COMMANDED_RESET_MARGIN_S)
+        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", 0, _WATCHDOG_WINDOW_S + COMMANDED_RESET_MARGIN_S)
         _expect(twin.run.proc.poll() is None, f"{kind}: the twin ended under the fault ({exit_reason(twin.run.proc.returncode or 0)})")
         _expect(engaged is not None, f"{kind}: the watchdog did not engage within {_WATCHDOG_WINDOW_S:g} s of the fault and its margin")
     fed = int(at.split(_WATCHDOG_FAULT_LINE, 1)[1].split()[0])
@@ -2271,7 +2261,7 @@ def _zero_think_readers(ctx: Context) -> None:
     with ctx.boot() as twin:
         level = _object(_request(twin.port, "GET", "/system")).get("DebugLevel")
         _expect(isinstance(level, int), f"GET /system holds no DebugLevel ({level!r})")
-        system = _counter(_errcount(twin.port, "SYSTEM"))
+        system = errcount_counter(_errcount(twin.port, "SYSTEM"))
         stop = threading.Event()
 
         def reader(_i: int) -> "tuple[int, int, list[str]]":
@@ -2317,7 +2307,7 @@ def _zero_think_readers(ctx: Context) -> None:
             word = "refused"
         put_s = time.monotonic() - began
         try:
-            after: int | None = _counter(_errcount(twin.port, "SYSTEM"))
+            after: int | None = errcount_counter(_errcount(twin.port, "SYSTEM"))
         except RefusedError:
             after = None  # judged after the readers' own verdict
         reset = parse_machine_reset_line(read_log(twin.run.log_path))

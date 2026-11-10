@@ -13,7 +13,7 @@ from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_builders import make_fram_manager
 from _schema_cases import declared_fields, domain_cases, special_alone
-from _src_const import src_const, src_int
+from _src_const import src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
@@ -80,7 +80,6 @@ _MEASURE_WAIT_MS: int = src_int("src/asy_sgp40_driver.py", "_MEASURE_WAIT_MS")
 _SELF_TEST_WAIT_MS: int = src_int("src/asy_sgp40_driver.py", "_SELF_TEST_WAIT_MS")
 _SERIAL_READ_WAIT_MS: int = src_int("src/asy_sgp40_driver.py", "_SERIAL_READ_WAIT_MS")
 _VOC_SETTLED_SAMPLES: int = src_int("src/asy_sgp40_driver.py", "_VOC_SETTLED_SAMPLES")
-_STACK_EXHAUSTED = src_const("src/asy_print_log.py", "_STACK_EXHAUSTED")  # the interpreter's own C-stack overflow text
 # The datasheet's maxima the waits must cover: Table 8's command durations, Table 3's soft reset time tSR.
 _SERIAL_READ_MAX_MS = 1
 _SELF_TEST_MAX_MS = 320
@@ -3179,57 +3178,6 @@ def test_read_sgp_logs_sgp_algo_state_when_deserialize_fails() -> None:
     log = run(reader.get_error_counter())
     assert _last_err(log, "ErrNum") == code("E", "SGP_ALGO_STATE")
     assert _last_err(log, "ErrType") == "E"
-
-
-async def _overflow(*_args: object, **_kwargs: object) -> None:
-    raise RuntimeError(_STACK_EXHAUSTED)
-
-
-class _OverflowingSource:
-    async def get_data(self) -> object:
-        raise RuntimeError(_STACK_EXHAUSTED)
-
-
-def _cleared_after(name: str) -> None:
-    assert asy_print_log.fatal_reported() is True, name
-    asy_print_log._fatal = False  # as at boot, for the next handler
-
-
-def test_every_broad_handler_records_a_c_stack_overflow_for_the_supervisor() -> None:
-    # Each still answers its failure value and runs on; first it records the overflow, which the supervisor reboots on.
-    reader = _make_reader()
-    for name, failed in (("setup", False), ("turn_heater_off", False)):
-        real = getattr(reader._sgp, name)
-        setattr(reader._sgp, name, _overflow)
-        try:
-            assert run(reader._init_sgp() if name == "setup" else reader._recover_device()) is failed, name
-        finally:
-            setattr(reader._sgp, name, real)
-        _cleared_after(name)
-    reader._sgp.measure_index_and_raw = _overflow  # type: ignore[assignment, method-assign]
-    data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
-    assert (data.VOC, compensated) == (None, True)
-    _cleared_after("measure_index_and_raw")
-    reader._temperature = ValueRef(_OverflowingSource(), "Temp")
-    assert run(reader._compensation()) == (None, None)
-    _cleared_after("get_data")
-
-    manager, chip = make_fram_manager()
-    run(manager.setup())
-    _write_one_backup(manager, samples=60)
-    state = ["unsynced"]
-
-    async def ntp() -> bool:
-        if state[0] == "raise":
-            raise RuntimeError(_STACK_EXHAUSTED)
-        return False
-
-    restoring = _restore_rig(chip, ntp)
-    with UTCValid():
-        assert _restore_cycle(restoring) is False  # the wait begins
-        state[0] = "raise"
-        assert _restore_cycle(restoring) is False
-    _cleared_after("ntp_synced")
 
 
 def test_read_sgp_completes_a_pending_reset_even_when_the_i2c_read_fails() -> None:

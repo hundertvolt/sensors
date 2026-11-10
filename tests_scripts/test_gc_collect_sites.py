@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 _ALLOWED_SRC = "import gc\n\n\nclass SystemService:\n    async def run_setups(self) -> None:\n        gc.collect()\n\n    async def start_tasks(self) -> None:\n        gc.collect()\n"
 _RULE = " is not an allowed site (SPECIFICATION.md I.4(e)/(f.1))"
-_SCOPES = ("src", "tests", "digital_twin", "tests_hardware")
+_SCOPES = ("src", "tests", "digital_twin", "fakes", "tests_hardware")
 
 
 def _stamped(tree: Path, module: str = "x = 1\n") -> Path:

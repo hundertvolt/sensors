@@ -61,8 +61,6 @@ _BMP_ADDR = 0x77
 _SGP_ADDR = 0x59
 _ISL_ADDR = 0x44  # hard-wired (FN8424 p15), sharing i2c1 with SCD30 and SGP40 where a TOML puts it there
 _GENERAL_CALL_ADDR = 0x00
-# How long a sibling's loop may take to finish beside a faulting device; a lock the fault stranded never finishes.
-_ISOLATION_BOUND_S = 5
 # The BMP3XX pressure the catalog's planted calibration and ADC bytes give, by hand: BMP388 datasheet §9.1 and §9.3
 # (its temperature is the catalog's BMP_EXPECTED_TEMPERATURE).
 _BMP_EXPECTED_PRESSURE_HPA = 713.765147356092
@@ -264,10 +262,7 @@ def test_sgp40_bus_fault_does_not_corrupt_or_stall_a_concurrent_isl29125_read() 
             await asyncio.sleep(0)
 
     async def bounded() -> None:
-        try:
-            await asyncio.wait_for(_gather(isl_loop(), sgp_loop()), _ISOLATION_BOUND_S)
-        except asyncio.TimeoutError:
-            raise AssertionError("the shared I2C lock was not released after the SGP40's EIO - the ISL29125 loop never finished") from None
+        await _gather(isl_loop(), sgp_loop())  # a lock the EIO left held hangs the ISL29125 loop
 
     with FastAsyncSleep():
         run(bounded())
@@ -644,10 +639,7 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
             fram._read_address(0, bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
         except OSError:
             raised = True
-        try:
-            await asyncio.wait_for(neighbour_writes(), _ISOLATION_BOUND_S)
-        except asyncio.TimeoutError:
-            raise AssertionError("the shared SPI lock was not released after the FRAM's overrun - the neighbour never wrote") from None
+        await neighbour_writes()  # a lock the overrun left held hangs the neighbour
         return raised
 
     assert run(scenario())

@@ -18,9 +18,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
 
-# The real-time hang bound around each driven run: the clock itself fails a stalled one in virtual time first.
-_RUN_BOUND_S = 5
-
 
 class _Module:
     # A product module stand-in: DrivenTime replaces its `time` and, with sleeps, its `asyncio` for the block.
@@ -83,7 +80,7 @@ def test_two_sleepers_wake_in_deadline_order_each_at_its_own_time() -> None:
         await cancel_all(tasks)
 
     with DrivenTime(module, sleeps=True) as clock:
-        run(scenario(clock), _RUN_BOUND_S)
+        run(scenario(clock))
     assert woke == [("early", 10), ("late", 20)], woke
     assert clock.now == 30
 
@@ -101,7 +98,7 @@ def test_elapse_never_wakes_a_sleeper_before_its_deadline() -> None:
         return after_100
 
     with DrivenTime(module, sleeps=True) as clock:
-        after_100 = run(scenario(clock), _RUN_BOUND_S)
+        after_100 = run(scenario(clock))
     assert after_100 == ([("due", 100)], [101]), after_100
     assert woke == [("due", 100), ("next", 101)], woke
 
@@ -121,7 +118,7 @@ def test_a_ticks_diff_across_the_2_30_wrap_equals_the_elapsed_virtual_time() -> 
         await cancel(task)
 
     with DrivenTime(module, now=TICKS_PERIOD - 10, sleeps=True) as clock:
-        run(scenario(clock), _RUN_BOUND_S)
+        run(scenario(clock))
         assert seen == [TICKS_PERIOD - 10, 15], seen
         assert clock.ticks_diff(seen[1], seen[0]) == 25
 
@@ -150,7 +147,7 @@ def test_a_module_without_a_clock_gets_driven_sleeps_and_no_time() -> None:
 
     with DrivenTime(module, sleeps=True) as clock:
         inside = (hasattr(module, "time"), module.asyncio is asyncio)
-        woke = run(scenario(clock), _RUN_BOUND_S)
+        woke = run(scenario(clock))
     assert (inside, woke) == ((False, False), True), (inside, woke)
     assert not hasattr(module, "time") and module.asyncio is asyncio
     try:
@@ -194,7 +191,7 @@ def test_wait_for_times_out_after_its_bound_and_not_before() -> None:
     for seconds, bound_ms in ((True, 1000), (False, 250)):
         ended.clear()
         with DrivenTime(module, sleeps=True) as clock:
-            outcome = run(scenario(clock, seconds, bound_ms), _RUN_BOUND_S)
+            outcome = run(scenario(clock, seconds, bound_ms))
             assert clock.wakes() == [], clock.wakes()
         assert outcome == (True, f"timed out at {bound_ms}", ["inner ended"]), (seconds, outcome)
 
@@ -222,7 +219,7 @@ def test_wait_for_hands_back_the_result_or_the_failure_that_came_first() -> None
         return [await good, await bad, clock.wakes()]
 
     with DrivenTime(module, sleeps=True) as clock:
-        assert run(scenario(clock), _RUN_BOUND_S) == ["7 at 100", "refused at 100", []]
+        assert run(scenario(clock)) == ["7 at 100", "refused at 100", []]
 
 
 def test_a_cancelled_wait_for_cancels_what_it_awaits() -> None:
@@ -249,7 +246,7 @@ def test_a_cancelled_wait_for_cancels_what_it_awaits() -> None:
         return [outcome, list(ended), clock.wakes()]
 
     with DrivenTime(module, sleeps=True) as clock:
-        assert run(scenario(clock), _RUN_BOUND_S) == ["cancelled", ["inner cancelled"], []]
+        assert run(scenario(clock)) == ["cancelled", ["inner cancelled"], []]
 
 
 def test_a_cancel_landing_before_the_runner_runs_still_cancels_the_wait() -> None:
@@ -272,10 +269,10 @@ def test_a_cancel_landing_before_the_runner_runs_still_cancels_the_wait() -> Non
         except asyncio.CancelledError:
             return "cancelled"
 
-    assert run(scenario(_Module()), _RUN_BOUND_S) == "cancelled"  # the real asyncio
+    assert run(scenario(_Module())) == "cancelled"  # the real asyncio
     module = _Module()
     with DrivenTime(module, sleeps=True) as clock:
-        outcome = run(scenario(module), _RUN_BOUND_S)
+        outcome = run(scenario(module))
         assert clock.wakes() == [], clock.wakes()
     assert outcome == "cancelled", outcome
 
@@ -299,7 +296,7 @@ def test_a_result_ready_before_its_released_bound_has_run_still_wins() -> None:
         return [await task, clock.wakes()]
 
     with DrivenTime(module, sleeps=True) as clock:
-        assert run(scenario(clock), _RUN_BOUND_S) == [7, []]
+        assert run(scenario(clock)) == [7, []]
 
 
 def test_a_cancelled_sleeper_leaves_the_queue_and_never_wakes() -> None:
@@ -315,7 +312,7 @@ def test_a_cancelled_sleeper_leaves_the_queue_and_never_wakes() -> None:
         return parked + clock.wakes()
 
     with DrivenTime(module, sleeps=True) as clock:
-        assert run(scenario(clock), _RUN_BOUND_S) == [50]
+        assert run(scenario(clock)) == [50]
     assert woke == []
 
 
@@ -334,7 +331,7 @@ def test_a_task_woken_off_its_driven_sleep_ends_that_sleep_at_once() -> None:
         return [task.done(), clock.wakes()]
 
     with DrivenTime(module, sleeps=True) as clock:
-        outcome = run(scenario(clock), _RUN_BOUND_S)
+        outcome = run(scenario(clock))
     assert (outcome, woke) == ([True, []], [("early", 10)]), (outcome, woke)
 
 
@@ -350,7 +347,7 @@ def test_a_cancel_through_the_clock_drives_the_sleep_the_cancelled_task_cleans_u
         return [task.done(), clock.now, clock.wakes()]
 
     with DrivenTime(module, sleeps=True) as clock:
-        outcome = run(scenario(clock), _RUN_BOUND_S)
+        outcome = run(scenario(clock))
     assert (outcome, steps) == ([True, 110, []], ["settled at 110"]), (outcome, steps)
 
 
@@ -369,7 +366,7 @@ def test_a_cancelled_task_that_outlasts_the_bound_fails_naming_the_virtual_time(
         return said
 
     with DrivenTime(module, sleeps=True) as clock:
-        said = run(scenario(clock), _RUN_BOUND_S)
+        said = run(scenario(clock))
     assert said.endswith("never ended - run_until: the condition still fails at virtual t=510 ms, 500 ms after t=10"), said
 
 
@@ -417,7 +414,7 @@ def test_run_until_stops_at_the_first_wake_that_makes_the_predicate_hold() -> No
         return took
 
     with DrivenTime(module, now=5, sleeps=True) as clock:
-        assert run(scenario(clock), _RUN_BOUND_S) == 300
+        assert run(scenario(clock)) == 300
         assert clock.now == 305
     assert woke == [105, 205, 305], woke
 
@@ -438,7 +435,7 @@ def test_run_until_takes_a_wake_at_its_limit_and_fails_past_it_naming_the_virtua
 
     for due_ms, said in ((500, "held after 500"), (501, "run_until: the condition still fails at virtual t=500 ms, 500 ms after t=0")):
         with DrivenTime(module, sleeps=True) as clock:
-            assert run(scenario(clock, due_ms), _RUN_BOUND_S) == said, (due_ms, said)
+            assert run(scenario(clock, due_ms)) == said, (due_ms, said)
 
 
 def test_jump_wakes_each_overdue_sleeper_once_at_the_jumped_time() -> None:
@@ -457,7 +454,7 @@ def test_jump_wakes_each_overdue_sleeper_once_at_the_jumped_time() -> None:
         return parked
 
     with DrivenTime(module, sleeps=True) as clock:
-        assert run(scenario(clock), _RUN_BOUND_S) == [10_001, 10_001]
+        assert run(scenario(clock)) == [10_001, 10_001]
         assert clock.now == 10_001, clock.now
     assert ticks == [10_000], ticks  # one wake for ten thousand periods: a stall, not a replay
     assert woke == [("at the target", 10_000), ("past it", 10_001)], woke
@@ -480,7 +477,7 @@ def test_a_plain_advance_releases_a_due_sleeper_late_never_early() -> None:
         return early
 
     with DrivenTime(module, sleeps=True) as clock:
-        assert run(scenario(clock), _RUN_BOUND_S) == []
+        assert run(scenario(clock)) == []
     assert woke == [("late", 150)], woke
 
 
@@ -502,7 +499,7 @@ def test_a_busy_loop_fails_at_the_round_cap_naming_the_virtual_time() -> None:
         return "elapsed"
 
     with DrivenTime(module, now=1234, sleeps=True) as clock:
-        said = run(scenario(clock), _RUN_BOUND_S)
+        said = run(scenario(clock))
     assert said == f"a task is still runnable after {DrivenTime.ROUNDS} rounds at virtual t=1234 ms: a busy loop", said
 
 
@@ -522,7 +519,7 @@ def test_the_parked_sleeper_queue_is_bounded() -> None:
         return "parked one more"
 
     with DrivenTime(module, sleeps=True) as clock:
-        said = run(scenario(clock), _RUN_BOUND_S)
+        said = run(scenario(clock))
     assert said == f"more than {DrivenTime.SLEEPERS} driven sleepers parked at virtual t=0 ms", said
     assert woke == []
 
@@ -542,7 +539,7 @@ def test_a_zero_sleep_is_one_real_yield_and_a_float_sleep_ms_is_refused() -> Non
         return [clock.now, clock.wakes(), refused]
 
     with DrivenTime(module, sleeps=True) as clock:
-        assert run(scenario(clock), _RUN_BOUND_S) == [0, [], "can't convert float to int"]
+        assert run(scenario(clock)) == [0, [], "can't convert float to int"]
 
 
 def test_a_driven_sleep_or_bound_refuses_a_delay_rp2s_ticks_cannot_hold() -> None:
@@ -571,7 +568,7 @@ def test_a_driven_sleep_or_bound_refuses_a_delay_rp2s_ticks_cannot_hold() -> Non
         return [parked, await refused(False), await refused(True), clock.wakes()]
 
     with DrivenTime(module, sleeps=True) as clock:
-        said = run(scenario(clock), _RUN_BOUND_S)
+        said = run(scenario(clock))
     assert said == [[(1 << 29) - 1], "ticks interval overflow", "ticks interval overflow", []], said
 
 
@@ -595,7 +592,7 @@ def test_release_runs_the_clock_on_at_the_real_rate_and_wakes_each_parked_sleep_
         return real_ms, module.asyncio is asyncio, "moved after release"
 
     with DrivenTime(module, sleeps=True) as clock:
-        real_ms, restored, refused = run(scenario(clock), _RUN_BOUND_S)
+        real_ms, restored, refused = run(scenario(clock))
         assert clock.wakes() == [], clock.wakes()
     assert 199 <= real_ms < 2000, f"the parked sleep ended {real_ms} real ms after release, not after the 200 it had left"
     assert len(woke) == 1 and 300 <= woke[0][1] < 300 + real_ms, woke
@@ -633,7 +630,7 @@ def test_a_bound_parked_at_release_keeps_awaiting_its_task_and_ends_on_the_real_
         return results
 
     with DrivenTime(module, sleeps=True) as clock:
-        outcome = run(scenario(clock), _RUN_BOUND_S)
+        outcome = run(scenario(clock))
     assert outcome[0] == "slept 150", outcome
     assert outcome[1].startswith("timed out at ") and 200 <= int(outcome[1].split()[-1]) < 2000, outcome
     assert sorted(ended) == ["inner 150 ended", "inner 5000 ended"], ended

@@ -30,7 +30,6 @@ _BAUD = 115200  # J.6's line rate
 _TIMEOUT_MS = 30
 # A rejected frame is answered by silence, so each verdict waits one window past the responder's own timeout.
 _QUIET_WINDOW_MS = 45
-_RUN_LIMIT_S = 120
 _SETTLE_MS = 5  # the responder's last read after the clean exchange's call returned
 _RETURN_POLL_MS = 1  # a real look at whether the responder's call has returned
 
@@ -83,7 +82,7 @@ def _pair(crc: "CrcMaker") -> Pair:
     # budget: both ends and both wire directions at J.6's line rate (attributes, as an init() would undo the DMA routing).
     pair.fake_a.baudrate = pair.fake_b.baudrate = pair.driver_a.baudrate = pair.driver_b.baudrate = _BAUD
     pair.link.a_to_b.baudrate = pair.link.b_to_a.baudrate = _BAUD
-    assert run(pair.setup(), _RUN_LIMIT_S) is True
+    assert run(pair.setup()) is True
     return pair
 
 
@@ -126,7 +125,7 @@ def _sweep(field: str, crc: "CrcMaker") -> None:
         return wrong, clean
 
     with PollRoundClock():
-        wrong, clean = run(scenario(), _RUN_LIMIT_S)
+        wrong, clean = run(scenario())
     assert wrong == [], wrong
     assert clean == b"v", f"the exchange after the {field} sweep answered {clean!r}"
 

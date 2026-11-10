@@ -384,7 +384,7 @@ def test_fram_cs_pin_hijack_fault_injection_and_recovery(board: Board) -> None:
     write, read, wren = (facts[key] for key in ("write_hijack", "read_hijack", "wren_dropped"))
     assert isinstance(write, dict) and isinstance(read, dict) and isinstance(wren, dict), facts
     assert write["injected"] and read["injected"] and wren["injected"], f"an injection never landed with CS asserted: {write}, {read}, {wren}"
-    # Hard requirement (owner, 2026-09-04): a hijacked write never reaches the chip, a hijacked read never returns real data.
+    # Both hijack properties (agent, 2026-09-04; FRAM datasheet pin table): a hijacked write never reaches the chip, a hijacked read never returns real data.
     assert write["readback_ok"] is True, f"the hijacked write reached the chip although CS was deasserted first: {write}"
     assert read["real_data_returned"] is False, f"the hijacked read returned the real data: {read}"
     assert write["recovered"] and read["recovered"], f"the driver did not recover: {write}, {read}"

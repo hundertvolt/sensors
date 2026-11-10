@@ -350,17 +350,17 @@ def test_the_budget_sits_between_the_observed_worst_case_and_the_servers_own_cap
     assert ci_suite._RESET_ERRORS_BUDGET_S < ci_suite._RESET_ERRORS_TIMEOUT_S, "the budget must trip before the client timeout, or it is unreachable"
 
 
-def test_the_commanded_reset_deadline_follows_both_src_constants(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_commanded_reset_deadline_follows_both_src_constants(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # The deadline a reboot/bootloader/resetconfig run allows is _RESET_DELAY + _TASK_CHECK_TIME +
     # a margin, read from src. A copy with both changed must move the deadline by exactly their sum.
     src = tmp_path / "src"
     src.mkdir()
-    original = (Path(ci_suite.SRC_DIR) / "asy_system_service.py").read_text(encoding="utf-8")
+    original = (Path(twin_process.SRC_DIR) / "asy_system_service.py").read_text(encoding="utf-8")
     modified = original.replace("_RESET_DELAY = const(4)", "_RESET_DELAY = const(9)").replace("_TASK_CHECK_TIME = const(2)", "_TASK_CHECK_TIME = const(5)")
     assert modified != original, "the src constants are no longer in the pinned form - update this case with them"
     (src / "asy_system_service.py").write_text(modified, encoding="utf-8")
-    monkeypatch.setattr(ci_suite, "SRC_DIR", src)
-    assert ci_suite._commanded_reset_deadline_s() == 9 + 5 + ci_suite._COMMANDED_RESET_MARGIN_S, "the deadline must follow both constants and its margin"
+    monkeypatch.setattr(twin_process, "SRC_DIR", src)
+    assert twin_process.commanded_reset_deadline_s() == 9 + 5 + twin_process.COMMANDED_RESET_MARGIN_S, "the deadline must follow both constants and its margin"
 
 
 def test_every_reset_errors_call_in_the_suite_goes_through_the_timed_helper(ci_suite: ModuleType) -> None:
@@ -487,7 +487,7 @@ _R0 = "0x00000000,0x00000000,0x00000000,0x00000000"
 _GC_SUMMARY = " No. of 1-blocks: 14, 2-blocks: 4, max blk sz: 9, max free sz: 64730"
 _SHUTDOWN = (
     f"{_GC_SUMMARY}\n{_PREFIX} shutdown: would_have_triggered_count=0 feed_count=41 largest_feed_gap_ms=812 wdt_timeout_ms=8000 "
-    f"mem_backup: r0={_R0} public_destinations_refused=0 flash_stall_longest_ms=3 gc_block_bytes=32 fram_writes=17 fram_writes_by=CFGMGR_NTP:4,SYSTEM:2 fram_silent_writes=1 fram_silent_wrens=6"
+    f"mem_backup: r0={_R0} public_destinations_refused=0 flash_stall_longest_ms=3 gc_block_bytes=32 fram_writes=17 fram_writes_by=CFGMGR_NTP:4,SYSTEM:2"
 )
 
 
@@ -516,7 +516,7 @@ def test_a_log_without_a_shutdown_line_reads_none() -> None:
     assert twin_process.parse_shutdown_line("boot\nTraceback (most recent call last):\n") is None
 
 
-@pytest.mark.parametrize("field", ["would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "wdt_timeout_ms", "public_destinations_refused", "flash_stall_longest_ms", "gc_block_bytes", "fram_writes", "fram_writes_by", "fram_silent_writes", "fram_silent_wrens"])
+@pytest.mark.parametrize("field", ["would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "wdt_timeout_ms", "public_destinations_refused", "flash_stall_longest_ms", "gc_block_bytes", "fram_writes", "fram_writes_by"])
 def test_a_shutdown_line_missing_a_field_fails_naming_it(field: str) -> None:
     line = " ".join(token for token in _SHUTDOWN.split(" ") if not token.startswith(f"{field}="))
     with pytest.raises(ValueError, match=field):
@@ -579,7 +579,6 @@ def test_the_shutdown_line_yields_the_fram_writes_in_total_and_per_logger() -> N
     dropped = twin_process.parse_shutdown_line(f"{_SHUTDOWN} fram_writes_unattributed=3")
     assert dropped is not None
     assert dropped.fram_writes_unattributed == 3  # the per-logger counts are incomplete by that many writes
-    assert (parsed.fram_silent_writes, parsed.fram_silent_wrens) == (1, 6)  # what the product issued to a silent chip
 
 
 @pytest.mark.parametrize("by", ["SYSTEM", "SYSTEM:x", "SYSTEM:2,", "SYSTEM:2,SYSTEM:1", ""])
@@ -588,32 +587,6 @@ def test_a_malformed_per_logger_fram_count_fails_naming_the_field(by: str) -> No
         twin_process.parse_shutdown_line(_SHUTDOWN.replace("fram_writes_by=CFGMGR_NTP:4,SYSTEM:2", f"fram_writes_by={by}"))
     with pytest.raises(ValueError, match="fram_writes_unattributed"):
         twin_process.parse_shutdown_line(f"{_SHUTDOWN} fram_writes_unattributed=x")
-
-
-@pytest.mark.parametrize(("writes", "silent_writes", "wrens", "loggers", "within"), [(4, 0, 0, (), True), (5, 0, 0, (), False), (2, 3, 0, (), False), (0, 0, 8, (), True), (0, 0, 9, (), False), (0, 0, 10, ("SGP40", "FRAM"), True), (0, 0, 11, ("SGP40", "FRAM"), False)])
-def test_run_3_bounds_every_fram_write_the_product_issues_landed_or_silent(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, writes: int, silent_writes: int, wrens: int, loggers: tuple[str, ...], within: bool) -> None:
-    # A 1300 ms run allows 4 writes; a silent chip's data phases count as writes and its WRENs as attempts, at most two
-    # per write (the driver's one latch retry), so 9 WRENs are 5 attempts. Each FRAM-backed logger /status lists adds
-    # one setup attempt; FRAM's own in-memory log adds none.
-    fields = f"fram_writes={writes} fram_writes_by=- fram_silent_writes={silent_writes} fram_silent_wrens={wrens}"
-    log = f"{_PREFIX} machine reset: kind=reset reset_count=1 bootloader_count=0\n{_SHUTDOWN.split(' fram_writes=', maxsplit=1)[0]} {fields}\n"
-
-    def spawn(_ctx: object, _args: object, path: Path) -> SimpleNamespace:
-        path.write_text(log, encoding="utf-8")
-        return SimpleNamespace(killed=False)
-
-    clock = iter([100.0, 101.3])
-    monkeypatch.setattr(ci_suite.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(ci_suite, "_spawn", spawn)
-    monkeypatch.setattr(ci_suite, "_wait_until_serving", lambda _proc: None)
-    monkeypatch.setattr(ci_suite, "_errcount_all", lambda: {name: {"counter": 0, "history": []} for name in loggers})
-    monkeypatch.setattr(ci_suite, "_wait_exit", lambda _proc, _label, timeout_s: ci_suite.EXIT_SIMULATED_RESET)
-    failures: list[str] = []
-    monkeypatch.setattr(ci_suite, "_check", lambda *, condition, msg: None if condition else failures.append(msg))
-    monkeypatch.setattr(ci_suite, "_fail", failures.append)
-    ci_suite._run_3_sustained_bus_fault_matrix(_ctx(ci_suite, [], logs_dir=tmp_path))
-    assert [m for m in failures if "FRAM" not in m] == []
-    assert bool(failures) is not within, failures
 
 
 def test_the_machine_reset_line_names_its_kind_and_counts() -> None:

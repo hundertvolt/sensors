@@ -85,13 +85,9 @@ def _wlan(conn: WifiService) -> "_FakeWLAN":
 _scratch = TmpScratch("integ")
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
 def _make_conn(cfg_path: "str | None" = None) -> WifiService:
     if cfg_path is None:
-        cfg_path = _tmp_cfg_dir()
+        cfg_path = _scratch.dir()
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=cfg_path)
     run(conn.setup())
     return conn
@@ -106,7 +102,7 @@ def _make_ntp(
     # The generated build_system() wiring (buildgen/codegen.py): the three providers passed positionally, the real
     # bound methods, not a lambda standing in for them.
     if cfg_path is None:
-        cfg_path = _tmp_cfg_dir()
+        cfg_path = _scratch.dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.

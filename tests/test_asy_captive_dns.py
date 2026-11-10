@@ -555,41 +555,6 @@ def test_run_rejects_invalid_server_ip_or_netmask_logs_a_persisted_error() -> No
     assert server._udps._sock is None
 
 
-def test_run_cancellation_disconnects_cleanly() -> None:
-    fake = _FakeUDPS([])
-
-    async def scenario() -> None:
-        server = CaptiveDNS()
-        server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(_REACH_RECV_MS)  # let it reach the pending recvfrom()
-        await cancel(task)  # run() cleans up and re-raises the cancellation; cancel() absorbs it
-
-    run(scenario())
-    assert fake.disconnect_called is True
-
-
-def test_awaiting_a_cancelled_run_raises_after_disconnect() -> None:
-    # The cancellation is re-raised, never turned into a normal return, and only after the socket was released.
-    fake = _FakeUDPS([])
-
-    async def scenario() -> "tuple[bool, bool]":
-        server = CaptiveDNS()
-        server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(_REACH_RECV_MS)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            return True, fake.disconnect_called
-        return False, fake.disconnect_called
-
-    raised, disconnected_first = run(scenario())
-    assert raised is True
-    assert disconnected_first is True
-
-
 def test_cancelling_run_at_each_await_disconnects_and_logs_nothing() -> None:
     # One query, then the fake's endless wait: each count's cancel leaves run() through its finally, which releases the
     # socket once and reads no more. A task cancelled before its first step runs no code, so it has nothing to release.
@@ -1361,7 +1326,6 @@ def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardow
         assert await _used_slots(server) == [(code("W", "SOCKET_TEARDOWN"), "W")]
 
     run(scenario())
-
 
 
 class _OverflowingData:

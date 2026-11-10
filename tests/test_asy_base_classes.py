@@ -3111,7 +3111,7 @@ def test_set_dict_cfg_empty_data_returns_empty_result() -> None:
 
 
 def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> None:
-    # Registered once per instance at construction time (agent, 2026-08-03; owner-reviewed, 2026-11-06), never shared/leaked
+    # Registered once per instance at construction time (agent, 2026-08-03), never shared/leaked
     # across two separate instances of the same class.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_percallback1.cfg")

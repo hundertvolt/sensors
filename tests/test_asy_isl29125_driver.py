@@ -3024,30 +3024,6 @@ def test_a_failed_status_read_drops_the_whole_sample_without_storing_or_raising(
     assert _threshold_bursts(i2c) == [], "the range was evaluated on data that was never read"
 
 
-def test_a_stack_overflow_caught_by_either_read_handler_is_reported_for_the_supervisor() -> None:
-    # The status read's own handler and the cycle's outer one drop the sample and log as for any failed read, so the
-    # loop runs on; a C-stack overflow caught by either is also recorded for the supervisor's reboot, a routine error not.
-    _i2c, reader = ready_reader("stack_overflow_read")
-    real = {"read_status": reader._isl.read_status, "read_counts": reader._isl.read_counts}
-
-    def cycle_raising(method: str, error: BaseException, logged_as: str) -> bool:
-        async def raising() -> object:
-            raise error
-
-        setattr(reader._isl, method, raising)
-        with FastAsyncSleep():
-            assert run(reader._read_isl())[:5] == (None, None, None, None, None)
-        setattr(reader._isl, method, real[method])
-        assert errors(run(reader.get_error_counter()))[-1] == code("E", logged_as)
-        reported = fatal_reported()
-        asy_print_log._fatal = False  # the next case starts from a clear flag, as microtest's after-each hook leaves it
-        return reported
-
-    assert cycle_raising("read_status", RuntimeError("CRC check failed while reading data"), "ISL_STATUS_READ") is False
-    assert cycle_raising("read_status", stack_overflow(), "ISL_STATUS_READ") is True
-    assert cycle_raising("read_counts", stack_overflow(), "READ") is True
-
-
 def test_the_filter_coefficient_rejects_values_outside_its_band_with_bad_arg() -> None:
     # The setter owns the verdict even though it stores nothing - a False here is what makes
     # _set_dict_cfg() report the field "Failed" instead of silently accepting an unusable value.

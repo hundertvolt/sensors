@@ -721,7 +721,7 @@ class SPI:
         self.log.append(("write_readinto", out))
 
 
-# Claimed rp2.DMA channels by number: tests/rp2.py registers here, so a UART can find the channel draining it.
+# Claimed rp2.DMA channels by number: fakes/rp2.py registers here, so a UART can find the channel draining it.
 _DMA_CHANNELS: "dict[int, Any]" = {}
 _UART_BASES = (0x40034000, 0x40038000)  # UART0/UART1 register blocks; UARTDR at offset 0 (RP2040 datasheet 4.2.8)
 _UARTRSR = 0x004  # read as UARTRSR, written as UARTECR (any write clears the four error bits)
@@ -751,7 +751,7 @@ class UART(io.IOBase):
     TEST_API = (
         "id", "tx", "rx", "baudrate", "bits", "parity", "stop", "rxbuf", "txbuf", "timeout", "timeout_char", "invert",
         "deinit_called", "deinit_count", "log", "rx_queue", "writable", "write_limit", "tx_pending_rounds", "rx_api_calls",
-        "rx_rate", "rx_stall_ms", "rx_fifo_dropped", "rsr", "imsc", "dmacr", "would_have_blocked_bytes",
+        "rx_rate", "rx_fifo_dropped", "rsr", "imsc", "dmacr", "would_have_blocked_bytes",
         "real_poll_queries", "feed_rx", "plant_rx_error", "poll_mask", "ioctl",
     )  # fmt: skip
     _MP_STREAM_POLL = 3  # py/stream.h:39
@@ -816,7 +816,6 @@ class UART(io.IOBase):
         self.tx_pending_rounds = 0  # test-only: txdone() answers False this many calls first
         self.rx_api_calls = 0  # every any()/read()/readinto()/readline() and POLLIN poll: a DMA reader makes none
         self.rx_rate = 0.0  # test-only: arrival bytes/ms with the interrupt off; 0 is the line rate, inf unpaced
-        self.rx_stall_ms = 0  # test-only: the next register read first lets this many ms of arrivals land
         self.rx_fifo_dropped = 0  # bytes lost to a full FIFO, each also setting OE
         self.rsr = 0
         self._inbound = bytearray()  # on the wire, not yet arrived
@@ -928,12 +927,11 @@ class UART(io.IOBase):
         if rate == _RX_UNPACED:
             n = len(self._inbound)
         else:
-            elapsed = now - self._rx_clock + self.rx_stall_ms
+            elapsed = now - self._rx_clock
             self._rx_credit += max(elapsed, 0) * rate
             n = min(int(self._rx_credit), len(self._inbound))
             self._rx_credit -= n
         self._rx_clock = now
-        self.rx_stall_ms = 0
         arrived = self._inbound[:n]
         self._inbound = self._inbound[n:]  # MicroPython bytearray has no slice-delete, unlike CPython
         if not self._inbound:

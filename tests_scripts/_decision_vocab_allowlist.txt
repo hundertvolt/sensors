@@ -130,7 +130,6 @@ tests/_sensortask_scenarios.py	Deliberately one dispatch per test: _dispatch() d
 tests/_sensortask_scenarios.py	Keyed per-device (register_for_device() sets this up), not one shared "sensortas
 tests/_sensortask_scenarios.py	LEDWifiOn alone must never reconnect
 tests/_sensortask_scenarios.py	The whole point of the generated-module split: importing this test file and call
-tests/_sensortask_scenarios.py	Upstream/downstream error handling: real content must keep flowing through clean
 tests/_uart_link_contract.py	the wire accepted them;
 tests/machine.py	One period elapsing with its soft callback lost to a full scheduler queue (Part
 tests/machine.py	test-only: caps bytes accepted per write() call - see write()

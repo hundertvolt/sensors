@@ -1,5 +1,5 @@
-"""Imports run once, at module load, and every import is static (SPECIFICATION.md F.1): no import inside a
-function body and no dynamic load anywhere in the eight lint scopes, outside _NAMED_EXCEPTIONS and the
+"""Imports run once, at module load, and every import is static (SPECIFICATION.md F.1; agent, 2026-10-06): no import
+inside a function body and no dynamic load anywhere in the nine lint scopes, outside _NAMED_EXCEPTIONS and the
 _PENDING list, which only shrinks; `uv run python tests_scripts/test_import_placement.py --regenerate` prunes it."""
 
 import ast
@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from _repo_scan import REPO_ROOT, exit_on_new, repo_files
 
-SCOPES = ("src/", "buildgen/", "digital_twin/", "tests/", "tests_scripts/", "tests_hardware/", "scripts/", "toolchain/")
+SCOPES = ("src/", "buildgen/", "digital_twin/", "fakes/", "tests/", "tests_scripts/", "tests_hardware/", "scripts/", "toolchain/")
 # tests/_tmp/ is scratch; this file's own fixtures are the patterns themselves.
 _SKIPPED = ("tests/_tmp/", "tests_scripts/test_import_placement.py")
 # The import-graph check plants dynamic loads as string fixtures; its code is still checked, its strings are not launchers.
@@ -44,9 +44,7 @@ _DYNAMIC_LOADS = _BUILTIN_LOADS | _IMPORTLIB_LOADS
 # Sites present when this check landed, each moved to module level or named above by the unit owning
 # its file. Rebuilt only by --regenerate; the second test fails on an entry that no longer occurs.
 _PENDING: tuple[Site, ...] = (
-    ("digital_twin/_http_client.py", "HttpResponse.json", "_strict_json"),
     ("tests/_boot_contiguity_probe.py", "_main", "asy_system_service"),
-    ("tests/_sensortask_scenarios.py", "_scenario_main_call_order", "asy_ntp_client"),
     ("tests/_sensortask_scenarios.py", "_scenario_main_forwards_web_host_port", "asy_ntp_client"),
     ("tests/test_asy_bmp3xx_driver.py", "test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written", "asy_config_manager"),
     ("tests/test_asy_isl29125_driver.py", "ready_reader", "time"),
@@ -54,8 +52,8 @@ _PENDING: tuple[Site, ...] = (
     ("tests/test_asy_sgp40_driver.py", "_OldTime.mktime", "time"),
     ("tests/test_asy_uart_comm.py", "test_the_next_uid_prediction_is_correct_at_the_wrap_boundary", "asy_uart_comm"),
     ("tests/test_asy_uart_comm.py", "test_the_uid_cycle_covers_every_legal_value_and_never_0xff", "asy_uart_comm"),
-    ("tests/test_digital_twin_network_neopixel.py", "test_country_and_hostname_enforce_the_real_byte_bounds", "network"),
-    ("tests/test_digital_twin_network_neopixel.py", "test_country_and_hostname_set_then_get_round_trip", "network"),
+    ("tests/test_digital_twin_network.py", "test_country_and_hostname_enforce_the_real_byte_bounds", "network"),
+    ("tests/test_digital_twin_network.py", "test_country_and_hostname_set_then_get_round_trip", "network"),
     ("tests/test_uart_comm_hazard.py", "_check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction", "asy_uart_comm"),
     ("tests/test_uart_comm_hazard.py", "_check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction", "asy_uart_driver"),
     ("tests/test_website_build_integration.py", "_decompress", "deflate"),

@@ -1,6 +1,6 @@
 """Whole-tree contract for asyncio's unretrieved-task-exception handler (SPECIFICATION.md Part F.1): only the firmware's
-start_tasks() installs one, and only where none is set; both handler bodies are allocation-free and never
-raise by construction; every PC entry point installs the always-printing PC report before the firmware starts."""
+start_tasks() installs one, and only where none is set; its body, which the PC tiers install at level 1, is
+allocation-free and never raises by construction; every PC entry point installs it before the firmware starts."""
 
 import ast
 from pathlib import Path
@@ -23,9 +23,7 @@ _INSTALLER = "start_tasks"
 _HANDLER_FILE = "src/asy_print_log.py"  # print() lives only in the logger module (test_code_conventions.py)
 _HANDLER_CLASS = "PrintLog"
 _FIRMWARE_HANDLER = "report_unretrieved"
-_PC_FILE = "digital_twin/unix_port_unretrieved_report.py"
 _PC_MODULE = "unix_port_unretrieved_report"
-_PC_HANDLER = "report_unretrieved"
 _PC_INSTALL = "install"
 _MICROTEST_FILE = "tests/microtest.py"
 _MICROTEST_RUN = "run"
@@ -279,11 +277,10 @@ def test_only_start_tasks_installs_a_handler_and_only_where_none_is_set(firmware
     assert not findings, "\n".join(findings)
 
 
-@pytest.mark.parametrize(("path", "owner_class", "name"), [(_HANDLER_FILE, _HANDLER_CLASS, _FIRMWARE_HANDLER), (_PC_FILE, None, _PC_HANDLER)])
-def test_each_handler_body_is_allocation_free_and_never_raises(path: str, owner_class: str | None, name: str) -> None:
-    func = _function(ast.parse((REPO_ROOT / path).read_text(encoding="utf-8")), name, owner_class)
-    assert func is not None, f"{path} defines no {name}()"
-    findings = handler_body_findings(path, func)
+def test_the_handler_body_is_allocation_free_and_never_raises() -> None:
+    func = _function(ast.parse((REPO_ROOT / _HANDLER_FILE).read_text(encoding="utf-8")), _FIRMWARE_HANDLER, _HANDLER_CLASS)
+    assert func is not None, f"{_HANDLER_FILE} defines no {_FIRMWARE_HANDLER}()"
+    findings = handler_body_findings(_HANDLER_FILE, func)
     assert not findings, "\n".join(findings)
 
 

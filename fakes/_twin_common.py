@@ -1,6 +1,6 @@
-"""Shared twin helpers: the bounded bookkeeping log, the saturating counter cap, the buffer fill every fake read uses,
-the value-walk bounds and the two runner config groups. Imports nothing from digital_twin/ or src/, so every chip
-fake, network.py, neopixel.py and both runners can import it."""
+"""Shared fake helpers: the bounded bookkeeping log, the saturating counter cap, the buffer fill every fake read uses,
+the value-walk bounds and the two runner config groups. Imports nothing from digital_twin/, tests/ or src/, so both
+tiers' fakes, rp2.py, neopixel.py and both twin runners can import it."""
 
 from collections import namedtuple
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     class Injections(NamedTuple):
         # Everything a run arms before boot.
         seed: int | None
-        faults: list[tuple[str, str, int, int | None, str]]  # (device, op, times, match, kind), as launch parses them
+        faults: list[tuple[str, str, int, int | None, str]]  # (device, op, times, match, kind), as the runner parses them
         hangs: list[tuple[str, str, float, int]]
         wifi_outcomes: list[int]
 
@@ -60,6 +60,13 @@ def fill_buffer(buf: "bytearray | memoryview", data: "bytes | bytearray | memory
     buf[:n] = data if n == len(data) else memoryview(data)[:n]
     if n < len(buf):
         buf[n:] = bytes([idle]) * (len(buf) - n)
+
+
+def pop_value(remaining: "list[str]", flag: str) -> str:
+    # The value after a runner's command-line flag, refused by name when it is missing.
+    if not remaining:
+        raise ValueError(f"{flag} requires a value")
+    return remaining.pop(0)
 
 
 def saturating_add(value: int, n: int = 1) -> int:

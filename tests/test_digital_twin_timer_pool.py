@@ -28,10 +28,10 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, run_timed, track_starts  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run, track_starts  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
-from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime, driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -54,8 +54,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Protocol, TypeVar
 
-    from launch import _Plan
     from machine import WDT
+    from run_generic_integration import _Plan
 
     from asy_base_classes import TaskStarter, TimerStarter
     from asy_print_log import ErrorLog, PrintLogHistory
@@ -77,7 +77,6 @@ _POOL = 16  # rp2's alarm pool: digital_twin/machine.py's _ALARM_POOL_SIZE
 _RR_STARVE_ARM_FAILED = src_const("src/asy_system_service.py", "_RR_STARVE_ARM_FAILED")
 _RR_MAGIC = src_const("src/asy_system_service.py", "_RR_MAGIC")
 _WAIT_S = 20.0
-_RUN_BOUND_S = 60.0
 _POLL_S = 0.1  # how often a real-time wait below looks again
 # Soft callbacks lost in one spell: every callback of about three seconds of the booted graph (a count, no wait), so each
 # one-second timer loses its ticks; _FAST_PERIOD_MS is the period of those (rp2's 1 s ticks, C.9).
@@ -132,12 +131,6 @@ async def _driven(clock: "DrivenTime", what: str, coro: "Coroutine[object, objec
     return await task
 
 
-def _driven_modules() -> "list[object]":
-    # Every src service and driver holding asyncio, and the twin's machine (its Timers, WDT, chip clocks) and network:
-    # one clock for all of them, so a tick one module reads is diffed by another on the same clock.
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
-
-
 async def _error_counts() -> "dict[str, int]":
     # Every ErrCount GET /status reports: each registered error source's logs and the webserver's own.
     webserver = module.webserver
@@ -175,8 +168,8 @@ def _readers() -> "list[tuple[str, SensorReader]]":
 
 async def _run_on_clock(scenario: "Callable[[DrivenTime], Coroutine[object, object, None]]") -> None:
     # `scenario` booted and run on one driven clock (tests/_fake_time.py), the modules put back after. A UART-wired plan
-    # too: its link reads wire time off the twin's plain clock, digital_twin/_flash_stall.py's plain_us() (agent, 2026-10-22; owner-reviewed, 2026-11-06).
-    with DrivenTime(*_driven_modules(), sleeps=True) as clock:
+    # too: its link reads wire time off the twin's plain clock, digital_twin/_flash_stall.py's plain_us() (agent, 2026-10-22).
+    with DrivenTime(*driven_modules(), sleeps=True) as clock:
         await scenario(clock)
 
 
@@ -238,7 +231,7 @@ def test_an_empty_alarm_pool_leaves_the_tick_cadences_running_and_arms_no_reset(
         finally:
             await _stop_graph(supervisor)
 
-    run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
+    run(_run_on_clock(scenario))
 
 
 def test_a_full_scheduler_queue_loses_every_soft_callback_for_a_spell_and_every_timer_fires_again() -> None:
@@ -284,7 +277,7 @@ def test_a_full_scheduler_queue_loses_every_soft_callback_for_a_spell_and_every_
 
     machine.Timer.init = recording_init  # type: ignore[assignment, method-assign]  # the class's own, put back in finally
     try:
-        run_timed(_run_on_clock(scenario), timeout_s=_RUN_BOUND_S)
+        run(_run_on_clock(scenario))
     finally:
         machine.Timer.init = real_init  # type: ignore[method-assign]
 
@@ -292,7 +285,7 @@ def test_a_full_scheduler_queue_loses_every_soft_callback_for_a_spell_and_every_
 def test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead() -> None:
     # The reboot command with the pool empty: the shutdown runs, its one-shot cannot arm, so feeding stops for good and
     # the record reads 6; nothing calls machine.reset() itself (owner, 2026-09-30, paraphrase). Real time throughout:
-    # `took` measures the run-out against the twin WDT's own clock (agent, 2026-10-22; owner-reviewed, 2026-11-06).
+    # `took` measures the run-out against the twin WDT's own clock (agent, 2026-10-22).
     async def scenario() -> None:
         watchdog = await _boot(_POOL)
         sysfunct = module.sysfunct
@@ -316,7 +309,7 @@ def test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead() ->
                 await cancel(sysfunct._reset_task)
             await _stop_graph(supervisor)
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_mempause_with_the_pool_empty_answers_and_pauses() -> None:
@@ -331,7 +324,7 @@ def test_mempause_with_the_pool_empty_answers_and_pauses() -> None:
         assert await module._system_cmd_callback("mempause") is True
         assert module.fram.get_pause() is True, "mempause left the storage running"
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 if __name__ == "__main__":

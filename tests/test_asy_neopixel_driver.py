@@ -53,7 +53,7 @@ def _make_driver(freq: int = 100, overlay_bri: int = 50, debug: "int | None" = N
 
 
 def _pixel(driver: NeopixelDriver) -> "neopixel.NeoPixel":
-    # tests/neopixel.py's fake, reached through the driver's own attribute - that fake is what
+    # fakes/neopixel.py's fake, reached through the driver's own attribute - that fake is what
     # `neopixel` resolves to here (it is not excluded from mypy, unlike tests/network.py).
     return driver._pixel
 

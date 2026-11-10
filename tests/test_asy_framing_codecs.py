@@ -11,19 +11,17 @@ import asy_framing_codecs
 from asy_framing_codecs import COBS_DELIMITER, FramingCOBS, FramingPass
 from asy_print_log import PrintLog
 
-_RUN_BOUND_S = 5
-
 
 def encoded(codec: "FramingPass | FramingCOBS", payload: bytes) -> bytes:
     buf = bytearray(payload)
-    view = run(codec.encode_into(buf, len(payload)), _RUN_BOUND_S)
+    view = run(codec.encode_into(buf, len(payload)))
     assert view is not None
     return bytes(view)
 
 
 def decoded(codec: "FramingPass | FramingCOBS", frame: bytes) -> "bytes | None":
     buf = bytearray(frame)
-    size = run(codec.decode_from(buf, len(frame)), _RUN_BOUND_S)
+    size = run(codec.decode_from(buf, len(frame)))
     if size is None:
         return None
     return bytes(buf[:size])
@@ -60,10 +58,10 @@ def test_pass_through_still_bounds_every_size_against_the_buffer() -> None:
     # report a decoded length longer than what actually arrived.
     codec = FramingPass()
     assert codec.delimiter() is None
-    assert run(codec.encode_into(bytearray(4), 5), _RUN_BOUND_S) is None
-    assert run(codec.encode_into(bytearray(4), -1), _RUN_BOUND_S) is None
-    assert run(codec.decode_from(bytearray(4), 5), _RUN_BOUND_S) is None
-    assert run(codec.decode_from(bytearray(4), -1), _RUN_BOUND_S) is None
+    assert run(codec.encode_into(bytearray(4), 5)) is None
+    assert run(codec.encode_into(bytearray(4), -1)) is None
+    assert run(codec.decode_from(bytearray(4), 5)) is None
+    assert run(codec.decode_from(bytearray(4), -1)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +115,7 @@ def test_cobs_decode_lets_another_task_run_after_every_code_block() -> None:
             pass
         return size, during
 
-    size, during = run(scenario(), _RUN_BOUND_S)
+    size, during = run(scenario())
     assert size is not None and bytes(frame[:size]) == payload
     assert during >= blocks, f"{during} turns for another task across {blocks} code blocks"
 
@@ -167,32 +165,32 @@ def test_a_262_byte_frame_bound_decodes_every_length_and_refuses_one_past() -> N
             payload = bytes(size) if pattern == 0 else bytes((i % 255) + 1 for i in range(size))
             frame = encoded(codec, payload)
             buf = bytearray(frame[:-1])
-            assert run(codec.decode_from(buf, len(buf)), _RUN_BOUND_S) == size, f"size {size}, pattern {pattern}"
+            assert run(codec.decode_from(buf, len(buf))) == size, f"size {size}, pattern {pattern}"
             assert bytes(buf[:size]) == payload, f"size {size}, pattern {pattern}"
     past = codec.max_encoded(262)  # one byte past the longest legal decode input, max_encoded(262) - 1
-    assert run(codec.decode_from(bytearray(b"\x01" * past), past), _RUN_BOUND_S) is None
-    assert run(codec.decode_from(bytearray(b"\x01" * (past - 1)), past - 1), _RUN_BOUND_S) is not None
+    assert run(codec.decode_from(bytearray(b"\x01" * past), past)) is None
+    assert run(codec.decode_from(bytearray(b"\x01" * (past - 1)), past - 1)) is not None
 
 
 def test_a_returned_view_aliases_the_scratch_until_the_next_encode() -> None:
     # The contract: a caller finishes with a returned view before the next encode_into().
     codec = FramingCOBS(64)
-    first = run(codec.encode_into(bytearray(b"abc"), 3), _RUN_BOUND_S)
+    first = run(codec.encode_into(bytearray(b"abc"), 3))
     assert first is not None
     snapshot = bytes(first)
-    second = run(codec.encode_into(bytearray(b"defgh"), 5), _RUN_BOUND_S)
+    second = run(codec.encode_into(bytearray(b"defgh"), 5))
     assert second is not None
     assert bytes(first) != snapshot
     assert bytes(first) == bytes(second)[0 : len(snapshot)]
 
 
+def test_cobs_rejects_a_code_byte_pointing_past_the_frame_end() -> None:
+    # The decoder must validate every offset before following it, not walk off the buffer.
 # ---------------------------------------------------------------------------
 # Malformed input and bounds
 # ---------------------------------------------------------------------------
 
 
-def test_cobs_rejects_a_code_byte_pointing_past_the_frame_end() -> None:
-    # The decoder must validate every offset before following it, not walk off the buffer.
     codec = FramingCOBS(64)
     assert decoded(codec, b"\x20\x01\x02") is None
 
@@ -207,16 +205,16 @@ def test_cobs_rejects_an_oversized_frame() -> None:
     # failure rather than an out-of-range write into a buffer sized for the worst legal case.
     codec = FramingCOBS(16)
     buf = bytearray(64)
-    assert run(codec.encode_into(buf, 40), _RUN_BOUND_S) is None
-    assert run(codec.decode_from(buf, 40), _RUN_BOUND_S) is None
+    assert run(codec.encode_into(buf, 40)) is None
+    assert run(codec.decode_from(buf, 40)) is None
 
 
 def test_cobs_rejects_a_negative_or_oversized_size() -> None:
     codec = FramingCOBS(64)
     buf = bytearray(64)
-    assert run(codec.encode_into(buf, -1), _RUN_BOUND_S) is None
-    assert run(codec.decode_from(buf, -1), _RUN_BOUND_S) is None
-    assert run(codec.encode_into(bytearray(4), 8), _RUN_BOUND_S) is None  # size beyond the buffer itself
+    assert run(codec.encode_into(buf, -1)) is None
+    assert run(codec.decode_from(buf, -1)) is None
+    assert run(codec.encode_into(bytearray(4), 8)) is None  # size beyond the buffer itself
 
 
 def test_cobs_decode_of_an_empty_frame_is_empty_not_a_failure() -> None:
@@ -230,8 +228,8 @@ def test_cobs_failed_allocation_degrades_to_not_ready() -> None:
     # A codec that could not allocate its scratch reports it instead of looking constructed.
     codec = FramingCOBS(-1)  # an impossible frame bound, the same guard RegionBuffer applies
     assert codec.ready() is False
-    assert run(codec.encode_into(bytearray(8), 4), _RUN_BOUND_S) is None
-    assert run(codec.decode_from(bytearray(8), 4), _RUN_BOUND_S) is None
+    assert run(codec.encode_into(bytearray(8), 4)) is None
+    assert run(codec.decode_from(bytearray(8), 4)) is None
 
 
 def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
@@ -244,7 +242,7 @@ def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
         huge = FramingCOBS(1 << 63, logger)  # past the machine word: bytearray() raises OverflowError instead
     assert codec._scratch is None
     assert codec.ready() is False
-    assert run(codec.encode_into(bytearray(8), 4), _RUN_BOUND_S) is None
+    assert run(codec.encode_into(bytearray(8), 4)) is None
     assert huge.ready() is False
     assert [(line[:2], type(line[2])) for line in rec.lines] == [
         (("UART", "FramingCOBS: scratch allocation failed:"), MemoryError),
@@ -290,8 +288,8 @@ def test_cobs_scratch_is_reused_across_frames() -> None:
     codec = FramingCOBS(128)
     scratch = codec._scratch
     assert scratch is not None
-    first = run(codec.encode_into(bytearray(b"abc"), 3), _RUN_BOUND_S)
-    second = run(codec.encode_into(bytearray(b"defg"), 4), _RUN_BOUND_S)
+    first = run(codec.encode_into(bytearray(b"abc"), 3))
+    second = run(codec.encode_into(bytearray(b"defg"), 4))
     assert first is not None
     assert second is not None
     assert codec._scratch is scratch

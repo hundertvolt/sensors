@@ -29,9 +29,10 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration as runner  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import DrivenWall, load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _ntp_responder import NtpResponder  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_responder_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -61,7 +62,7 @@ if TYPE_CHECKING:
     from typing import TypeVar
 
     from _fake_time import DrivenTime
-    from launch import _Plan
+    from run_generic_integration import _Plan
 
     T = TypeVar("T")
 
@@ -70,7 +71,6 @@ microtest.after_each(network.reset_test_state)
 
 _REPLY_WAIT_MS = 1000  # a reply on loopback arrives within one responder poll; the bound only ends a lost one
 _POLL_MS = 5
-_RUN_BOUND_S = 10.0
 _REQUEST = b"\x1b" + bytes(47)  # the product's request: LI 0, VN 3, mode 3 (src/asy_ntp_client.py _fetch_ntp_reply())
 
 _PORTS = PortAllocator("test_digital_twin_ntp")
@@ -120,7 +120,7 @@ async def _ask(port: int, request: bytes = _REQUEST) -> "bytes | None":
 def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleType, DrivenTime], Coroutine[object, object, T]]", cfg_path: str, fram_state: "str | None" = None) -> "T":
     # The device's real main() beside the responder: the config the twin's runner writes, a station to join, the product's
     # port 123 mapped to the responder's and the wall clock installed; the product's waits and the responder's rounds pass
-    # on one driven clock, which `scenario` drives (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+    # on one driven clock, which `scenario` drives (agent, 2026-10-27).
     machine.reset_peripherals()  # a second boot of one test builds its buses again, and finds its radio restarted
     network.reset_test_state()
     machine.configure_fram_state_path(fram_state)
@@ -140,7 +140,7 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
         return webserver is not None and id(webserver) != earlier
 
     async def whole() -> "T":
-        with redirect_udp_port(asy_ntp_client, 123, responder.port), DrivenWall(*_driven_modules(), sleeps=True) as clock:
+        with redirect_udp_port(asy_ntp_client, 123, responder.port), DrivenWall(*driven_modules("_ntp_responder"), sleeps=True) as clock:
             boot = module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
             tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(boot)]
             try:
@@ -152,7 +152,7 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
                 await cancel_all(tasks)
 
     try:
-        return run_timed(whole(), 2 * _SYNC_WAIT_TIMEOUT_S)
+        return run(whole())
     finally:
         responder.close()
 
@@ -169,12 +169,6 @@ def _clean_first_sync_on(device: str) -> None:
     wall, log = _booted(device, NtpResponder(_PORTS.next()), scenario, _scratch.dir())
     assert abs(wall - int(time.time())) <= 2, (device, wall)
     assert log == (0, []), (device, log)
-
-
-def _driven_modules() -> "list[object]":
-    # Every src module holding asyncio, the twin's machine and network, and the responder: one clock for each sleep
-    # and tick read, a reply on loopback reaching the client at its next driven poll.
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("_ntp_responder", "machine", "network")) and getattr(m, "asyncio", None) is asyncio]
 
 
 def _failing_replies_on(device: str) -> None:
@@ -279,7 +273,7 @@ def test_serving_never_starves_a_task_beside_it() -> None:
         return ticks
 
     try:
-        ticks = run_timed(scenario(), _RUN_BOUND_S)
+        ticks = run(scenario())
     finally:
         responder.close()
     assert ticks >= 50, ticks  # a 1 ms ticker over 200 ms: the responder's rounds never hold the loop
@@ -306,7 +300,7 @@ def test_a_second_responder_on_a_held_port_waits_and_takes_it_once_freed() -> No
 
     try:
         assert first.holding and not second.holding
-        held, taken = run_timed(scenario(), _RUN_BOUND_S)
+        held, taken = run(scenario())
     finally:
         first.close()
         second.close()
@@ -409,7 +403,7 @@ def test_a_send_to_a_refused_address_fails_on_the_products_own_path() -> None:
             await sock.disconnect()
 
     before = _unix_port_udp_addr_shim.public_destinations_refused
-    assert run_timed(scenario(), _RUN_BOUND_S) is None
+    assert run(scenario()) is None
     assert _unix_port_udp_addr_shim.public_destinations_refused == before + 1
 
 
@@ -486,7 +480,7 @@ def _served(responder: NtpResponder, request: bytes = _REQUEST) -> "bytes | None
             task.cancel()
 
     try:
-        return run_timed(scenario(), _RUN_BOUND_S)
+        return run(scenario())
     finally:
         responder.close()
 
@@ -527,7 +521,7 @@ def _write_to(addr: "tuple[str, int]") -> "int | None":
         finally:
             await sock.disconnect()
 
-    return run_timed(scenario(), _RUN_BOUND_S)
+    return run(scenario())
 
 
 def test_a_booted_device_syncs_at_its_first_sync_with_a_clean_log() -> None:

@@ -21,11 +21,10 @@ if TYPE_CHECKING:
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import _http_client as http_client
-from _async_harness import run_timed
+from _async_harness import run
 from _port_bands import PortAllocator
 
 _PORTS = PortAllocator("test_digital_twin_http_client")  # one canned server's port per test, from this file's band
-_RUN_BOUND_S = 5.0
 _MID_BODY_PAUSE_MS = 20
 _FETCH_TIMEOUT_S = 0.001
 _SILENT_SERVER_S = 2
@@ -108,7 +107,7 @@ def _fetch_failure(handler: "object", port: int, timeout_s: "float | None" = Non
             await server.wait_closed()
         raise AssertionError("fetch() returned a response")
 
-    return run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    return run(scenario())
 
 
 async def _header_cut_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
@@ -265,13 +264,13 @@ class _ChunkedReader:
 
 def test_read_exact_fills_the_buffer_across_multiple_partial_reads() -> None:
     reader = _ChunkedReader([b"abc", b"de", b"fgh"])
-    result = run_timed(http_client._read_exact(reader, 8), _RUN_BOUND_S)
+    result = run(http_client._read_exact(reader, 8))
     assert bytes(result) == b"abcdefgh"
 
 
 def test_read_exact_returns_a_right_sized_buffer_for_a_single_read() -> None:
     reader = _ChunkedReader([b"hello"])
-    result = run_timed(http_client._read_exact(reader, 5), _RUN_BOUND_S)
+    result = run(http_client._read_exact(reader, 5))
     assert bytes(result) == b"hello"
     assert len(result) == 5
 
@@ -280,7 +279,7 @@ def test_read_exact_raises_incomplete_response_on_premature_stream_closure() -> 
     # Only 2 of the 5 requested bytes ever arrive, then the stream reports EOF (readinto() -> 0): a body cut short.
     reader = _ChunkedReader([b"ab"])
     try:
-        run_timed(http_client._read_exact(reader, 5), _RUN_BOUND_S)
+        run(http_client._read_exact(reader, 5))
         raise AssertionError("expected IncompleteResponseError")
     except http_client.IncompleteResponseError:
         pass
@@ -293,7 +292,7 @@ def test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof()
     # A first version of _read_exact() conflated None with a real 0-byte EOF, which read as an intermittent,
     # false "connection closed" under exactly the scheduling jitter a busy CI runner produces more of.
     reader = _ChunkedReader([None, b"ab", None, b"c"])
-    result = run_timed(http_client._read_exact(reader, 3), _RUN_BOUND_S)
+    result = run(http_client._read_exact(reader, 3))
     assert bytes(result) == b"abc"
 
 
@@ -330,14 +329,14 @@ class _EofReader:
 
 def test_read_until_close_joins_chunks_across_multiple_reads() -> None:
     reader = _EofReader([b"abc", b"de", b"fgh"])
-    result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S)
+    result = run(http_client._read_until_close(reader))
     assert result == b"abcdefgh"
     assert isinstance(result, bytes)
 
 
 def test_read_until_close_retries_a_spurious_none_read() -> None:
     reader = _EofReader([None, b"ab", None, b"c"])
-    result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S)
+    result = run(http_client._read_until_close(reader))
     assert result == b"abc"
 
 
@@ -349,7 +348,7 @@ def test_read_until_close_bounds_each_read_to_the_scratch_buffer_size() -> None:
     http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = 4
     try:
         reader = _EofReader([b"0123456789"])
-        result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S)
+        result = run(http_client._read_until_close(reader))
     finally:
         http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = original
     assert result == b"0123456789"
@@ -357,7 +356,7 @@ def test_read_until_close_bounds_each_read_to_the_scratch_buffer_size() -> None:
 
 def test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream() -> None:
     reader = _EofReader([])
-    result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S)
+    result = run(http_client._read_until_close(reader))
     assert result == b""
 
 
@@ -372,14 +371,14 @@ def test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream()
 
 def test_drain_exact_consumes_exactly_n_bytes_without_returning_anything() -> None:
     reader = _EofReader([b"abc", b"de", b"fghNEXT"])
-    result = run_timed(http_client._drain_exact(reader, 8), _RUN_BOUND_S)
+    result = run(http_client._drain_exact(reader, 8))
     assert (result, reader.remaining()) == (None, b"NEXT")  # the next response's bytes stay unread
 
 
 def test_drain_exact_raises_incomplete_response_on_premature_stream_closure() -> None:
     reader = _ChunkedReader([b"ab"])
     try:
-        run_timed(http_client._drain_exact(reader, 5), _RUN_BOUND_S)
+        run(http_client._drain_exact(reader, 5))
         raise AssertionError("expected IncompleteResponseError")
     except http_client.IncompleteResponseError:
         pass
@@ -387,7 +386,7 @@ def test_drain_exact_raises_incomplete_response_on_premature_stream_closure() ->
 
 def test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof() -> None:
     reader = _EofReader([None, b"ab", None, b"cNEXT"])
-    result = run_timed(http_client._drain_exact(reader, 3), _RUN_BOUND_S)
+    result = run(http_client._drain_exact(reader, 3))
     assert (result, len(reader.requests), reader.remaining()) == (None, 4, b"NEXT")  # both None reads retried, the body read to its last byte
 
 
@@ -399,7 +398,7 @@ def test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size() ->
     http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = 4
     try:
         reader = _EofReader([b"0123456789AB"])
-        run_timed(http_client._drain_exact(reader, 10), _RUN_BOUND_S)
+        run(http_client._drain_exact(reader, 10))
         assert max(reader.requests) <= 4 and reader.remaining() == b"AB", (reader.requests, reader.remaining())
     finally:
         http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = original
@@ -407,19 +406,19 @@ def test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size() ->
 
 def test_drain_until_close_consumes_every_chunk_without_returning_anything() -> None:
     reader = _EofReader([b"abc", b"de", b"fgh"])
-    result = run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S)
+    result = run(http_client._drain_until_close(reader))
     assert (result, len(reader.requests), reader.remaining()) == (None, 4, b"")  # each chunk once, then the EOF read
 
 
 def test_drain_until_close_retries_a_spurious_none_read() -> None:
     reader = _EofReader([None, b"ab", None, b"c"])
-    run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S)
+    run(http_client._drain_until_close(reader))
     assert (len(reader.requests), reader.remaining()) == (5, b"")  # four scripted reads, then the EOF one
 
 
 def test_drain_until_close_returns_for_an_immediately_closed_stream() -> None:
     reader = _EofReader([])
-    run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S)  # no exception raised is the assertion
+    run(http_client._drain_until_close(reader))  # no exception raised is the assertion
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +452,7 @@ def test_fetch_round_trips_a_real_request_through_a_real_socket() -> None:
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_fetch_reassembles_a_body_delivered_across_two_separate_writes() -> None:
@@ -468,7 +467,7 @@ def test_fetch_reassembles_a_body_delivered_across_two_separate_writes() -> None
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes() -> None:
@@ -484,7 +483,7 @@ def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes()
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +505,7 @@ def test_fetch_with_read_body_false_drains_a_sized_response_without_materializin
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_fetch_with_read_body_false_drains_an_unsized_response_without_materializing_it() -> None:
@@ -522,7 +521,7 @@ def test_fetch_with_read_body_false_drains_an_unsized_response_without_materiali
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +555,7 @@ def test_nothing_listening_stays_a_plain_oserror_and_no_refusal() -> None:
             return e
         raise AssertionError("fetch() reached a listener on a port nothing binds")
 
-    failure = run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    failure = run(scenario())
     assert not isinstance(failure, (http_client.CeilingRefusedError, http_client.IncompleteResponseError)), repr(failure)
 
 
