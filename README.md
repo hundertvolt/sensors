@@ -1171,6 +1171,49 @@ mismatch against the ordinary-sandbox run.
 `toolchain/versions.toml`. What a passing run shows: SPECIFICATION.md Part B.6; what has been checked:
 Part B.7.
 
+## Release
+
+A release is the merge into `main`, tagged `v<FIRMWARE_VERSION>` on that merge commit
+(`buildgen/version.py`, SPECIFICATION.md L.7). A legacy unit moves to it by a reflash and a fresh
+setup, with nothing migrated ("Moving a legacy unit to this firmware" above). The figures
+SPECIFICATION.md Part N still marks *estimated* await their silicon runs, listed in BACKLOG.md's
+"Real-hardware work still owed".
+
+### Changes from the legacy firmware
+
+Compared with the legacy firmware (`legacy/firmware/`), this release:
+
+- **Runs on** MicroPython v1.29.0 (legacy: 1.24.1) with its lwIP 2.2.1, cyw43-driver v1.1.1 and
+  pico-sdk 2.3.0, and serves through Microdot v2.7.0 (legacy: an untagged snapshot after v2.0.6).
+- **Serves one REST API** of six endpoints, `/measurements`, `/sensors`, `/networking`, `/system`,
+  `/status` and `/notification`; legacy's `/net/*`, `/time/*`, `/sensors/*`, `/led/*` and `/system/*`
+  paths are gone and its keys renamed (`Sys_Uptime` is `SysUptime`). The reference is generated per
+  device (SPECIFICATION.md A.8); the release's copy is `tests_scripts/fixtures/api_reference/`.
+- **Reports more in `GET /status`**: `ResetReason` (why the board last reset), `MemFree`,
+  `UnixTime`, `LastTaskEnd` (the supervised task that ended last and when; legacy's `Task_LastErr`
+  held its number) and every module's error history under `errcount`, where legacy kept a counter per
+  sensor; `SystemCmd` adds `resetconfig` and `erasefram` to `reboot`, `bootloader` and `mempause`.
+- **Behaves differently**: an automatic-notification window whose On time is later than its Off time
+  runs over midnight; a configuration file is written only when a value changes, or once per boot to
+  repair a damaged one; a system command or a supervisor reboot records its reset reason, writes
+  pending configuration and pauses storage before the reset, keeping the event loop running until it
+  fires.
+- **Corrects**, each with its regression test:
+  - SCD30: a `TempOffset` reaches the sensor rounded to the nearest 0.01 °C instead of truncated (130
+    of 2,001 two-decimal values landed one step low); a reading outside the datasheet's measurement
+    ranges is rejected as a failed read; `WetBulb` is published only inside its formula's validated
+    range, 5-99 %RH (legacy from 0.5 %RH).
+  - SGP40: a failed measurement read no longer corrupts the next setup's serial and self-test
+    commands; out-of-range compensation values are clamped instead of wrapping; the VOC fixed-point
+    helpers wrap and report overflow exactly as Sensirion's C reference.
+  - BMP3XX: `MeanAtmTemp` below −40 °C is refused instead of silently blanking the sea-level
+    pressure; a `PresOffset` that moves pressure outside the formula's range logs a warning instead of
+    silently publishing `SLPres` `None`.
+  - ISL29125: in the new automatic range (`RangeAuto`), a scene the peak rule overrules does not fire
+    the interrupt every PRST window.
+  - The system: `SysUptime` counts measured time from the tick counter, never timer wake-ups; a
+    restart of the uptime task keeps the uptime and the boot signature.
+
 ## Further reading
 
 Every supporting document, licence file and reference text in the repo; a new one joins this map in
@@ -1200,6 +1243,16 @@ the same change.
   BACKLOG.md's "Real-hardware work still owed" says what is owed, this file how.
 - **[`.claude/skills/integrate-module/SKILL.md`](.claude/skills/integrate-module/SKILL.md)** — the
   integrate-module skill: the inputs a session gathers for a new module, pointing into Part K.
+- **[`.claude/skills/work-routines/SKILL.md`](.claude/skills/work-routines/SKILL.md)** — running the
+  checks and reading their logs, `errcount` saves and rerun selections down to the deciding lines
+  (`scripts/_run_checks.sh`, `_log_verdict.py`, `_errcount_digest.py`, `_failed_tests.py`); its
+  [`references/symptoms.md`](.claude/skills/work-routines/references/symptoms.md) lists the causes
+  already found, to check before re-diagnosing a symptom.
+- **[`.claude/skills/bench-routines/SKILL.md`](.claude/skills/bench-routines/SKILL.md)** — the order
+  of work for a bench session on the real dev board and how a code session reads what it hands back;
+  `tests_hardware/README.md` stays the technical reference.
+- **[`.claude/skills/tree-care/SKILL.md`](.claude/skills/tree-care/SKILL.md)** — setting up, checking
+  and cleaning a working tree and its host (`scripts/_preflight.sh`, `scripts/_tidy.sh`).
 - **`legacy/README.md`** — the reference-only legacy tree: `legacy/firmware/` (what the owner's legacy
   units run, MicroPython 1.24.1, with `legacy/firmware/update_and_install.txt`) and
   `legacy/dev_drivers/` (the dev unit's 2026-08-27 snapshot).

@@ -1033,7 +1033,9 @@ module. A field's facts are its API keys (`key`, `kind`, `unit`, `min`/`max`,
 options reduced to their values, a composite's sub-fields to their facts); the page-only hints
 (`label`, `description`, `onLabel`, `offLabel`, `decimals`, `clearable`, `codeTones`, `confirm`)
 stay out, and a definitions key in neither set fails the build (`api.field-key-unclassified`).
-`tests_scripts/test_api_reference.py` pins it; this section is its prose summary. The build refuses
+`tests_scripts/test_api_reference.py` pins it and compares it with the release's copy,
+`tests_scripts/fixtures/api_reference/<device>.json`: from the release on, a changed route or key ships
+with a migration (H.3); this section is its prose summary. The build refuses
 a logger name two instances would claim in `errcount` (L.6.6).
 
 `WebserverService` is **registration-based**: the generated module hands it one `RouteSources`
@@ -3409,9 +3411,10 @@ invalid and silently drops it on rewrite. A one-off script touching one field mu
 with the *entire* real schema, or every sibling field gets reset to its default. A device script
 constructing a `ConfigManager` over a production file is checked to pass that module's full schema
 (`tests_scripts/test_device_script_config_schemas.py`), and every device's stored config — each file
-and its keys' types — is pinned by a golden fixture from the release on: a change to it ships with a
-migration (owner, 2026-09-26). Until the release, `tests_scripts/test_stored_config_golden.py`
-derives that map two independent ways and asserts they agree.
+and its keys' types — is pinned by the release's golden fixture, `tests_scripts/golden/<device>.json`:
+from the release on, a change to it ships with a migration (owner, 2026-09-26).
+`tests_scripts/test_stored_config_golden.py` derives that map two independent ways, asserts they agree
+and equal the fixture, and names the command that rewrites it.
 
 Four typed accessors — `get_int_values()`/`get_float_values()`/`get_str_values()`/
 `get_bool_values()` — return cache values checked by exact type (an `int` field read as `float` is
