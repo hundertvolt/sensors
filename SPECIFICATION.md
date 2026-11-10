@@ -110,7 +110,7 @@ derived from third parties too, attribution kept; layout is hand-kept, no format
 |---|---|---|
 | File, module, class and instance naming; private by default | C.2, C.14 | `tests_scripts/test_code_conventions.py`; review |
 | One shape per job: parameter names, order and optionality, return convention | D.10 | ruff `max-args` (`pyproject.toml`); review |
-| Member and function order | D.15 | `tests_scripts/test_code_conventions.py` (`src/`); review elsewhere |
+| Member and function order | D.15 | `tests_scripts/test_code_conventions.py` (the nine Python scopes); review for `js/` |
 | Early returns; the comment form and its three-line cap | D.11; CLAUDE.md's comment rule | `tests_scripts/test_comment_block_cap.py`; review |
 | Typing idiom | C.10, D.6 | the three mypy passes (B.15); ruff `UP007` |
 | Error and logging contract | C.7 | `tests_scripts/test_code_conventions.py`; `tests_scripts/test_error_catalog.py` |
@@ -4936,8 +4936,10 @@ Part K holds this step (K.10).
 ## D.15 Member ordering within a class and a module
 
 Scope: every module in all nine scopes and `js/`, class members and module-level functions alike,
-except the test functions of `tests/test_*.py`, `tests_scripts/test_*.py`, `tests_js/*.test.js` and
-`tests_hardware/**/test_*.py` (owner, 2026-09-29). Dunders come first, `__init__` first and the rest
+except the module-level function list of `tests/test_*.py`, `tests_scripts/test_*.py`,
+`tests_js/*.test.js` and `tests_hardware/**/test_*.py` (owner, 2026-09-29), and of the registered
+manual and scenario tests' libraries, `tests_hardware/manual/manual_*.py` and `tests/_*_scenarios.py`
+(agent, 2026-11-10). Dunders come first, `__init__` first and the rest
 alphabetically (agent, 2026-09-29); then private (`_`-prefixed) members, then public. Within each
 group, order by role (omit empty categories): 1. Starters, 2. Getters (`get_*`, `is_*`), 3. Setters
 (`set_*`), 4. Others — `setup`, `reset` and `reset_*` are named members of Others (owner,
@@ -4945,8 +4947,8 @@ group, order by role (omit empty categories): 1. Starters, 2. Getters (`get_*`, 
 without its leading underscore (owner, 2026-09-29). A definition an import-time statement needs (a
 decorator, a module constant, a JS `const` arrow function) is the one allowed exception, named by
 the check (agent, 2026-09-29). One named exception: `src/voc_algorithm.py` keeps upstream's member
-order, as it keeps its names (C.2; owner, 2026-10-05). The order is machine-checked over `src/` by
-`tests_scripts/test_code_conventions.py`.
+order, as it keeps its names (C.2; owner, 2026-10-05). The order is machine-checked over all nine
+Python scopes by `tests_scripts/test_code_conventions.py`; `js/` is held by review.
 
 **"Starter" is a role, not a name** (agent, 2026-10-07: the name alone sorted `start_calibration()`,
 a REST command, among the starters). A starter is a method that gets **handed

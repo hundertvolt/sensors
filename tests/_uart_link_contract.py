@@ -262,10 +262,6 @@ def check_readline_with_a_size_is_clamped_and_counted(make: "LinkFactory") -> No
     b.read()
 
 
-def _wire_ms(uart: "machine.UART", nbytes: int) -> int:
-    return nbytes * 10_000 // uart.baudrate + 2  # 8N1: ten bit times a byte, plus a margin
-
-
 def _arm_ring(uart: "machine.UART", ring_size: int, first_count: int = _RUN) -> "tuple[memoryview, rp2.DMA, rp2.DMA]":
     # The driver's two-channel ring: a byte-wide paced channel writing a naturally aligned window that
     # wraps on its write address, and a reload channel it chains to, rewriting its count and re-triggering.
@@ -280,20 +276,6 @@ def _arm_ring(uart: "machine.UART", ring_size: int, first_count: int = _RUN) -> 
     ctrl = data.pack_ctrl(size=0, inc_read=False, inc_write=True, ring_sel=True, ring_size=log2, treq_sel=_RX_DREQ[uart.id], chain_to=reload.channel)
     data.config(read=_UART_BASES[uart.id], write=ring, count=first_count, ctrl=ctrl, trigger=True)
     return ring, data, reload
-
-
-def _mask_off(uart: "machine.UART") -> None:
-    address = _UART_BASES[uart.id] + _UARTIMSC
-    machine.mem32[address] &= ~0x50
-
-
-def _received(data: "rp2.DMA") -> int:
-    return _RUN - data.count
-
-
-def _close(*channels: "rp2.DMA") -> None:
-    for channel in channels:
-        channel.close()
 
 
 def check_init_sets_the_rx_interrupt_mask(make: "LinkFactory") -> None:
@@ -567,6 +549,24 @@ def _assert_fixed_occupancy(name: str, log: "_BoundedRecord", append: "Callable[
     if cap > _ONE_BLOCK_MAX:  # a full log as one list or bytearray needs one large contiguous block mid-run
         blocks = getattr(log, "_chunks", [entries])
         assert max(len(block) for block in blocks) <= _ONE_BLOCK_MAX, f"{name}: stored in one block of {cap}"
+
+
+def _close(*channels: "rp2.DMA") -> None:
+    for channel in channels:
+        channel.close()
+
+
+def _mask_off(uart: "machine.UART") -> None:
+    address = _UART_BASES[uart.id] + _UARTIMSC
+    machine.mem32[address] &= ~0x50
+
+
+def _received(data: "rp2.DMA") -> int:
+    return _RUN - data.count
+
+
+def _wire_ms(uart: "machine.UART", nbytes: int) -> int:
+    return nbytes * 10_000 // uart.baudrate + 2  # 8N1: ten bit times a byte, plus a margin
 
 
 def check_the_bounded_logs_keep_a_fixed_occupancy(make: "LinkFactory") -> None:

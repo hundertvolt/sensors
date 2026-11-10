@@ -117,9 +117,6 @@ class _Config:
         self.pluginmanager = _Plugins()
         self.ini_lines: list[str] = []
 
-    def getoption(self, name: str) -> object:
-        return self.options.get(name)
-
     def addinivalue_line(self, name: str, line: str) -> None:
         self.ini_lines.append(f"{name}: {line}")
 
@@ -128,6 +125,9 @@ class _Config:
         reporter = self.plugins("terminalreporter")
         assert isinstance(reporter, _Reporter)
         return reporter.lines
+
+    def getoption(self, name: str) -> object:
+        return self.options.get(name)
 
     @property
     def notes(self) -> "list[tuple[str, str]]":

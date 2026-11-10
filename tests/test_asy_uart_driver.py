@@ -1670,14 +1670,14 @@ class _MemoryErrorCRC:
         self._real = real
         self._err = err
 
-    def length(self) -> int:
-        return self._real.length()
-
     def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # both called positionally
         raise self._err
 
     def check(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:
         raise self._err
+
+    def length(self) -> int:
+        return self._real.length()
 
 
 def test_write_returns_false_on_crc_add_memoryerror() -> None:
@@ -1699,11 +1699,11 @@ class _NoneCRC:
     # A real CRCBase's add() only ever returns None via its own _validate_init() rejecting an explicit init
     # argument, which write() never passes, so this path is unreachable through any real CRC object. A
     # minimal fake matching just the add()/length() surface write() calls, like _MemoryErrorCRC above.
-    def length(self) -> int:
-        return 0
-
     def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # called positionally
         return None
+
+    def length(self) -> int:
+        return 0
 
 
 def test_write_returns_false_when_crc_add_returns_none() -> None:
@@ -2294,6 +2294,14 @@ class _ChannelProbe:
         self.imsc_at_config: list[int] = []
         self.channel = real.channel
 
+    def active(self, value: "bool | None" = None) -> bool:
+        result: bool = self._real.active(value)
+        return result
+
+    def config(self, **kwargs: "Unpack[_DmaConfigKw]") -> None:
+        self.imsc_at_config.append(mem32[_UART0_IMSC])
+        self._real.config(**kwargs)
+
     @property
     def count(self) -> int:
         count: int = self._real.count
@@ -2308,23 +2316,15 @@ class _ChannelProbe:
     def ctrl(self, value: int) -> None:
         self._real.ctrl = value
 
+    def pack_ctrl(self, **kwargs: int) -> int:
+        ctrl: int = self._real.pack_ctrl(**kwargs)
+        return ctrl
+
     @property
     def write(self) -> int:
         self.write_reads += 1
         address: int = self._real.write
         return address
-
-    def active(self, value: "bool | None" = None) -> bool:
-        result: bool = self._real.active(value)
-        return result
-
-    def config(self, **kwargs: "Unpack[_DmaConfigKw]") -> None:
-        self.imsc_at_config.append(mem32[_UART0_IMSC])
-        self._real.config(**kwargs)
-
-    def pack_ctrl(self, **kwargs: int) -> int:
-        ctrl: int = self._real.pack_ctrl(**kwargs)
-        return ctrl
 
 
 def test_every_init_clears_the_rx_interrupt_mask_and_enables_rx_dma() -> None:

@@ -61,10 +61,10 @@ class FastAsyncSleep:
         if self._clock is not None:
             self._clock.advance(ms)
 
-    def of(self, task: object) -> "list[float]":
-        # The seconds `task` asked to sleep, in order, either form.
-        return [seconds for owner, seconds, _ms in self.slept if owner is task]
-
     def ms_of(self, task: object) -> "list[int]":
         # The ints `task` gave sleep_ms(), in order: a wait asked in seconds never shows here.
         return [ms for owner, _seconds, ms in self.slept if owner is task and ms is not None]
+
+    def of(self, task: object) -> "list[float]":
+        # The seconds `task` asked to sleep, in order, either form.
+        return [seconds for owner, seconds, _ms in self.slept if owner is task]

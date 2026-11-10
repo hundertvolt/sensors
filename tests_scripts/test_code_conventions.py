@@ -1,6 +1,6 @@
-"""Machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, D.15, E.2) over src/, each device's
-generated modules and pytest suites: asy_ marker, _NAME = the measurement type, starter and task names, errno=/wrnno=
-keyword, no print() or assert, one config-name helper, D.15 order, quoted TYPE_CHECKING names, no Test class."""
+"""Machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, E.2) over src/, each device's generated
+modules and pytest suites: asy_ marker, _NAME = the measurement type, starter and task names, errno=/wrnno= keyword, no
+print() or assert, one config-name helper, D.15 order (all Python scopes), quoted TYPE_CHECKING names, no Test class."""
 
 import ast
 import re
@@ -11,7 +11,7 @@ from typing import TypeGuard
 
 import pytest
 from _devices import DEVICE_NAMES
-from _repo_scan import REPO_ROOT
+from _repo_scan import REPO_ROOT, python_files
 
 from buildgen.generate import generate_device
 
@@ -28,6 +28,10 @@ _NUMBER_NAME = re.compile(r"_?(?:ERR|WRN)_\w+")
 _CONFIG_NAME_HOME = "src/asy_config_manager.py"  # config_filename() there builds every config file name
 # The no-autostart boot entry's one module-level print(): its REPL start line (owner, 2026-11-03).
 _START_LINE_ENTRY = "_main_noautostart.py"
+# D.15 holds in every Python scope (owner, 2026-10-27), but not in the tests themselves (owner, 2026-09-29): a test
+# file's module functions, the tests and the helpers beside them, stay, as do the registered manual and scenario tests'.
+_ORDERED_SCOPES = ("tests", "digital_twin", "fakes", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
+_TESTS_THEMSELVES = re.compile(r"(?:tests|tests_scripts|tests_hardware)/(?:\w+/)*test_\w+\.py|tests_hardware/manual/manual_\w+\.py|tests/_\w+_scenarios\.py")
 
 
 @dataclass(frozen=True)
@@ -37,7 +41,7 @@ class Module:
 
     @property
     def generated(self) -> bool:
-        return not self.path.startswith("src/")
+        return self.path.startswith("build/")
 
 
 Rule = Callable[[Module], list[str]]
@@ -189,26 +193,9 @@ def config_file_names(module: Module) -> list[str]:
     return found
 
 
-# A src assert whose removal a later unit's change owns, keyed by file and enclosing function; an
-# entry whose assert has gone fails (test_every_pending_assert_is_still_there).
-_PENDING_ASSERTS: "dict[tuple[str, str], str]" = {}
-
-
-def _asserts_by_function(module: Module) -> list[tuple[str, ast.Assert]]:
-    return [
-        (f.name, n) for f in ast.walk(module.tree) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
-        for n in ast.walk(f) if isinstance(n, ast.Assert)
-    ]
-
-
 def no_assert(module: Module) -> list[str]:
     # (6) no assert in shipped code.
-    pending = {func for (path, func) in _PENDING_ASSERTS if path == module.path}
-    in_pending = {id(n) for func, n in _asserts_by_function(module) if func in pending}
-    return [
-        f"{module.path}:{n.lineno}: assert" for n in ast.walk(module.tree)
-        if isinstance(n, ast.Assert) and id(n) not in in_pending
-    ]
+    return [f"{module.path}:{n.lineno}: assert" for n in ast.walk(module.tree) if isinstance(n, ast.Assert)]
 
 
 def _starter_role(cls: ast.ClassDef) -> set[str]:
@@ -252,15 +239,16 @@ def _out_of_order(where: str, names: list[str], starters: set[str]) -> list[str]
 
 
 def member_order(module: Module) -> list[str]:
-    # (7) D.15 order in every src/ class and the module-level function list.
+    # (7) D.15 order in every class and the module-level function list, a test file's list aside.
     if module.generated or module.path == _LITERAL_PORT:
         return []
     found = []
     for cls in (node for node in ast.walk(module.tree) if isinstance(node, ast.ClassDef)):
         found.extend(_out_of_order(f"{module.path} class {cls.name}", [d.name for d in _defs(cls.body)], _starter_role(cls)))
-    needed = _import_time_names(module)
-    functions = [d.name for d in _defs(module.tree.body) if d.name not in needed]
-    found.extend(_out_of_order(f"{module.path} module functions", functions, set()))
+    if not _TESTS_THEMSELVES.fullmatch(module.path):
+        needed = _import_time_names(module)
+        functions = [d.name for d in _defs(module.tree.body) if d.name not in needed]
+        found.extend(_out_of_order(f"{module.path} module functions", functions, set()))
     return found
 
 
@@ -351,12 +339,6 @@ def test_quoted_annotations_name_a_type_checking_symbol(modules: list[Module]) -
     assert not found, "\n".join(found)
 
 
-def test_every_pending_assert_is_still_there(modules: list[Module]) -> None:
-    by_path = {m.path: m for m in modules}
-    gone = [key for key in _PENDING_ASSERTS if key[1] not in {func for func, _n in _asserts_by_function(by_path[key[0]])}]
-    assert not gone, f"pending asserts no longer present - delete them from _PENDING_ASSERTS: {gone}"
-
-
 def test_the_scan_sees_every_device_module(modules: list[Module]) -> None:
     assert {m.path for m in modules if m.generated} == {f"build/generated_src/{n}.py" for d in DEVICE_NAMES for n in (f"sensortask_{d}", f"sensortask_{d}_main", f"sensortask_{d}_main_noautostart")}
 
@@ -441,3 +423,17 @@ def test_an_import_time_definition_is_left_out_of_the_order() -> None:
     assert member_order(module) == ["src/asy_x.py module functions: b sits where D.15 puts _a"]
     module = _parse("src/asy_x.py", "def b():\n    pass\nX = b()\ndef _a():\n    pass\n")
     assert member_order(module) == []
+
+
+def test_every_python_scope_follows_d15() -> None:
+    paths = [p for scope in _ORDERED_SCOPES for p in python_files(REPO_ROOT, scope)]
+    found = [line for p in paths for line in member_order(_parse(p.relative_to(REPO_ROOT).as_posix(), p.read_text(encoding="utf-8")))]
+    assert not found, "member_order:\n" + "\n".join(f"  {line}" for line in found)
+
+
+def test_a_test_files_function_list_is_left_out_of_the_order_but_not_its_classes() -> None:
+    source = "def test_b():\n    pass\ndef test_a():\n    pass\nclass _Fake:\n    def b(self):\n        pass\n    def a(self):\n        pass\n"
+    fake = "class _Fake: b sits where D.15 puts a"
+    for path in ("tests/test_x.py", "tests_hardware/flash/test_x.py", "tests_hardware/manual/manual_x.py", "tests/_x_scenarios.py"):
+        assert member_order(_parse(path, source)) == [f"{path} {fake}"], path
+    assert member_order(_parse("tests/_x_harness.py", source)) == [f"tests/_x_harness.py {fake}", "tests/_x_harness.py module functions: test_b sits where D.15 puts test_a"]

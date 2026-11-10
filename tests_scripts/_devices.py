@@ -39,16 +39,6 @@ def device_toml(device: str) -> Path:
     return DEVICES_DIR / f"{device}.toml"
 
 
-def distinct_devices(devices_dir: Path = DEVICES_DIR) -> "list[str]":
-    # scripts/_devices.sh's distinct_devices, read with tomllib: one device per [device] hardware_family, the first in
-    # byte order, a device naming none its own (owner, 2026-10-23). A leaked zz_test_* fixture never counts.
-    found: dict[object, str] = {}
-    for path in sorted(p for p in devices_dir.glob("*.toml") if not p.stem.startswith("zz_test_")):
-        family = tomllib.loads(path.read_text(encoding="utf-8")).get("device", {}).get("hardware_family")
-        found.setdefault(family if isinstance(family, str) else (path.stem,), path.stem)
-    return list(found.values())
-
-
 def devices_with(driver: str) -> "list[str]":
     # The devices whose TOML declares at least one [[instance]] of `driver`, in DEVICE_NAMES' order.
     found = []
@@ -57,3 +47,13 @@ def devices_with(driver: str) -> "list[str]":
         if any(isinstance(i, dict) and i.get("driver") == driver for i in instances):
             found.append(device)
     return found
+
+
+def distinct_devices(devices_dir: Path = DEVICES_DIR) -> "list[str]":
+    # scripts/_devices.sh's distinct_devices, read with tomllib: one device per [device] hardware_family, the first in
+    # byte order, a device naming none its own (owner, 2026-10-23). A leaked zz_test_* fixture never counts.
+    found: dict[object, str] = {}
+    for path in sorted(p for p in devices_dir.glob("*.toml") if not p.stem.startswith("zz_test_")):
+        family = tomllib.loads(path.read_text(encoding="utf-8")).get("device", {}).get("hardware_family")
+        found.setdefault(family if isinstance(family, str) else (path.stem,), path.stem)
+    return list(found.values())

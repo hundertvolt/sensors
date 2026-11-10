@@ -1084,10 +1084,6 @@ class _Rig:
         if self.manager is not None:
             self._record_quiesce(self.manager)
 
-    def _supervisor(self) -> str:
-        task = self.svc._supervisor_task
-        return "sup=none" if task is None else "sup=done" if task.done() else "sup=running"
-
     def _record_quiesce(self, manager: FRAMManager) -> None:
         # The sequence's step 3, recorded: the storage pause; no chunk operation is ever in flight to wait out.
         events, set_pause = self.events, manager.set_pause
@@ -1098,8 +1094,12 @@ class _Rig:
 
         manager.set_pause = pause  # type: ignore[method-assign]
 
-    def steps(self) -> "list[str]":
-        return [e.split(" ")[0] for e in self.events]
+    def _supervisor(self) -> str:
+        task = self.svc._supervisor_task
+        return "sup=none" if task is None else "sup=done" if task.done() else "sup=running"
+
+    async def settle(self) -> None:
+        await _sequence_done(self.svc)
 
     async def start(self, *, supervise: bool = True) -> "asyncio.Task[None] | None":
         # main()'s last two steps: start_tasks(), then supervise_tasks() as a task, past the supervisor's first pass.
@@ -1117,8 +1117,8 @@ class _Rig:
         await asyncio.sleep(0)
         return sup
 
-    async def settle(self) -> None:
-        await _sequence_done(self.svc)
+    def steps(self) -> "list[str]":
+        return [e.split(" ")[0] for e in self.events]
 
     async def stop(self, sup: "asyncio.Task[None] | None") -> None:
         # Ends what the scenario started: supervise_tasks() (the supervisor with it), the reset task, the supervised tasks.
@@ -3671,11 +3671,11 @@ def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() 
 
 class _UnreadableOs:
     # Stands in for asy_config_manager's `os`: the config file exists but every stat() fails with EIO.
-    def stat(self, _path: str) -> "tuple[int, ...]":
-        raise OSError(5, "EIO")
-
     def __getattr__(self, name: str) -> object:
         return getattr(os, name)
+
+    def stat(self, _path: str) -> "tuple[int, ...]":
+        raise OSError(5, "EIO")
 
 
 def test_an_unreadable_store_keeps_the_constructed_level() -> None:

@@ -2414,14 +2414,14 @@ class _MemoryErrorJson:
             raise MemoryError("simulated allocation failure")
         return json.dumps(obj)
 
-    def loads(self, text: str) -> object:
-        decoded: object = json.loads(text)
-        return decoded
-
     def load(self, stream: object) -> object:
         if self.raise_on_load:
             raise MemoryError("simulated allocation failure")
         decoded: object = json.load(stream)
+        return decoded
+
+    def loads(self, text: str) -> object:
+        decoded: object = json.loads(text)
         return decoded
 
 

@@ -69,18 +69,6 @@ _READ_SYSTEM_LOG = (
 _CLEARS: "list[dict[str, ErrcountEntry]]" = []
 
 
-def _slots(entry: ErrcountEntry) -> "list[tuple[str, int]]":
-    # A history's (type, num) slots, oldest first, "N" for an unused one.
-    return [(str(h.get("type")), int(str(h.get("num", 0)))) for h in entry["history"]]
-
-
-def _status(dut_ip: str) -> "tuple[bytes, JSONObject]":
-    # GET /status, strict: a 200 whose body is one JSON object, returned verbatim beside its parse.
-    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_ERRCOUNT_TIMEOUT_S)
-    assert res.status_code == 200, f"GET /status failed: {res.status_code} {res.body!r}"
-    return res.body, res.json()
-
-
 def _errcount(status: "JSONObject") -> "dict[str, ErrcountEntry]":
     counts = status.get("errcount")
     assert isinstance(counts, dict), f"GET /status carries no errcount object: {status!r}"
@@ -91,6 +79,18 @@ def _saved_status(dut_ip: str, reason: str) -> "tuple[Path, JSONObject]":
     # The verbatim GET /status body - errcount, the reset reason and every other field - in the run's evidence.
     body, status = _status(dut_ip)
     return evidence.save_text(f"errcount-{reason}.json", body.decode("utf-8", "replace")), status
+
+
+def _slots(entry: ErrcountEntry) -> "list[tuple[str, int]]":
+    # A history's (type, num) slots, oldest first, "N" for an unused one.
+    return [(str(h.get("type")), int(str(h.get("num", 0)))) for h in entry["history"]]
+
+
+def _status(dut_ip: str) -> "tuple[bytes, JSONObject]":
+    # GET /status, strict: a 200 whose body is one JSON object, returned verbatim beside its parse.
+    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_ERRCOUNT_TIMEOUT_S)
+    assert res.status_code == 200, f"GET /status failed: {res.status_code} {res.body!r}"
+    return res.body, res.json()
 
 
 def get_errcount(dut_ip: str) -> "dict[str, ErrcountEntry]":

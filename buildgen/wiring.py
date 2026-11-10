@@ -30,6 +30,15 @@ class WiringField:
     # "kwarg" passes the instance, "attr" its `target` attribute or bound method.
 
 
+def _first_duplicate(names: "list[str]") -> "str | None":
+    seen: set[str] = set()
+    for name in names:
+        if name in seen:
+            return name
+        seen.add(name)
+    return None
+
+
 def parse_wiring(path: Path, device: str, driver: str) -> "tuple[WiringField, ...]":
     tokens = iter_comment_tokens(path, device, driver)
     fields = []
@@ -60,12 +69,3 @@ def parse_wiring(path: Path, device: str, driver: str) -> "tuple[WiringField, ..
         )
     check_for_near_miss_tags(tokens, path, device, driver, exact_matches, _SPECS)
     return tuple(fields)
-
-
-def _first_duplicate(names: "list[str]") -> "str | None":
-    seen: set[str] = set()
-    for name in names:
-        if name in seen:
-            return name
-        seen.add(name)
-    return None

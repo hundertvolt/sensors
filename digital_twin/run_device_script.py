@@ -36,6 +36,15 @@ class _Args:
         self.state_dir = state_dir
 
 
+def _attach_jumper(plan: "dict[str, object]") -> None:
+    # The bench's permanent UART crossover jumper, as on silicon: a plan naming a UART pair has its two buses joined
+    # before the script runs, and UART objects are one per id, so the script's own UART(n) is the jumpered one.
+    pair = plan.get("uart")
+    if isinstance(pair, dict):
+        a, b = (int(str(pair[end])[len("uart") :]) for end in ("initiator_bus", "responder_bus"))
+        machine.attach_crossover_jumper(machine.UART(a), machine.UART(b))
+
+
 def _configure_state(state_dir: "str | None") -> None:
     # One directory per board kept across runs, as silicon keeps its FRAM and SCD30 NVM across a reset: a seed script
     # and the verify script that follows it see one chip. Without it every run starts on blank in-memory chips.
@@ -44,15 +53,6 @@ def _configure_state(state_dir: "str | None") -> None:
     machine.configure_fram_state_path(state_dir + "/fram.bin")
     machine.configure_scd30_state_path(state_dir + "/scd30.json")
     machine.configure_mem_backup_state_path(state_dir + "/mem_backup.json")
-
-
-def _attach_jumper(plan: "dict[str, object]") -> None:
-    # The bench's permanent UART crossover jumper, as on silicon: a plan naming a UART pair has its two buses joined
-    # before the script runs, and UART objects are one per id, so the script's own UART(n) is the jumpered one.
-    pair = plan.get("uart")
-    if isinstance(pair, dict):
-        a, b = (int(str(pair[end])[len("uart") :]) for end in ("initiator_bus", "responder_bus"))
-        machine.attach_crossover_jumper(machine.UART(a), machine.UART(b))
 
 
 def _exit_status(stop: SystemExit) -> int:

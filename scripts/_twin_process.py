@@ -355,6 +355,15 @@ def read_log(log_path: Path) -> str:
         return ""
 
 
+def save_fram_evidence(evidence: Path, errcount: JSONValue, state_dir: Path) -> None:
+    # Before any erasefram (CLAUDE.md's FRAM-log rule): the errcount table read over REST and a copy of the FRAM state file.
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "errcount.json").write_text(json.dumps(errcount, indent=2), encoding="utf-8")
+    fram = state_paths(state_dir).fram
+    if fram.exists():
+        shutil.copy2(fram, evidence / fram.name)
+
+
 def send_line(run: TwinRun, line: str) -> None:
     # One trigger line on the twin's stdin, read by the runner's --test-* instrumentation.
     if run.proc.stdin is None:
@@ -406,15 +415,6 @@ def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[s
     log_file = log_path.open("w", encoding="utf-8")  # closed by shutdown()/wait_exit(), which end the process first
     proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
     return TwinRun(proc=proc, log_path=log_path, log_file=log_file, device=launch.device, state_dir=state_dir)
-
-
-def save_fram_evidence(evidence: Path, errcount: JSONValue, state_dir: Path) -> None:
-    # Before any erasefram (CLAUDE.md's FRAM-log rule): the errcount table read over REST and a copy of the FRAM state file.
-    evidence.mkdir(parents=True, exist_ok=True)
-    (evidence / "errcount.json").write_text(json.dumps(errcount, indent=2), encoding="utf-8")
-    fram = state_paths(state_dir).fram
-    if fram.exists():
-        shutil.copy2(fram, evidence / fram.name)
 
 
 def src_int(filename: str, name: str) -> int:
