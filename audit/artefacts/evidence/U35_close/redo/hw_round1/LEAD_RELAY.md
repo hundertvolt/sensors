@@ -1,5 +1,39 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-10 21:29 UTC - lead to bench: the last round, on the final image
+New head: 7cfeee71 (main line bfa240fa = snapshot 61 4a0f1b76, CI green; the owner's go for this round, wear
+last, 21:23 UTC). src/ changed since snapshot 58: a new image. First: a fresh
+session with the owner's go-ahead; uv 0.13.7 in .uvpin/bin (the new pin; `run` puts it first, refuses any other);
+`mv $H/logs/1.log $H/logs/1_round1.log`, so the flash guard waits for today's dump. Ask the owner for each flash cycle.
+a. `run 1 2`, board still on snapshot 58: FRAM evidence first (/status with errcount, the raw dump; clear nothing),
+   then env --tier bench on the new pins with the package list. Then `run 4a` (host only, nothing beside it).
+b. From this head, two throwaway worktrees, never committed, in this order: lwIP control (setup_toolchain.py:697's
+   override call out, `--output <abs>/control.uf2`, record "overrides": []), then GC control (codegen.py:830's
+   gc.threshold line out, `<abs>/gc_control.uf2`, record dirty: true), the last rp2 build before 3g.
+c. `GC_CONTROL_IMAGE=<abs>/gc_control.uf2 run 3g 5gh`: the default flash and bench tiers without the threshold (pass:
+   green, no allocation-failure text), then 5gh: /status read by 6, 6, 6, then 2 readers, 60 s each, 120 s idle and
+   one collect after each, mem_free and the largest free block every second.
+d. `run 3 5h`: 3 builds and flashes this head's dev image; 4b, 5 and 5h as in 3. Per tier: verdict, every ResetReason,
+   errcount after each step, the UART figures, the FRAM command hold, C-stack peak, free alarms, ISL29125 G01/G02, the
+   SGP40 (voc, raw) samples. A red in 3g-5h: stop and send it (a fix means both images again, before any opt-in wear).
+e. `run 9 10m`: crc16 hazards (both ends' logs and ring counters at a failing exchange), the 10 min soak (SGP40
+   cadence, ~600 cycles) and the mid soak. Step 11 is done: not again.
+f. `run 12a 12g`: boot feed stamps, ring peak (both rings 512 B), DNS idle poll, ResetErrors budget (clears every
+   FRAM log 15 times, its own /status read first), general call per chip, 12g the FRAM chunk timing (no CS settles).
+g. `run 16b` (BMP3XX calibration bytes, soft-reset half); `CH13=1 run 13` once the owner's AP is on channel 13.
+h. Long soaks 10c-10h, 6 h 20 each, one a day as the owner chooses (10g the HTTP soak, 10e triggers, 10h FRC values).
+i. Wear, last: after a-h are green and M1 (j) is done, and once my `cleared:` line is in WEAR.txt (I give it after
+   reading every result, so the code behind the wear steps is final): `run 7f 10b`
+   (LWIP_CONTROL_IMAGE=<abs>/control.uf2, the NeoPixel rig; 8f/8b five flash cycles), then `run 15` (two; ends on
+   this image). A passed wear step never runs again.
+j. With the owner, no runner step active: M1 (isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry, 30 min,
+   first: it records the rig geometry 7f depends on); real_fram_persistence_across_power_cycle (no SCD30 pressure
+   read any more);
+   run_pin_reset_keeps_or_clears_the_record; the bridge by env --tier bench under its timer, a second armed by hand.
+k. Host, no runner step active: noble and trixie at this head in the existing chroots, `mount -t tmpfs tmpfs
+   "$CHROOT/tmp"` first; no new chroot (if trixie's is gone, tell me first).
+Wear: 9 flash cycles, 126 owned config writes, 14 SCD30 NVM writes, up to 422 prerequisite writes. Figures as before.
+
 ## Relay 2026-11-10 12:23 UTC - lead to bench: item 3 read; the heap side-finding gets one measurement
 
 - Item 3 read: deepest 5,652 B of 7,936 at the FRAM leaf, web 3,820, log store 2,444; recorded. The 12:06 attempt is
