@@ -59,6 +59,30 @@ def _config_log_on_fram(path: Path, device: str) -> bool:
     return not _sets_config_log_off(text, str(path))
 
 
+def _device_outputs(device_toml: Path, out_dir: Path, build_date: str) -> "dict[Path, str] | None":
+    # Every output of a device, built before the first is written: a failing stage leaves none of its files (None, reported).
+    device = device_toml.stem
+    try:
+        generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext", build_date=build_date)
+        # generate_device() has already put the model in construction order, which the cards follow.
+        definitions = generate_definitions(generated.model, REPO_ROOT / "src")
+        reference = generate_api_reference(generated.model, REPO_ROOT / "src")
+        wiring_plan = compute_twin_wiring(generated.model)
+        facts = expected_facts(generated.model, REPO_ROOT / "src")
+    except BuildError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return None
+    return {
+        out_dir / f"sensortask_{device}.py": generated.module_source,
+        out_dir / f"sensortask_{device}_main.py": generated.boot_entry_source,
+        out_dir / f"sensortask_{device}_main_noautostart.py": generated.boot_entry_noautostart_source,
+        out_dir / f"sensortask_{device}_expected.json": json.dumps(facts),
+        out_dir / f"sensortask_{device}_wiring_plan.json": json.dumps(wiring_plan),
+        out_dir / "definitions" / f"{device}.json": json.dumps(definitions, indent=2),
+        out_dir / "api" / f"{device}.json": api_reference_json(reference),
+    }
+
+
 def _expected_setups(model: DeviceModel, order: "list[str | tuple[str, str]]") -> "list[str]":
     # fram first (sysfunct's config store logs to it), then the mandatory services, then every other
     # instance needing setup() in construction order, webserver last: the rule _collect_setups() emits.
@@ -101,54 +125,13 @@ def _fram_wired(model: DeviceModel) -> "list[str]":
     return sorted(wired)
 
 
-@functools.lru_cache(maxsize=64)
-def _sets_config_log_off(source: str, filename: str) -> bool:
-    # Keyed on the source text like source_ast's parse cache, so an edited file is never answered stale.
-    for node in ast.walk(parse_source(source, filename)):
-        if isinstance(node, ast.ClassDef):
-            for stmt in node.body:
-                if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and stmt.value.value is False and any(isinstance(t, ast.Name) and t.id == "_CFG_LOG_FRAM" for t in stmt.targets):
-                    return True
-    return False
-
-
-def expected_facts(model: DeviceModel, src_dir: Path = REPO_ROOT / "src") -> JsonDict:
-    # What the generated module must do at boot, derived from the model alone, never read back from
-    # the generated text: the oracle the mock and twin boot scenarios assert a real run against.
-    order = build_construction_order(model)
-    return {
-        "boot_sequence": {
-            "construction": [node if isinstance(node, str) else instance_label(node) for node in order],
-            "setups": list(_expected_setups(model, order)),
-            "phases": list(BOOT_PHASES),
-        },
-        "fram_wired": list(_fram_wired(model)),
-        "fram_backed_loggers": list(_fram_backed_loggers(model, src_dir)),
-    }
-
-
-def _device_outputs(device_toml: Path, out_dir: Path, build_date: str) -> "dict[Path, str] | None":
-    # Every output of a device, built before the first is written: a failing stage leaves none of its files (None, reported).
-    device = device_toml.stem
+def _fresh(out_dir: Path, hashes: "dict[str, str]") -> bool:
+    # The tree's stamp still holds: the same inputs at the same hashes, and every output it lists is there.
     try:
-        generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext", build_date=build_date)
-        # generate_device() has already put the model in construction order, which the cards follow.
-        definitions = generate_definitions(generated.model, REPO_ROOT / "src")
-        reference = generate_api_reference(generated.model, REPO_ROOT / "src")
-        wiring_plan = compute_twin_wiring(generated.model)
-        facts = expected_facts(generated.model, REPO_ROOT / "src")
-    except BuildError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return None
-    return {
-        out_dir / f"sensortask_{device}.py": generated.module_source,
-        out_dir / f"sensortask_{device}_main.py": generated.boot_entry_source,
-        out_dir / f"sensortask_{device}_main_noautostart.py": generated.boot_entry_noautostart_source,
-        out_dir / f"sensortask_{device}_expected.json": json.dumps(facts),
-        out_dir / f"sensortask_{device}_wiring_plan.json": json.dumps(wiring_plan),
-        out_dir / "definitions" / f"{device}.json": json.dumps(definitions, indent=2),
-        out_dir / "api" / f"{device}.json": api_reference_json(reference),
-    }
+        stamp = json.loads((out_dir / _STAMP_NAMES[0]).read_text(encoding="utf-8"))
+        return bool(stamp["inputs"] == hashes and all((out_dir / rel).is_file() for rel in stamp["outputs"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def _generate_one(device_toml: Path, out_dir: Path) -> int:
@@ -163,62 +146,6 @@ def _generate_one(device_toml: Path, out_dir: Path) -> int:
         return 1
     print(f"Generated {device_toml.stem}'s module + boot entries + expected facts + wiring plan + definitions + API reference into {out_dir}")
     return 0
-
-
-def _fresh(out_dir: Path, hashes: "dict[str, str]") -> bool:
-    # The tree's stamp still holds: the same inputs at the same hashes, and every output it lists is there.
-    try:
-        stamp = json.loads((out_dir / _STAMP_NAMES[0]).read_text(encoding="utf-8"))
-        return bool(stamp["inputs"] == hashes and all((out_dir / rel).is_file() for rel in stamp["outputs"]))
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
-
-
-def _input_hashes(device_tomls: "list[Path]") -> "dict[str, str]":
-    # Taken before any device is generated, so an input edited during the run leaves the tree stale: each input's sha256
-    # (tests/_generated_tree.py; MicroPython's os.stat() has whole seconds only).
-    inputs = [*device_tomls, *(REPO_ROOT / name for name in _NAMED_INPUTS), *(p for pattern in _INPUT_GLOBS for p in REPO_ROOT.glob(pattern))]
-    return {path.relative_to(REPO_ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs if path.is_file()}
-
-
-def _remove_all_but(out_dir: Path, kept: "set[Path]") -> bool:
-    # Every finished file of the generator's own directories that this run did not write is a removed device's: gone, so no
-    # consumer globbing the tree takes it for a device. A .tmp is another run's write before its rename and stays.
-    stale = sorted(p for d in {out_dir, *(k.parent for k in kept)} for p in d.iterdir() if p.is_file() and p not in kept and not p.name.endswith(".tmp"))
-    try:
-        for path in stale:
-            path.unlink(missing_ok=True)
-    except OSError as e:
-        print(f"error: cannot remove {e.filename}: {e.strerror}", file=sys.stderr)
-        return False
-    if stale:
-        print(f"Pruned {len(stale)} stale output(s): {', '.join(p.relative_to(out_dir).as_posix() for p in stale)}")
-    return True
-
-
-def _stamps(hashes: "dict[str, str]", device_tomls: "list[Path]", outputs: "list[str]") -> "dict[str, str]":
-    # The inputs read and every file of the tree, stamps included, for tests/_generated_tree.py; each TOML's hash for the JS loader.
-    tomls = {path.stem: hashes[path.relative_to(REPO_ROOT).as_posix()] for path in device_tomls}
-    return dict(zip(_STAMP_NAMES, (json.dumps({"inputs": hashes, "outputs": sorted([*outputs, *_STAMP_NAMES])}), json.dumps({"tomls": tomls})), strict=True))
-
-
-def _write_through_rename(files: "dict[Path, str]") -> bool:
-    # Each file goes to <name>.tmp beside it and is renamed into place once all are written, so a run
-    # reading build/generated_src/ meanwhile meets the old file or the new one, never a truncated one.
-    written: list[Path] = []
-    try:
-        for path, text in files.items():
-            written.append(path.with_name(f"{path.name}.tmp"))
-            written[-1].write_text(text, encoding="utf-8")
-        for tmp in written:
-            tmp.replace(tmp.with_name(tmp.name.removesuffix(".tmp")))
-    except OSError as e:
-        for tmp in written:
-            with contextlib.suppress(OSError):  # the write error below is the one reported
-                tmp.unlink(missing_ok=True)
-        print(f"error: cannot write {e.filename or written[-1]}: {e.strerror}", file=sys.stderr)
-        return False
-    return True
 
 
 def _generate_tree(out_dir: Path, *, if_stale: bool) -> int:
@@ -256,6 +183,79 @@ def _generate_tree(out_dir: Path, *, if_stale: bool) -> int:
         return 1
     print(f"Generated {len(device_tomls)} device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into {out_dir}")
     return 0
+
+
+def _input_hashes(device_tomls: "list[Path]") -> "dict[str, str]":
+    # Taken before any device is generated, so an input edited during the run leaves the tree stale: each input's sha256
+    # (tests/_generated_tree.py; MicroPython's os.stat() has whole seconds only).
+    inputs = [*device_tomls, *(REPO_ROOT / name for name in _NAMED_INPUTS), *(p for pattern in _INPUT_GLOBS for p in REPO_ROOT.glob(pattern))]
+    return {path.relative_to(REPO_ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs if path.is_file()}
+
+
+def _remove_all_but(out_dir: Path, kept: "set[Path]") -> bool:
+    # Every finished file of the generator's own directories that this run did not write is a removed device's: gone, so no
+    # consumer globbing the tree takes it for a device. A .tmp is another run's write before its rename and stays.
+    stale = sorted(p for d in {out_dir, *(k.parent for k in kept)} for p in d.iterdir() if p.is_file() and p not in kept and not p.name.endswith(".tmp"))
+    try:
+        for path in stale:
+            path.unlink(missing_ok=True)
+    except OSError as e:
+        print(f"error: cannot remove {e.filename}: {e.strerror}", file=sys.stderr)
+        return False
+    if stale:
+        print(f"Pruned {len(stale)} stale output(s): {', '.join(p.relative_to(out_dir).as_posix() for p in stale)}")
+    return True
+
+
+@functools.lru_cache(maxsize=64)
+def _sets_config_log_off(source: str, filename: str) -> bool:
+    # Keyed on the source text like source_ast's parse cache, so an edited file is never answered stale.
+    for node in ast.walk(parse_source(source, filename)):
+        if isinstance(node, ast.ClassDef):
+            for stmt in node.body:
+                if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and stmt.value.value is False and any(isinstance(t, ast.Name) and t.id == "_CFG_LOG_FRAM" for t in stmt.targets):
+                    return True
+    return False
+
+
+def _stamps(hashes: "dict[str, str]", device_tomls: "list[Path]", outputs: "list[str]") -> "dict[str, str]":
+    # The inputs read and every file of the tree, stamps included, for tests/_generated_tree.py; each TOML's hash for the JS loader.
+    tomls = {path.stem: hashes[path.relative_to(REPO_ROOT).as_posix()] for path in device_tomls}
+    return dict(zip(_STAMP_NAMES, (json.dumps({"inputs": hashes, "outputs": sorted([*outputs, *_STAMP_NAMES])}), json.dumps({"tomls": tomls})), strict=True))
+
+
+def _write_through_rename(files: "dict[Path, str]") -> bool:
+    # Each file goes to <name>.tmp beside it and is renamed into place once all are written, so a run
+    # reading build/generated_src/ meanwhile meets the old file or the new one, never a truncated one.
+    written: list[Path] = []
+    try:
+        for path, text in files.items():
+            written.append(path.with_name(f"{path.name}.tmp"))
+            written[-1].write_text(text, encoding="utf-8")
+        for tmp in written:
+            tmp.replace(tmp.with_name(tmp.name.removesuffix(".tmp")))
+    except OSError as e:
+        for tmp in written:
+            with contextlib.suppress(OSError):  # the write error below is the one reported
+                tmp.unlink(missing_ok=True)
+        print(f"error: cannot write {e.filename or written[-1]}: {e.strerror}", file=sys.stderr)
+        return False
+    return True
+
+
+def expected_facts(model: DeviceModel, src_dir: Path = REPO_ROOT / "src") -> JsonDict:
+    # What the generated module must do at boot, derived from the model alone, never read back from
+    # the generated text: the oracle the mock and twin boot scenarios assert a real run against.
+    order = build_construction_order(model)
+    return {
+        "boot_sequence": {
+            "construction": [node if isinstance(node, str) else instance_label(node) for node in order],
+            "setups": list(_expected_setups(model, order)),
+            "phases": list(BOOT_PHASES),
+        },
+        "fram_wired": list(_fram_wired(model)),
+        "fram_backed_loggers": list(_fram_backed_loggers(model, src_dir)),
+    }
 
 
 def main(argv: "tuple[str, ...] | list[str]" = ()) -> int:

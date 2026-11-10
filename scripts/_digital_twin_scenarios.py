@@ -346,6 +346,14 @@ class SharedBoot:
     reported: int = 0
     newest: "dict[str, list[JSONValue]]" = field(default_factory=dict)  # each source's two newest slots at the last read
 
+    def _own_backup(self, name: str, move: "tuple[int | None, int | None]", now: "list[JSONValue]") -> bool:
+        # The boot's own background, never a scenario's: an SGP40 that never syncs writes its backup untimestamped (W35)
+        # about 90 s after the spawn, then each backup period: one count, a new W35 slot or W35 repeated in place.
+        backup = ["W", src_int("asy_sgp40_driver.py", "_WRN_SGP_WRITTEN_NO_TS")]
+        before = self.newest.get(name, [])
+        once = (move[1] or 0) - (move[0] or 0) == 1
+        return name.split("_", 1)[0] == "SGP40" and once and now[-1:] == [backup] and (now == before or now[:-1] == before[-1:])
+
     def acquire(self) -> Twin:
         if self.twin is None:
             twin = self.stack.enter_context(self.ctx.boot(*_CONN))
@@ -385,14 +393,6 @@ class SharedBoot:
             problems.append(verdict)
         self.counters, self.newest = counters, newest
         return problems
-
-    def _own_backup(self, name: str, move: "tuple[int | None, int | None]", now: "list[JSONValue]") -> bool:
-        # The boot's own background, never a scenario's: an SGP40 that never syncs writes its backup untimestamped (W35)
-        # about 90 s after the spawn, then each backup period: one count, a new W35 slot or W35 repeated in place.
-        backup = ["W", src_int("asy_sgp40_driver.py", "_WRN_SGP_WRITTEN_NO_TS")]
-        before = self.newest.get(name, [])
-        once = (move[1] or 0) - (move[0] or 0) == 1
-        return name.split("_", 1)[0] == "SGP40" and once and now[-1:] == [backup] and (now == before or now[:-1] == before[-1:])
 
     def release(self, item: Scenario, *, failed: bool, last: bool) -> "list[str]":
         # After one sharing scenario: its idle check unless it failed, then the shutdown a failure or the group's end
@@ -1657,6 +1657,20 @@ def _reset_errors_under_a_command(ctx: Context) -> None:
         _refused_reset_errors(twin.port, before, "while the reboot owns the reset")
 
 
+@scenario("reset_errors_while_storage_is_paused_is_refused_and_clears_nothing", family="system_commands", drivers=("fram", "sgp40"))
+def _reset_errors_under_mempause(ctx: Context) -> None:
+    """A ResetErrors while mempause holds answers Failed and lowers no error count, the FRAM manager's RAM-only log included."""
+    key, name = _first_instance(ctx, "sgp40")
+    fram = next(key for key, driver, _ext in ctx.instances if driver == "fram")
+    with ctx.boot("--fault", f"{key}:writeto:1", "--fault", f"{fram}:wren:2") as twin:
+        _expect(_wait_entry(twin.port, name), f"the injected write fault never logged a {name} error, so there is nothing to clear")
+        wel = src_int("asy_fram_driver.py", "_WRN_FRAM_WEL_NOT_SET")
+        _expect(_wait_entry(twin.port, "FRAM", kind="W", num=wel), "the dropped write-enables never logged a FRAM warning, so its RAM-only log holds nothing")
+        before = _error_table(twin.port)
+        _expect(_system_cmd(twin.port, "mempause") == "Valid", "mempause did not answer Valid")
+        _refused_reset_errors(twin.port, before, "while storage is paused")
+
+
 @scenario("reset_errors_while_the_escalation_logs_is_refused_and_clears_nothing", family="system_commands", drivers=("scd30",))
 def _reset_errors_under_the_escalation(ctx: Context) -> None:
     """A ResetErrors while the supervisor writes its stack-exhaustion entry answers Failed; the reboot keeps every entry, code 20."""
@@ -1680,20 +1694,6 @@ def _reset_errors_under_the_escalation(ctx: Context) -> None:
         after = errcount_table(HTTPStatus.OK, status)
         _expect(errcount_counter(after.get(name)) >= errcount_counter(before[name]), f"{name}'s entries did not survive into the reboot ({before[name]!r} -> {after.get(name)!r})")
         _expect(_has_entry(after.get("SYSTEM"), "E", errno), f"SYSTEM's history holds no stack-exhaustion entry ({after.get('SYSTEM')!r})")
-
-
-@scenario("reset_errors_while_storage_is_paused_is_refused_and_clears_nothing", family="system_commands", drivers=("fram", "sgp40"))
-def _reset_errors_under_mempause(ctx: Context) -> None:
-    """A ResetErrors while mempause holds answers Failed and lowers no error count, the FRAM manager's RAM-only log included."""
-    key, name = _first_instance(ctx, "sgp40")
-    fram = next(key for key, driver, _ext in ctx.instances if driver == "fram")
-    with ctx.boot("--fault", f"{key}:writeto:1", "--fault", f"{fram}:wren:2") as twin:
-        _expect(_wait_entry(twin.port, name), f"the injected write fault never logged a {name} error, so there is nothing to clear")
-        wel = src_int("asy_fram_driver.py", "_WRN_FRAM_WEL_NOT_SET")
-        _expect(_wait_entry(twin.port, "FRAM", kind="W", num=wel), "the dropped write-enables never logged a FRAM warning, so its RAM-only log holds nothing")
-        before = _error_table(twin.port)
-        _expect(_system_cmd(twin.port, "mempause") == "Valid", "mempause did not answer Valid")
-        _refused_reset_errors(twin.port, before, "while storage is paused")
 
 
 @scenario("a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog", family="system_commands", first_device="any")

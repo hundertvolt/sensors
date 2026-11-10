@@ -89,95 +89,6 @@ class WebGroupTag:
     submit_label: "str | None" = None
 
 
-def _parse_kv_pairs(rest: str) -> "dict[str, str]":
-    pairs: dict[str, str] = {}
-    pos = 0
-    n = len(rest)
-    while pos < n:
-        while pos < n and rest[pos].isspace():
-            pos += 1
-        if pos >= n:
-            break
-        m = _KV_RE.match(rest, pos)
-        if m is None:
-            raise _WebGrammarError(f"unparseable content starting at {rest[pos:]!r}")
-        key = m.group("key")
-        if key in pairs:
-            raise _WebGrammarError(f"duplicate key {key!r}")
-        pairs[key] = m.group("qval") if m.group("qval") is not None else m.group("bval")
-        pos = m.end()
-    return pairs
-
-
-def _coerce_bool(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, key: str) -> bool:
-    if raw not in _BOOL_VALUES:
-        raise BuildError(device, f"{path}:{lineno}: @web {key}= must be true or false, got {raw!r}", rule="web.not-a-bool", fix=f"write {key}=true or {key}=false", instance=instance_label)
-    return _BOOL_VALUES[raw]
-
-
-def _coerce_path(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, field_name: str) -> "tuple[str, ...]":
-    # Dot-joined rather than a JSON array (Part H.5.1): _KV_RE captures one scalar per key=value
-    # pair, so an array literal has no home in this grammar. Splitting a plain string at
-    # consumption time fits the existing shape instead of growing a second value grammar.
-    parts = tuple(raw.split("."))
-    if not parts or any(not p for p in parts):
-        raise BuildError(
-            device,
-            f"{path}:{lineno}: @web tag for {field_name!r} has malformed path={raw!r}",
-            rule="web.path-malformed",
-            fix='write dot-joined non-empty segments, e.g. path="RGB.R"',
-            instance=instance_label, field=field_name,
-        )
-    return parts
-
-
-def _coerce_decimals(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, field_name: str) -> int:
-    fix = f"write decimals as an int within 0..{_MAX_DECIMALS}"
-    try:
-        value = int(raw)
-    except ValueError:
-        raise BuildError(device, f"{path}:{lineno}: @web tag for {field_name!r} has non-integer decimals={raw!r}", rule="web.decimals-range", fix=fix, instance=instance_label, field=field_name) from None
-    if not (0 <= value <= _MAX_DECIMALS):
-        raise BuildError(device, f"{path}:{lineno}: @web tag for {field_name!r} has decimals={value} outside 0..{_MAX_DECIMALS}", rule="web.decimals-range", fix=fix, instance=instance_label, field=field_name)
-    return value
-
-
-def resolution_decimals(resolution: float) -> int:
-    # The decimals a value rounded to `resolution` shows: 0.01 -> 2, 0.5 -> 1, 5 -> 0 (repr() is the shortest exact form).
-    exponent = Decimal(repr(resolution)).normalize().as_tuple().exponent
-    return max(0, -exponent) if isinstance(exponent, int) else 0
-
-
-def _coerce_resolution(raw: str, site: "TagSite") -> float:
-    where = f"{site.path}:{site.lineno}: @web tag for {site.field!r} has resolution={raw!r}"
-    try:
-        value = float(raw)
-    except ValueError:
-        raise BuildError(site.device, f"{where}, which is not a number", rule="tag.not-a-number", fix="write the step as an int or a float, e.g. resolution=0.01", instance=site.instance_label, field=site.field) from None
-    if not math.isfinite(value):
-        # float() reads nan/inf, and json.dumps() would write NaN/Infinity, which no browser parses.
-        raise BuildError(site.device, f"{where}, which is not a finite number", rule="tag.non-finite-number", fix="write a finite number", instance=site.instance_label, field=site.field)
-    if value <= 0:
-        raise BuildError(site.device, f"{where}, expected a positive number", rule="web.value-not-in-set", fix="write the step the device rounds to, a positive number", instance=site.instance_label, field=site.field)
-    if resolution_decimals(value) > _MAX_DECIMALS:
-        raise BuildError(
-            site.device, f"{where}, which needs {resolution_decimals(value)} decimals, outside 0..{_MAX_DECIMALS}", rule="web.decimals-range",
-            fix=f"write a step of at most {_MAX_DECIMALS} decimals", instance=site.instance_label, field=site.field,
-        )
-    return value
-
-
-def _split_special(pairs: "dict[str, str]") -> "tuple[dict[str, str], tuple[tuple[str, str], ...]]":
-    plain: dict[str, str] = {}
-    special: list[tuple[str, str]] = []
-    for key, value in pairs.items():
-        if key.startswith("special:"):
-            special.append((key[len("special:"):], value))
-        else:
-            plain[key] = value
-    return plain, tuple(special)
-
-
 @dataclass(frozen=True)
 class TagSite:
     # Where one tag sits, built once per tag: what every error raised about it names.
@@ -188,6 +99,95 @@ class TagSite:
     field: "str | None"
     raw: str
     tag_name: str
+
+
+def _check_hidden_alone(plain: "dict[str, str]", special: "tuple[tuple[str, str], ...]", site: TagSite) -> str:
+    # hidden="<why>" keeps a schema field off the website on purpose, so nothing else may describe it.
+    others = sorted(set(plain) - {"hidden"}) + [f"special:{key}" for key, _ in special]
+    if others:
+        raise BuildError(
+            site.device,
+            f"{site.path}:{site.lineno}: @web tag for {site.field!r} has hidden= beside {others}; hidden= stands alone: {site.raw!r}",
+            rule="web.hidden-not-alone",
+            fix="drop hidden= to put the field on the page, or drop every other key to keep it off",
+            instance=site.instance_label,
+            field=site.field,
+        )
+    if not plain["hidden"]:
+        raise BuildError(
+            site.device,
+            f"{site.path}:{site.lineno}: @web tag for {site.field!r} gives no reason in hidden=: {site.raw!r}",
+            rule="web.hidden-no-reason",
+            fix='write why the field stays off the website: hidden="<why>"',
+            instance=site.instance_label,
+            field=site.field,
+        )
+    return plain["hidden"]
+
+
+def _check_known_and_required(plain: "dict[str, str]", known_keys: "frozenset[str]", required: "frozenset[str]", site: TagSite) -> None:
+    unknown = set(plain) - known_keys
+    if unknown:
+        raise BuildError(
+            site.device,
+            f"{site.path}:{site.lineno}: @{site.tag_name} tag has unknown key(s) {sorted(unknown)}: {site.raw!r}",
+            rule="web.unknown-key",
+            fix=f"drop or correct {sorted(unknown)}; the @{site.tag_name} keys are SPECIFICATION.md Part L.6.4's",
+            instance=site.instance_label,
+            field=site.field,
+        )
+    missing = required - set(plain)
+    if missing:
+        raise BuildError(
+            site.device,
+            f"{site.path}:{site.lineno}: @{site.tag_name} tag is missing required key(s) {sorted(missing)}: {site.raw!r}",
+            rule="web.missing-key",
+            fix=f"add {sorted(missing)} to the tag",
+            instance=site.instance_label,
+            field=site.field,
+        )
+
+
+def _check_no_duplicate_fields(tags: "tuple[WebFieldTag, ...] | list[WebFieldTag]", path: Path, device: str, instance_label: str) -> None:
+    seen: dict[tuple[str, str, str], WebFieldTag] = {}
+    for tag in tags:
+        key = (tag.section, tag.submit_group, tag.field_name)
+        if key in seen:
+            raise BuildError(
+                device,
+                f"{path}: duplicate @web tag for field {tag.field_name!r} in section {tag.section!r}/group {tag.submit_group!r}",
+                rule="tag.duplicate-field",
+                fix="keep one @web tag per field in each section and group",
+                instance=instance_label,
+                field=tag.field_name,
+            )
+        seen[key] = tag
+    hidden = {tag.field_name for tag in tags if tag.hidden is not None}
+    for tag in tags:
+        if tag.hidden is None and tag.field_name in hidden:
+            raise BuildError(
+                device,
+                f"{path}: field {tag.field_name!r} is both hidden and on the page",
+                rule="web.hidden-and-tagged",
+                fix="drop its hidden= tag or its page tag",
+                instance=instance_label,
+                field=tag.field_name,
+            )
+
+
+def _check_no_duplicate_groups(tags: "tuple[WebGroupTag, ...] | list[WebGroupTag]", path: Path, device: str, instance_label: str) -> None:
+    seen: dict[tuple[str, str], WebGroupTag] = {}
+    for tag in tags:
+        key = (tag.section, tag.submit_group)
+        if key in seen:
+            raise BuildError(
+                device,
+                f"{path}: duplicate @web-group tag for section {tag.section!r}/group {tag.submit_group!r}",
+                rule="web.duplicate-group",
+                fix="keep one @web-group tag per section and group",
+                instance=instance_label,
+            )
+        seen[key] = tag
 
 
 def _check_value_keys(plain: "dict[str, str]", kind: "str | None", site: TagSite) -> None:
@@ -245,51 +245,148 @@ def _check_value_keys(plain: "dict[str, str]", kind: "str | None", site: TagSite
         )
 
 
-def _check_known_and_required(plain: "dict[str, str]", known_keys: "frozenset[str]", required: "frozenset[str]", site: TagSite) -> None:
-    unknown = set(plain) - known_keys
-    if unknown:
-        raise BuildError(
-            site.device,
-            f"{site.path}:{site.lineno}: @{site.tag_name} tag has unknown key(s) {sorted(unknown)}: {site.raw!r}",
-            rule="web.unknown-key",
-            fix=f"drop or correct {sorted(unknown)}; the @{site.tag_name} keys are SPECIFICATION.md Part L.6.4's",
-            instance=site.instance_label,
-            field=site.field,
-        )
-    missing = required - set(plain)
-    if missing:
-        raise BuildError(
-            site.device,
-            f"{site.path}:{site.lineno}: @{site.tag_name} tag is missing required key(s) {sorted(missing)}: {site.raw!r}",
-            rule="web.missing-key",
-            fix=f"add {sorted(missing)} to the tag",
-            instance=site.instance_label,
-            field=site.field,
-        )
+def _coerce_bool(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, key: str) -> bool:
+    if raw not in _BOOL_VALUES:
+        raise BuildError(device, f"{path}:{lineno}: @web {key}= must be true or false, got {raw!r}", rule="web.not-a-bool", fix=f"write {key}=true or {key}=false", instance=instance_label)
+    return _BOOL_VALUES[raw]
 
 
-def _check_hidden_alone(plain: "dict[str, str]", special: "tuple[tuple[str, str], ...]", site: TagSite) -> str:
-    # hidden="<why>" keeps a schema field off the website on purpose, so nothing else may describe it.
-    others = sorted(set(plain) - {"hidden"}) + [f"special:{key}" for key, _ in special]
-    if others:
+def _coerce_decimals(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, field_name: str) -> int:
+    fix = f"write decimals as an int within 0..{_MAX_DECIMALS}"
+    try:
+        value = int(raw)
+    except ValueError:
+        raise BuildError(device, f"{path}:{lineno}: @web tag for {field_name!r} has non-integer decimals={raw!r}", rule="web.decimals-range", fix=fix, instance=instance_label, field=field_name) from None
+    if not (0 <= value <= _MAX_DECIMALS):
+        raise BuildError(device, f"{path}:{lineno}: @web tag for {field_name!r} has decimals={value} outside 0..{_MAX_DECIMALS}", rule="web.decimals-range", fix=fix, instance=instance_label, field=field_name)
+    return value
+
+
+def _coerce_path(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, field_name: str) -> "tuple[str, ...]":
+    # Dot-joined rather than a JSON array (Part H.5.1): _KV_RE captures one scalar per key=value
+    # pair, so an array literal has no home in this grammar. Splitting a plain string at
+    # consumption time fits the existing shape instead of growing a second value grammar.
+    parts = tuple(raw.split("."))
+    if not parts or any(not p for p in parts):
         raise BuildError(
-            site.device,
-            f"{site.path}:{site.lineno}: @web tag for {site.field!r} has hidden= beside {others}; hidden= stands alone: {site.raw!r}",
-            rule="web.hidden-not-alone",
-            fix="drop hidden= to put the field on the page, or drop every other key to keep it off",
-            instance=site.instance_label,
-            field=site.field,
+            device,
+            f"{path}:{lineno}: @web tag for {field_name!r} has malformed path={raw!r}",
+            rule="web.path-malformed",
+            fix='write dot-joined non-empty segments, e.g. path="RGB.R"',
+            instance=instance_label, field=field_name,
         )
-    if not plain["hidden"]:
+    return parts
+
+
+def _coerce_resolution(raw: str, site: "TagSite") -> float:
+    where = f"{site.path}:{site.lineno}: @web tag for {site.field!r} has resolution={raw!r}"
+    try:
+        value = float(raw)
+    except ValueError:
+        raise BuildError(site.device, f"{where}, which is not a number", rule="tag.not-a-number", fix="write the step as an int or a float, e.g. resolution=0.01", instance=site.instance_label, field=site.field) from None
+    if not math.isfinite(value):
+        # float() reads nan/inf, and json.dumps() would write NaN/Infinity, which no browser parses.
+        raise BuildError(site.device, f"{where}, which is not a finite number", rule="tag.non-finite-number", fix="write a finite number", instance=site.instance_label, field=site.field)
+    if value <= 0:
+        raise BuildError(site.device, f"{where}, expected a positive number", rule="web.value-not-in-set", fix="write the step the device rounds to, a positive number", instance=site.instance_label, field=site.field)
+    if resolution_decimals(value) > _MAX_DECIMALS:
         raise BuildError(
-            site.device,
-            f"{site.path}:{site.lineno}: @web tag for {site.field!r} gives no reason in hidden=: {site.raw!r}",
-            rule="web.hidden-no-reason",
-            fix='write why the field stays off the website: hidden="<why>"',
-            instance=site.instance_label,
-            field=site.field,
+            site.device, f"{where}, which needs {resolution_decimals(value)} decimals, outside 0..{_MAX_DECIMALS}", rule="web.decimals-range",
+            fix=f"write a step of at most {_MAX_DECIMALS} decimals", instance=site.instance_label, field=site.field,
         )
-    return plain["hidden"]
+    return value
+
+
+def _parse_kv_pairs(rest: str) -> "dict[str, str]":
+    pairs: dict[str, str] = {}
+    pos = 0
+    n = len(rest)
+    while pos < n:
+        while pos < n and rest[pos].isspace():
+            pos += 1
+        if pos >= n:
+            break
+        m = _KV_RE.match(rest, pos)
+        if m is None:
+            raise _WebGrammarError(f"unparseable content starting at {rest[pos:]!r}")
+        key = m.group("key")
+        if key in pairs:
+            raise _WebGrammarError(f"duplicate key {key!r}")
+        pairs[key] = m.group("qval") if m.group("qval") is not None else m.group("bval")
+        pos = m.end()
+    return pairs
+
+
+def _split_special(pairs: "dict[str, str]") -> "tuple[dict[str, str], tuple[tuple[str, str], ...]]":
+    plain: dict[str, str] = {}
+    special: list[tuple[str, str]] = []
+    for key, value in pairs.items():
+        if key.startswith("special:"):
+            special.append((key[len("special:"):], value))
+        else:
+            plain[key] = value
+    return plain, tuple(special)
+
+
+def check_ignored_when_set(tags: "tuple[WebFieldTag, ...]", path: Path, device: str, instance_label: str) -> None:
+    # The overriding field is a sibling: another field this file puts on the same section and group. Run once
+    # the file's schema fields are known tagged, so an untagged sibling is reported as untagged.
+    for tag in tags:
+        if tag.ignored_when_set is None:
+            continue
+        siblings = {t.field_name for t in tags if t.hidden is None and (t.section, t.submit_group) == (tag.section, tag.submit_group) and t is not tag}
+        if tag.ignored_when_set not in siblings:
+            raise BuildError(
+                device,
+                f"{path}: @web tag for {tag.field_name!r} has ignoredWhenSet={tag.ignored_when_set!r}, which names no other field of its group",
+                rule="web.ignored-when-set-unknown",
+                fix=f"name one of {sorted(siblings)}, or drop ignoredWhenSet=",
+                instance=instance_label,
+                field=tag.field_name,
+            )
+
+
+def parse_web_group_tags(path: Path, device: str, instance_label: str) -> "tuple[WebGroupTag, ...]":
+    tokens = iter_comment_tokens(path, device, instance_label)
+    tags: list[WebGroupTag] = []
+    exact_matches: set[tuple[int, int]] = set()
+    for tok in tokens:
+        text = tok.text.strip()
+        m = _WEB_GROUP_RE.fullmatch(text)
+        if m is None:
+            continue
+        exact_matches.add((tok.lineno, tok.col))
+        if tok.inside_block:
+            raise BuildError(
+                device,
+                f"{path}:{tok.lineno}: @web-group tag must be at module level: {text!r}",
+                rule="tag.not-module-level",
+                fix="move the tag to module level, beside the driver's schema",
+                instance=instance_label,
+            )
+        try:
+            pairs = _parse_kv_pairs(m.group("rest"))
+        except _WebGrammarError as e:
+            raise BuildError(
+                device,
+                f"{path}:{tok.lineno}: malformed @web-group tag ({e}): {text!r}",
+                rule="web.malformed-pairs",
+                fix='write key=value pairs, each value a bare token or a "quoted string", each key once',
+                instance=instance_label,
+            ) from None
+        site = TagSite(device, path, tok.lineno, instance_label, None, text, "web-group")
+        _check_known_and_required(pairs, _GROUP_KNOWN_KEYS, frozenset({"section", "submitGroup", "label"}), site)
+        tags.append(WebGroupTag(
+            section=pairs["section"],
+            submit_group=pairs["submitGroup"],
+            label=pairs["label"],
+            raw=text,
+            submit=_coerce_bool(pairs["submit"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="submit") if "submit" in pairs else False,
+            submit_label=pairs.get("submitLabel"),
+        ))
+    check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches, _SPECS_WEB_GROUP)
+    _check_no_duplicate_groups(tags, path, device, instance_label)
+    return tuple(tags)
 
 
 def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFieldTag, ...]":
@@ -381,104 +478,7 @@ def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFi
     return tuple(tags)
 
 
-def parse_web_group_tags(path: Path, device: str, instance_label: str) -> "tuple[WebGroupTag, ...]":
-    tokens = iter_comment_tokens(path, device, instance_label)
-    tags: list[WebGroupTag] = []
-    exact_matches: set[tuple[int, int]] = set()
-    for tok in tokens:
-        text = tok.text.strip()
-        m = _WEB_GROUP_RE.fullmatch(text)
-        if m is None:
-            continue
-        exact_matches.add((tok.lineno, tok.col))
-        if tok.inside_block:
-            raise BuildError(
-                device,
-                f"{path}:{tok.lineno}: @web-group tag must be at module level: {text!r}",
-                rule="tag.not-module-level",
-                fix="move the tag to module level, beside the driver's schema",
-                instance=instance_label,
-            )
-        try:
-            pairs = _parse_kv_pairs(m.group("rest"))
-        except _WebGrammarError as e:
-            raise BuildError(
-                device,
-                f"{path}:{tok.lineno}: malformed @web-group tag ({e}): {text!r}",
-                rule="web.malformed-pairs",
-                fix='write key=value pairs, each value a bare token or a "quoted string", each key once',
-                instance=instance_label,
-            ) from None
-        site = TagSite(device, path, tok.lineno, instance_label, None, text, "web-group")
-        _check_known_and_required(pairs, _GROUP_KNOWN_KEYS, frozenset({"section", "submitGroup", "label"}), site)
-        tags.append(WebGroupTag(
-            section=pairs["section"],
-            submit_group=pairs["submitGroup"],
-            label=pairs["label"],
-            raw=text,
-            submit=_coerce_bool(pairs["submit"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="submit") if "submit" in pairs else False,
-            submit_label=pairs.get("submitLabel"),
-        ))
-    check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches, _SPECS_WEB_GROUP)
-    _check_no_duplicate_groups(tags, path, device, instance_label)
-    return tuple(tags)
-
-
-def _check_no_duplicate_fields(tags: "tuple[WebFieldTag, ...] | list[WebFieldTag]", path: Path, device: str, instance_label: str) -> None:
-    seen: dict[tuple[str, str, str], WebFieldTag] = {}
-    for tag in tags:
-        key = (tag.section, tag.submit_group, tag.field_name)
-        if key in seen:
-            raise BuildError(
-                device,
-                f"{path}: duplicate @web tag for field {tag.field_name!r} in section {tag.section!r}/group {tag.submit_group!r}",
-                rule="tag.duplicate-field",
-                fix="keep one @web tag per field in each section and group",
-                instance=instance_label,
-                field=tag.field_name,
-            )
-        seen[key] = tag
-    hidden = {tag.field_name for tag in tags if tag.hidden is not None}
-    for tag in tags:
-        if tag.hidden is None and tag.field_name in hidden:
-            raise BuildError(
-                device,
-                f"{path}: field {tag.field_name!r} is both hidden and on the page",
-                rule="web.hidden-and-tagged",
-                fix="drop its hidden= tag or its page tag",
-                instance=instance_label,
-                field=tag.field_name,
-            )
-
-
-def check_ignored_when_set(tags: "tuple[WebFieldTag, ...]", path: Path, device: str, instance_label: str) -> None:
-    # The overriding field is a sibling: another field this file puts on the same section and group. Run once
-    # the file's schema fields are known tagged, so an untagged sibling is reported as untagged.
-    for tag in tags:
-        if tag.ignored_when_set is None:
-            continue
-        siblings = {t.field_name for t in tags if t.hidden is None and (t.section, t.submit_group) == (tag.section, tag.submit_group) and t is not tag}
-        if tag.ignored_when_set not in siblings:
-            raise BuildError(
-                device,
-                f"{path}: @web tag for {tag.field_name!r} has ignoredWhenSet={tag.ignored_when_set!r}, which names no other field of its group",
-                rule="web.ignored-when-set-unknown",
-                fix=f"name one of {sorted(siblings)}, or drop ignoredWhenSet=",
-                instance=instance_label,
-                field=tag.field_name,
-            )
-
-
-def _check_no_duplicate_groups(tags: "tuple[WebGroupTag, ...] | list[WebGroupTag]", path: Path, device: str, instance_label: str) -> None:
-    seen: dict[tuple[str, str], WebGroupTag] = {}
-    for tag in tags:
-        key = (tag.section, tag.submit_group)
-        if key in seen:
-            raise BuildError(
-                device,
-                f"{path}: duplicate @web-group tag for section {tag.section!r}/group {tag.submit_group!r}",
-                rule="web.duplicate-group",
-                fix="keep one @web-group tag per section and group",
-                instance=instance_label,
-            )
-        seen[key] = tag
+def resolution_decimals(resolution: float) -> int:
+    # The decimals a value rounded to `resolution` shows: 0.01 -> 2, 0.5 -> 1, 5 -> 0 (repr() is the shortest exact form).
+    exponent = Decimal(repr(resolution)).normalize().as_tuple().exponent
+    return max(0, -exponent) if isinstance(exponent, int) else 0

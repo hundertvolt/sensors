@@ -461,18 +461,18 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
         def get_buffer(self) -> RegionBuffer:
             return self._buffer
 
-        def write_into(self, buf: RegionBuffer) -> bool:
-            data = buf.get_data_buf()
-            if data is None:
-                return False
-            self.buf[:] = data
-            return True
-
         def read_into(self, buf: RegionBuffer) -> bool:
             data = buf.get_data_buf()
             if data is None:
                 return False
             data[:] = self.buf
+            return True
+
+        def write_into(self, buf: RegionBuffer) -> bool:
+            data = buf.get_data_buf()
+            if data is None:
+                return False
+            self.buf[:] = data
             return True
 
     class _FakeFramManager:

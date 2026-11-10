@@ -675,20 +675,6 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
     return section
 
 
-def _uart_section(src_dir: Path) -> JsonDict:
-    # The link's own section, on the device wiring one: a dispatch-only run request PUT to /uart, whose GET reads the report.
-    return {
-        "key": "uart", "label": "UART Link", "rest": {"get": "/uart", "put": "/uart"}, "pollGroup": "settings",
-        "groups": [{
-            "key": "uartHazards", "label": "UART Hazard Run", "submit": True, "submitLabel": "Start Hazard Run",
-            "fields": [{
-                "key": module_str_const(src_dir, _UART_LINK, "_HAZARDS_KEY"), "label": "Confirm Run", "kind": "toggle", "onLabel": "Yes, run", "offLabel": "No",
-                "description": "Runs the bench hazard set once across the crossover jumper, then the echo resumes. Bench-only: the request is not stored; the faults the run provokes appear in both UART error logs and can push older entries out.", "dispatch": True, "confirm": True,
-            }],
-        }],
-    }
-
-
 def _string_field(tag: WebFieldTag, min_v: object, max_v: object, special: object, device: str, path: Path) -> JsonDict:
     out: JsonDict = {}
     if min_v is not None:
@@ -758,6 +744,20 @@ def _system_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]"
 
 def _toggle_field(tag: WebFieldTag) -> JsonDict:
     return {"onLabel": tag.on_label or "On", "offLabel": tag.off_label or "Off"}
+
+
+def _uart_section(src_dir: Path) -> JsonDict:
+    # The link's own section, on the device wiring one: a dispatch-only run request PUT to /uart, whose GET reads the report.
+    return {
+        "key": "uart", "label": "UART Link", "rest": {"get": "/uart", "put": "/uart"}, "pollGroup": "settings",
+        "groups": [{
+            "key": "uartHazards", "label": "UART Hazard Run", "submit": True, "submitLabel": "Start Hazard Run",
+            "fields": [{
+                "key": module_str_const(src_dir, _UART_LINK, "_HAZARDS_KEY"), "label": "Confirm Run", "kind": "toggle", "onLabel": "Yes, run", "offLabel": "No",
+                "description": "Runs the bench hazard set once across the crossover jumper, then the echo resumes. Bench-only: the request is not stored; the faults the run provokes appear in both UART error logs and can push older entries out.", "dispatch": True, "confirm": True,
+            }],
+        }],
+    }
 
 
 def _unquoted(raw: str) -> "str | None":

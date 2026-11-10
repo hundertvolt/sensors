@@ -56,10 +56,6 @@ def _child_suites(node: ast.stmt) -> "list[list[ast.stmt]]":
     return suites
 
 
-def _span(node: "ast.stmt | ast.expr") -> "range":
-    return range(node.lineno, (node.end_lineno or node.lineno) + 1)
-
-
 class _Plan:
     # The edits one source needs, read off its AST: whole lines blanked, the `pass` lines that keep an
     # emptied suite valid, and each remaining read's one-line span, which becomes False.
@@ -76,6 +72,12 @@ class _Plan:
             return False
         return not self.lines[stmt.lineno - 1][stmt.col_offset :].startswith(b"elif")
 
+    def spans(self, reads: "list[ast.expr]") -> "list[tuple[int, int, int]]":
+        # (line, start, end) byte columns of each read outside a blanked statement, outermost only; a read
+        # spanning lines has no in-place form and is left for the re-parse check to refuse.
+        spans = [(node.lineno, node.col_offset, node.end_col_offset or 0) for node in reads if node.lineno == node.end_lineno and node.lineno not in self.blank]
+        return [s for s in spans if not any(o != s and o[0] == s[0] and o[1] <= s[1] and s[2] <= o[2] for o in spans)]
+
     def walk(self, suite: "list[ast.stmt]", *, needs_pass: bool) -> None:
         kept = 0
         for stmt in suite:
@@ -88,20 +90,18 @@ class _Plan:
         if needs_pass and not kept:
             self.passes[suite[0].lineno] = suite[0].col_offset
 
-    def spans(self, reads: "list[ast.expr]") -> "list[tuple[int, int, int]]":
-        # (line, start, end) byte columns of each read outside a blanked statement, outermost only; a read
-        # spanning lines has no in-place form and is left for the re-parse check to refuse.
-        spans = [(node.lineno, node.col_offset, node.end_col_offset or 0) for node in reads if node.lineno == node.end_lineno and node.lineno not in self.blank]
-        return [s for s in spans if not any(o != s and o[0] == s[0] and o[1] <= s[1] and s[2] <= o[2] for o in spans)]
+
+def _edited(line: bytes, replacement: bytes) -> bytes:
+    # The line's content replaced, its \r (a CRLF file) kept.
+    return replacement + (b"\r" if line.endswith(b"\r") else b"")
 
 
 def _reads(tree: ast.Module) -> "list[ast.expr]":
     return [node for node in ast.walk(tree) if isinstance(node, ast.expr) and _is_read(node)]
 
 
-def _edited(line: bytes, replacement: bytes) -> bytes:
-    # The line's content replaced, its \r (a CRLF file) kept.
-    return replacement + (b"\r" if line.endswith(b"\r") else b"")
+def _span(node: "ast.stmt | ast.expr") -> "range":
+    return range(node.lineno, (node.end_lineno or node.lineno) + 1)
 
 
 def strip_type_checking_blocks(source: str, path: str = "<source>") -> str:

@@ -1016,6 +1016,21 @@ def _check_value_wiring(model: DeviceModel) -> None:
             _check_source_field_reference(model, value, spec.label, vwf.toml_field)
 
 
+def _check_warn_catalog(model: DeviceModel, spec: InstanceSpec, source_path: Path) -> None:
+    # Each catalog signal adds one field (codegen renders one record per signal): its name must be unique and clear of
+    # the service's own schema, checked here once per build instead of at every boot.
+    names = [signal.name for signal in WARN_SIGNALS.values()]
+    clashes = sorted({name for name in names if names.count(name) > 1} | (set(names) & set(extract_field_schemas(source_path, device=model.device, instance_label=spec.label))))
+    if clashes:
+        raise BuildError(
+            model.device,
+            f"warn signal field(s) {clashes} collide with another signal or with {source_path.name}'s own schema",
+            rule="wiring.warn-collision",
+            fix="give the signal a unique name in buildgen/signals.py's WARN_SIGNALS",
+            instance=spec.label,
+        )
+
+
 def _check_warn_signals(model: DeviceModel, spec: InstanceSpec) -> None:
     # The notification's per-signal getters (Part C.14.3), named from the generator's one catalog, each one
     # optional; codegen reads the notification's alone, so one on another instance wires nothing.
@@ -1034,21 +1049,6 @@ def _check_warn_signals(model: DeviceModel, spec: InstanceSpec) -> None:
                 field=toml_field,
             )
         _check_source_field_reference(model, value, spec.label, toml_field)
-
-
-def _check_warn_catalog(model: DeviceModel, spec: InstanceSpec, source_path: Path) -> None:
-    # Each catalog signal adds one field (codegen renders one record per signal): its name must be unique and clear of
-    # the service's own schema, checked here once per build instead of at every boot.
-    names = [signal.name for signal in WARN_SIGNALS.values()]
-    clashes = sorted({name for name in names if names.count(name) > 1} | (set(names) & set(extract_field_schemas(source_path, device=model.device, instance_label=spec.label))))
-    if clashes:
-        raise BuildError(
-            model.device,
-            f"warn signal field(s) {clashes} collide with another signal or with {source_path.name}'s own schema",
-            rule="wiring.warn-collision",
-            fix="give the signal a unique name in buildgen/signals.py's WARN_SIGNALS",
-            instance=spec.label,
-        )
 
 
 def _check_wiring_reference(model: DeviceModel, wf: WiringField, target_key_str: str, consumer_label: str, toml_field: str) -> None:

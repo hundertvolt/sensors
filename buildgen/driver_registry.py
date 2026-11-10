@@ -43,36 +43,6 @@ class DriverInfo:
     needs_setup: bool  # whether build_system() must await <instance>.setup() - see _class_needs_setup()
 
 
-def read_source_text(path: Path, device: str, label: "str | None", *, field: "str | None" = None) -> str:
-    # A src/ file's text, UTF-8 whatever the host's locale; an unreadable file is a build error placed at the
-    # instance (label) or field the caller reads it for.
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError as e:
-        raise BuildError(device, f"{path} is not UTF-8 text: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=label, field=field) from e
-    except OSError as e:
-        raise BuildError(device, f"cannot read {path}: {e}", rule="src.unreadable", fix=f"restore {path.name} in the source directory", instance=label, field=field) from e
-
-
-def parse_source_file(path: Path, device: str, label: "str | None", *, field: "str | None" = None) -> "tuple[str, ast.Module]":
-    # The file's text and its shared tree (source_ast caches it by the text, never the path).
-    text = read_source_text(path, device, label, field=field)
-    try:
-        return text, parse_source(text, str(path))
-    except SyntaxError as e:
-        raise BuildError(device, f"{path} has a syntax error: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=label, field=field) from e
-
-
-def _find_reader_classes(tree: ast.Module) -> "list[str]":
-    found = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            base_names = {b.id for b in node.bases if isinstance(b, ast.Name)}
-            if base_names & _READER_BASES:
-                found.append(node.name)
-    return found
-
-
 def _class_needs_setup(tree: ast.Module, class_name: str) -> bool:
     # Every SensorReader/SensorReaderConfig subclass needs it: its setup() sets its own logger up first
     # (SPECIFICATION.md Part A.7). A service override needs it when it defines an `async def setup` itself.
@@ -85,15 +55,6 @@ def _class_needs_setup(tree: ast.Module, class_name: str) -> bool:
     return False
 
 
-def class_has_read_triggers(info: DriverInfo) -> bool:
-    # Whether the class declares get_trigger_starters() itself, overriding SensorReader's empty default:
-    # its read triggers then join the system service's stagger (SPECIFICATION.md Part C.9.1).
-    text, _tree = parse_source_file(info.source_path, "", info.driver)
-    return _declares_read_triggers(text, str(info.source_path), info.class_name)
-
-
-# The facts below are cached by the file's text (each caller has parsed it first), not by its
-# path: a file rewritten in place is read again. Each returns an immutable value.
 @functools.lru_cache(maxsize=256)
 def _declares_read_triggers(text: str, filename: str, class_name: str) -> bool:
     for node in ast.walk(parse_source(text, filename)):
@@ -102,14 +63,82 @@ def _declares_read_triggers(text: str, filename: str, class_name: str) -> bool:
     return False
 
 
+def _find_reader_classes(tree: ast.Module) -> "list[str]":
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            base_names = {b.id for b in node.bases if isinstance(b, ast.Name)}
+            if base_names & _READER_BASES:
+                found.append(node.name)
+    return found
+
+
 @functools.lru_cache(maxsize=256)
-def _reader_classes(text: str, filename: str) -> "tuple[str, ...]":
-    return tuple(_find_reader_classes(parse_source(text, filename)))
+def _name_constant(text: str, filename: str) -> "tuple[bool, str | None]":
+    # (whether a _NAME assignment exists, its string literal or None).
+    for node in ast.walk(parse_source(text, filename)):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_NAME" for t in node.targets):
+            value = node.value
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "const" and value.args:
+                value = value.args[0]
+            return True, value.value if isinstance(value, ast.Constant) and isinstance(value.value, str) else None
+    return False, None
 
 
 @functools.lru_cache(maxsize=256)
 def _needs_setup(text: str, filename: str, class_name: str) -> bool:
     return _class_needs_setup(parse_source(text, filename), class_name)
+
+
+@functools.lru_cache(maxsize=256)
+def _reader_classes(text: str, filename: str) -> "tuple[str, ...]":
+    return tuple(_find_reader_classes(parse_source(text, filename)))
+
+
+def class_has_read_triggers(info: DriverInfo) -> bool:
+    # Whether the class declares get_trigger_starters() itself, overriding SensorReader's empty default:
+    # its read triggers then join the system service's stagger (SPECIFICATION.md Part C.9.1).
+    text, _tree = parse_source_file(info.source_path, "", info.driver)
+    return _declares_read_triggers(text, str(info.source_path), info.class_name)
+
+
+def parse_name_constant(path: Path, device: str, driver: str) -> str:
+    # `_NAME = const("SCD30")` (or a plain `_NAME = "SCD30"`) - the instance_name()/REST-key
+    # identity space (SPECIFICATION.md Part C.14.1), deliberately distinct from the TOML
+    # driver/name_ext identity space wiring resolves against (see buildgen.wiring's own docstring).
+    text, _tree = parse_source_file(path, device, driver)
+    found, name = _name_constant(text, str(path))
+    if name is not None:
+        return name
+    if found:
+        raise BuildError(
+            device,
+            f"{path}: _NAME is not a plain/const()-wrapped string literal",
+            rule="source.name-not-literal",
+            fix='write it as _NAME = const("<NAME>") with a string literal',
+            instance=driver,
+        )
+    raise BuildError(device, f"{path} declares no module-level _NAME constant", rule="source.name-missing", fix='declare a module-level _NAME = const("<NAME>")', instance=driver)
+
+
+def parse_source_file(path: Path, device: str, label: "str | None", *, field: "str | None" = None) -> "tuple[str, ast.Module]":
+    # The file's text and its shared tree (source_ast caches it by the text, never the path).
+    text = read_source_text(path, device, label, field=field)
+    try:
+        return text, parse_source(text, str(path))
+    except SyntaxError as e:
+        raise BuildError(device, f"{path} has a syntax error: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=label, field=field) from e
+
+
+def read_source_text(path: Path, device: str, label: "str | None", *, field: "str | None" = None) -> str:
+    # A src/ file's text, UTF-8 whatever the host's locale; an unreadable file is a build error placed at the
+    # instance (label) or field the caller reads it for.
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        raise BuildError(device, f"{path} is not UTF-8 text: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=label, field=field) from e
+    except OSError as e:
+        raise BuildError(device, f"cannot read {path}: {e}", rule="src.unreadable", fix=f"restore {path.name} in the source directory", instance=label, field=field) from e
 
 
 def resolve_driver(driver: str, src_dir: Path, device: str) -> DriverInfo:
@@ -157,34 +186,3 @@ def resolve_driver(driver: str, src_dir: Path, device: str) -> DriverInfo:
         )
     found_class_name = found[0]
     return DriverInfo(driver, module, found_class_name, "sensor", path, _needs_setup(text, str(path), found_class_name))
-
-
-def parse_name_constant(path: Path, device: str, driver: str) -> str:
-    # `_NAME = const("SCD30")` (or a plain `_NAME = "SCD30"`) - the instance_name()/REST-key
-    # identity space (SPECIFICATION.md Part C.14.1), deliberately distinct from the TOML
-    # driver/name_ext identity space wiring resolves against (see buildgen.wiring's own docstring).
-    text, _tree = parse_source_file(path, device, driver)
-    found, name = _name_constant(text, str(path))
-    if name is not None:
-        return name
-    if found:
-        raise BuildError(
-            device,
-            f"{path}: _NAME is not a plain/const()-wrapped string literal",
-            rule="source.name-not-literal",
-            fix='write it as _NAME = const("<NAME>") with a string literal',
-            instance=driver,
-        )
-    raise BuildError(device, f"{path} declares no module-level _NAME constant", rule="source.name-missing", fix='declare a module-level _NAME = const("<NAME>")', instance=driver)
-
-
-@functools.lru_cache(maxsize=256)
-def _name_constant(text: str, filename: str) -> "tuple[bool, str | None]":
-    # (whether a _NAME assignment exists, its string literal or None).
-    for node in ast.walk(parse_source(text, filename)):
-        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_NAME" for t in node.targets):
-            value = node.value
-            if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "const" and value.args:
-                value = value.args[0]
-            return True, value.value if isinstance(value, ast.Constant) and isinstance(value.value, str) else None
-    return False, None

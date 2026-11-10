@@ -15,18 +15,13 @@ class DefaultParam:
     has_default: bool
 
 
+def default_class_defines_attr(class_node: "ast.ClassDef", attr: str) -> bool:
+    return any(isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == attr for item in class_node.body)
+
+
 def default_class_name(toml_field: str) -> str:
     # "temperature_source" -> "_DefaultTemperatureSource" (SPECIFICATION.md Part L.6.2's convention).
     return "_Default" + "".join(part.capitalize() for part in toml_field.split("_"))
-
-
-def find_default_class(path: Path, device: str, driver: str, toml_field: str) -> "ast.ClassDef | None":
-    _text, tree = parse_source_file(path, device, driver)
-    class_name = default_class_name(toml_field)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == class_name:
-            return node
-    return None
 
 
 def default_init_params(class_node: "ast.ClassDef") -> "tuple[DefaultParam, ...]":
@@ -43,5 +38,10 @@ def default_init_params(class_node: "ast.ClassDef") -> "tuple[DefaultParam, ...]
     return ()
 
 
-def default_class_defines_attr(class_node: "ast.ClassDef", attr: str) -> bool:
-    return any(isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == attr for item in class_node.body)
+def find_default_class(path: Path, device: str, driver: str, toml_field: str) -> "ast.ClassDef | None":
+    _text, tree = parse_source_file(path, device, driver)
+    class_name = default_class_name(toml_field)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            return node
+    return None

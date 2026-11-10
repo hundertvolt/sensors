@@ -34,6 +34,19 @@ _PAYLOAD = 8
 CRC_MODES = (("nocrc", None), ("crc16", CRC16))
 
 
+def _bind(check: "Callable[[CrcMaker], object]", crc: "CrcMaker", *, own_clock: bool) -> "Callable[[], None]":
+    # Every other check runs on the poll-round clock too: on the wall clock one host stall past a reply budget
+    # fails a live exchange, so the verdict would depend on host load (SPECIFICATION.md Part J.7).
+    def run_one() -> None:
+        if own_clock:
+            check(crc)
+            return
+        with PollRoundClock():
+            check(crc)
+
+    return run_one
+
+
 def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None, answer: bytes = b"v", *, debug: int | None = None) -> Pair:
     maker = (lambda: None) if crc is None else crc
     pair = Pair(
@@ -55,16 +68,3 @@ def register_both_crc_modes(namespace: "dict[str, object]", mode_specific: "dict
             if mode_specific.get(stem, label) != label:
                 continue
             namespace[f"test_{stem}_{label}"] = _bind(check, crc, own_clock=stem in own_clock)
-
-
-def _bind(check: "Callable[[CrcMaker], object]", crc: "CrcMaker", *, own_clock: bool) -> "Callable[[], None]":
-    # Every other check runs on the poll-round clock too: on the wall clock one host stall past a reply budget
-    # fails a live exchange, so the verdict would depend on host load (SPECIFICATION.md Part J.7).
-    def run_one() -> None:
-        if own_clock:
-            check(crc)
-            return
-        with PollRoundClock():
-            check(crc)
-
-    return run_one

@@ -165,15 +165,15 @@ class PollRoundClock:
         # Counts down to the one planted stall: stall_after sleeps on, the whole interpreter blocks for stall_ms.
         self._stall[0], self._stall[3] = self._stall[1], 0
 
-    def pace(self, *, real: bool) -> None:
-        # real=False turns every sleep into a bare yield: each waiter then polls at every scheduling point, the most
-        # rounds any host gives the same work - a slow host's limit, without depending on this host's speed (J.7).
-        self._paced[0] = real
-
     def disarm(self) -> bool:
         # True when the planted stall fired between arm() and here, or when none was planted.
         self._stall[0] = 0
         return not self._stall[2] or self._stall[3] == 1
+
+    def pace(self, *, real: bool) -> None:
+        # real=False turns every sleep into a bare yield: each waiter then polls at every scheduling point, the most
+        # rounds any host gives the same work - a slow host's limit, without depending on this host's speed (J.7).
+        self._paced[0] = real
 
 
 async def _end_listener(listener: "asyncio.Task[None]") -> None:

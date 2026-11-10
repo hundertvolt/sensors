@@ -60,6 +60,19 @@ machine._WireLog = lambda _maxlen=0: _NO_WIRE_LOG  # type: ignore[assignment, mi
 machine.Pin.value_log = staticmethod(lambda _id: _NO_CALL_LOG)  # type: ignore[assignment, method-assign]
 
 
+async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Callable[[], None]]", timer_starters: "list[Callable[[], None]]") -> bool:
+    # main()'s step after the task starts: the trigger stagger's deadline sleeps, under 1 s in all.
+    task = asyncio.create_task(sysfunct.start_timers(trigger_starters, timer_starters))
+    deadline = time.ticks_add(time.ticks_ms(), int(_TIMERS_TIMEOUT_S * 1000))
+    while not task.done() and time.ticks_diff(deadline, time.ticks_ms()) > 0:
+        await asyncio.sleep(0)
+    if not task.done():
+        print(f"NOTE start_timers did not complete within {_TIMERS_TIMEOUT_S}s - a timer never fired")
+        task.cancel()
+        return False
+    return True
+
+
 def _dump(label: str) -> None:
     # mem_info(1) allocates nothing, so it cannot perturb what it measures - which is why every
     # position here is a map rather than a probe allocation (MEASUREMENTS M2.2's pinning artefact).
@@ -78,19 +91,6 @@ def _rings(label: str, module: "ModuleType") -> None:
             ring = getattr(bus, "_ring", None)
             where = "none 0" if ring is None else f"0x{uctypes.addressof(ring):x} {len(ring)}"
             print(f"RING {label} {name} {where}")
-
-
-async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Callable[[], None]]", timer_starters: "list[Callable[[], None]]") -> bool:
-    # main()'s step after the task starts: the trigger stagger's deadline sleeps, under 1 s in all.
-    task = asyncio.create_task(sysfunct.start_timers(trigger_starters, timer_starters))
-    deadline = time.ticks_add(time.ticks_ms(), int(_TIMERS_TIMEOUT_S * 1000))
-    while not task.done() and time.ticks_diff(deadline, time.ticks_ms()) > 0:
-        await asyncio.sleep(0)
-    if not task.done():
-        print(f"NOTE start_timers did not complete within {_TIMERS_TIMEOUT_S}s - a timer never fired")
-        task.cancel()
-        return False
-    return True
 
 
 async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[TaskStarter]", task_names: "list[str]") -> None:

@@ -52,14 +52,14 @@ class Mirror:
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
 
-    @property
-    def uri(self) -> str:
-        return f"http://127.0.0.1:{self.server.server_address[1]}/ubuntu/"
-
     def close(self) -> None:
         self.stop.set()
         self.server.shutdown()
         self.server.server_close()
+
+    @property
+    def uri(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_address[1]}/ubuntu/"
 
 
 def _headers(handler: BaseHTTPRequestHandler, status: int = 200, body: bytes = _BODY, **extra: str) -> None:

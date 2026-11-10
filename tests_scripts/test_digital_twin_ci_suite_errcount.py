@@ -646,8 +646,16 @@ class _StopFileTwin:
         self.stop = Path(cmd[cmd.index("--stop-file") + 1]) if "--stop-file" in cmd else None
         self.signals: list[int] = []
 
+    def kill(self) -> None:
+        self.signals.append(signal.SIGKILL)
+        self.returncode = -signal.SIGKILL
+
     def poll(self) -> "int | None":
         return self.returncode
+
+    def send_signal(self, sig: int) -> None:
+        self.signals.append(sig)
+        self.returncode = None if self.deaf else 0
 
     def wait(self, timeout: "float | None" = None) -> int:
         if self.returncode is None and not self.deaf and self.stop is not None and self.stop.exists():
@@ -655,14 +663,6 @@ class _StopFileTwin:
         if self.returncode is None:
             raise subprocess.TimeoutExpired("twin", timeout or 0.0)
         return self.returncode
-
-    def send_signal(self, sig: int) -> None:
-        self.signals.append(sig)
-        self.returncode = None if self.deaf else 0
-
-    def kill(self) -> None:
-        self.signals.append(signal.SIGKILL)
-        self.returncode = -signal.SIGKILL
 
 
 @pytest.mark.parametrize(("interrupt", "deaf"), [(False, False), (True, False), (False, True)], ids=["stop file", "sigint", "stop file ignored"])
