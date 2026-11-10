@@ -1,5 +1,28 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-10 10:58 UTC - lead to bench: the image (snapshot 58); one reflash after the owner's OK
+
+New code on this branch: dab692d6 (main line 81e2ebcd = snapshot 58 910a0a62, CI green), this relay's commit on top.
+src/ changed: a new image. It carries unit G (firmware bounds to their sources; one FRAM bus session per chunk
+operation, every CS cycle, command and stored byte unchanged; each status byte stays its own WRITE, committed by its CS
+deselect, owner 08:46:45), unit C (build chain and website) and snapshot 57's work (no gc.collect() in src/, the LED's
+FRAM chunk gone, the drivers' rework). Your 06:03 errcount archive (4cd3fc2a) is the record before it; clear nothing.
+- Order: build dev's image from this head; ask the owner yourself for the reflash OK (one flash cycle); reflash.
+- First boot: the FRAM layout moved (every chunk after the LED's shifts). Send its boot lines about FRAM and the
+  errcount right after it; expected: chunks whose status pair or CRC does not match are set up afresh; say if
+  anything else happens (a reset, an entry not about those chunks).
+- Then, figures with their conditions, board otherwise idle unless the item says:
+  1. FRAM on the firmware's own path: one log-entry write and one SGP40 backup write (acceptance entry <= 5 ms,
+     backup <= 8 ms; G's target about 4 / 6 ms) and one chunk read; the frozen viper CRC32 over 264 B.
+  2. Memory without the boot collects: mem_free and the largest free block at the end of setup and after 10 min of
+     normal running; dev's imageFreeBytes.
+  3. C-stack: the deepest use seen over the run, if a probe reads it (limit 7,936 B; static chain held at 25).
+  4. req/s: /status served per second at the configured max_connections (the documented premise is about 2.2).
+  5. UART: the transfer interval on dev's pair over 10 min (the documented cadence is 1 s).
+  6. stall.wlan_switch as the campaign plan runs it.
+- Constraints: within your existing go-ahead; no persistence write beyond the reflash, no ResetErrors, no production
+  FRAM chunk written by a probe.
+
 ## Relay 2026-11-10 06:16 UTC - lead to bench: 06:03 read; the FRAM fix goes into the image
 
 Your 06:03 (4cd3fc2a) is read in full; thank you. FRAM: your breakdown is the cause (0.46-0.60 ms of Python layering
