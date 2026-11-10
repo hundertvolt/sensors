@@ -2,7 +2,7 @@
 failure wrapped into the same fail-loud `BuildError`), and `InstanceSpec`/`DeviceModel` carry each
 `[[instance]]` entry and its later-resolved facts through validation, sorting and codegen."""
 
-import datetime
+import datetime as dt
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 # One parsed TOML value: every type tomllib.load() returns (its conversion table), arrays and
 # tables nested. TomlDoc is a table: the whole file or any [[instance]]/[bus.*]/[device] in it.
-TomlValue: TypeAlias = str | int | float | bool | datetime.date | datetime.time | datetime.datetime | list["TomlValue"] | dict[str, "TomlValue"]
+TomlValue: TypeAlias = str | int | float | bool | dt.date | dt.time | dt.datetime | list["TomlValue"] | dict[str, "TomlValue"]
 TomlDoc: TypeAlias = dict[str, TomlValue]
 
 # The /status maintenance block's key for a driver publishing one per device (an SGP40 publishes one per

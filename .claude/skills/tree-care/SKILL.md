@@ -24,7 +24,7 @@ runner. `--bench` adds the bench variables and one MicroPython board on USB, wit
   (USB access and the board), `--tier bench` (the bridge and access point; passwordless sudo first, see
   `tests_hardware/README.md` "Prerequisites").
 - `uv` must be exactly the version `pyproject.toml`'s `required-version` names; any other refuses to run. A host whose
-  global `uv` differs keeps the pinned one outside the worktree (e.g. `~/.local/uv-0.8.17/bin`), first on PATH.
+  global `uv` differs keeps the pinned one outside the worktree (e.g. `~/.local/uv-0.13.7/bin`), first on PATH.
 - Then `source .venv/bin/activate` in this tree. A second worktree gets its own `uv sync` and venv: the lint and type
   scripts refuse a venv that belongs to another tree.
 - The host tier needs `node` on PATH; after `env` installs it, put its folder on PATH before `scripts/test.sh`.
