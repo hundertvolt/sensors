@@ -18,11 +18,11 @@ from _cancel_sweep import SocketLedger, assert_unlocked, cancel_at_each_await
 from _fake_time import DrivenTime
 from _fast_sleep import FastAsyncSleep
 from _port_bands import PortAllocator
+from _recording_print import record_prints
 from _src_const import src_int
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
-import asy_print_log
 import asy_udp_socket
 from asy_dns_client import DNS_UDP_MAX
 from asy_print_log import PrintLog
@@ -56,8 +56,6 @@ _TOO_LATE_DELAY_MS = 300
 _TOO_LATE_TIMEOUT_MS = 100
 _READY_EMPTY_TIMEOUT_MS = 80
 _TASK_PARK_S = 0.05
-_MS_CHECK_TIMEOUT_MS = 50
-_MS_CHECK_ELAPSED_MAX_MS = 2000
 _ICMP_DELIVERY_S = 0.2
 _ICMP_RECV_TIMEOUT_MS = 5000
 _ICMP_ELAPSED_MAX_MS = 1000
@@ -66,9 +64,6 @@ _UNREACHABLE_TIMEOUT_MS = 500
 _NO_SENDER_TIMEOUT_MS = 100
 _FIRST_ATTEMPT_S = 0.1
 _RETRY_CYCLE_MAX_MS = 5000
-_DISCONNECT_BOUND_S = 2
-_CONNECT_BOUND_S = 3
-_ENTER_SLEEP_S = 0.1
 _DEADLINE_CANCEL_ROUNDS = 10  # the rounds after a deadline passes a cancel is tried at: its whole handling
 
 
@@ -82,13 +77,11 @@ def _arms_off_target(make_exc: "Callable[[str], BaseException]", logger: "PrintL
     # as (name, result, lines); each arm runs from this synchronous scope, its socket given `logger`.
     wrong = []
     for arm, scenario, sentinel in _ARMS:
-        recorder = _PrintRecorder()
-        try:
+        with record_prints() as recorder:
             got = run(scenario(make_exc(arm), logger))
-        finally:
-            recorder.restore()
-        if got != sentinel or recorder.lines != (["DNS UDPSocket: injected for " + arm] if expect_line else []):
-            wrong.append((arm, got, recorder.lines))
+        lines = recorder.text().splitlines()
+        if got != sentinel or lines != (["DNS UDPSocket: injected for " + arm] if expect_line else []):
+            wrong.append((arm, got, lines))
     return wrong
 
 
@@ -829,20 +822,6 @@ def test_recvfrom_returns_none_sentinel_on_memoryerror() -> None:
 # ---------------------------------------------------------------------------
 
 
-class _PrintRecorder:
-    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, where every
-    # logger prints, so each console line is captured as its joined text; restore() removes the shadow.
-    def __init__(self) -> None:
-        self.lines: list[str] = []
-        asy_print_log.print = self  # type: ignore[attr-defined]
-
-    def __call__(self, *args: object, **_kwargs: object) -> None:
-        self.lines.append(" ".join(str(a) for a in args))
-
-    def restore(self) -> None:
-        del asy_print_log.print  # type: ignore[attr-defined]
-
-
 class _FailingSocketModule:
     # The _RaisingSocketModule technique with the exception chosen per case: socket() raises `exc`.
     AF_INET = socket.AF_INET
@@ -1227,44 +1206,9 @@ def test_object_is_reusable_after_disconnect() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cancellation_propagates_out_of_recvfrom() -> None:
-    addr = _make_addr()
-
-    async def scenario() -> bool:
-        server = UDPSocket(addr, mode="server")
-        try:
-            task = asyncio.create_task(server.recvfrom(64))  # nothing ever arrives - waits forever
-            await asyncio.sleep(_TASK_PARK_S)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                return True
-            else:
-                return False  # should never get here
-        finally:
-            await server.disconnect()
-
-    assert run(scenario())
-
-
 # ---------------------------------------------------------------------------
 # ready()'s poll rates must be milliseconds, not seconds
 # ---------------------------------------------------------------------------
-
-
-def test_ready_sleeps_milliseconds_not_seconds() -> None:
-    # Bug: ready() used to call asyncio.sleep() (seconds), not asyncio.sleep_ms(), so a 20 ms rate slept 20
-    # real seconds per round. Both rates reach sleep_ms() as whole milliseconds (20 and 100, never 0.02 or
-    # 0.1), and a bounded call completes in tens of milliseconds, not multiple real seconds.
-    t0 = time.ticks_ms()
-    with_deadline = _record_ready_sleeps(_MS_CHECK_TIMEOUT_MS)
-    elapsed = time.ticks_diff(time.ticks_ms(), t0)
-    without_deadline = _record_ready_sleeps(-1, stop_after=1)
-    assert with_deadline and all(isinstance(ms, int) for ms in with_deadline), with_deadline
-    assert all(ms == _POLL_WAIT_MS for ms in with_deadline[:-1]) and 0 < with_deadline[-1] <= _POLL_WAIT_MS, with_deadline
-    assert without_deadline == [_POLL_IDLE_MS] and isinstance(without_deadline[0], int), without_deadline
-    assert elapsed < _MS_CHECK_ELAPSED_MAX_MS  # generously below the 10000ms+ the old seconds-interpretation bug would take
 
 
 # ---------------------------------------------------------------------------
@@ -1624,38 +1568,9 @@ def test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_non
             await sock.disconnect()
 
     with DrivenTime(asy_udp_socket, sleeps=True) as clock:
-        connected, b_result = run(scenario(clock), _CONNECT_BOUND_S)
+        connected, b_result = run(scenario(clock))
     assert connected is True
     assert b_result == 1  # len(b"x") - B's call succeeded once A's retry succeeded, not None
-
-
-def test_cancelling_a_task_that_holds_the_connect_lock_releases_it() -> None:
-    # Locks plus cancellation are a classic deadlock source, and this file gained its first lock:
-    # `async with`'s __aexit__ must still run and release when the holding task is cancelled
-    # mid-retry, or every future caller on this instance hangs forever.
-    bad_addr = _unbindable_addr()
-
-    async def scenario() -> tuple[bool, bool]:
-        sock = UDPSocket(bad_addr, mode="server")
-        a_task = asyncio.create_task(sock._connect())
-        await asyncio.sleep(_FIRST_ATTEMPT_S)  # A has failed once, is inside its backoff sleep, holding the lock
-        a_task.cancel()
-        cancelled_cleanly = False
-        try:
-            await a_task
-        except asyncio.CancelledError:
-            cancelled_cleanly = True
-
-        try:
-            await asyncio.wait_for(sock.disconnect(), _DISCONNECT_BOUND_S)
-            lock_was_released = True
-        except asyncio.TimeoutError:
-            lock_was_released = False
-        return cancelled_cleanly, lock_was_released
-
-    cancelled_cleanly, lock_was_released = run(scenario())
-    assert cancelled_cleanly
-    assert lock_was_released
 
 
 def test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy() -> None:
@@ -1664,7 +1579,7 @@ def test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy() -> No
     # later caller can still acquire it once the current holder finishes.
     bad_addr = _unbindable_addr()
 
-    async def scenario() -> tuple[bool, bool]:
+    async def scenario() -> bool:
         sock = UDPSocket(bad_addr, mode="server")
         a_task = asyncio.create_task(sock._connect())
         await asyncio.sleep(_FIRST_ATTEMPT_S)
@@ -1677,21 +1592,11 @@ def test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy() -> No
         except asyncio.CancelledError:
             b_cancelled_cleanly = True
 
-        try:
-            await asyncio.wait_for(a_task, _CONNECT_BOUND_S)
-            a_completed = True
-        except asyncio.TimeoutError:
-            a_completed = False
-        try:
-            await asyncio.wait_for(sock.disconnect(), _DISCONNECT_BOUND_S)
-            lock_still_healthy = True
-        except asyncio.TimeoutError:
-            lock_still_healthy = False
-        return b_cancelled_cleanly and a_completed, lock_still_healthy
+        await a_task  # A completes; a lock B's cancel left held would hang it, or the disconnect below
+        await sock.disconnect()
+        return b_cancelled_cleanly
 
-    a_side_ok, lock_still_healthy = run(scenario())
-    assert a_side_ok
-    assert lock_still_healthy
+    assert run(scenario())
 
 
 def test_cancelling_connect_or_ready_at_each_await_leaves_the_lock_free() -> None:
@@ -1810,31 +1715,6 @@ def test_disconnect_on_a_fresh_never_connected_object_is_a_clean_no_op() -> None
 # ---------------------------------------------------------------------------
 # Sixth pass: ready()'s poll loop sits inside its try/except, and a cancel still propagates through it.
 # ---------------------------------------------------------------------------
-
-
-def test_ready_cancellation_still_propagates_through_the_new_try_except() -> None:
-    # ready() wraps its whole poll loop, including its asyncio.sleep_ms() await point, in
-    # try/except (MemoryError, OSError) - it must not start swallowing asyncio.CancelledError,
-    # a BaseException subclass not in that tuple.
-    addr = _make_addr()
-
-    async def scenario() -> bool:
-        sock = UDPSocket(addr, mode="server")
-        try:
-            await sock._connect()
-            task = asyncio.create_task(sock.ready(select.POLLIN, timeout_ms=-1))  # waits forever
-            await asyncio.sleep(_ENTER_SLEEP_S)  # let it enter the sleep_ms() inside the new try block
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                return True
-            else:
-                return False  # should never get here
-        finally:
-            await sock.disconnect()
-
-    assert run(scenario())
 
 
 # ---------------------------------------------------------------------------

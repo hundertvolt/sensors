@@ -1,5 +1,5 @@
 """Cross-module seams of a real NeopixelDriver: asy_wifi_service.py's ext_led= on WifiService (the LEDControl Protocol
-and its flash task's hotspot patterns), and a generated device's error-source and timer-starter collections. Only tests/neopixel.py's fake write surface is mocked (and the patterns' sleeps)."""
+and its flash task's hotspot patterns), and a generated device's error-source and timer-starter collections. Only fakes/neopixel.py's fake write surface is mocked (and the patterns' sleeps)."""
 
 import asyncio
 import os
@@ -35,7 +35,7 @@ _scratch = TmpScratch("neopixel_wifi")
 
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
     pixel = NeopixelDriver(0, neopixel_freq=100)
-    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
+    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_scratch.dir())
     run(conn.setup())
 
     def last_is(colour: "tuple[int, int, int]") -> "Callable[[], bool]":
@@ -104,7 +104,7 @@ def _devices_with_a_neopixel() -> "list[str]":
 
 def _blocked_dir() -> str:
     # A config path whose WIFI file is a directory: the store's setup() fails, as with no readable Wi-Fi configuration.
-    path = _tmp_cfg_dir()
+    path = _scratch.dir()
     os.mkdir(path + "config_WIFI.cfg")
     return path
 
@@ -119,7 +119,7 @@ def _frames(pixel: NeopixelDriver, start: int) -> "list[tuple[int, ...]]":
 
 
 def _hotspot_conn(pixel: NeopixelDriver) -> WifiService:
-    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
+    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_scratch.dir())
     run(conn.setup())
     return conn
 
@@ -289,10 +289,6 @@ def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_le
     assert _ON in back
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
 async def _yields(count: int) -> None:
     for _ in range(count):
         await asyncio.sleep(0)
@@ -301,14 +297,14 @@ async def _yields(count: int) -> None:
 def test_no_generated_device_lists_its_neopixel_among_the_status_error_sources() -> None:
     # The pixel has nothing it can fail at: no /status errcount entry and no ResetErrors source, on every device.
     for device in _devices_with_a_neopixel():
-        module = build(device, cfg_path=_tmp_cfg_dir())
+        module = build(device, cfg_path=_scratch.dir())
         names = [source.name for source in module._collect_error_sources()]
         assert "NEOPIXEL" not in names and names, (device, names)
 
 
 def test_the_drivers_empty_timer_list_reaches_every_generated_device_wiring_it() -> None:
     for device in _devices_with_a_neopixel():
-        module = build(device, cfg_path=_tmp_cfg_dir())
+        module = build(device, cfg_path=_scratch.dir())
         assert isinstance(module.neopixel, NeopixelDriver), device
         assert module.neopixel.get_timer_starters() == [], device
         starters = module._collect_timer_starters()  # collects the empty list among the other modules' starters

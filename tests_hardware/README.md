@@ -1070,7 +1070,7 @@ check" paragraph.
   The four netem tests prove REST reachability under the impairment and recovery after it, which
   their names state; none waits for an NTP exchange inside the window. A CYW43-level fault such as
   `wlan.connect()` itself raising is no network-path fault `tc` or `iptables` can express; the
-  twin's `--fault wlan:...` hook (`digital_twin/launch.py`) injects it.
+  twin's `--fault wlan:...` hook (`digital_twin/run_generic_integration.py`) injects it.
 - **Every garbage injection proves it was delivered.** The NTP and DNS garbage tests redirect the
   port with a `nat` PREROUTING `REDIRECT` to a `RogueUdpResponder` bound on every address, and each
   asserts the responder answered the DUT's address at least once (`answered_from`), so a redirect
@@ -1139,8 +1139,8 @@ assumption, not at a product bug.
   it.** `bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`
   resets the board at uncontrolled points of SGP40's natural VOC backups, so the next boot may find a
   block status byte neither idle nor uninitialised (`E FRAM_STATUS_BYTE`) or a block holding invalid
-  data, repaired from the other copy (`W FRAM_BLOCK_INVALID`): the chunk's all-or-nothing loss the
-  owner accepted (owner, 2026-09-13, paraphrase). The test allows exactly those two entries in FRAM's
+  data, repaired from the other copy (`W FRAM_BLOCK_INVALID`): three resets during FRAM writes left
+  such entries on the bench (agent, 2026-09-13). The test allows exactly those two entries in FRAM's
   log, saves the log, then clears it (`reset_all_error_logs()`).
 - **The UART link's silicon coverage** is `flash/test_uart_crossover.py`, `bench/test_uart_link_under_api_load.py`
   and `bench/test_uart_link_crc16.py`, none run since the receive path moved onto the DMA ring. Each
@@ -1365,8 +1365,8 @@ assumption, not at a product bug.
   a real WREN+WRITE lands no byte. Its bench-vs-flash split is SPECIFICATION.md E.6.6 row
   `fram-write-protect-no-rest` (no REST route reaches either method).
 - **FRAM command hold** (`fram_command_hold_timing.py`, flash tier): one FRAM command stays under one
-  UART poll floor (80 B of 8N1 at 115200 baud, 6,944 us, SPECIFICATION.md J.6 and F.5.8), and one log
-  entry's whole chunk write, its 51 commands, under 5 ms (F.3's `stall.fram_entry`). It writes only its
+  UART poll floor (80 B of 8N1 at 115200 baud, 6,944 us, SPECIFICATION.md J.6 and F.5.8), and records one
+  log entry's whole chunk write, its 51 commands, for F.3's `stall.fram_entry`. It writes only its
   scratch region, the part's top 256 B, never a chunk.
 - **FRAM chip-select fault injection** (`fram_cs_hijack_fault_injection_and_recovery.py`): CS
   deasserted at the driver's synchronous seam, inside a write's payload (the write never reaches the
@@ -1596,7 +1596,7 @@ to be applied.'); no test swaps a real hardware trigger for a software-only one,
 
 - **Exceptions**, rows of SPECIFICATION.md E.6.6: `ws2812-no-readback` (`LightCmdLED` and the WS2812
   timing), `scd30-rdy-irq-vs-fallback`, `fram-write-protect-no-rest`, `uart-fault-catalog`, `ntp-responder-modes`.
-- **Scratched (owner, 2026-09-25)**: a periodic SET wired into the bench UART exerciser's live load,
+- **Scratched (agent, 2026-09-25)**: a periodic SET wired into the bench UART exerciser's live load,
   and a hard-reset-recovery bench test for NOTIFY's FRAM chunk like SGP40's, which needs an observable
   "a fresh write just completed" signal NOTIFY lacks: each would change `src/` for the test alone, and
   the flash tier already proves a FRAM chunk's reset-raced write is all-or-nothing.

@@ -1679,3 +1679,241 @@ consumer is the 50 ms LED frame; the floor term should be the measured silicon l
 - cov58 (09:48): the 23 tests/ files changed since c4fc72ac (24 counted earlier: the 23 test files plus a helper),
   26 jobs with the PER_DEVICE file's four devices, every one under build-settrace rc 0 with no memory marker.
 - heavy.lock released 09:48. Snapshot 58 from int 81e2ebcd, parent e8d48fab.
+
+## 12.159 Snapshot 58 CI: "Unit tests (shipped gc.threshold)" red in the toolchain install, no test ran (lead, 10:0x)
+- Run 42793916276, job 129754408805: merge c's Unix-port override changes the toolchain cache key, so every job
+  rebuilds; this runner's `apt-get install --download-only` (588 MB, the arm cross-compiler packages) hit
+  `_APT_STEP_TIMEOUT_S` = 150 s three times while the mirror was still delivering libnewlib-arm-none-eabi (49.2 MB).
+  web-unit-tests built the same toolchain in 4 min 22 s on another runner. apt's own Acquire::http(s)::Timeout = 30 s
+  already ends a stalled read; the 150 s wall-clock limit also ends a slow live one.
+- Origin: audit 65088dec (2026-10-08); 25caf528 bounds no apt call. GIVEUP_3 judged it DERIVE ("measurement owed");
+  C kept "network steps and apt keep theirs". This run is the measurement: it gives up on a live download - the
+  owner's give-up pattern (2026-11-09 21:57:36). The CI mirror check (apt-cache-restore's probe, bound-s) exists to
+  dodge this same limit in the firmware and web jobs: if the limit goes, the probe has nothing to compare against.
+- Now: one re-run of the failed job when the run completes (died in install, before any test body; the passing jobs
+  save the new toolchain cache). One PR comment. Fix: a small unit after P9 (two-writer limit) - the apt wall-clock
+  limits go (setup_toolchain, apt-cache-restore, playwright-chromium, setup_cross_browser_toolchain.sh), apt's
+  Acquire timeouts and retries stay, the mirror probe judged with them (goes if it only served the limit); into
+  snapshot 59 with T and P9.
+
+## 12.160 P9 handed back (54bac5f8) and merged: int 6953c09f; the gc-threshold job re-run; unit APT started (lead, 10:5x)
+- Read: comment-only in src/, scripts/, devices/ (one trailing credit form; mpy-cross output byte-identical per P9).
+  CLAUDE.md 878 -> 801, the owner's words moved whole into SPEC J, D.3, I.4. The config-migration rulings (owner,
+  2026-09-26) stand in SPEC :210/:3413, so BACKLOG's item could go. The settings-store growth goal went: written into
+  BACKLOG during the audit (195f3ed3), its only source an agent commit (249f2ae); the general store stays in code.
+  THIRD_PARTY_LICENSES: who flagged or found each origin goes, the checks stay (CREDIT2 R3 rows 60-64).
+- P9's own checks on 54bac5f8: test.sh (tc-c) 121 files, 5,347 tests, tests_scripts 6,805, 0 failed, no MemoryError.
+  The standalone default-toolchain twin-spawn failure is the missing qstr override, (c). No audit IDs in text
+  (test_citations): owner forms carry dates instead.
+- CI run 42793916276 completed with only the gc-threshold job red (12.159): failed jobs re-run once (10:5x).
+- Unit APT (BRIEF_APT.md) started from 6953c09f beside T; ftmp_apt joins SNAP_EXCLUDE.
+
+## 12.161 Snapshot 58 green; the image relay (lead, 11:0x)
+- CI run 42793916276 attempt 2 green after the one re-run (12.159): 910a0a62 is the next PARENT.
+- Bench branch 881562cf: code commit dab692d6 (int 81e2ebcd outside audit/, the bench evidence unchanged) plus the
+  10:58 relay: build, the owner's reflash OK asked by the bench, first-boot FRAM lines and errcount, then FRAM entry
+  and backup times, memory without collects, C-stack, req/s, UART cadence, stall.wlan_switch.
+- Bench 11:10: snapshot 58 flashed (881562cf, BuildDate 2026-11-10T11:02:16Z, owner OK at the bench; FC +1 at
+  11:07:25Z). First boot as expected: 17 chunks failed CRC/status and were set up afresh (16 both blocks, 1 blank
+  block 0), no other FRAM line, no reset; then SGP40 verification 60, 9 "timestamp not valid" before NTP, SGP40 "No
+  backup found!". errcount after the restore boot: 21 sources (NEOPIXEL gone with its logger), SGP40 W65, WIFI
+  W38/W79 from the unkicked first boot's hotspot round, the rest empty. Items 1-6 running.
+
+## 12.162 Bench item 1 on snapshot 58: FRAM entry 12.7 ms, backup 13.0 ms (targets 5 / 8 missed); item 6 method (lead, 11:2x)
+- Bench (ac7fe7bd; its note stamped 11:30, received 11:1x): frozen path at 0x30000+, idle, 125 MHz, 32768. Commands
+  51/51/46. Medians of 30: entry write 12.7 ms, backup write 13.0, entry read 10.9, backup read 13.2; max 15.8 / 21.1.
+  Viper CRC32 over 264 B 1.31 ms. ~250 us per command (raw RDSR 54 us): begin() 185 us per operation, _read_status
+  143 us, _send_command 119 us, get_values 1 B 245 us, set_values 13 B 809 us (5 commands). Per CS cycle 65-90 us
+  over raw (two bound cs() calls, two sleep_us(2), try/finally, attribute loads); ~100 us of checks per get/set call.
+- The 5 / 8 ms were 12.128's projection (45-80 us lean commands), made the acceptance in 12.129 with a recorded
+  fallback (`_q` + two drains). What actually bounds a synchronous write: the UART DMA ring (rxbuf 512 B = ~44 ms at
+  115200 of continuous wire), the reply slack ~925 ms, the watchdog 8.4 s. One entry is ~29 % of the ring; three
+  back to back with the peer streaming would approach it. Not near a limit in normal operation.
+- CS_SETTLE_US = 2 (pre-audit, 25caf528): the datasheets need tCSU/tCSH 10 ns and tD 40-60 ns; the Python gap between
+  pin and transfer alone exceeds that. Removing the two sleep_us per command is datasheet-backed and lossless
+  (estimate ~1-2 ms per entry). 5 ms needs fewer commands (the 31-command form the owner declined, 08:46:45).
+- Question to the owner (one): keep the measured figures, or lean further, or the recorded fallback.
+- Item 6: relay 11:16 (bench 7753f9ac): (b), the product's own switch under the lag wrapper, ap_down/ap_up, per switch
+  max loop lag, UART failures, time to STA; no flash write.
+
+## 12.163 Owner (11:21:35): would async FRAM help? Lead's answer; APT reviewed before hand-back (lead, 11:3x)
+- No. Both datasheets (`datasheets/fram/`, p.1): a write "takes no wait time"; the 12.7 ms is CPU on ~51 commands, not
+  waiting. (1) Per-command yields (pre-fsync form): longest single block ~1 ms (CRC 1.3 ms), but one round costs ~0.6 ms
+  idle and 16-22 ms under three /status readers (12.120, 12.128): an entry ~30 ms idle, up to ~1 s loaded, and the
+  bus lock held across them. (2) Queue + writer: the same 12.7 ms block, moved in time; entries in RAM until written,
+  so the last error before a reset can be lost (CLAUDE.md's FRAM-log rule). Gain only below ~13 ms reaction needs;
+  tightest limit is the UART ring at ~44 ms. The lever is per-command cost ((a) settle sleeps, (b) checks once).
+  FRAM question (a)/(b)/(c) still open.
+- APT (wt-apt, uncommitted, waiting on heavy.lock held by t): diff read, 7 files +51/-63. Sent back: the commit
+  message credits the owner with common_r1's derived rule (fix; re-check the other two credits); the Playwright
+  install's 5-min `timeout` (audit 2026-10-19, GIVEUP_3 KEEP "measured") also cuts apt (with-deps) - judge by the
+  same rule, least mechanism for its mirror bound, or report options.
+- Owner 11:25:20: "option a". The measured figures stand (entry 12.7 ms, backup 13.0, read 10.9 / 13.2, max 15.8 /
+  21.1, snapshot 58); no new mechanism. Follow-up unit FS after T merges (it touches FRAM tests): the six per-command
+  `sleep_us(CS_SETTLE_US)` in `asy_fram_driver.py` go (tCSU/tCSH 10 ns, tD 40/60 ns; the Python gap exceeds them),
+  the generic SPIDevice's per-operation ones judged by the same datasheets; SPEC :272's "blocking 2 us settle", F.3
+  `stall.fram_entry` (the 5/8 ms "acceptance" goes, silicon figures in), `stall.fram_command` (~250 us per command),
+  `stall.reset_errors`, `rate.persisted_log` (its 3.5 ms basis was the projection) state the measured fact. The
+  last-round image (two-image GC proof) carries it; the bench re-measures item 1 there, no extra flash cycle.
+- Maxima read (bench HANDBACK FRAMCHUNK): backup write 21.05 ms, backup read 21.44 ms, entry read 15.6 ms; they sit at
+  F.3 `con.routine_stall` (21 ms). The breakdown's maxima (begin 6.1 ms, set_values 6.6 ms vs medians 0.2 / 0.8) point
+  to a collection inside the timed window. Hard limits unchanged (UART ring ~44 ms, reply slack ~925 ms, WDT 8.4 s).
+  Brief `r5/BRIEF_FS.md` written (item 4: does the chunk path allocate); launches after T merges.
+
+## 12.164 T handed back (777f7640) and merged: int a5c1dc93; unit FS launched (lead, 11:5x)
+- T (r5/HANDBACK_T.md): 157 files +2,196/-6,512; src/ext/devices untouched; unit 5347 -> 5252 tests, tests_scripts
+  6808 -> 6555; gate green at both stages but 3 tests_scripts red on doc lines (citations, level_containment,
+  tunables_register); twin 327 + 13 green; coverage build 114 runs clean; wall 678 -> 677 s; imageFreeBytes 71,044.
+- Lead review: the largest additions are the runner's fault vocabulary moved from launch.py (-557; --fault, --hang,
+  --wifi-outcome each used by a test or CI script; --seed only by README and the chip fakes, kept: a user knob, not
+  removed without the owner), the uart_comm call-site limits removed (mechanical), 17 tests moved. _REAP_ROUNDS = 2
+  derived (a cancelled task ends at its next await). Merge: one conflict (scenarios :1254, P9's credit with T's
+  renamed src_int), resolved; lint_direct clean (lead helper now lints fakes/ like lint.sh).
+- T's slips: two grep -o outputs printed identifiers containing a filtered word (no value, per T); port-binding
+  wifi_service 4x and udp_socket 1x ran while another unit held heavy.lock; single files via its own script.
+- Left (R5 close list): the declared-stall drain (LISTENER_DRAIN_S/_STALL_DRAIN_S), caught listener wait_for's
+  (uart_comm_hazard, ntp), _ESCALATION_WAIT_S and other twin numbers without a source, _cycle/_crc8 copies,
+  device-script _REPORT copies.
+- Unit FS launched (BRIEF_FS.md, from a5c1dc93): FRAM settle sleeps, F.3 silicon rows, item 4 (do the maxima carry a
+  collection), T's doc list and its three red checks, the dead _record_reads. Writing units now: APT (full run), FS.
+
+## 12.165 Bench 12:02, snapshot 58 items 2-6 (bench 5b8a96ed, 155727a8); relay 12:03 (bench 720df65d) (lead, 12:0x)
+- 2 heap: BOOT_DONE free 76,656, largest 63,296; after 600 s 64,880 / 61,200; after one collect 81,552 / 61,200;
+  range 61,200-82,416; imageFreeBytes 69,732 (entry under mpremote run, instrument not subtracted).
+- 3 C-stack: deepest 5,636 B at FRAM _send_and_read (I2C 3,084, UART 3,060) of 7,936, all before BOOT_DONE; the
+  webserver and log-store leaves not reached - re-run under item 4's load asked (12.137: near-critical margin). The
+  run's RR 2 was the probe wrapper (no KeyboardInterrupt record), fixed by the bench; not firmware.
+- 4 req/s: 6 readers on /status 60 s, 110 served = 1.83/s (premise 2.2); 41 refused (W60, HTTPDropped 41) with only 6
+  readers: reject-when-full (owner 2026-08-12, baseline 25caf528:697) releases a slot in _serve's finally, after
+  the close, so a reader's next connect can land first. Recorded; no change.
+- 5 UART: idle one per 1.085 s over 601 s, 0 failures; under item 4's load one per 1.26 s, 0 failures.
+- 6 WLAN switch (b): an established STA retries once a minute after an AP loss and never streaks (legacy
+  python/CommonDrivers/async_connect.py:345, baseline the same): by design. Booted with the AP down: STA->AP max lag
+  975 ms, AP->STA 979 ms (ap_up -> STA 483 s, the 8-min period); other windows <= 49 ms; 0 UART failures. Past
+  con.uart_reply 925 ms by ~50 ms: F.3 already states the consequence (one counted transfer and a resync per
+  crossing); the switch is rare (AP loss + streak, then the period). New errcount: WIFI W37/W79, NTP E67, SGP40 W35
+  (boot with no AP).
+- Doc facts (a)-(d) sent to FS as item 7. Relay 12:03 told the bench: FRAM (a) and the next image's re-measure,
+  item 6 by design, item 4 recorded, one item 3 re-run under load, then idle. Cross-session reply to the bench is
+  refused for this session (auth); the relay file is the channel.
+
+## 12.166 APT handed back (64529e12); round 2 sent (lead, 12:1x)
+- APT: the 150 s apt limit gone at every apt site; Acquire timeouts kept by the source rule; firmware's mirror bound
+  = its job's timeout-minutes read from the tag (both sets on the 1 MB/s floor). Credits: the source-rule credit and
+  "owner, 2026-09-26" removed (the record is the uv sync retry), "owner, 2026-10-27" kept (LN322, BACKED). Checks:
+  930 touched passed, lint/mypy clean; tests_scripts 6803 passed, 1 failed (test_twin_process_spawn, "uncaught NLR":
+  its run used tc-int, which lacks the qstr override; same on a5c1dc93 with tc-int - the gate uses tc-c).
+- Playwright's 5-min `timeout`: playwright-core 1.63.0 ends a stalled read itself (30 s idle socket, 5 attempts) and
+  apt.conf.d covers its apt part, so it only cuts a slow live install - the 12.159 pattern. Lead decision (source
+  rule, lossless, net leaner): APT's option (D) - bound-s optional, floor alone when absent; the cut, its tunable and
+  the bound step go. Playwright's 25.9 MB set is on the floor at any bound >= 52 s, so nothing is lost.
+- APT finding (b): the download-only/install split and the outer retry lost their reason (a timeout kill reaching
+  dpkg) with the limit: judged in round 2 by evidence (apt's own retries on noble, the cache's needs); back to the
+  pre-audit single install unless a real case needs them. (d) the stale 15-minute figure fixed. (a) the 1800 s
+  network-step limit stays: GIVEUP_3 DERIVE, decided.
+
+## 12.167 Bench 12:23, item 3 under load (bench 268fe091); the heap side-finding; relay 12:23 (bench 795a0b19) (lead)
+- C-stack under item 4's load, deepest per leaf of 7,936 B: FRAM _send_and_read 5,652 (71 %), _send_and_write 5,124,
+  web _PieceWriter.flush 3,820, I2C read 3,100, UART _rx_copy 3,076, I2C writeto 2,876, log store _write 2,444. The
+  load set no new maximum; ~2.3 KB margin. 39 refusals reached the log store (W60), 106 served = 1.77/s.
+- Heap side-finding: under the load free fell to 16,224 B; after it the largest free block was 22,736 B with 72,960
+  free, the same after a collect (before the load ~61-66 KB largest; collected free 81,552 at 600 s). So ~8.6 KB
+  stays allocated and the largest block drops ~3x after one load. Against the product: a UART receive may allocate up
+  to uart.max_transfer_bytes 12,192 B (J.8); the L3 headroom check requires 32,768 B after the full build (not after
+  load). Plateau or creep unknown: relay 12:23 asks three 60 s loads with idle gaps (minimum of free and largest
+  block during each, both after a collect after each) and one 2-reader run. Goes into the free-heap wrap-up.
+- Void attempt 12:06: watchdog reset (RR 2) with the host no longer draining the CDC port: A.5's accepted console
+  case (owner, 2026-09-30, 'a'), the bench's own wrapper; not firmware.
+
+## 12.168 APT round 2 (226be25f) merged: int 146eb2e0 (lead, 12:2x)
+- Playwright option (D) done: the 5-min cut, its 124 message, the bound step, its tag and Part N row gone (playwright-
+  core 1.63.0: 30 s idle-socket timeout, 5 attempts; its apt calls read apt.conf.d). Rule.bound_s optional, floor
+  alone without one; firmware keeps its job-limit bound.
+- (b): back to the pre-audit single non-fatal update + one install with apt_options(); the download-only split and
+  its outer retry gone (noble apt: 3 automatic retries since 2.3.2, growing pauses since 2.3.7; acquire-worker.cc
+  1,2,4 s... capped 30 s - read on GitHub main, salsa blocked); the cache reads /var/cache/apt/archives after the
+  install, so it never needed the split. run_retried back to timeout_s: float. (d) fixed (20-min job, 13x).
+- Checks: 983 touched passed (7 seen red first), host mypy clean, tests_scripts 6804 passed 0 failed under
+  heavy.lock with tc-c. Lead diff read: 9 files +98/-138, leaner, no new mechanism but one optional-bound branch.
+  Merge clean; lint_direct on 146eb2e0 clean.
+- Left: apt_options() Acquire::Retries=2 (below noble's 3; NETWORK_ATTEMPTS-derived, not changed); the derived
+  mirror rate decides nothing for either set today (firmware 0.98 MB/s < 1 MB/s floor) - R5 close list. BACKLOG:404's
+  owed split reading sent to FS (doc).
+
+## 12.169 Bench 12:41: the post-load largest block, three 6-reader loads and one 2-reader load (lead, 12:4x)
+- After each 120 s idle + one collect: largest block 23,040 -> 20,192 -> 18,336 B after 6-reader loads 1-3, then
+  55,120 B after a 2-reader load; free flat 82,224 / 82,208 / 82,176 / 82,176 B: no leak, placement only. During the
+  6-reader loads (1 s samples): largest block min 11,968 / 11,664 / 11,424 B, free min 15,728 / 15,216 / 16,176 B;
+  2-reader load: largest min 18,336 (its start), free min 41,824. Before any load 64-66 KB. Served 113/108/108,
+  refused 44/41/43 (+128 W60), 2 readers 100 served 0 refused. No MemoryError / allocation-failed text. NTP +1 E71.
+  Instrument (wrapper, 1 s sampler, a mem_info heap walk each second) allocates and is not subtracted.
+- Margin: the worst-case load's minimum largest block (11.4 KB) sits just under the UART receive cap
+  (uart.max_transfer_bytes 12,192 B, J.8), but dev's real transfers are tens of bytes (banner "uart-crossover", echo
+  "crossing"); the web path's largest allocation is one piece (J/H: <= chunk_bytes). Not critical for any current
+  path; at the cap for a peer sending a near-maximal train under a 6-reader load. Each heavy load leaves the largest
+  block smaller until a lighter one re-places (no plateau within three loads).
+- Route: the free-heap wrap-up (owner: at the end), with this evidence; the last round's two-image GC proof runs the
+  same pattern (3 x 6 readers + 1 x 2 readers, collect after each) on both images. No relay needed now: the bench
+  idles on snapshot 58 until the next image relay (12:03).
+
+## 12.170 FS reviewed and merged; T's reap round limit cut a probe's cleanup (lead, 2026-11-10 13:4x)
+- FS 50004d8b read whole (code, tests, filtered SPEC diff): src -18 lines, the six FRAM settles and SPIDevice's two go
+  (datasheet tCSU/tCSH 10 ns, tD 40/60 ns; MB85RS2MTA p.15, MB85RS64V p.14); no wire/CS/stored byte changes. The 5 ms
+  entry budget it dropped was audit-added (U16, 2977c4e0, 2026-10-07; absent at 25caf528) and failed every silicon
+  run: recorded, not judged, under the owner's 11:25:20 "option a". Merged clean: int 5621a24d.
+- FS's 32768 red (test_sensortask[grkizi], "the reap could not end ... _read_loop") is NOT pre-existing: T's
+  _REAP_ROUNDS = 2 (agent, 2026-11-10) cut a cancelled task whose finally awaits I2CDevice._probe_for_device()'s second
+  100 ms settle while a stream wait held each round to 1 ms. Reproduced deterministically (reap_probe2.py). No fixed
+  round count separates a timed cleanup from a task that runs on after cancellation, and the owner's direction leaves
+  the hang to the per-file timeout: the reap now runs until every cancelled task ended or nothing else can run (a task
+  nothing can wake is still named at once). The round-limit self-test goes; a three-cleanup test replaces it (red on
+  the old reap, green on the new). grkizi file 5/5 at 32768; probe ends; harness 17/17 at both stages. int 651af010.
+- con.routine_stall (FS: "back to its maker"): settled by evidence, no change. The row and stall.fram_entry state it:
+  one FRAM operation alone stays under 21 ms, with a collection inside up to ~34 ms, inside con.uart_reply (925 ms on
+  dev). J.6's floor (2 x poll_wait + poll_idle + 21 ms) is a configuration minimum, already crossed by stall.i2c_transfer
+  and stall.flash_program by design; no device configures near it. Not near a critical margin.
+- FS's lean candidate (CS helpers' heap frames, ~4 KB churn per entry): declined. mpy-tool preludes (armv6m): the
+  read/write helpers are n_state 11 + 1 exc = 56 B, _send_command 52 B, against 44 B; dropping the two local aliases
+  brings only _send_command under it (the try/finally that deasserts CS on an error keeps the others at 48 B). Gain
+  ~3 collections over a 19-entry ResetErrors; a restructure for that is not lean. The F.3 row states the behaviour.
+- FS's doc findings done in 651af010: C.3.1 SPI init once per device (not per CS cycle); stall.crc frozen engine
+  1.31 ms / 264 B (bench FRAMCHUNK, snapshot 58 image, med of 30, max 1.56 ms); harness per-call cost re-measured
+  (2 us at -1, 2-3 us at 32768, 0 B; medians of 501); twin typecheck.ini header; BACKLOG serving-rate item gone
+  (1.83 req/s, H.7: no limit moves). The wlan-switch BACKLOG row is the role-reversal item, partly hidden by the
+  filter and wider than the timing: left as is.
+- Checks on 651af010: lint_direct rc 0; mypy main 283 / host 309 / twin 58 files clean; readers 703 passed. Combined
+  gate (tc-c) running under heavy.lock (lead).
+
+## 12.171 CS (close status) back: 154 items, 73 distinct OPEN, no firmware item open (lead, 14:1x)
+- S/u35r/r5/CLOSE_STATUS.md + .tsv (read-only on 651af010). DONE 71, OPEN 77 rows (73 distinct; 36 bench-last-round,
+  16 test, 12 final-report, 11 docs, 2 build, firmware 0), OWNER 6. New: N01, audit/sweeps/open_findings.md's 73
+  open/partly closed rows never inventoried (PLAN R0 input to OR5.a): one disposition pass.
+- Largest open items: P09 the D.15 order beyond src/ (~150 files; owner 10-27 "Option d", OR96 not the unit tests);
+  B01 the mypy Any baselines (7 modules, owner 09-28 "do it in this audit"); U02 import-placement _PENDING 68 + PLC0415
+  scope entries (U37.02; the 11-03 (i) permanent-list ruling covers only the citation and vocabulary checks, read at
+  its record); the last round (two images x full flash + bench tiers, 25 never-run round-1 steps, 6 re-runs).
+- Owner items, lead's reading: O1 (mirror rate decides nothing) keep, no change, final report; O2 (no-caller features)
+  keep under the 18:30:08 rule, listed in the final report; O4 (65 agent decisions 11-06..11-10) reviewed by topic at
+  the phase stop per rule 4.1.9 (final report); O6 chroot legs: (a) reused chroots with scratch in RAM, which the
+  owner's 11-07 14:46:59 words ("better style yes, but no blocker") and task #68's method meet. Left for the owner, one
+  at a time: O5 (release number 2.0, before W2's version change) and O3 (AmbPres PUT-half instrument: the Interface
+  Description 1.4.1 says the continuous-measurement status, interval (1.4.3) and altitude persist in NVM, nothing for
+  the ambient pressure argument; so the twin's persistence model has no source).
+- Cost forecast revised: W1 (incl. P09, B01, U02, twin items) ~3-5 points, W2 ~1, N01 ~1, re-verification and image
+  prep ~1-2, bench last round ~3-4, W3 final report ~1.5, D ~1, lead ~2: ~14-18 points -> ~54-58 % at the finish
+  (13:43 answer said 47-50 %). Put to the owner before starting the units, as promised at 13:43.
+
+## 12.172 gate59's one red: scenarios[dev] a_full_ceiling_of_concurrent_request_bodies at -1 (lead, 15:1x)
+- gate59 (int 651af010, tc-c rebuilt 13:51 after APT changed setup_toolchain.py; the first gate attempt died in the
+  namespace on the rebuild's git fetch): 32768 stage, twin suite and harness at both stages green; -1 stage one red:
+  dev's six concurrent PUT /system writes all TimeoutError at 15 s (_REQUEST_TIMEOUT_S = the product's outer cap since
+  T; 10 s before), 25.9 s against ~6 s in every gate since 11-09 (fsyncG..fs_e, 12 runs) and FS's gate on the same
+  src/ and twin code. 6/6 alone at 5.8 s. dev's whole scenario set took 634 s against 661 s at 09:01: no general
+  slowdown. The run was the first heavy run after the 13:5x container restart. Twin logs lost (test.sh's EXIT trap
+  removes results_dir). Two hand repros under the four-device load refused to start (port 53's lock passes only
+  through test.sh's owner chain). Rerun of the -1 stage running with TMPDIR in scratch and a watcher copying the dev
+  scenario logs (S/u35/lead/rerun_e/); one rerun only, a second failure is real.
+- Rerun (15:2x-15:5x, same tree, same tc-c, TMPDIR in scratch, dev logs kept at S/u35/lead/rerun_e/keep): -1 stage
+  PASS, 5252 passed 0 failed; the scenario 5.8 s on dev. Unreproduced: identical src/ and twin code passed FS's gate,
+  12 gates since 11-09, 6/6 alone and this rerun; it failed once, in the first heavy run after the container restart,
+  its twin log lost. No cause is claimed. CI on snapshot 59 runs it again; a second failure anywhere is real.

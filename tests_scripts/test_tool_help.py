@@ -40,7 +40,6 @@ TOOLS: tuple[str, ...] = (
     "scripts/build_frozen_html.sh",
     "scripts/preview_server.py",
     "toolchain/setup_toolchain.py",
-    "digital_twin/launch.py",
 )
 
 # The only commands on the PATH a tool sees here: one that stopped answering --help first fails on

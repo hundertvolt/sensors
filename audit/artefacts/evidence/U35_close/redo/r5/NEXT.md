@@ -42,3 +42,24 @@
 08:4x: owner chose (a) for the status pair (no G item 14; P9 rewords SPEC A.4's reason). Next queued: buildgen.definitions CLI.
 08:5x: G merged (12.157), int 81e2ebcd; lint + mypy clean; combined gate running (lock 'lead', tc-c). Units T (BRIEF_T.md, due 15:00) and P9 (BRIEF_P9.md, due 14:00) started, read/edit only until the lock frees. Add ftmp_t ftmp_p9 ftmp_cr2 ftmp_lead to SNAP_EXCLUDE. After the gate: coverage check over 24 changed tests/ files, snapshot 58 (parent e8d48fab), image relay with the owner's OK.
 - 09:4x: gate_mg green, cov58 green (26 jobs), heavy.lock released; snapshot 58 being built (parent e8d48fab).
+- 09:49: snapshot 58 910a0a62 pushed (parent e8d48fab; next PARENT once green). CI on hundertvolt/sensors#107 pending. Image relay drafted next; reflash needs the owner's OK.
+- 10:0x: snapshot 58 CI: gc-threshold job red in apt install (150 s step limit vs a slow mirror, no test ran; 12.159). Re-run once after the run completes; apt-limit fix unit after P9, into snapshot 59.
+- 10:1x: PR comment posted (issuecomment-6764443177). BRIEF_APT.md written (apt wall-clock limit goes; mirror check re-based on the job's timeout-minutes); starts after T and P9 are merged; add ftmp_apt to SNAP_EXCLUDE. Re-run failed job when run 42793916276 completes.
+- 10:5x: P9 merged (int 6953c09f, 12.160); gc-threshold job re-run queued; unit APT started from 6953c09f (beside T). Next: T hand-back (15:00), merge T + APT, gate, snapshot 59; image relay once snapshot 58 is green.
+- 11:0x: snapshot 58 CI green (run 42793916276 attempt 2; next PARENT 910a0a62). Image relay 10:58 pushed (bench 881562cf = code dab692d6 + relay); the bench asks the owner for the reflash OK.
+- 11:10: bench flashed snapshot 58 (owner OK at the bench); first boot as expected; items 1-6 running.
+- 11:2x: bench item 1: FRAM entry 12.7 / backup 13.0 ms (targets 5/8 missed; 12.162). Relay 11:16 pushed (item 6 = product switch). Owner asked: keep / lean / fallback.
+- 11:3x: owner asked whether async FRAM helps; answered no (12.163). APT sent back two points (credit, Playwright limit); FRAM (a)/(b)/(c) open.
+- 11:25: owner chose FRAM (a). Unit FS (settle removal + F.3 silicon rows) after T merges; rides the last-round image; bench told in the next relay.
+- 11:5x: T merged (int a5c1dc93, lint clean); FS launched (FRAM settle + F.3 rows + T's doc list); APT in its full run. Then: APT + FS merge, combined gate, coverage check, snapshot 59.
+- 12:0x: bench items 2-6 recorded (12.165); relay 12:03 pushed (bench 720df65d); FS got item 7 (doc facts). Waiting: APT, FS, bench item 3 re-run.
+- 12:1x: APT round 2 (Playwright option D, the split/retry judged, the 15-min figure); FS running; then merge both, gate, coverage, snapshot 59.
+- 12:2x: bench item 3 under load recorded (12.167); heap side-finding (largest block 22.7 KB after load, stays after collect) -> relay 12:23 (bench 795a0b19) asks the plateau/creep measurement.
+- 12:2x: APT merged (int 146eb2e0, lint clean). Waiting: FS; bench heap measurement. Then: merge FS, combined gate (tc-c), coverage check, snapshot 59 (parent 910a0a62; SNAP_EXCLUDE + ftmp_apt ftmp_t ftmp_fs).
+- 12:4x: bench heap (12.169): no leak; largest block 23->20->18 KB after 6-reader loads, 55 KB after 2 readers; min 11.4 KB during load vs UART cap 12.2 KB (dev's real transfers tiny). To the free-heap wrap-up + last-round image.
+- 13:4x: FS merged (int 5621a24d); T's reap round limit fixed + FS doc findings (int 651af010; 12.170). Gate gate59 running (heavy.lock lead). Then: coverage check, snapshot 59 (parent 910a0a62; SNAP_EXCLUDE + ftmp_apt ftmp_t ftmp_fs), CI, last-round image relay.
+- 13:43: owner asked whether 40 % is within expectation; answered: over the 05:27 forecast (~40 % at the finish), remaining ~7-10 points -> ~47-50 %, inside the plan's 50-60 % only if the close stays narrow.
+- 14:5x: container restart 13:5x (CS resumed, gate restarted). gate59: all green but scenarios[dev] a_full_ceiling_of_concurrent_request_bodies (-1): six PUT /system writes timed out at 15 s (25.9 s; passes ~6 s in every gate since 11-09; 6/6 alone). Reproducing under the four-device parallel load with logs kept (repro_load2). CS back (12.171); scope put to the owner (A/B/C, recommended B). heavy.lock: lead.
+- 14:57: owner chose (A): finish as planned (D.15 sweep by hand included). Next: briefs W1a (lists/baselines/twin items) + W2 (docs/release) in parallel; W1b (D.15) after W1a; O5 asked next.
+- 15:1x: units W1a (tests/tooling) and W2 (docs/release) running; O5 (release number) asked. gate59 -1 red (12.172): rerun_e running under heavy.lock (lead) with dev twin logs kept.
+- 15:5x: rerun_e green (12.172 closed unreproduced). gate59 green otherwise. cov59 running (lock lead); then snapshot 59.

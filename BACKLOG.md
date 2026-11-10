@@ -23,12 +23,7 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
 
 ## Open questions (need owner input or further investigation)
 
-- **Config-schema migration is a real data-loss risk on the *current deployed* codebase** —
-  `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
-  missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
-  values. No legacy config migration: legacy units get fresh setup at reflash (owner, 2026-09-26);
-  from the release on, a renamed key or file needs a migration, pinned by a golden stored-config
-  fixture (owner, 2026-09-26).
+None open.
 
 ## Real-hardware work still owed
 
@@ -66,9 +61,8 @@ gates, traps).
   scratch region, the part's top 256 bytes above every chunk, and never calls `get_chunk()`, so
   production's error logs are safe). Its first run on silicon with the synchronous path is owed.
   Expected: one command within one UART poll floor (80 B at 115200 baud, 6,944 µs,
-  SPECIFICATION.md J.6), and a log entry's 51 commands within 5,000 µs (Part F.3's
-  `stall.fram_entry`, `l3.fram_entry_budget_us`); the SGP40 backup's 8,000 µs acceptance has no
-  device-script check yet. Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM chip models
+  SPECIFICATION.md J.6), and a log entry's 51 commands recorded for Part F.3's `stall.fram_entry`,
+  which holds the chunk path's silicon figures. Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM chip models
   no wire time).
 - **The two unfed boot stretches, measured** — a `dev` boot log with a `ticks_ms()` stamp at every
   watchdog feed, taken in a hardware session (zero wear): the stretch from `WDT()` to the first
@@ -114,8 +108,7 @@ gates, traps).
   `bench/test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`
   (`--allow-persistence-write`): three hard resets 25 s apart across the SGP40's 60 s backup
   cadence. Expected: the SGP40 log empty, FRAM's log holding nothing beyond `E FRAM_STATUS_BYTE`
-  and `W FRAM_BLOCK_INVALID` (owner, 2026-09-13, on the torn-write trace: "Settled as acceptable
-  degradation rather than a robustness gap"), saved before it is cleared, a fresh backup completing
+  and `W FRAM_BLOCK_INVALID` (agent, 2026-10-22), saved before it is cleared, a fresh backup completing
   after the last reset and no task ended. Wear: 2 flash writes (the `BackupPeriod` change and its
   restore); FRAM writes are not wear. Twin row: none (its twin record: the module needs the bench
   bridge).
@@ -402,8 +395,7 @@ gates, traps).
     GC mark stack (B.14.6) and two-byte qstr lengths (F.7 row 32, read back by each Unix build's version
     probe), bounded and retried network steps and apt calls, `sudo --preserve-env`, the
     tier command table, Node's checksum-verified install. The host lwIP build has met only GCC 13.3 on x86-64, and
-    only the GCC 14 leg exercises the mbedtls `-Wno-array-bounds` rule. Two readings are owed too: the
-    apt-get(8), apt.conf(5) and dpkg(1) pages behind the installer's apt download/install split, and
+    only the GCC 14 leg exercises the mbedtls `-Wno-array-bounds` rule. One reading is owed too:
     `sudo -k`'s exact semantics for the passwordless-sudo probe.
   - **A reused chroot**: a changed `toolchain/micropython_overrides.py` makes `scripts/_unix_port.sh
     ensure` rebuild the three Unix binaries once; a binary from before the settrace split is detected
@@ -424,11 +416,6 @@ gates, traps).
   wired-together (buildgen-generated) module against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). Comes out when
   that audit closes.
-- **SystemService's settings store grows with device-wide settings** — the timezone offsets
-  (`GMTOffset`/`DSTOffset`) now held by `NTPClient`'s config, future rsyslog settings;
-  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py`'s `_VAL_DEBUG_LEVEL`).
-  Owner-deferred goal (owner-confirmed, 2026-08-11, `249f2ae`: 'per the owner's explicit intent,
-  this is meant to grow into a general, module-independent system-settings store', paraphrase).
 - **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
   one reliably exists** (owner, 2026-07-24, `cc911be`: 'Don't treat the current state as
   permanently accepted risk'; confirmed by the owner, 2026-09-29). Today's list, each backstopped by

@@ -58,7 +58,7 @@ class TmpScratch:
         _os_call("mkdir", self._dir, errno.EEXIST)
 
     def dir(self, label: str = "") -> str:
-        # A fresh, numbered subdirectory - the _tmp_cfg_dir()-style shape most callers need.
+        # A fresh, numbered subdirectory - the config-directory shape most callers need.
         self._ensure_dir()
         self._next += 1
         name = str(self._next) + ("_" + label if label else "")

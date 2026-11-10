@@ -14,7 +14,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
-from _devices import DEVICE_NAMES, device_toml
+from _devices import device_toml, distinct_devices
 from _script_loader import load_script_module
 from test_digital_twin_generated_boot import _HOST, _STUB_FROZEN_HTML, _boot_generated_device
 
@@ -69,7 +69,7 @@ def images(build_firmware: ModuleType, mpy_cross: Path, repo_root: Path, tmp_pat
     found = {}
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(build_firmware, "strip_type_checking_blocks", functools.cache(build_firmware.strip_type_checking_blocks))
-        for device in DEVICE_NAMES:
+        for device in distinct_devices():
             generated = generate_device(device_toml(device), repo_root / "src", repo_root / "ext")
             stage = tmp_path_factory.mktemp(f"image_{device}")
             build_firmware.stage_python_modules(stage, generated)

@@ -56,12 +56,9 @@ _NTP_SERVER_POLL_MS = 5
 _NTP_SERVER_POLL_TRIES = 200
 _NTP_REPLY_POLL_MS = 5  # the client's look for a reply, `_NTP_REPLY_POLLS` times: a dropped request waits them all out
 _NTP_REPLY_POLLS = 20
-_NTP_EXCHANGE_BOUND_S = 10
 _NTP_BUDGET_POLL_MS = 1  # with `_NTP_BUDGET_POLL_TRIES`, the budget case's server, waited out
 _NTP_BUDGET_POLL_TRIES = 3
-_NTP_BUDGET_BOUND_S = 5
 # The real-time hang bound around each fast-sleep and driven-clock self-test run.
-_CLOCK_RUN_BOUND_S = 5
 
 
 class _Holder:
@@ -332,7 +329,7 @@ def test_fast_sleep_turns_both_sleeps_into_one_yield_and_records_each_delay() ->
         return time.ticks_diff(time.ticks_ms(), start) / 1000, fast.of(asyncio.current_task())
 
     with FastAsyncSleep() as fast:
-        elapsed, mine = run(scenario(), _CLOCK_RUN_BOUND_S)  # bounded: an unpatched sleep would wait out the hour
+        elapsed, mine = run(scenario())  # bounded: an unpatched sleep would wait out the hour
     assert elapsed < 1.0
     assert mine == [3600, 0.25]
     assert (asyncio.sleep, asyncio.sleep_ms) == (real_sleep, real_sleep_ms)
@@ -346,7 +343,7 @@ def test_fast_sleep_advances_a_given_clock_by_each_slept_time() -> None:
         await asyncio.sleep_ms(500)
 
     with FastAsyncSleep(clock):
-        run(scenario(), _CLOCK_RUN_BOUND_S)
+        run(scenario())
     assert clock.now == 2500
 
 
@@ -356,7 +353,7 @@ def test_fast_sleep_keeps_a_bounded_record_and_counts_what_it_dropped() -> None:
             await asyncio.sleep(0)
 
     with FastAsyncSleep() as fast:
-        run(scenario(FastAsyncSleep.CAP + 3), _CLOCK_RUN_BOUND_S)
+        run(scenario(FastAsyncSleep.CAP + 3))
     assert len(fast.slept) == FastAsyncSleep.CAP
     assert fast.dropped == 3
 
@@ -373,7 +370,7 @@ def test_fast_sleep_keeps_the_form_each_wait_was_asked_in() -> None:
         return fast.ms_of(task), fast.of(task)
 
     with FastAsyncSleep() as fast:
-        asked = run(scenario(), _CLOCK_RUN_BOUND_S)
+        asked = run(scenario())
     assert asked == ([250, 0], [0.25, 0.25, 1, 0]), asked
     assert [form for _task, _seconds, form in fast.slept] == [250, None, None, 0], fast.slept
 
@@ -381,9 +378,9 @@ def test_fast_sleep_keeps_the_form_each_wait_was_asked_in() -> None:
 def test_fast_sleep_refuses_a_float_sleep_ms_as_the_real_one_does() -> None:
     # The real sleep_ms() hands its delay to ticks_add(), whose mp_obj_get_int() refuses a float (extmod/asyncio/core.py:55-57,
     # extmod/modtime.c:181, v1.29.0), and MicroPython's 2.0 == 2 would let a recorded float pass an int pin.
-    real = run(_refused_sleep_ms(2.0), _CLOCK_RUN_BOUND_S)
+    real = run(_refused_sleep_ms(2.0))
     with FastAsyncSleep() as fast:
-        stood_in = run(_refused_sleep_ms(2.0), _CLOCK_RUN_BOUND_S)
+        stood_in = run(_refused_sleep_ms(2.0))
     assert real == stood_in == "TypeError: can't convert float to int", (real, stood_in)
     assert fast.slept == [], fast.slept  # refused before it was recorded
 
@@ -395,7 +392,7 @@ def test_check_sleep_ms_refuses_what_the_real_sleep_ms_refuses_and_takes_an_int(
         said = "no error"
     except TypeError as e:
         said = f"TypeError: {e}"
-    assert said == run(_refused_sleep_ms(2.0), _CLOCK_RUN_BOUND_S), said
+    assert said == run(_refused_sleep_ms(2.0)), said
     check_sleep_ms(5)
     check_sleep_ms(-1)  # sleep_ms() clamps a negative delay to 0
 
@@ -489,7 +486,7 @@ def test_tick_sets_the_flag_once_per_time_and_advances_a_given_clock() -> None:
         except asyncio.CancelledError:
             pass
 
-    run(scenario(), _CLOCK_RUN_BOUND_S)
+    run(scenario())
     assert wakes == [1000, 2000, 3000]
 
 
@@ -571,8 +568,8 @@ def test_the_fake_ntp_server_answers_one_request_or_drops_it() -> None:
         return took, None
 
     try:
-        assert run(exchange(reply), _NTP_EXCHANGE_BOUND_S) == (True, reply)
-        assert run(exchange(None), _NTP_EXCHANGE_BOUND_S) == (True, None)  # taken and dropped is still served
+        assert run(exchange(reply)) == (True, reply)
+        assert run(exchange(None)) == (True, None)  # taken and dropped is still served
     finally:
         client.close()
         server.close()
@@ -582,7 +579,7 @@ def test_the_fake_ntp_server_answers_false_once_its_poll_budget_runs_out() -> No
     # No request arrives: serve_once() gives up after poll_tries rounds of poll_ms and says so.
     server = FakeNtpServer(_NTP_PORT, poll_ms=_NTP_BUDGET_POLL_MS, poll_tries=_NTP_BUDGET_POLL_TRIES)
     try:
-        assert run(server.serve_once(make_ntp_reply(1_790_000_000)), _NTP_BUDGET_BOUND_S) is False
+        assert run(server.serve_once(make_ntp_reply(1_790_000_000))) is False
     finally:
         server.close()
 

@@ -1,4 +1,4 @@
-"""Bench-tier automated tests (the owner's suggested angle, 2026-09-03): heavy API load through the full HTTP stack
+"""Bench-tier automated tests: heavy API load through the full HTTP stack
 against every bus at once - the bench counterpart of flash/test_bus_concurrency.py (SPECIFICATION.md C.8)."""
 
 import threading

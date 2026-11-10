@@ -62,15 +62,11 @@ async def _request_signal_stub(_r: int, _g: int, _b: int, _t: float) -> bool:
     return True
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
 def test_the_pixel_takes_no_fram_chunk_and_the_service_takes_the_first() -> None:
     manager, _chip = make_fram_manager()
     run(manager.setup())
     pixel = _make_pixel(manager)
-    notify = _make_notify(manager, _tmp_cfg_dir())
+    notify = _make_notify(manager, _scratch.dir())
     run(notify.setup())
     alone, _chip2 = make_fram_manager()
     run(alone.setup())
@@ -82,7 +78,7 @@ def test_the_pixel_takes_no_fram_chunk_and_the_service_takes_the_first() -> None
 
 
 def test_the_service_history_survives_a_simulated_reboot() -> None:
-    cfg_path = _tmp_cfg_dir()  # same path across the simulated reboot, as a real device's config file
+    cfg_path = _scratch.dir()  # same path across the simulated reboot, as a real device's config file
     manager1, chip = make_fram_manager()
     run(manager1.setup())
     _make_pixel(manager1)

@@ -20,7 +20,7 @@ from _generated_tree import devices, require_fresh
 from _src_const import src_bytes, src_int
 from _strict_json import strict_loads
 from _twin_devices import bus_keywords, device_with, wiring_plan
-from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, PollRoundClock, awaited_with_listener, copied_out, transfer_limits
+from _uart_comm_harness import POLL_WAIT_MS, TIMEOUT_MS, PollRoundClock, awaited_with_listener, copied_out, transfer_limits
 from _uart_comm_hazard_common import register_both_crc_modes
 from _write_counters import WriteCountingOpen
 from machine import UART as FakeUART
@@ -109,9 +109,9 @@ class Pair:
         return self.initiator.initialized and self.responder.initialized
 
     async def with_listener(self, work: "Coroutine[object, object, T]", rounds: int = 1, *, listener_may_stall: bool = False) -> "T":
-        # The harness's rule: a stalled responder fails the exchange unless the test declares it.
+        # The harness's rule: the responder is awaited to its end unless the test declares its stall.
         listener = asyncio.create_task(self._listen_rounds(rounds))
-        return await awaited_with_listener(work, listener, rounds, may_stall=listener_may_stall)
+        return await awaited_with_listener(work, listener, may_stall=listener_may_stall)
 
 
 def _check_a_corrupted_frame_counts_one_failure_and_the_next_transfer_succeeds(crc: "CrcMaker") -> None:
@@ -131,7 +131,7 @@ def _check_a_corrupted_frame_counts_one_failure_and_the_next_transfer_succeeds(c
         await _one_exercise_round(pair)
         assert (pair.initiator._transfers, pair.initiator._failures) == (1, 1)
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def test_name_resolution_matches_instance_name_convention() -> None:
@@ -153,7 +153,7 @@ def test_initiator_task_starters_include_exercise_loop() -> None:
     async def start_and_end() -> None:  # a starter makes its task inside the loop, as start_tasks() calls it
         await cancel(starters[0]())
 
-    run(start_and_end(), RUN_LIMIT_S)
+    run(start_and_end())
 
 
 def test_responder_task_starters_are_the_listen_loop_only() -> None:
@@ -174,17 +174,17 @@ def test_responder_task_starters_are_the_listen_loop_only() -> None:
     async def start_and_end() -> None:
         await cancel(starters[0]())
 
-    run(start_and_end(), RUN_LIMIT_S)
+    run(start_and_end())
 
 
 def test_the_readiness_flag_follows_the_inner_setup() -> None:
     # False until setup() succeeds; a failed setup (no bus, refused at construction) leaves it False.
     pair = Pair()
     before = pair.initiator.initialized
-    run(pair.initiator.setup(), RUN_LIMIT_S)
+    run(pair.initiator.setup())
     assert (before, pair.initiator.initialized) == (False, True)
     refused = UARTLinkDriver(None, ROLE_INITIATOR, limits=transfer_limits(payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS), name_ext="none")
-    run(refused.setup(), RUN_LIMIT_S)
+    run(refused.setup())
     assert refused.initialized is False
 
 
@@ -204,7 +204,7 @@ def test_get_error_sources_and_loggers_delegate_to_inner_comm() -> None:
 def test_get_link_status_starts_at_zero() -> None:
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
-    status = run(initiator.get_link_status(), RUN_LIMIT_S)
+    status = run(initiator.get_link_status())
     assert status == {"Transfers": 0, "Failures": 0}
 
 
@@ -215,10 +215,10 @@ def test_reset_error_counter_leaves_the_link_counters() -> None:
     initiator._transfers = 5
     initiator._failures = 2
     initiator.pr.err_s("bench-side fault", errno=7)
-    assert 7 in run(initiator.get_error_counter(), RUN_LIMIT_S)[initiator.name]["ErrNum"]
-    assert run(initiator.reset_error_counter(), RUN_LIMIT_S) is True
+    assert 7 in run(initiator.get_error_counter())[initiator.name]["ErrNum"]
+    assert run(initiator.reset_error_counter()) is True
     assert (initiator._transfers, initiator._failures) == (5, 2)
-    after = run(initiator.get_error_counter(), RUN_LIMIT_S)[initiator.name]
+    after = run(initiator.get_error_counter())[initiator.name]
     assert (after["ErrCount"], 7 in after["ErrNum"]) == (0, False)
 
 
@@ -231,7 +231,7 @@ def test_reset_error_counter_answers_the_comms_own_result() -> None:
         return False
 
     initiator._comm.reset_error_counter = refused  # type: ignore[method-assign]
-    assert run(initiator.reset_error_counter(), RUN_LIMIT_S) is False
+    assert run(initiator.reset_error_counter()) is False
 
 
 def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(crc: "CrcMaker") -> None:
@@ -239,7 +239,7 @@ def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(cr
     # lands where the next ACK is due. The SET still fails and the link still recovers.
     pair = Pair(crc=crc, rates=_SHIPPED_RATES)
     errnos = _recorded_errnos(pair.initiator._comm)
-    assert run(pair.setup(), RUN_LIMIT_S), "Pair.setup() failed"
+    assert run(pair.setup()), "Pair.setup() failed"
     link = pair.initiator
     bus = link._uart
     assert bus is not None
@@ -260,7 +260,7 @@ def _check_a_crossing_whose_uid_aliases_the_peers_ack_fails_as_peer_initiated(cr
     asy_uart_link_driver.time = time  # type: ignore[attr-defined]
     try:
         with DrivenTime(asy_uart_driver, asy_uart_comm, asy_uart_link_driver, sleeps=True) as clock:
-            run(go(clock), RUN_LIMIT_S)
+            run(go(clock))
     finally:
         del asy_uart_link_driver.time  # type: ignore[attr-defined]
     assert got and got[0] == [True, False, 1, True], f"the aliased crossing did not fail once and recover at the first try: {got}"
@@ -271,7 +271,7 @@ def _check_a_hazard_run_reports_every_verdict_then_returns_to_the_echo(crc: "Crc
     # The live shape: the responder's own listen loop and the initiator's exercise loop, the request between two rounds.
     pair = Pair(crc=crc, rates=_SHIPPED_RATES)
     errnos, peer = _recorded_errnos(pair.initiator._comm), _recorded_errnos(pair.responder._comm)
-    assert run(pair.setup(), RUN_LIMIT_S), "Pair.setup() failed"  # on the real clock: inside the block nothing would advance it
+    assert run(pair.setup()), "Pair.setup() failed"  # on the real clock: inside the block nothing would advance it
 
     async def go(clock: DrivenTime) -> "tuple[int, JsonDict]":
         link = pair.initiator
@@ -291,7 +291,7 @@ def _check_a_hazard_run_reports_every_verdict_then_returns_to_the_echo(crc: "Crc
     asy_uart_link_driver.time = time  # type: ignore[attr-defined]
     try:
         with DrivenTime(asy_uart_driver, asy_uart_comm, asy_uart_link_driver, sleeps=True) as clock:
-            elapsed, report = run(go(clock), RUN_LIMIT_S)
+            elapsed, report = run(go(clock))
     finally:
         del asy_uart_link_driver.time  # type: ignore[attr-defined]
     json.dumps(report)  # the report is what a status read serialises
@@ -346,14 +346,14 @@ def _check_a_persisted_fault_during_a_transfer_does_not_stall_other_tasks(crc: "
         assert answer is None
         assert ticks > 2, "the ticker made no progress while a FRAM-backed fault was being reported"
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def _check_a_raw_write_that_fails_in_the_sweep_reads_as_no_verdict(crc: "CrcMaker") -> None:
     # A planted failed raw write for an illegal value reads None, never the "not ACKed" that value is expected to give,
     # so the judge counts it; the legal value after it is still ACKed and the link recovers.
     pair = Pair(crc=crc, rates=_SHIPPED_RATES)
-    assert run(pair.setup(), RUN_LIMIT_S), "Pair.setup() failed"
+    assert run(pair.setup()), "Pair.setup() failed"
     link = pair.initiator
     bus = link._uart
     assert bus is not None
@@ -384,7 +384,7 @@ def _check_a_raw_write_that_fails_in_the_sweep_reads_as_no_verdict(crc: "CrcMake
     asy_uart_link_driver.time = time  # type: ignore[attr-defined]
     try:
         with DrivenTime(asy_uart_driver, asy_uart_comm, asy_uart_link_driver, sleeps=True) as clock:
-            run(go(clock), RUN_LIMIT_S)
+            run(go(clock))
     finally:
         del asy_uart_link_driver.time  # type: ignore[attr-defined]
         asy_uart_link_driver._HAZARD_FIELDS = swept
@@ -410,7 +410,7 @@ def _check_banner_get_across_a_real_responder_via_get_callback(crc: "CrcMaker") 
             assert clock.disarm(), "the planted stall never fired inside the exchange"
         assert copied_out(answer) == _BANNER
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def _check_echo_round_trip_across_a_real_responder_via_set_and_get_callbacks(crc: "CrcMaker") -> None:
@@ -439,13 +439,13 @@ def _check_echo_round_trip_across_a_real_responder_via_set_and_get_callbacks(crc
             except asyncio.CancelledError:
                 pass
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def test_the_echo_answers_a_get_from_its_stored_pieces_without_a_copy() -> None:
     # Structural, never by filling the heap: a stored echo at the receive cap is answered as its own pieces, so the
     # callback allocates no bytearray and nothing a GET costs is peer-sized (J.8).
-    pair = run(build_pair(), RUN_LIMIT_S)
+    pair = run(build_pair())
     comm = pair.responder._comm
     stored = PieceBuffer(comm._max_transfer_bytes, comm._chunk_bytes)
     pair.responder._message_callback(0x02, CMD_SET, stored)
@@ -474,7 +474,7 @@ def _check_exercise_loop_counts_a_failure_when_nothing_answers(crc: "CrcMaker") 
         await _one_exercise_round(pair, listen=False)
         assert (pair.initiator._transfers, pair.initiator._failures) == (0, 1)
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def test_exercise_loop_compares_a_same_length_answer_byte_for_byte() -> None:
@@ -486,7 +486,7 @@ def test_exercise_loop_compares_a_same_length_answer_byte_for_byte() -> None:
         await _one_exercise_round(pair)
         assert (pair.initiator._transfers, pair.initiator._failures) == (0, 1)
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def test_the_transfer_count_stops_at_the_counter_cap() -> None:
@@ -496,7 +496,7 @@ def test_the_transfer_count_stops_at_the_counter_cap() -> None:
         await _one_exercise_round(pair)
         assert (pair.initiator._transfers, pair.initiator._failures) == (COUNTER_CAP, 0)
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def test_the_failure_count_stops_at_the_counter_cap() -> None:
@@ -506,7 +506,7 @@ def test_the_failure_count_stops_at_the_counter_cap() -> None:
         await _one_exercise_round(pair, listen=False)
         assert (pair.initiator._transfers, pair.initiator._failures) == (0, COUNTER_CAP)
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def _check_exercise_loop_counts_a_transfer_for_a_correct_banner_answer(crc: "CrcMaker") -> None:
@@ -521,7 +521,7 @@ def _check_exercise_loop_counts_a_transfer_for_a_correct_banner_answer(crc: "Crc
             assert clock.disarm(), "the planted stall never fired inside the exchange"
         assert (pair.initiator._transfers, pair.initiator._failures) == (1, 0)
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def _check_exercise_loop_counts_a_wrong_payload_as_a_failure_not_a_transfer(crc: "CrcMaker") -> None:
@@ -534,7 +534,7 @@ def _check_exercise_loop_counts_a_wrong_payload_as_a_failure_not_a_transfer(crc:
         await _one_exercise_round(pair)
         assert (pair.initiator._transfers, pair.initiator._failures) == (0, 1)
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def _check_get_error_counter_delegates_to_the_inner_comms_own_log(crc: "CrcMaker") -> None:
@@ -546,7 +546,7 @@ def _check_get_error_counter_delegates_to_the_inner_comms_own_log(crc: "CrcMaker
         assert await pair.initiator.get_error_counter() == await pair.initiator._comm.get_error_counter()
         assert 7 in (await pair.initiator.get_error_counter())[pair.initiator.name]["ErrNum"]
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def test_a_refused_construction_ends_every_task_for_both_roles() -> None:
@@ -554,11 +554,11 @@ def test_a_refused_construction_ends_every_task_for_both_roles() -> None:
     # escalation reaches a reboot for a link that cannot come up (SPECIFICATION.md Part C.7.2).
     for role in (ROLE_INITIATOR, ROLE_RESPONDER):
         driver = _refused_link(role)
-        run(driver.setup(), RUN_LIMIT_S)
+        run(driver.setup())
         assert driver.initialized is False
-        done = run(_rounds_until_done(driver), RUN_LIMIT_S)
+        done = run(_rounds_until_done(driver))
         assert done == [True], f"{role}: tasks done {done}"
-        errnos = run(driver.get_error_counter(), RUN_LIMIT_S)[driver.name]["ErrNum"]
+        errnos = run(driver.get_error_counter())[driver.name]["ErrNum"]
         assert code("E", "UART_PAYLOAD_SIZE") in errnos, f"{role}: {errnos}"
         assert code("E", "NOT_INIT") not in errnos, f"{role}: {errnos}"
 
@@ -637,7 +637,7 @@ def _check_unanswerable_command_id_is_rejected_not_crashed(crc: "CrcMaker") -> N
         answer = await pair.with_listener(pair.initiator._comm.uart_get(0x99))
         assert answer is None  # _get_callback returns (False, None) for an unknown command id
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def _shipped_rates() -> "tuple[PollRates, PollRates]":
@@ -659,10 +659,10 @@ def _shipped_rates() -> "tuple[PollRates, PollRates]":
     return found[0], found[1]
 
 
-# The hazard runs poll as the firmware wiring the link ships, never at a rate no device uses (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+# The hazard runs poll as the firmware wiring the link ships, never at a rate no device uses (agent, 2026-10-27).
 _SHIPPED_RATES = _shipped_rates()
 # From the request to the run's end on the driven clock, exact on any host: the measured figure in both CRC modes at
-# _SHIPPED_RATES, with no margin (agent, 2026-10-27; owner-reviewed, 2026-11-06).
+# _SHIPPED_RATES, with no margin (agent, 2026-10-27).
 _HAZARD_RUN_VIRTUAL_MS = 22440
 
 
@@ -679,9 +679,9 @@ def test_an_initiation_that_raises_is_logged_and_reads_as_no_verdict() -> None:
         return True
 
     link._comm.uart_set = planted  # type: ignore[method-assign]
-    two = run(link._two_initiations(), RUN_LIMIT_S)
+    two = run(link._two_initiations())
     assert two == [True, None] and two not in _ONE_COMPLETION, f"the raising initiation did not read as no verdict: {two}"
-    logged = run(link.get_error_counter(), RUN_LIMIT_S)[link.name]
+    logged = run(link.get_error_counter())[link.name]
     assert logged["ErrCount"] == 1 and code("E", "UNEXPECTED") in logged["ErrNum"], f"the raise was not logged once at its task's top: {logged}"
 
 
@@ -705,7 +705,7 @@ def test_each_recovery_try_first_waits_one_window() -> None:
 
     link._comm.uart_set = unanswered  # type: ignore[method-assign]
     with fast:
-        attempts, recovered = run(link._recover(), RUN_LIMIT_S)
+        attempts, recovered = run(link._recover())
     assert (attempts, recovered) == (_HAZARD_RECOVERY_ATTEMPTS, False), (attempts, recovered)
     assert seen == list(range(1, _HAZARD_RECOVERY_ATTEMPTS + 1)), f"window sleeps before each try: {seen}"
     assert fast.ms_of(owner[0]) == [link._window_ms] * _HAZARD_RECOVERY_ATTEMPTS, fast.ms_of(owner[0])
@@ -722,7 +722,7 @@ def test_a_hazard_run_is_requested_only_on_a_ready_initiator_and_one_at_a_time()
         assert pair.initiator.request_hazard_run() is False, "a second request was accepted while one run is pending"
         assert await pair.initiator.get_hazard_report() == {"Runs": 0, "Pending": True, "Last": None}
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 async def _one_exercise_round(pair: Pair, *, listen: bool = True) -> None:
@@ -838,7 +838,7 @@ def test_a_put_to_the_links_own_route_starts_one_hazard_run_answers_each_outcome
         assert responder["result"] == {"UartHazards": FAILED}, responder
         assert (cfg.writes, web.writes, own.writes) == (0, 0, 0), f"the hazard command wrote to the flash: {(cfg.writes, web.writes, own.writes)}"
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 async def _uptime_s() -> int:
@@ -903,7 +903,7 @@ def test_a_fram_log_config_lands_entries_in_the_managers_chunk() -> None:
         await second.setup()
         assert list(second.history)[-1] == 7
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 def test_the_default_log_stays_ram_only() -> None:
@@ -947,7 +947,7 @@ def test_fram_backed_error_history_survives_a_simulated_reboot() -> None:
         assert after.pr._err_count == before.pr._err_count
         assert list(after.pr.history) == list(before.pr.history)
 
-    run(go(), RUN_LIMIT_S)
+    run(go())
 
 
 async def build_pair(payload_size: int = PAYLOAD_SIZE, timeout: int = TIMEOUT_MS, crc: "CrcMaker" = None) -> Pair:
@@ -1001,7 +1001,7 @@ def test_a_double_initiation_cancelled_at_its_first_await_leaves_no_transaction_
     # The cancel is forwarded to the first initiation, so the second, scheduled but not awaited yet, is what the finally
     # cancels: left alone it would run a whole transaction against the silent responder.
     pair = Pair()
-    assert run(pair.setup(), RUN_LIMIT_S) is True
+    assert run(pair.setup()) is True
     comm = pair.initiator._comm
 
     async def scenario() -> bool:
@@ -1015,7 +1015,7 @@ def test_a_double_initiation_cancelled_at_its_first_await_leaves_no_transaction_
         await asyncio.sleep_ms(POLL_WAIT_MS)  # a leftover initiation is now inside its transaction
         return comm._busy
 
-    assert run(scenario(), RUN_LIMIT_S) is False
+    assert run(scenario()) is False
 
 
 if __name__ == "__main__":

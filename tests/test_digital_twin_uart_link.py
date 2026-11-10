@@ -66,9 +66,9 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-    from launch import _Plan
     from machine import UART as TwinUART
     from machine import UARTLink as TwinLink
+    from run_generic_integration import _Plan
 
     from asy_base_classes import JsonDict
     from asy_uart_driver import PieceBuffer
@@ -126,9 +126,9 @@ _COEXIST_NOISE_TASKS = 4
 _HAZARD_READERS = 3
 _HAZARD_WRITE_PAUSE_MS = 1
 # Each reader starts a GET at every multiple of this on the driven clock and pauses its writes on that clock too, so a
-# run serves the same reads on any host and at either GC stage (agent, 2026-10-21; owner-reviewed, 2026-11-06).
+# run serves the same reads on any host and at either GC stage (agent, 2026-10-21).
 _HAZARD_READ_PERIOD_MS = 2500
-# From the request to the run's end on the driven clock, exact on any host: the measured figure, no margin (agent, 2026-10-21; owner-reviewed, 2026-11-06).
+# From the request to the run's end on the driven clock, exact on any host: the measured figure, no margin (agent, 2026-10-21).
 _HAZARD_RUN_VIRTUAL_MS = 208370
 _EXERCISE_PERIOD_MS = src_int("src/asy_uart_link_driver.py", "_EXERCISE_PERIOD_MS")
 _HAZARD_RECOVERY_ATTEMPTS = src_int("src/asy_uart_link_driver.py", "_HAZARD_RECOVERY_ATTEMPTS")
@@ -184,7 +184,7 @@ def test_a_raw_write_that_fails_in_the_sweep_reads_as_no_verdict() -> None:
         with DrivenTime(*_LINK_MODULES, sleeps=True) as clock:
             _wire_on(link, clock)
             try:
-                run(go(clock), _RUN_LIMIT_S)
+                run(go(clock))
             finally:
                 del link._now_us  # the class's own wire clock again
     finally:
@@ -208,7 +208,7 @@ def _build_device() -> None:
     network.reset_interfaces()
     machine.configure_wiring(wiring_plan(_DEVICE))
     rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
-    _watchdog[:] = [_run(_boot_device(_tmp_cfg_dir()))]
+    _watchdog[:] = [_run(_boot_device(_scratch.dir()))]
     _ends.clear()  # this build's two link ends, found once here rather than on every exchange
     for role in (ROLE_INITIATOR, ROLE_RESPONDER):
         found = [value for value in (getattr(module, name) for name in dir(module)) if isinstance(value, UARTLinkDriver) and value._role == role]
@@ -271,7 +271,7 @@ def _driven(link: "TwinLink", work: "Callable[[DrivenTime], Coroutine[object, ob
     with DrivenTime(*_LINK_MODULES, now=_virtual_now[0], sleeps=True) as clock:
         _wire_on(link, clock)
         try:
-            return run(_until_done(clock, work(clock), limit * 1000), limit)
+            return run(_until_done(clock, work(clock), limit * 1000))
         finally:
             del link._now_us  # the class's own wire clock again
             _virtual_now[0] = clock.now
@@ -397,10 +397,10 @@ async def _read_status_repeatedly(readers: _Readers, clock: DrivenTime) -> None:
             readers.saw_pending += 1
 
 
-def _run(coro: "Coroutine[object, object, T]", limit: int = _RUN_LIMIT_S) -> "T":
+def _run(coro: "Coroutine[object, object, T]") -> "T":
     # A run with no exchange in it (a boot, a setup, a log read) on the poll-round clock (SPECIFICATION.md J.7).
     with PollRoundClock():
-        return run(coro, limit)
+        return run(coro)
 
 
 class _Conn:
@@ -454,10 +454,6 @@ async def _settle_listener(clock: DrivenTime, listener: "asyncio.Task[object]") 
             await listener
         except asyncio.CancelledError:  # the expected outcome; anything else is a real failure
             pass
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
 
 
 def _traces(comm: UARTComm) -> "set[tuple[str, int]]":
@@ -929,7 +925,7 @@ def test_a_hazard_run_put_through_the_api_while_readers_hammer_it_reports_every_
     with DrivenTime(*_LINK_MODULES, sleeps=True) as clock:
         _wire_on(link, clock)
         try:
-            put, start, elapsed, final = run(go(clock), _HAMMER_LIMIT_S)
+            put, start, elapsed, final = run(go(clock))
         finally:
             del link._now_us  # the class's own wire clock again
     during = len([at for at in readers.starts if start <= at <= start + elapsed])

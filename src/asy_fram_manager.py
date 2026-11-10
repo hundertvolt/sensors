@@ -523,7 +523,7 @@ class FRAMManager:
         return asyncio.create_task(self._watch_chip_loop())
 
     def get_chunk(self, size: int, crc: CRCBase | None = None, verify: int = 0, *, owner: str) -> FRAMChunk | None:
-        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc (owner, 2026-07-18: reject generally at the top)
+        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc (agent, 2026-07-18)
             self.pr.err("Zero-size chunk requested, rejected!")
             return None
         crc = CRCPass() if crc is None else crc
@@ -573,7 +573,7 @@ class FRAMManager:
         *,
         owner: str,
     ) -> FRAMTimestampedChunk | None:
-        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc (owner, 2026-07-18: reject generally at the top)
+        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc (agent, 2026-07-18)
             self.pr.err("Zero-size chunk requested, rejected!")
             return None
         crc = CRCPass() if crc is None else crc
@@ -603,7 +603,7 @@ class FRAMManager:
         return chunk
 
     def set_pause(self, *, value: bool) -> None:
-        # Finish all ongoing ops, reject new ones (owner, 2026-07-18)
+        # Finish all ongoing ops, reject new ones (the owner's code, 8c4a73d, 2026-07-13)
         self.pr.evt("Storage pause set to", value)
         self._pause = value
 

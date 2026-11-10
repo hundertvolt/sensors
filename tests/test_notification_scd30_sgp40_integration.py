@@ -105,7 +105,7 @@ def _make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tup
 
     co2_signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     voc_signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
-    notify = NotificationService(pixel.request_signal, _local_time, (co2_signal, voc_signal), cfg_path=_tmp_cfg_dir("notify"))
+    notify = NotificationService(pixel.request_signal, _local_time, (co2_signal, voc_signal), cfg_path=_scratch.dir("notify"))
     run(notify.setup())
     return pixel, notify
 
@@ -114,7 +114,7 @@ def _make_scd_reader() -> "tuple[SCD30_Reader, FakeI2C]":
     # The reader owns config_SCD30.cfg (its FRC settings): a scratch directory, set up as at boot, on a fresh bus 0.
     FakeI2C.reset_id(0)
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir("scd"))
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_scratch.dir("scd"))
     run(reader.setup())
     return reader, reader._scd._i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]  # the fake behind asy_i2c_driver.I2C
 
@@ -128,7 +128,7 @@ def _make_sgp_reader() -> "tuple[SGP40_Reader, FakeI2C]":
         ValueRef(comp, "Temp"),
         ValueRef(comp, "Hum"),
         max_module_error=2,
-        cfg_path=_tmp_cfg_dir("sgp"),
+        cfg_path=_scratch.dir("sgp"),
     )
     run(reader.setup())
     fake_bus = reader._sgp._i2c_sgp40.i2c_device.i2c._i2c
@@ -152,10 +152,6 @@ def _settle_and_spike(reader: SGP40_Reader, fake_bus: "FakeI2C") -> "SGP40":
 # --- SGP40 side: word/CRC builders, verbatim from test_notification_sgp40_integration.py ---
 
 _CRC_POLY = 0x31  # SGP40 datasheet Table 7 - same polynomial as test_asy_sgp40_driver.py's own
-
-
-def _tmp_cfg_dir(label: str) -> str:
-    return _scratch.dir(label)
 
 
 def _word(value: int) -> bytes:

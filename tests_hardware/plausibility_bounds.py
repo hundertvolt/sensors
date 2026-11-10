@@ -22,9 +22,9 @@ def _driver_floats(path: Path) -> "dict[str, float]":
 _BMP3XX = _driver_floats(_BMP3XX_DRIVER)
 
 # The VOC floor is 0, not the datasheet's 1: the shipped algorithm reports 0 for its first samples, and a bench
-# session's first tests run inside that window after the board's reset (agent, 2026-10-14; owner-reviewed, 2026-11-06).
+# session's first tests run inside that window after the board's reset (agent, 2026-10-14).
 BOUNDS: "dict[str, tuple[float, float, str]]" = {
-    "co2_ppm": (200, 10_000, "the owner's floor (owner, 2026-09-03), below the SCD30 datasheet's p.2 Table 1 calibrated range 400-10000 ppm"),
+    "co2_ppm": (200, 10_000, "a judgment floor with no source (agent, 2026-09-03), below the SCD30 datasheet's p.2 Table 1 calibrated range 400-10000 ppm"),
     "humidity_rh": (0.0, 100.0, "SCD30 datasheet p.2 Table 2: humidity measurement range 0-100 %RH"),
     "scd30_temp_c": (-40.0, 70.0, "SCD30 datasheet p.2 Table 3: temperature measurement range -40-70 degC"),
     "pressure_hpa": (_BMP3XX["_OP_PRESS_MIN_HPA"], _BMP3XX["_OP_PRESS_MAX_HPA"], "src/asy_bmp3xx_driver.py _OP_PRESS_MIN_HPA/_OP_PRESS_MAX_HPA (BMP3xx datasheet sec 1 Table 2 operating range)"),

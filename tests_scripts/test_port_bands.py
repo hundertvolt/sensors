@@ -59,7 +59,7 @@ def test_every_per_device_owner_has_a_row(port_bands: types.ModuleType) -> None:
 def test_every_row_names_an_owner_that_still_exists(port_bands: types.ModuleType) -> None:
     # A retired owner's row holds its band for nothing and hides that the file is gone: each owner is a module of the
     # tree, or the name a PortAllocator() call passes.
-    modules = {p.stem for d in ("src", "tests", "digital_twin", "scripts", "tests_js") for p in (_REPO / d).iterdir() if p.suffix in {".py", ".js", ".mjs"}}
+    modules = {p.stem for d in ("src", "tests", "digital_twin", "fakes", "scripts", "tests_js") for p in (_REPO / d).iterdir() if p.suffix in {".py", ".js", ".mjs"}}
     callers = {m for d in ("tests", "scripts", "digital_twin") for p in (_REPO / d).glob("*.py") for m in re.findall(r'PortAllocator\("(\w+)"', p.read_text(encoding="utf-8"))}
     assert sorted(set(port_bands.BANDS) - modules - callers) == []
 

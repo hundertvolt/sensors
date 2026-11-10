@@ -41,9 +41,8 @@ if TYPE_CHECKING:
 
     _Starter = Callable[[], asyncio.Task[Any]]
 
-# Bounds mirroring tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py's, so a
+# The bound mirroring tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py's, so a
 # twin reading and a board reading are taken at the same positions of the same sequence.
-_STARTER_LOOP_TIMEOUT_MS = 20000
 _TIMERS_TIMEOUT_S = 15
 
 
@@ -96,15 +95,10 @@ async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Calla
     return True
 
 
-async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Starter]", task_names: "list[str]") -> bool:
+async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Starter]", task_names: "list[str]") -> None:
     # main()'s step after the setup list. The map follows start_tasks() at once; the supervisor is never entered.
-    try:
-        await asyncio.wait_for_ms(sysfunct.start_tasks(task_starters, task_names=task_names), _STARTER_LOOP_TIMEOUT_MS)
-    except asyncio.TimeoutError:
-        print(f"NOTE start_tasks did not return within {_STARTER_LOOP_TIMEOUT_MS} ms")
-        return False
+    await sysfunct.start_tasks(task_starters, task_names=task_names)
     _dump("after_starter_loop_end")
-    return True
 
 
 async def _main(device: str, cfg_path: str, settle_ms: int) -> int:
@@ -136,8 +130,7 @@ async def _main(device: str, cfg_path: str, settle_ms: int) -> int:
     # the timers; the supervisor is never entered.
     task_starters = module._collect_task_starters()
     task_names = module._collect_task_names()
-    if not await _run_starter_loop(sysfunct, task_starters, task_names):
-        return 1
+    await _run_starter_loop(sysfunct, task_starters, task_names)
     _rings("after_starter_loop_end", module)
     trigger_starters = module._collect_trigger_starters()
     timer_starters = module._collect_timer_starters()

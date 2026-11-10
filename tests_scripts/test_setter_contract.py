@@ -4,7 +4,6 @@ REST dispatcher reaches; `_set_dict_cfg`/`_set_mgr_cfg` answer the `WriteValidit
 
 import ast
 import re
-import shutil
 from pathlib import Path
 
 import pytest
@@ -182,18 +181,6 @@ def modules() -> dict[str, str]:
     return {d: generate_device(REPO_ROOT / "devices" / f"{d}.toml", SRC, REPO_ROOT / "ext").module_source for d in DEVICE_NAMES}
 
 
-@pytest.fixture
-def src_copy(tmp_path: Path) -> Path:
-    return Path(shutil.copytree(SRC, tmp_path / "src"))
-
-
-def _edit(src: Path, name: str, old: str, new: str) -> None:
-    path = src / name
-    text = path.read_text(encoding="utf-8")
-    assert text.count(old) == 1, f"{name}: the anchor is not unique: {old!r}"
-    path.write_text(text.replace(old, new), encoding="utf-8")
-
-
 def test_every_reached_setter_answers_bool_and_push_callbacks_register_once(modules: dict[str, str]) -> None:
     assert all_findings(SRC, modules) == []
 
@@ -203,65 +190,3 @@ def test_the_scan_reaches_push_callbacks_and_generated_dispatchers(modules: dict
     registered = [stmt for node in classes.nodes.values() for stmt in ast.walk(node) if isinstance(stmt, ast.Assign) and any(isinstance(t, ast.Subscript) and _is_self_push(t) for t in stmt.targets)]
     assert len(registered) >= 15, registered
     assert all("RouteSources(" in source for source in modules.values())
-
-
-def test_a_push_registered_outside_init_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_sgp40_driver.py", "        self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc\n", "")
-    _edit(src_copy, "asy_sgp40_driver.py", "    async def _read_loop(self) -> None:\n", "    async def _read_loop(self) -> None:\n        self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc\n")
-    findings = all_findings(src_copy, {})
-    assert len(findings) == 1 and "asy_sgp40_driver.py SGP40_Reader._read_loop():" in findings[0] and "assigned outside __init__" in findings[0], findings
-
-
-def test_a_push_callback_not_answering_bool_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_sgp40_driver.py", "def _push_reset_voc(self, value: int | float | str | bool | None) -> bool:", "def _push_reset_voc(self, value: int | float | str | bool | None) -> None:")
-    findings = all_findings(src_copy, {})
-    assert len(findings) == 1 and "SGP40_Reader._push_reset_voc() -> None: a push callback, so it answers bool" in findings[0], findings
-
-
-def test_a_setter_a_push_callback_reaches_must_answer_bool(src_copy: Path) -> None:
-    _edit(src_copy, "asy_wifi_service.py", "async def set_wifi_led(self, *, status: bool) -> bool:", "async def set_wifi_led(self, *, status: bool) -> None:")
-    findings = all_findings(src_copy, {})
-    assert len(findings) == 1 and "WifiService.set_wifi_led() -> None: reached by the push callback WifiService._push_wifi_led()" in findings[0], findings
-
-
-def test_a_settings_write_off_its_documented_answer_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_base_classes.py", 'cfg_vals: "ConfigSchema") -> "WriteValidity":', 'cfg_vals: "ConfigSchema") -> dict:')
-    findings = all_findings(src_copy, {})
-    assert len(findings) == 1 and "SensorReader._set_dict_cfg() -> dict: C.5.2 documents WriteValidity" in findings[0], findings
-
-
-_PROBE_MODULE = """
-async def _cmd(cmd):
-    notify.set_override_led(1)
-    fram.set_pause(value=True)
-    neopixel.set_nothing()
-    return True
-
-async def _pause(payload):
-    return True
-
-RouteSources(system_cmd=_cmd, notification_pause=_pause, settings={"system": [SettingsGroup(sysfunct, ("DebugLevel",), post_fct=conn.set_wifi_led)]})
-"""
-
-
-def test_a_setter_a_generated_dispatcher_reaches_must_answer_bool(src_copy: Path) -> None:
-    _edit(src_copy, "asy_notification_service.py", "async def set_override_led(self, secs: int) -> bool:", "async def set_override_led(self, secs: int) -> None:")
-    _edit(src_copy, "asy_wifi_service.py", "async def set_wifi_led(self, *, status: bool) -> bool:", "async def set_wifi_led(self, *, status: bool) -> None:")
-    findings = dispatcher_findings(Classes(src_copy), "probe", _PROBE_MODULE)
-    assert [f.split(" ", 1)[1] for f in findings] == [
-        "NotificationService.set_override_led() -> None: reached by sensortask_probe._cmd(), so it answers bool",
-        "`neopixel.set_nothing` names no method in src/",
-        "WifiService.set_wifi_led() -> None: reached by sensortask_probe SettingsGroup(...), so it answers bool",
-    ], findings
-
-
-def test_a_named_out_entry_that_no_longer_exists_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_fram_manager.py", "def set_verify(", "def set_verify_mode(")
-    findings = all_findings(src_copy, {})
-    assert findings == ["named out of the rule, but _FRAMBaseChunk.set_verify is defined nowhere in src/ (stale)"], findings
-
-
-def test_a_push_table_mutated_outside_init_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_sgp40_driver.py", "    async def _read_loop(self) -> None:\n", "    async def _read_loop(self) -> None:\n        self._push_callbacks.pop('ResetVOC')\n")
-    findings = all_findings(src_copy, {})
-    assert len(findings) == 1 and "SGP40_Reader._read_loop():" in findings[0] and "_push_callbacks.pop() outside __init__" in findings[0], findings

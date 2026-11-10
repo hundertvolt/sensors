@@ -1,4 +1,4 @@
-"""Minimal HTTP/1.1 client over asyncio.open_connection(): real HTTP over real sockets (owner, 2026-08-13), hand-rolled
+"""Minimal HTTP/1.1 client over asyncio.open_connection(): real HTTP over real sockets (agent, 2026-08-13), hand-rolled
 because the Unix-port build freezes no client library. tests_hardware/http_client.py keeps the same shape, pinned by
 tests_scripts/test_http_client_shape_parity.py."""
 
@@ -28,6 +28,9 @@ if TYPE_CHECKING:
         def write(self, data: bytes) -> None: ...
 
 
+from _strict_json import check_strict_json
+
+
 class HttpResponse:
     def __init__(self, status_code: int, headers: "dict[str, str]", body: "bytes | bytearray", *, drained: bool = False) -> None:
         self.status_code = status_code
@@ -42,8 +45,6 @@ class HttpResponse:
         # Checked strictly first: the interpreter's json.loads() parses a separator slip the browser's JSON.parse() rejects.
         # The ignore below goes when micropython-stdlib-stubs types json.loads() for bytearray (a stub gap only:
         # mod_json_loads() reads any buffer, v1.29.0 extmod/modjson.c).
-        from _strict_json import check_strict_json  # here, not at the top: tests/ is absent from a standalone twin's path
-
         if self.drained:
             raise ValueError("json() on a drained response")
         check_strict_json(self.body)

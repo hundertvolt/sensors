@@ -57,8 +57,7 @@ if TYPE_CHECKING:
 PAYLOAD_SIZE = 8
 TIMEOUT_MS = 100
 POLL_WAIT_MS = 1
-RUN_LIMIT_S = 10
-LISTENER_DRAIN_S = 5
+LISTENER_DRAIN_S = 5  # the drain of a listener the test declares may stall, or an initiator's failure left, then cancelled
 # The console level a load test's pair passes as debug: a caught MemoryError reaches the memory gate's stream, logged as
 # an error or a warning (owner, 2026-10-20, paraphrase: those unit tests log at error level or above).
 ERROR_LEVEL = 2  # pins src/asy_print_log.py _LOG_WARN
@@ -109,16 +108,16 @@ class Pair:
 
     async def with_listener(self, work: "Coroutine[object, object, T]", rounds: int = 1, *, listener_may_stall: bool = False, drain_s: float = LISTENER_DRAIN_S) -> "T":
         # Runs the responder's listen loop alongside the initiator's call: a stop-and-wait exchange
-        # only progresses when both ends are scheduled. A listener still short of its rounds after the
-        # drain_s drain fails the exchange, unless the test declares the stall (a frame it cut on purpose).
+        # only progresses when both ends are scheduled. The listener is awaited to its end, unless the test
+        # declares the stall (a frame it cut on purpose): then the drain_s drain ends it.
         listener = asyncio.create_task(self._listen_rounds(rounds))
-        return await awaited_with_listener(work, listener, rounds, may_stall=listener_may_stall, drain_s=drain_s)
+        return await awaited_with_listener(work, listener, may_stall=listener_may_stall, drain_s=drain_s)
 
 
 class PollRoundClock:
     # The UART modules' deadlines on a clock only they advance: by each of their sleeps, and 1 ms per read so a wait that
     # never yields still expires. On the wall clock a host stall expires a reply budget: a clean run loses a transaction,
-    # and one still recovering when the heap is sampled reads as retention (agent, 2026-10-07; owner-reviewed, 2026-11-06).
+    # and one still recovering when the heap is sampled reads as retention (agent, 2026-10-07).
     def __init__(self, stall_after: int = 0, stall_ms: int = 0) -> None:
         self._stall = [0, stall_after, stall_ms, 0]  # countdown (0 = idle), its start, the stall, whether it fired
         self._paced = [True]  # False: a sleep only yields (pace())
@@ -178,18 +177,17 @@ class PollRoundClock:
         return not self._stall[2] or self._stall[3] == 1
 
 
-async def _drain_listener(listener: "asyncio.Task[None]", drain_s: float = LISTENER_DRAIN_S) -> bool:
-    # True when the listener finished its rounds; a stalled one is cancelled and reported as False.
+async def _drain_listener(listener: "asyncio.Task[None]", drain_s: float) -> None:
+    # A listener that may stall: given drain_s to finish its rounds, then cancelled, and said so.
     try:
         await asyncio.wait_for(listener, drain_s)
     except asyncio.TimeoutError:
+        print("the responder's listener did not finish within", drain_s, "s: cancelled, as its stall is declared")
         listener.cancel()
         try:
             await listener
         except asyncio.CancelledError:  # expected; anything else is a real failure
             pass
-        return False
-    return True
 
 
 def accept_set(exp_size: "int | None" = None) -> "CommCallback":
@@ -199,16 +197,18 @@ def accept_set(exp_size: "int | None" = None) -> "CommCallback":
     return callback
 
 
-async def awaited_with_listener(work: "Coroutine[object, object, T]", listener: "asyncio.Task[None]", rounds: int, *, may_stall: bool, drain_s: float = LISTENER_DRAIN_S) -> "T":
-    # The initiator's own failure wins: a stall behind it is its consequence, never reported over it.
+async def awaited_with_listener(work: "Coroutine[object, object, T]", listener: "asyncio.Task[None]", *, may_stall: bool, drain_s: float = LISTENER_DRAIN_S) -> "T":
+    # The initiator's own failure wins: a stall behind it is its consequence, never reported over it. A listener the
+    # test does not declare may stall is awaited to its end: a stall there is the per-file timeout's to name.
     try:
         result = await work
     except BaseException:
         await _drain_listener(listener, drain_s)
         raise
-    if not await _drain_listener(listener, drain_s) and not may_stall:
-        msg = f"the responder's listener did not finish its {rounds} round(s) within {drain_s} s"
-        raise AssertionError(msg)
+    if may_stall:
+        await _drain_listener(listener, drain_s)
+    else:
+        await listener
     return result
 
 

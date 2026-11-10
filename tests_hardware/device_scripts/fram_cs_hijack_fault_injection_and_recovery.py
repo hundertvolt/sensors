@@ -132,7 +132,7 @@ async def _main() -> None:
         done()
         return
 
-    # 1: the payload of a write deselected, which the chip never takes (owner, 2026-09-04, below).
+    # 1: the payload of a write deselected, which the chip never takes (agent, 2026-09-04; FRAM datasheet pin table).
     seeded = fram.set_values(_ORIGINAL_PATTERN, addr_start=_BASE + _WRITE_RACE_AT)
     hijack = _CsHijack(fram, len(_HIJACKED_WRITE_PATTERN))
     hijack.install_for_write()
@@ -140,11 +140,11 @@ async def _main() -> None:
         raised = await asyncio.wait_for(_victim_write(fram, _HIJACKED_WRITE_PATTERN, _WRITE_RACE_AT), _VICTIM_BOUND_S)
     finally:
         hijack.remove()
-    # Hard requirement (owner, 2026-09-04): the hijacked write never reaches the chip.
+    # A deselected write never reaches the chip (agent, 2026-09-04; FRAM datasheet pin table).
     readback = await _readback(fram, _WRITE_RACE_AT, len(_ORIGINAL_PATTERN))
     fact("write_hijack", {"seeded": seeded, "injected": hijack.injected_with_cs_asserted, "raised": raised, "readback_ok": readback == _ORIGINAL_PATTERN, "recovered": await _recovered(fram, _POST_RECOVERY_WRITE_HIJACK_AT, wdt)})
 
-    # 2: the payload of a read deselected, which returns no real data (owner, 2026-09-04, below).
+    # 2: the payload of a read deselected, which returns no real data (agent, 2026-09-04; FRAM datasheet pin table).
     seeded = fram.set_values(_READ_SEED_PATTERN, addr_start=_BASE + _READ_RACE_AT)
     victim_buf = bytearray(len(_READ_SEED_PATTERN))
     hijack = _CsHijack(fram, len(victim_buf))
@@ -153,7 +153,7 @@ async def _main() -> None:
         raised = await asyncio.wait_for(_victim_read(fram, victim_buf, _READ_RACE_AT), _VICTIM_BOUND_S)
     finally:
         hijack.remove()
-    # Hard requirement (owner, 2026-09-04): a hijacked read never returns the real data.
+    # A deselected read never returns the real data (agent, 2026-09-04; FRAM datasheet pin table).
     fact("read_hijack", {"seeded": seeded, "injected": hijack.injected_with_cs_asserted, "raised": raised, "real_data_returned": raised is None and victim_buf == _READ_SEED_PATTERN, "recovered": await _recovered(fram, _POST_RECOVERY_READ_HIJACK_AT, wdt)})
 
     # 3: the first WREN of a write deselected - the driver's one WREN retry lands the write.

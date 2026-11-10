@@ -4,6 +4,7 @@ advances, given modules' `time` for a block; with `sleeps`, their asyncio sleeps
 
 import asyncio
 import asyncio.core as _core  # type: ignore[import-not-found]  # the run queue; no stub covers it
+import sys
 import time
 
 from _async_harness import cancel as _harness_cancel
@@ -99,6 +100,13 @@ class _Wake:
     def throw(self, exc: BaseException, *_args: object) -> None:
         self.remove(None)
         raise exc
+
+
+def driven_modules(*extra: str) -> "list[object]":
+    # Every src module holding asyncio, the twin's machine and network and the named extras: one clock for each sleep
+    # and tick read, so a tick one module reads is diffed by another on the same clock.
+    names = ("machine", "network") + extra  # a (*a, b) display is a SyntaxError on MicroPython
+    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in names) and getattr(m, "asyncio", None) is asyncio]
 
 
 class DrivenTime(Ticks30Time):

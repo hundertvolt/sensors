@@ -1,6 +1,6 @@
 """Pins that nothing a twin PROCESS runs needs tests/ importable, and that every twin launch takes its MICROPYPATH from
-scripts/micropypath.toml's twin: _http_client.HttpResponse.json() imports tests/_strict_json lazily, and the twin's path
-carries no tests/ - so a second caller inside digital_twin/ would raise ImportError only on that path, at runtime."""
+scripts/micropypath.toml's twin: the twin's path carries no tests/, so a twin module importing a module found only there
+would raise ImportError in a twin process, at runtime."""
 
 import ast
 import re
@@ -29,9 +29,8 @@ _SHELL_READ = re.compile(r"\bmicropypath[\"']?,?\s*[\"']?twin\b")
 # A value derived from the read layout (a replaced, split or rejoined segment), which says why beside it.
 _DERIVED = re.compile(r"(?i)micropypath\w*(?:\(\))?\s*\.\s*(?:replace|split)\(")
 
-_LAZY_MODULE = "_strict_json"
-_LAZY_OWNER = "_http_client.py"  # the one file allowed to reach into tests/, and only from .json()
-_JSON_METHOD = "json"
+# The twin layout's module directories besides the frozen ones: a module a twin file imports must be found in one of them.
+_TWIN_DIRS = ("digital_twin", "digital_twin/unixport", "fakes", "src", "ext")
 
 
 def _derived_lines(text: str) -> list[int]:
@@ -45,22 +44,6 @@ def _derived_lines(text: str) -> list[int]:
         above = lines[number - 2].strip() if number > 1 else ""
         if not (" #" in code or " //" in code or above.startswith(("#", "//"))):
             found.append(number)
-    return found
-
-
-def _imports_of(tree: ast.Module, module: str) -> list[tuple[int, bool]]:
-    # (line, is_module_level) per import of `module`, by walking the body rather than ast.walk() so
-    # nesting is known: a lazy import inside a function is the whole point of the exception below.
-    found: list[tuple[int, bool]] = []
-    for top in tree.body:
-        module_level = isinstance(top, (ast.Import, ast.ImportFrom))
-        for node in ast.walk(top):
-            if not isinstance(node, (ast.Import, ast.ImportFrom)):
-                continue
-            # `import x` names the module in .names; `from x import y` names it in .module.
-            named = [alias.name for alias in node.names] if isinstance(node, ast.Import) else [node.module]
-            if module in named:
-                found.append((node.lineno, module_level))
     return found
 
 
@@ -169,7 +152,7 @@ def test_a_literal_an_unread_launch_and_an_unexplained_derivation_are_caught(tmp
 
 def test_the_twin_machine_module_imports_under_cpython() -> None:
     # CPython tooling imports it: no MicroPython-only import at its module scope.
-    done = subprocess.run([sys.executable, "-I", "-c", f"import sys; sys.path.insert(0, {str(TWIN)!r}); import machine"], capture_output=True, text=True, timeout=60, check=False)
+    done = subprocess.run([sys.executable, "-I", "-c", f"import sys; sys.path[:0] = [{str(TWIN)!r}, {str(REPO_ROOT / 'fakes')!r}]; import machine"], capture_output=True, text=True, timeout=60, check=False)
     assert done.returncode == 0, done.stderr
 
 
@@ -183,22 +166,15 @@ def test_every_twin_directory_a_twin_module_puts_on_sys_path_is_scanned() -> Non
 
 
 @pytest.mark.parametrize("source", _twin_sources(), ids=lambda p: p.name)
-def test_no_twin_module_imports_from_tests_at_module_level(source: Path) -> None:
-    for line, module_level in _imports_of(ast.parse(source.read_text(encoding="utf-8")), _LAZY_MODULE):
-        assert not module_level, f"{source.name}:{line} imports {_LAZY_MODULE} at module level - the twin's MICROPYPATH has no tests/, so importing this module in a twin process would fail"
-        assert source.name == _LAZY_OWNER, f"{source.name}:{line} imports {_LAZY_MODULE}; only {_LAZY_OWNER} may, and only from its own .{_JSON_METHOD}()"
-
-
-@pytest.mark.parametrize("source", _twin_sources(), ids=lambda p: p.name)
-def test_no_twin_module_calls_the_strict_checking_json_accessor(source: Path) -> None:
-    # HttpResponse.json() is the tests/-dependent path. Twin processes read .body instead; every
-    # .json() caller in the repo is a tests/ file, where tests/ IS on the path.
-    calls = [
-        node.lineno
-        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == _JSON_METHOD and not node.args
-    ]
-    assert not calls, f"{source.name} calls .{_JSON_METHOD}() at line(s) {calls} - if that is an HttpResponse it needs tests/_strict_json, which no twin process can import; parse response.body instead"
+def test_no_twin_module_imports_a_module_only_tests_holds(source: Path) -> None:
+    tests_only = {p.stem for p in (REPO_ROOT / "tests").glob("*.py")} - {p.stem for d in _TWIN_DIRS for p in (REPO_ROOT / d).glob("*.py")}
+    imported: set[str] = set()
+    for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    assert not imported & tests_only, f"{source.name} imports {sorted(imported & tests_only)}, found only in tests/"
 
 
 def launch_site_problems(root: Path) -> list[str]:
@@ -242,7 +218,7 @@ def test_the_twins_ntp_writer_derives_its_file_name_from_the_product() -> None:
 def test_every_persistent_twin_state_default_is_git_ignored() -> None:
     # A manual run writes these by default: each is a .gitignore entry, so `git status` stays clean after a run.
     ignored = {line.strip() for line in (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()}
-    defaults = {value for name, value in _module_constants(TWIN / "launch.py").items() if name.endswith("_STATE_DEFAULT")}
-    defaults.add(_module_constants(TWIN / "run_generic_integration.py")["_CONFIG_DIR_DEFAULT"])
+    runner = _module_constants(TWIN / "run_generic_integration.py")
+    defaults = {value for name, value in runner.items() if name.endswith("_STATE_DEFAULT") or name == "_CONFIG_DIR_DEFAULT"}
     assert len(defaults) == 4, defaults
     assert sorted(str(d) for d in defaults if d not in ignored) == []

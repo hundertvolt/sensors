@@ -236,8 +236,8 @@ class SGP40_Reader(SensorReaderConfig):
         self._restored_from: int | None = None
         self._reset_pending = False
         # Two independent sub-parts of a pending reset, tracked separately since they can complete on different cycles
-        # (see reset_voc()/_read_sgp()); both start done. Never drop a reset, never redo the whole thing, never give up
-        # retrying (owner, 2026-07-22, `90ced2b`, 'verbatim in spirit').
+        # (see reset_voc()/_read_sgp()); both start done. Never drop a reset, never give up retrying (the owner's code,
+        # 8c4a73d, 2026-07-13); never redo the whole thing (agent, 2026-07-22).
         self._reset_fram_cleared = True
         self._reset_algo_applied = True
 
@@ -620,7 +620,7 @@ class SGP40_I2C:
     @staticmethod
     def _celsius_to_ticks(temperature: float, buf: bytearray | memoryview) -> None:
         # Temperature-to-ticks, datasheet Table 10: 25C->0x6666, -45C->0x0000, 130C->0xFFFF. Rounds to nearest (matching
-        # _relative_humidity_to_ticks below) rather than truncating (owner, 2026-07-22, paraphrase); clamped to Table 10's
+        # _relative_humidity_to_ticks below) rather than truncating (agent, 2026-07-22); clamped to Table 10's
         # range, never wrapped.
         t = min(_T_TICKS_MAX_C, max(_T_TICKS_MIN_C, temperature))
         ticks = int((t + 45) * 65535 / 175 + 0.5)

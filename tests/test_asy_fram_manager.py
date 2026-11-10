@@ -2,7 +2,6 @@
 chunks, and every fault failing cleanly and logged."""
 
 import asyncio
-import time
 
 from _async_harness import cancel, run
 from _error_codes import code
@@ -24,19 +23,6 @@ from crc_checks import CRC8, CRC16, CRC32, CRCPass
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py - see its own comment.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
-
-
-class _NoSettle:
-    # asy_spi_driver's `time` for this file: sleep_us(), the CS settle (a busy-wait, never an await; the fake chip has no
-    # timing to need it, test_asy_spi_driver.py pins it), returns at once; every other name is the real module's.
-    def __getattr__(self, name: str) -> object:
-        return getattr(time, name)
-
-    def sleep_us(self, _us: int) -> None:
-        pass
-
-
-asy_spi_driver.time = _NoSettle()  # type: ignore[assignment]  # a module attribute swap for this file's process
 
 try:
     from typing import TYPE_CHECKING

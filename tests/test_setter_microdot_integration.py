@@ -159,7 +159,7 @@ def _fault_next_i2c_write(reader: SCD30_Reader) -> None:
 
 
 def _json(res: Response) -> "JsonDict":
-    # The response body, strict-parsed (tests/_strict_json.py): a duplicate key or a non-object body fails here.
+    # The response body, strict-parsed (fakes/_strict_json.py): a duplicate key or a non-object body fails here.
     body = strict_loads(_body_bytes(res.body))
     assert isinstance(body, dict), body
     return body

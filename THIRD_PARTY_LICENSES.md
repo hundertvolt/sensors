@@ -82,8 +82,8 @@ following `src/` files are derived this way:
   differently shaped from `ntptime.py`'s own newer `MIN_NTP_TIMESTAMP` fix), and all of the
   async/`UDPSocket`/config/retry/timer machinery are this file's own additions, not present
   upstream. See "Author-permitted, no formal license" below for `karfas/upy-simple-app`'s
-  `asy_ntp_time.py`, which the project owner separately flagged as a possible origin and which
-  turned out to itself be a further wrapper around this same `micropython-lib` source.
+  `asy_ntp_time.py`, checked as a possible origin, which turned out to itself be a further wrapper
+  around this same `micropython-lib` source.
 - `src/asy_dns_client.py` — its header states "Inspired by github.com/vshymanskyy/aiodns, not a
   port" under that project's SPDX lines ([`vshymanskyy/aiodns`](https://github.com/vshymanskyy/aiodns),
   © 2024 Volodymyr Shymanskyy, MIT). Verified against `aiodns.py`'s real source: the header's
@@ -176,7 +176,7 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   empty NOERROR reply otherwise), and a query must be a single-question query with plain labels
   and a name of at most 255 octets.
   Ruled out as *not* the source for this file, despite superficial DNS-server similarity: three
-  of the other candidates the project owner asked to check -
+  of the other candidates checked -
   [`jczic/MicroDNSSrv`](https://github.com/jczic/MicroDNSSrv) (MIT, thread-based, unrelated
   packet-building code/header bytes) and
   [`belyalov/tinydns`](https://github.com/belyalov/tinydns) (MIT, `int.from_bytes`-based parsing,
@@ -227,8 +227,8 @@ BSD-3-Clause notice for the VOC port's origin.
   DHCP server ignoring a custom `ifconfig()` subnet). This project has no DHCP server of its own
   anywhere in `src/`, `legacy/firmware/python/`, `legacy/firmware/modules/`, or `digital_twin/` -
   confirmed by exhaustive search (protocol bytes, ports, opcodes, class names) and by a full
-  history scan, including for the specific "single fixed IP to one client" shape the project owner
-  remembered possibly having built at some point (no match found in this repo's history either).
+  history scan, including for the specific "single fixed IP to one client" shape (no match found in
+  this repo's history either).
   Also checked and ruled out on this basis:
   [`urg/micropython-captive-dhcp-server`](https://github.com/urg/micropython-captive-dhcp-server)
   (MIT, also on PyPI as `micropython-captive-dhcp-server`) - nothing in this repo to compare it
@@ -237,8 +237,8 @@ BSD-3-Clause notice for the VOC port's origin.
 ## Author-permitted, no formal license (public forum offer)
 
 - [`karfas/upy-simple-app`](https://github.com/karfas/upy-simple-app) (`lib/asy_udp_client.py`,
-  `lib/asy_ntp_time.py`) — the project owner flagged this repo from memory as a possible origin
-  for `src/asy_udp_socket.py`/`src/asy_ntp_client.py`. Checked directly:
+  `lib/asy_ntp_time.py`) — checked as a possible origin for
+  `src/asy_udp_socket.py`/`src/asy_ntp_client.py`. Checked directly:
   - `asy_ntp_time.py`'s NTP-parsing logic is itself already a fairly direct copy of
     micropython-lib's own `ntptime.py` (see the MIT entry above), wrapped in an async task around
     karfas's own `AsyUDPClient`. That part's real origin is micropython-lib, independent of
@@ -258,7 +258,7 @@ BSD-3-Clause notice for the VOC port's origin.
   - `karfas/upy-simple-app` carries no `LICENSE` file, license badge, `README.md`, or header
     comment in either file - confirmed directly. On its own, that would mean no permission granted
     under default copyright law (unlike the permissively-licensed Apache-2.0 `asy_captive_dns.py` case
-    above). However, the project owner located and provided the actual context:
+    above). However, the actual context is public:
     [`micropython/discussions#12967`](https://github.com/orgs/micropython/discussions/12967) (Nov
     2023) shows karfas posting links to exactly these two files, in direct response to a public
     request for async NTP/UDP code, saying "it could be a starting point" - and a third party

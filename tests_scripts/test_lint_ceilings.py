@@ -18,7 +18,7 @@ from _repo_scan import pinned_ruff
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-_SCOPES = ("src", "tests", "digital_twin", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
+_SCOPES = ("src", "tests", "digital_twin", "fakes", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
 
 
 @dataclass(frozen=True)

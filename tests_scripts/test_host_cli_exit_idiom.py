@@ -84,14 +84,13 @@ def _malformed_runs(tmp_path: Path) -> "dict[str, list[str]]":
         "build_firmware": ["scripts/build_firmware.py", "zz_no_such_device", "--toolchain-dir", str(empty)],
         "setup_toolchain": ["toolchain/setup_toolchain.py", "test", "--toolchain-dir", str(empty)],
         "buildgen.generate": ["-m", "buildgen.generate", str(bad_toml)],
-        "buildgen.definitions": ["-m", "buildgen.definitions", str(bad_toml)],
         "_generate_sensortask_modules": ["scripts/_generate_sensortask_modules.py", "--device-toml", str(bad_toml), "--out-dir", str(tmp_path / "out")],
         "_stage_website": ["scripts/_stage_website.py", str(tmp_path / "definitions.json"), str(tmp_path / "stage")],
         "_render_coverage": ["scripts/_render_coverage.py", "--raw-dir", str(empty)],
     }
 
 
-_CLIS = ("build_firmware", "setup_toolchain", "buildgen.generate", "buildgen.definitions", "_generate_sensortask_modules", "_stage_website", "_render_coverage")
+_CLIS = ("build_firmware", "setup_toolchain", "buildgen.generate", "_generate_sensortask_modules", "_stage_website", "_render_coverage")
 
 
 @pytest.mark.parametrize("cli", _CLIS)

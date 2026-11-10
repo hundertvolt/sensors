@@ -18,7 +18,7 @@ _TESTS = REPO_ROOT / "tests"
 _TRAILER = 'if __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n'
 _HARNESS = "_async_harness.py"
 # Reads of JSON that is no response body, each file's count of json.loads() calls; a response body is read with
-# tests/_strict_json.py's strict_loads(), the oracle itself being the one file outside this list.
+# fakes/_strict_json.py's strict_loads(), the oracle itself being the one file outside this list.
 _JSON_LOADS_ALLOWED: "dict[str, tuple[int, str]]" = {
     "test_asy_base_classes.py": (1, "the round trip of the unavailable marker through the interpreter's own json"),
     "test_asy_config_manager.py": (2, "config files and a decoder stand-in, not a response"),
@@ -59,7 +59,7 @@ def _interrupted(micropython_bin: Path, tmp_path: Path, source: str) -> "tuple[i
     marker = tmp_path / "hung"
     test_file = tmp_path / "test_case.py"
     test_file.write_text(source.format(marker=str(marker)) + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n', encoding="utf-8")
-    env = {**os.environ, "MICROPYPATH": f"{REPO_ROOT / 'tests'}:.frozen"}
+    env = {**os.environ, "MICROPYPATH": f"{REPO_ROOT / 'tests'}:{REPO_ROOT / 'src'}:.frozen"}
     with subprocess.Popen([str(micropython_bin), str(test_file)], cwd=tmp_path, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as proc:
         deadline = time.monotonic() + 30
         while not marker.exists() and proc.poll() is None and time.monotonic() < deadline:
@@ -246,7 +246,7 @@ def _public_double_problems(directory: Path) -> "list[str]":
 def _run(micropython_bin: Path, tmp_path: Path, source: str) -> subprocess.CompletedProcess[str]:
     test_file = tmp_path / "test_case.py"
     test_file.write_text(source + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n', encoding="utf-8")
-    env = {**os.environ, "MICROPYPATH": f"{REPO_ROOT / 'tests'}:.frozen"}
+    env = {**os.environ, "MICROPYPATH": f"{REPO_ROOT / 'tests'}:{REPO_ROOT / 'src'}:.frozen"}
     return subprocess.run([str(micropython_bin), str(test_file)], cwd=tmp_path, env=env, capture_output=True, text=True, check=False, timeout=60)
 
 
@@ -300,7 +300,7 @@ def test_asyncio_run_is_called_only_in_the_harness() -> None:
 
 def test_json_loads_reads_no_response_body() -> None:
     sites = _json_loads_sites(_TESTS)
-    assert sites.pop("_strict_json.py", []), "the oracle's own json.loads() was not found - the scan reads nothing"
+    assert _json_loads_sites(REPO_ROOT / "fakes").get("_strict_json.py"), "the oracle's own json.loads() was not found - the scan reads nothing"
     counts = {name: len(lines) for name, lines in sites.items()}
     assert counts == {name: count for name, (count, _reason) in _JSON_LOADS_ALLOWED.items()}, sites
 

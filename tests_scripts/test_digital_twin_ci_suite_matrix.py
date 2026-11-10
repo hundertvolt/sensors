@@ -41,13 +41,13 @@ def _suite(*args: str) -> "subprocess.CompletedProcess[str]":
 
 
 def _vocabulary(name: str) -> "dict[str, tuple[str, ...]]":
-    # One of digital_twin/launch.py's --fault/--hang tables, read by ast: driver -> its ops.
-    for node in ast.parse((_REPO_ROOT / "digital_twin" / "launch.py").read_text(encoding="utf-8")).body:
+    # One of digital_twin/run_generic_integration.py's --fault/--hang tables, read by ast: driver -> its ops.
+    for node in ast.parse((_REPO_ROOT / "digital_twin" / "run_generic_integration.py").read_text(encoding="utf-8")).body:
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name:
             table = ast.literal_eval(node.value)
             assert isinstance(table, dict)
             return table
-    raise AssertionError(f"digital_twin/launch.py no longer defines {name}")
+    raise AssertionError(f"digital_twin/run_generic_integration.py no longer defines {name}")
 
 
 def test_the_hook_scan_sees_the_chip_fakes() -> None:
@@ -94,20 +94,20 @@ def test_run_12s_stack_fault_reads_on_the_plans_first_bus_device(ci_suite: Modul
 
 
 def test_run_12s_stack_fault_ops_are_queued_reads_the_twin_raises_from(ci_suite: ModuleType) -> None:
-    # A mode that stays set for the run takes no stack fault (digital_twin/launch.py parse_fault_spec()).
+    # A mode that stays set for the run takes no stack fault (digital_twin/run_generic_integration.py parse_fault_spec()).
     persistent = _vocabulary_tuple("_PERSISTENT_FAULT_OPS")
     assert set(ci_suite._STACK_FAULT_READ_OP) == {d for d in _vocabulary("_FAULT_DEVICE_OPS") if d not in ("uart_link", "wlan")}
     assert not [(d, op) for d, op in ci_suite._STACK_FAULT_READ_OP.items() if (d, op) in persistent or op not in _vocabulary("_FAULT_DEVICE_OPS")[d]]
 
 
 def _vocabulary_tuple(name: str) -> "tuple[tuple[str, str], ...]":
-    # digital_twin/launch.py's tuple of (driver, op) pairs under `name`, read by ast.
-    for node in ast.parse((_REPO_ROOT / "digital_twin" / "launch.py").read_text(encoding="utf-8")).body:
+    # digital_twin/run_generic_integration.py's tuple of (driver, op) pairs under `name`, read by ast.
+    for node in ast.parse((_REPO_ROOT / "digital_twin" / "run_generic_integration.py").read_text(encoding="utf-8")).body:
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name:
             pairs = ast.literal_eval(node.value)
             assert isinstance(pairs, tuple)
             return pairs
-    raise AssertionError(f"digital_twin/launch.py no longer defines {name}")
+    raise AssertionError(f"digital_twin/run_generic_integration.py no longer defines {name}")
 
 
 @pytest.mark.parametrize("args", [["--only", "5x"], ["--only", "5b"], ["--only", "4,5"], ["--repeat", "0"], ["--gc-threshold", "1024"]])

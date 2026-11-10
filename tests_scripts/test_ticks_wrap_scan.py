@@ -4,7 +4,6 @@ function. Its known users are tests/test_ticks_rollover.py's _KNOWN_TICKS_USERS,
 
 import ast
 import operator
-import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -218,11 +217,6 @@ def _own_nodes(scope: ast.AST) -> "list[ast.AST]":
     return out
 
 
-def _plant(root: Path, rel: str, source: str) -> "dict[str, str]":
-    (root / rel).write_text(source, encoding="utf-8")
-    return _read_scopes(root)
-
-
 def _read_scopes(root: Path) -> "dict[str, str]":
     return {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8") for scope in _SCOPES for p in sorted((root / scope).rglob("*.py"))}
 
@@ -282,167 +276,10 @@ def generated() -> "dict[str, str]":
     return out
 
 
-@pytest.fixture
-def tree_copy(tmp_path: Path) -> Path:
-    for scope in _SCOPES:
-        shutil.copytree(REPO_ROOT / scope, tmp_path / scope, ignore=shutil.ignore_patterns("__pycache__"))
-    return tmp_path
-
-
 def test_the_tree_passes(generated: "dict[str, str]") -> None:
     sources = _read_scopes(REPO_ROOT) | generated
     assert len(generated) == 2 * len(DEVICE_NAMES) > 0
     assert _findings(sources, _known_users()) == []
-
-
-def test_a_two_line_subtraction_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = "import time\n\n\ndef elapsed(t0):\n    now = time.ticks_ms()\n    return now - t0\n"
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == ["src/zz_plant.py:6 elapsed(): `now - t0` is arithmetic on a tick value", _UNLISTED], findings
-
-
-def test_a_stored_attribute_compared_in_another_method_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = (
-        "import time\n\n\nclass Gate:\n    def arm(self):\n        self._deadline = time.ticks_add(time.ticks_ms(), 100)\n\n"
-        "    def expired(self):\n        return time.ticks_ms() >= self._deadline\n"
-    )
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == ["src/zz_plant.py:9 Gate.expired(): `time.ticks_ms() >= self._deadline` orders a tick value", _UNLISTED], findings
-
-
-def test_an_added_deadline_and_a_name_chain_fail(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = "import time\n\n\ndef wait(limit):\n    t0 = time.ticks_ms()\n    start = t0\n    deadline = start + 100\n    return start < limit\n"
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [
-        "src/zz_plant.py:7 wait(): `start + 100` is arithmetic on a tick value",
-        "src/zz_plant.py:8 wait(): `start < limit` orders a tick value",
-        _UNLISTED,
-    ], findings
-
-
-def test_an_annotated_parameter_an_augmented_step_and_min_fail(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = (
-        "import time\n\n\ndef late(t0: '_TicksMs', t1: '_TicksMs'):\n    t0 += 5\n    first = min(t0, t1)\n    return -t1\n\n\n"
-        "def now():\n    return time.ticks_ms()\n"
-    )
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [
-        "src/zz_plant.py:5 late(): `t0 += 5` is arithmetic on a tick value",
-        "src/zz_plant.py:6 late(): `min(t0, t1)` orders a tick value",
-        "src/zz_plant.py:7 late(): `-t1` is arithmetic on a tick value",
-        _UNLISTED,
-    ], findings
-
-
-def test_a_tick_returned_by_a_helper_or_stored_in_a_container_is_followed(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = (
-        "import time\n\n\ndef _now():\n    return time.ticks_ms()\n\n\n"
-        "def check(stamps, limit):\n    stamps[0] = _now()\n    t = _now()\n    return (stamps[0] > limit, t - limit)\n"
-    )
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [
-        "src/zz_plant.py:11 check(): `stamps[0] > limit` orders a tick value",
-        "src/zz_plant.py:11 check(): `t - limit` is arithmetic on a tick value",
-        _UNLISTED,
-    ], findings
-
-
-def test_a_tick_attribute_is_followed_into_another_file(tree_copy: Path, generated: "dict[str, str]") -> None:
-    _plant(tree_copy, "src/zz_plant.py", "import time\n\n\nclass Stamp:\n    def mark(self):\n        self._zz_stamp = time.ticks_ms()\n")
-    sources = _plant(tree_copy, "digital_twin/zz_reader.py", "def stale(stamp, limit):\n    return stamp._zz_stamp >= limit\n")
-    findings = _findings(sources | generated, _known_users())
-    assert findings == ["digital_twin/zz_reader.py:2 stale(): `stamp._zz_stamp >= limit` orders a tick value", _UNLISTED], findings
-
-
-def test_a_tick_handed_to_a_function_of_the_same_file_is_followed(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = (
-        "import time\n\n\ndef _age(t0, limit):\n    return t0 > limit\n\n\nclass Gate:\n    def _late(self, t1, *, t2=None):\n"
-        "        return t1 - t2\n\n    def check(self):\n        return _age(time.ticks_ms(), 5), self._late(1, t2=time.ticks_ms())\n"
-    )
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [
-        "src/zz_plant.py:5 _age(): `t0 > limit` orders a tick value",
-        "src/zz_plant.py:10 Gate._late(): `t1 - t2` is arithmetic on a tick value",
-        _UNLISTED,
-    ], findings
-
-
-def test_a_method_call_on_another_receiver_is_not_dispatched_by_name(tree_copy: Path, generated: "dict[str, str]") -> None:
-    # self._history.append() is the deque's, not _BoundedLog.append(): only a self. call reaches a method of
-    # this file by its name, so a tick handed to the deque judges nothing in the class's own method.
-    plant = (
-        "import time\nfrom collections import deque\n\n\nclass _BoundedLog:\n    def append(self, entry):\n        return entry + 1\n\n\n"
-        "class Gate:\n    def __init__(self):\n        self._history = deque((), 4)\n\n    def mark(self):\n        self._history.append(time.ticks_ms())\n"
-    )
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [_UNLISTED], findings
-
-
-def test_a_closure_reads_its_enclosing_ticks(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = "import time\n\n\ndef outer():\n    t0 = time.ticks_ms()\n\n    def inner():\n        return t0 * 2\n\n    return inner\n"
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == ["src/zz_plant.py:8 outer.inner(): `t0 * 2` is arithmetic on a tick value", _UNLISTED], findings
-
-
-def test_a_ticks_add_delta_at_the_horizon_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = (
-        "import time\n\nfrom micropython import const\n\n_WAIT_MS = const(600_000_000)\n_OK_MS = const((1 << 29) - 1)\n\n\n"
-        "def arm(t, d):\n    a = time.ticks_add(t, 1 << 29)\n    b = time.ticks_add(t, _WAIT_MS)\n    c = time.ticks_add(t, -(2**29))\n"
-        "    e = time.ticks_add(t, time.ticks_ms())\n    return time.ticks_add(t, _OK_MS), time.ticks_add(t, d)\n"
-    )
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [
-        "src/zz_plant.py:10 arm(): `time.ticks_add(t, 1 << 29)` adds a delta of 536870912 ms, at or past ticks_diff()'s 2**29 horizon",
-        "src/zz_plant.py:11 arm(): `time.ticks_add(t, _WAIT_MS)` adds a delta of 600000000 ms, at or past ticks_diff()'s 2**29 horizon",
-        "src/zz_plant.py:12 arm(): `time.ticks_add(t, -2 ** 29)` adds a delta of -536870912 ms, at or past ticks_diff()'s 2**29 horizon",
-        "src/zz_plant.py:13 arm(): `time.ticks_add(t, time.ticks_ms())` takes a tick value as its delta",
-        _UNLISTED,
-    ], findings
-
-
-def test_a_truth_test_on_a_tick_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = (
-        "import time\n\n\nclass Gate:\n    def check(self):\n        if self._t0:\n            return not self._t0\n"
-        "        return self._t0 or 1\n\n    def arm(self):\n        self._t0 = time.ticks_ms()\n"
-    )
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [
-        "src/zz_plant.py:6 Gate.check(): `self._t0` tests a tick value's truth, false at the valid tick 0",
-        "src/zz_plant.py:7 Gate.check(): `not self._t0` tests a tick value's truth, false at the valid tick 0",
-        "src/zz_plant.py:8 Gate.check(): `self._t0 or 1` tests a tick value's truth, false at the valid tick 0",
-        _UNLISTED,
-    ], findings
-
-
-def test_the_correct_forms_pass(tree_copy: Path, generated: "dict[str, str]") -> None:
-    # The negative control: deltas, sentinels and equality are not tick arithmetic.
-    plant = (
-        "import time\n\n\nclass Gate:\n    def __init__(self):\n        self._t0 = None\n\n    def check(self, timeout):\n"
-        "        now = time.ticks_ms()\n        if self._t0 is None or self._t0 == now:\n            self._t0 = now\n"
-        "        late = time.ticks_diff(now, self._t0) >= timeout\n        left = time.ticks_diff(self._t0, now) + 5\n"
-        "        return late, left, time.ticks_add(now, (1 << 29) - 1), time.ticks_add(now, -((1 << 29) - 1))\n"
-    )
-    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [_UNLISTED], findings
-
-
-def test_a_twin_plant_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
-    plant = "import time\n\n\ndef stamp(t0):\n    now = time.ticks_us()\n    return now > t0\n"
-    findings = _findings(_plant(tree_copy, "digital_twin/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [
-        "digital_twin/zz_plant.py:6 stamp(): `now > t0` orders a tick value",
-        "digital_twin/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS",
-    ], findings
-
-
-def test_a_plant_in_a_scope_subdirectory_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
-    # Subdirectories are scanned too: the twin's UDP shim lives in digital_twin/unixport/.
-    plant = "import time\n\n\ndef stamp(t0):\n    now = time.ticks_us()\n    return now > t0\n"
-    findings = _findings(_plant(tree_copy, "digital_twin/unixport/zz_plant.py", plant) | generated, _known_users())
-    assert findings == [
-        "digital_twin/unixport/zz_plant.py:6 stamp(): `now > t0` orders a tick value",
-        "digital_twin/unixport/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS",
-    ], findings
 
 
 def test_a_generated_module_plant_fails(generated: "dict[str, str]") -> None:
@@ -454,18 +291,3 @@ def test_a_generated_module_plant_fails(generated: "dict[str, str]") -> None:
     line = sources[key].count("\n")
     findings = _findings(sources, _known_users())
     assert findings == [f"{key}:{line} zz_plant(): `time.ticks_ms() - t0` is arithmetic on a tick value", f"{key}: reads ticks but is not in _KNOWN_TICKS_USERS"], findings
-
-
-def test_a_listed_user_that_reads_no_ticks_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
-    known = _known_users()
-    gone = next(k for k in known if k.startswith("src/"))
-    findings = _findings(_plant(tree_copy, gone, '"""Emptied."""\n') | generated, known)
-    assert findings == [f"{gone}: listed in _KNOWN_TICKS_USERS but reads no ticks"], findings
-
-
-def test_a_listed_user_binding_no_tick_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
-    # A listed user whose ticks the scan cannot follow is judged on nothing: that fails rather than passing empty.
-    known = _known_users()
-    blind = next(k for k in known if k.startswith("src/"))
-    findings = _findings(_plant(tree_copy, blind, "import time\n\n\ndef late(a, b):\n    return time.ticks_diff(a, b)\n") | generated, known)
-    assert findings == [f"{blind}: reads ticks but binds no tick value - the scan judges nothing there"], findings

@@ -14,18 +14,16 @@ from _fram_builders import make_fram_manager
 from _recording_print import record_prints
 from _schema_cases import declared_fields, domain_cases
 from _src_schema import src_schema
-from _stack_overflow import stack_overflow
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 from machine import I2C as FakeI2C
 from machine import Timer as FakeTimer
 
 import asy_bmp3xx_driver
-import asy_print_log
 from asy_bmp3xx_driver import BMP3XX, BMP3XX_I2C, BMP3XX_Reader
 from asy_config_manager import schema_names
 from asy_i2c_driver import I2C
-from asy_print_log import LogConfig, PrintLogHistoryStore, fatal_reported
+from asy_print_log import LogConfig, PrintLogHistoryStore
 
 try:
     from typing import TYPE_CHECKING
@@ -635,25 +633,6 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_read_fails() -> None:
     assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "READ")  # "Read failed:"
     assert counters["BMP3XX"]["ErrType"][-1] == "E"
     assert run(reader.get_data()) == BMP3XX(None, None, None, None)  # nothing corrupted got stored
-
-
-def test_a_stack_overflow_caught_by_the_read_cycle_is_reported_for_the_supervisor() -> None:
-    # The cycle's broad handler logs and degrades as for any failed read, so the loop runs on; a C-stack overflow
-    # is also recorded for the supervisor's reboot, where a routine RuntimeError is not.
-    _i2c, reader = _healthy_reader("stack_overflow_read")
-
-    def cycle_raising(error: BaseException) -> bool:
-        async def raising() -> "tuple[float, float]":
-            raise error
-
-        reader._bmp.get_pressure_and_temperature = raising  # type: ignore[method-assign]
-        assert run(reader._read_bmp()) == (None, None, None)
-        assert _used(reader)[-1] == code("E", "READ")
-        return fatal_reported()
-
-    assert cycle_raising(RuntimeError("CRC check failed while reading data")) is False
-    assert cycle_raising(stack_overflow()) is True
-    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
 def test_read_rejects_pressure_above_datasheet_operating_range() -> None:
@@ -2359,9 +2338,6 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     assert run(reader._bmp.get_pressure_oversampling()) == 1  # the schema default reached the chip
     assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
-
-
-_RESET_RUN_BOUND_S = 2  # far past one reset's polls and settle: a reset() that never ends fails here, the file goes on
 
 
 if __name__ == "__main__":

@@ -474,7 +474,7 @@ def wait_for_ntp_quiet(dut_ip: str, served_at: float, result_note: Note) -> None
             counter, synced, age = view
             if counter != counted:
                 counted, counted_at = counter, answered  # every failure counted so far lies before this answer
-            # LastSyncAge is whole seconds, refreshed on a 1 s tick (asy_base_classes.py arm_tick_timer(), TickSeconds.read()).
+            # LastSyncAge is whole seconds, measured as it is read (asy_base_classes.py TickSeconds.read()).
             fresh = isinstance(age, (int, float)) and not isinstance(age, bool) and asked - age - _SYNC_AGE_SLACK_S > counted_at
             if synced and (counter == 0 or fresh or answered >= chain_by):
                 ended = "nothing logged" if counter == 0 else "a sync newer than its last failure" if fresh else "the retry chain's bound"

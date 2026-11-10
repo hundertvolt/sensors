@@ -3,7 +3,7 @@
 # guard accepts only the worktree's own .venv (resolved, so a link does not pass). The generated tree is rebuild.sh's.
 [ -c /dev/null ] || exit 9
 rc=0
-ruff --version; ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts build/generated_src || { echo "FAILED ruff"; rc=1; }
+ruff --version; ruff check src tests digital_twin fakes tests_hardware buildgen scripts toolchain tests_scripts build/generated_src || { echo "FAILED ruff"; rc=1; }
 shellcheck scripts/*.sh || { echo "FAILED shellcheck"; rc=1; }
 actionlint || { echo "FAILED actionlint"; rc=1; }
 zizmor --offline .github/ || { echo "FAILED zizmor"; rc=1; }

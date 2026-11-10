@@ -1,5 +1,5 @@
 """The three mypy configs and every lint scope, pinned against each other: the same strictness in all three passes, ruff
-and CI naming the eight scopes plus the generated tree, every Python file checked by some mypy run and by two runs only
+and CI naming the scopes plus the generated tree, every Python file checked by some mypy run and by two runs only
 where a named reason says why, and CI's typecheck.sh given no paths, so it checks a local run's files (B.15)."""
 
 import configparser
@@ -11,8 +11,8 @@ from pathlib import Path
 import tomllib
 
 _REPO = Path(__file__).resolve().parent.parent
-# CLAUDE.md "Scope is eight directories", plus the generated device modules both gates check.
-EIGHT_SCOPES = ("src", "tests", "digital_twin", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
+# CLAUDE.md's lint and type scope (the nine directories, fakes/ the ninth), plus the generated device modules both gates check.
+SCOPES = ("src", "tests", "digital_twin", "fakes", "buildgen", "toolchain", "scripts", "tests_scripts", "tests_hardware")
 _GENERATED = "build/generated_src"
 _STRICT_FLAGS = ("strict", "no_implicit_optional", "warn_unreachable", "disallow_any_explicit")
 # Each per-module override the main pass may carry, and why; a new one is triaged here first.
@@ -26,6 +26,7 @@ _SINGLE_FILE_RUNS = (("pyproject.toml", "tests/network.py"), ("host_typecheck.in
 # Files two runs with different module resolution both check, and why both must stay clean.
 _CHECKED_TWICE = {
     "digital_twin/": "a twin module needing none of the twin's own machine/network API: the main pass checks it against tests/'s fakes, the twin pass against its own",
+    "fakes/": "a fake both tiers import: the main pass checks it against tests/'s machine, the twin pass against the twin's",
 }
 
 
@@ -91,8 +92,8 @@ def _ci_run(fragment: str) -> "list[str]":
     return shlex.split(runs[0])
 
 
-def test_ruff_and_ci_name_the_eight_scopes_and_the_generated_tree() -> None:
-    expected = sorted([*EIGHT_SCOPES, _GENERATED])
+def test_ruff_and_ci_name_the_scopes_and_the_generated_tree() -> None:
+    expected = sorted([*SCOPES, _GENERATED])
     assert sorted(_lint_ruff_paths()) == expected, "scripts/lint.sh's ruff call"
     words = _ci_run("ruff check")
     assert sorted(words[words.index("check") + 1 :]) == expected, "ci.yml's ruff step"
@@ -112,9 +113,9 @@ def _main_files() -> "list[str]":
 
 
 def _scope_files() -> "list[str]":
-    # Every Python file of the eight scopes, the gitignored scratch and caches aside.
+    # Every Python file of the scopes, the gitignored scratch and caches aside.
     found = []
-    for scope in EIGHT_SCOPES:
+    for scope in SCOPES:
         for path in sorted((_REPO / scope).rglob("*.py")):
             rel = path.relative_to(_REPO).as_posix()
             if "__pycache__" in rel or rel.startswith("tests/_tmp/") or "/node_modules/" in rel:

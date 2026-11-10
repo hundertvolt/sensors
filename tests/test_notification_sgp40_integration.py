@@ -1,7 +1,7 @@
 """Cross-module integration: a real SGP40_Reader feeding a real NotificationService, driving a real NeopixelDriver -
 fills the WarnVOC gap test_notification_scd30_integration.py leaves (it only exercises WarnCO2).
 
-Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw
+Only fakes/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw
 I2C transaction runs for real."""
 # VOC index calibration note, verified directly against voc_algorithm.py: a single raw reading never moves
 # the index - the 45-interval initial blackout must elapse first - and the index then settles toward 100,
@@ -111,7 +111,7 @@ def _make_sgp_reader() -> "tuple[SGP40_Reader, _MachineI2C]":
         ValueRef(comp, "Temp"),
         ValueRef(comp, "Hum"),
         max_module_error=2,
-        cfg_path=_tmp_cfg_dir(),
+        cfg_path=_scratch.dir(),
     )
     run(reader.setup())
     fake_bus = reader._sgp._i2c_sgp40.i2c_device.i2c._i2c
@@ -125,7 +125,7 @@ def _make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, Notification
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
     signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
-    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
+    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_scratch.dir())
     run(notify.setup())
     return pixel, notify
 
@@ -144,10 +144,6 @@ def _settle_and_spike(reader: SGP40_Reader, fake_bus: "_MachineI2C") -> "SGP40":
         if isinstance(data.VOC, int) and data.VOC > 350:
             return data
     raise AssertionError("VOC index never crossed the WarnVOC threshold - calibration assumption broken")
-
-
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
 
 
 def _word(value: int) -> bytes:

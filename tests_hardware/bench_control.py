@@ -259,7 +259,7 @@ class BenchBridge:
         return int(match.group(1).rsplit(".", 1)[1])
 
     # -- role reversal: the bridge's one radio temporarily becomes the DUT's own hotspot client --
-    # Sequential flip, not simultaneous AP+client - the bench Pi4 has a single WiFi radio (owner, 2026-09-01).
+    # Sequential flip, not simultaneous AP+client - the bench Pi4 has a single WiFi radio (agent, 2026-09-01).
 
     def redirect_udp_port_to_local(self, port: int, local_port: int, comment: str = FAULT_COMMENT) -> None:
         # UDP traffic for `port` to a local rogue responder on <local_port>: a garbage-response server, unlike

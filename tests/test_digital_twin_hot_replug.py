@@ -1,5 +1,5 @@
 """A sensor re-plugged on a running unit recovers without a reboot: the task ends, the supervisor restarts it, setup()
-runs again (owner, 2026-07-13, paraphrase). Each bus-attached driver on one device the generated plans wire it on, alone
+runs again (agent, 2026-07-13). Each bus-attached driver on one device the generated plans wire it on, alone
 on its supervisor; FRAM's writes resume once it answers: tests/test_digital_twin_fram.py's booted silent-chip case."""
 
 import sys
@@ -23,9 +23,9 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
-from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fake_time import DrivenTime, driven_modules  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -51,8 +51,8 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import Protocol, TypeVar
 
-    from launch import _Plan
     from machine import WDT
+    from run_generic_integration import _Plan
 
     from asy_base_classes import TaskStarter, TimerStarter
     from asy_print_log import PrintLogHistory
@@ -69,7 +69,6 @@ if TYPE_CHECKING:
         def get_trigger_starters(self) -> "list[TimerStarter]": ...
 
 _WAIT_S = 40.0
-_RUN_BOUND_S = 90.0
 # The reading field that proves a driver read (as the bus-hazard tier's _I2C_DRIVER_HEALTH_FIELD).
 _HEALTH_FIELD = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 
@@ -107,12 +106,6 @@ async def _driven(clock: "DrivenTime", what: str, coro: "Coroutine[object, objec
     return await task
 
 
-def _driven_modules() -> "list[object]":
-    # Every src service and driver holding asyncio, and the twin's machine (its Timers, WDT, chip clocks) and network:
-    # one clock for all of them, so a tick one module reads is diffed by another on the same clock.
-    return [m for name, m in sorted(sys.modules.items()) if (name.startswith("asy_") or name in ("machine", "network")) and getattr(m, "asyncio", None) is asyncio]
-
-
 def _power_cycled_bmp3xx_on(device: str) -> None:
     # The test above on one device.
     plan = wiring_plan(device)
@@ -143,7 +136,7 @@ def _power_cycled_bmp3xx_on(device: str) -> None:
 
         await _supervised(clock, module, reader, body)
 
-    run_timed(_run_on_clock(device, scenario), timeout_s=_RUN_BOUND_S)
+    run(_run_on_clock(device, scenario))
 
 
 def _replug(driver: str) -> None:
@@ -184,15 +177,15 @@ def _replug_on(device: str, driver: str) -> None:
 
         await _supervised(clock, module, reader, body)
 
-    run_timed(_run_on_clock(device, scenario), timeout_s=_RUN_BOUND_S)
+    run(_run_on_clock(device, scenario))
 
 
 async def _run_on_clock(device: str, scenario: "Callable[[ModuleType, DrivenTime], Coroutine[object, object, None]]") -> None:
     # `scenario` on the device's module, booted and run on one driven clock (tests/_fake_time.py), the modules put back
     # after. A UART-wired plan too: its link reads wire time off the twin's plain clock, digital_twin/_flash_stall.py's
-    # plain_us() (agent, 2026-10-22; owner-reviewed, 2026-11-06).
+    # plain_us() (agent, 2026-10-22).
     module = load_device(device)
-    with DrivenTime(*_driven_modules(), sleeps=True) as clock:
+    with DrivenTime(*driven_modules(), sleeps=True) as clock:
         await scenario(module, clock)
 
 

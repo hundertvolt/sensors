@@ -14,8 +14,10 @@ from typing import NamedTuple
 
 import pytest
 import tomllib
-from _devices import DEVICE_NAMES, devices_with
+from _devices import devices_with, distinct_devices
 from _script_loader import load_script_module
+
+from buildgen.validate import module_str_const
 
 # Same import route tests_scripts/test_heap_map_parser.py uses for the same file: the repo has no
 # packages by design, so importing it as `tests_hardware.heap_map` would make mypy see one source
@@ -60,7 +62,7 @@ _HIGH_BAND_BLOCKS_MAX = 32
 # (tests_scripts/test_memory_error_gate_agreement.py keeps the gates agreeing).
 _MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(Path(__file__).resolve().parent.parent / "tests_hardware" / "harness.py", "harness_for_contiguity").MEMORY_ERROR_MARKERS)
 # The line the probe's always-printing asyncio report opens with for a task that died unawaited.
-_TASK_DEATH_MARKER = str(load_script_module(Path(__file__).resolve().parent.parent / "digital_twin" / "unix_port_unretrieved_report.py", "unix_port_unretrieved_report").MARKER)
+_TASK_DEATH_MARKER = module_str_const(Path(__file__).resolve().parent.parent / "digital_twin", "unix_port_unretrieved_report.py", "MARKER")
 
 _RING_LINE = re.compile(r"^RING (\S+) (\S+) (none|0x[0-9a-f]+) (\d+)$", re.MULTILINE)
 _POOL_START = re.compile(r"^GC memory layout; from ([0-9a-fA-F]+):", re.MULTILINE)
@@ -162,7 +164,7 @@ def _blocks_above(before: HeapMap, after: HeapMap, band: int) -> int:
     return sum(1 for offset in _offsets_above_seam(before, after) if offset > band)
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)
+@pytest.mark.parametrize("device", distinct_devices())
 def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str], _ProbeRun], device: str) -> None:
     # The setup list (SystemService.run_setups()), no collect between its units: since FRAM became synchronous the batch
     # makes too little churn to push the next module's permanent objects above the lowest fitting holes.
@@ -175,7 +177,7 @@ def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str], _P
     assert high <= _HIGH_BAND_BLOCKS_MAX, f"{device}: {high} of the batch's new blocks sit more than {_HIGH_BAND} B above the seam, over the {_HIGH_BAND_BLOCKS_MAX} allowed"
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)
+@pytest.mark.parametrize("device", distinct_devices())
 def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str], _ProbeRun], device: str) -> None:
     # Both lists together - the batch plus start_tasks()'s starter loop, which archive 7A.3
     # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
@@ -222,9 +224,9 @@ def test_the_uart_receive_rings_land_with_the_boot_survivors(boot_probe: Callabl
 
 
 _BOARD_SCRIPT = "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py"
-# The probe's header claims it mirrors the board script's bounds, so that a twin reading and a
+# The probe's header claims it mirrors the board script's timer bound, so that a twin reading and a
 # board reading are taken at the same positions of the same sequence. Nothing pinned that claim.
-_MIRRORED_BOUNDS = ("_STARTER_LOOP_TIMEOUT_MS", "_TIMERS_TIMEOUT_S")
+_MIRRORED_BOUNDS = ("_TIMERS_TIMEOUT_S",)
 
 
 def _int_constants(source: str, names: tuple[str, ...]) -> dict[str, int]:

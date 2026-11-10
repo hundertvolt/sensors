@@ -1385,3 +1385,23 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-10 08:46:45 UTC - status pair: option (a), commit by CS deselect
 "i would rather not rely on the "it's written every byte received" but rather on CS being deselected. Rather option A)."
 (The owner chooses (a): each status byte stays its own WRITE command, so every byte is committed by a CS deselect; the design must not rely on the datasheet's per-byte storing within one command.)
+
+## 2026-11-10 09:57:50 UTC - budget forecast to the finish (time taken on receipt; asked between 09:50 and 09:57)
+"we are at 34% at the moment, what do you expect to come until we finish?"
+(The owner reads 34 % on the weekly meter and asks what remains and what it will cost until the finish.)
+
+## 2026-11-10 11:21:35 UTC - FRAM timing: would async help
+"just for my understanding: would making fram async again do anything good about this?"
+(A question, not a decision: does a queued or yielding FRAM writer improve the measured 12.7 / 13 ms; the FRAM option question stays open.)
+
+## 2026-11-10 11:25:20 UTC - FRAM timing: option (a)
+"option a"
+(Keep the measured FRAM figures, 12.7 ms per log entry and 13.0 ms per SGP40 backup, as the facts; no new mechanism. The datasheet-backed removal of the 2 us CS settle pauses rides the image flashed anyway for the last round's two-image proof, so it costs no extra flash cycle.)
+
+## 2026-11-10 13:43:09 UTC - budget check at 40 %
+"40% - still within expectation?"
+(The owner reads 40 % on the weekly meter and asks whether that is still inside the forecast for the finish.)
+
+## 2026-11-10 14:57:50 UTC - R5 close scope: option (A)
+"We still are at 40. Do (A), finish as planned"
+(Put: the close list (CLOSE_STATUS, 73 open items, 6 owner items) costs ~14-18 meter points, ~54-58 % at the finish; (A) everything as planned by hand, (B) the ~150-file D.15 reorder by a throwaway script, (C) B plus the import-placement and mypy-Any lists left as shrinking lists. The owner, reading 40 % on the meter, chose (A): every planned item, done as planned, the D.15 sweep included.)

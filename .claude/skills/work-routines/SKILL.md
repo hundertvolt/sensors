@@ -26,7 +26,7 @@ fw:dev rc=0 43s log=/tmp/sensors-checks/20261106T221500Z/04_fw_dev.log
 |---|---|---|
 | `lint` | `scripts/lint.sh`: ruff, shellcheck, actionlint, zizmor, the two grep guards | under 1 min |
 | `typecheck` | `scripts/typecheck.sh`: the main, twin and host mypy passes | 1-2 min |
-| `unit` / `unit-gc` | `scripts/test.sh` at gc -1 / `GC_THRESHOLD=32768`; each includes `tests_scripts` and the scenarios | 12 min each |
+| `unit` / `unit-gc` | `scripts/test.sh` at gc -1 / `GC_THRESHOLD=32768`; both include the scenarios, `unit` also `tests_scripts` | 12 min each |
 | `cover` | `scripts/test.sh --coverage`: its test result gates, its coverage figure does not | about 15 min |
 | `twin[:DEV]` | `scripts/run_digital_twin_ci.sh DEV` (default `dev`), both GC stages, both parts | 25 min |
 | `npm` | `npm run lint`, `typecheck`, `test:unit` | 3 min |
@@ -45,7 +45,8 @@ Pick by what changed, cheapest first, and run the full set once before anything 
 - Docs only: `py:tests_scripts/test_citations.py py:tests_scripts/test_comment_block_cap.py
   py:tests_scripts/test_decision_vocabulary.py`.
 - Full local gate: `lint typecheck unit unit-gc twin npm collect fw`, about 55 minutes; a Pi 4 takes longer. CI
-  adds `cover` and runs `twin` and `fw` for all six devices: a change is green only on its head commit's CI.
+  adds `cover` and runs `twin` and `fw` for the first device of each hardware family: a change is green only on its
+  head commit's CI.
 
 While checks run:
 
