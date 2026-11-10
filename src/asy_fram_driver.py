@@ -13,13 +13,11 @@ Fujitsu MB85RS64V (DS501-00015) and MB85RS2MTA (DS501-00032) datasheets.
 # device-ID mismatch, a write-enable latch that didn't set/clear and a stale write-protect
 # assumption, self-healing without raising (except __init__()/setup()'s one-time setup errors).
 
-from time import sleep_us
-
 from machine import Pin
 from micropython import const
 
 from asy_print_log import PrintLogHistory
-from asy_spi_driver import CS_SETTLE_US, SPI, SPIDevice
+from asy_spi_driver import SPI, SPIDevice
 
 try:
     from typing import TYPE_CHECKING
@@ -189,38 +187,33 @@ class FRAM_SPI:
     def _send_and_read(self, command: bytes | bytearray, read_buffer: bytearray | memoryview) -> None:
         cs, on = self._cs, self._cs_on
         cs(on)
-        sleep_us(CS_SETTLE_US)
         try:
             self._bus_write(command)
             self._bus_readinto(read_buffer)
         finally:
             cs(not on)
-            sleep_us(CS_SETTLE_US)
 
     def _send_and_write(self, command: bytes | bytearray, data: bytes | bytearray | memoryview) -> None:
         cs, on = self._cs, self._cs_on
         cs(on)
-        sleep_us(CS_SETTLE_US)
         try:
             self._bus_write(command)
             self._bus_write(data)
         finally:
             cs(not on)
-            sleep_us(CS_SETTLE_US)
 
     # The _send_*() helpers are one synchronous CS cycle each, on the wiring begin() bound: the chip is driven by blocking
     # register writes, and an operation never suspends, so nothing can come between its commands (Part C.3.1, C.8).
+    # No settle wait at a CS edge: tCSU/tCSH 10 ns, tD 40/60 ns (MB85RS2MTA p.15, MB85RS64V p.14) pass within one call.
     def _send_command(self, command: bytes | bytearray) -> None:
         # WREN/WRDI are each a complete, standalone one-byte command (datasheet timing diagrams
         # show CS low only for the opcode); WRSR is the one two-byte command that ends here too.
         cs, on = self._cs, self._cs_on
         cs(on)
-        sleep_us(CS_SETTLE_US)
         try:
             self._bus_write(command)
         finally:
             cs(not on)
-            sleep_us(CS_SETTLE_US)
 
     def _setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
         # Buffer width is fixed once in __init__ from max_size, which is trusted, not re-derived

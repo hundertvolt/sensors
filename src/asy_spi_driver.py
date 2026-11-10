@@ -6,18 +6,11 @@ session and synchronous ones). Sole consumer: asy_fram_driver.py's FRAM_SPI, thr
 # None; setup (__init__/init(), configure()) may raise. Raise sites: SPECIFICATION.md Part F.5.
 
 import asyncio
-import time
 
 from machine import SPI as _SPI
 from machine import Pin
-from micropython import const
 
 from asy_base_classes import Lockable
-
-# Blocking CS settle. Both parts specify tCSU/tCSH >= 10 ns and tD >= 40 ns (MB85RS2MTA) / 60 ns
-# (MB85RS64V), so 2 us is orders of magnitude clear of them; rp2's sleep_us() busy-waits on
-# time_us_64(), where sleep_us(1) only promises an elapsed time in (0, 1] us and 2 promises >= 1.
-CS_SETTLE_US = const(2)
 
 try:
     from typing import TYPE_CHECKING
@@ -159,14 +152,12 @@ class SPIDevice(Lockable):
         return released
 
     def _begin(self) -> None:
-        # Configures the bus, then asserts CS. The settle blocks on purpose: an awaited one would hand the loop to another
-        # task with CS asserted.
+        # Configures the bus, then asserts CS.
         if not self.initialized:
             raise RuntimeError("SPIDevice not set up - call setup() first")
         try:
             self._configure()
             self._cs_pin.value(self._cs_active_value)
-            time.sleep_us(CS_SETTLE_US)
         except BaseException:
             self._cs_pin.value(not self._cs_active_value)  # deassert if asserted
             raise
@@ -214,7 +205,6 @@ class SPIDevice(Lockable):
         # The caller's own try/finally is what guarantees this runs; __aexit__() is that caller for
         # `async with` users.
         self._cs_pin.value(not self._cs_active_value)
-        time.sleep_us(CS_SETTLE_US)
 
     async def setup(self) -> None:
         self._cs_pin.init(self._cs_pin.OUT, value=not self._cs_active_value)  # value= sets the level before the pad becomes an output: no CS glitch.
