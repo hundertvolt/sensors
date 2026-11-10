@@ -99,4 +99,8 @@ async def top():
     await main(watchdog=watchdog)
 
 
-asyncio.run(top())
+try:
+    asyncio.run(top())
+except KeyboardInterrupt:  # as main.py: record why, or the watchdog's reset reads as a plain expiry (RR 2, 11-10 11:37)
+    asy_system_service.write_reset_record(asy_system_service.RR_INTERRUPTED)
+    raise

@@ -43078,3 +43078,30 @@ FRAMCMD3 done
 reading: a CS cycle through the bound wiring costs 119-143 us against 54 us raw (two cs() calls, two sleep_us(2), try/finally, attribute loads); get_values/set_values add ~100 us of checks each; begin() is 185 us per operation; the chunk layer's status/CRC handling makes up the rest of ~250 us per command.
 errcount: 21 sources unchanged (both runs); ResetReason after: 21, SysUptime 16 s, STA; flash cycles today: 1; logs/day5_20261110/ (f58_*, fb58_*)
 status: confirmed as measured; the per-layer split confirmed by the breakdown.
+
+11:25:03 UTC 2026-11-10 lead 10:58 items 5 and 4: the image running normally after restore (booted 11:12:40, kicked; no mpremote attached), GET /status from the host only at the marks; HEAD 881562cf; image 2026-11-10T11:02:16Z
+item 5, UART: t0 11:13:18 SysUptime 38 Transfers 31 Failures 0; t1 11:23:19 SysUptime 639 Transfers 585 Failures 0: 554 transfers in 601 s idle = one per 1.085 s (documented cadence 1 s), no failure. During item 4's load (t1 -> t2, 67 s): 53 transfers = one per 1.26 s, Failures 0.
+item 4, req/s: python3 heap_probe/status_load.py 6 60 /status (6 readers = max_connections 6 from the image record, each reader looping urlopen with an 8 s timeout and 50 ms between its requests), 11:23:20-11:24:21: {200: 110, ConnectionResetError: 41}: 110 served in 60 s = 1.83 /status per second (documented premise about 2.2); 41 connections refused: HTTPDropped 0 -> 41 and WEBSERVER W60 HTTP_REFUSED x41 ("a connection over max_connections was refused"), though only 6 readers ran. Reading (inferred, not traced): a reader's next connect arrives before the server has released the slot of its last answered one, so the count passes 6 at exactly max_connections readers.
+MemFree (the /status field): 78,144 at 38 s, 78,512 at 639 s idle, 63,728 just after the load.
+errcount: WEBSERVER 0 -> 41 (W60, the load above); 20 sources unchanged; ResetReason 21 throughout, STA; logs/day5_20261110/ (b_t0/t1/t2_status.json, b_items45_output.txt)
+status: confirmed as measured; the refusal cause inferred.
+
+11:38:42 UTC 2026-11-10 lead 10:58 items 2 and 3: probes_20261110/snap58_heap_stack.py, the image's own boot entry re-stated (watchdog first, .frozen first, emergency buffer, gc.threshold(32768)) under `mpremote run` with no flash write, run 11:24:53-11:37:33 (stopped by SIGINT at 760 s), then restore_board_to_serving() 11:37:47; HEAD 881562cf; image 2026-11-10T11:02:16Z; no HTTP load, no host request during the 600 s; the instrument's own code and globals sit on the heap too (its cost not subtracted)
+verbatim:
+STACK top_level 1276
+HEAP BOOT_DONE free 76656 alloc 111248 uptime_ms 736888
+ No. of 1-blocks: 2423, 2-blocks: 397, max blk sz: 64, max free sz: 3956
+HEAP RUN_600S free 64880 alloc 123024 uptime_ms 1337556
+ No. of 1-blocks: 2972, 2-blocks: 410, max blk sz: 64, max free sz: 3825
+STACK peaks [('fram_send_and_read', 5636), ('fram_send_and_write', 5108), ('i2c_read', 3084), ('i2c_writeto', 2860), ('log_store_write', 0), ('uart_rx_copy', 3060), ('web_flush', 0)] max 5636
+HEAP RUN_600S_COLLECTED free 81552 alloc 106352 uptime_ms 1337862
+ No. of 1-blocks: 2406, 2-blocks: 391, max blk sz: 64, max free sz: 3825
+SAMPLE s 0 free 61200 peaks [('fram_send_and_read', 5636), (
+SAMPLE s 300 free 69680 peaks [('fram_send_and_read', 5636),
+SAMPLE s 600 free 65152 peaks [('fram_send_and_read', 5636),
+heapmap.py (16 B blocks): BOOT_DONE free 76656 blocks 11744 free blocks 4791 largest run 3956 (63296 B) runs 58;RUN_600S free 64880 blocks 11744 free blocks 4055 largest run 3825 (61200 B) runs 23;
+item 2: at BOOT_DONE (setups run, tasks and timers started, the first NTP sync back; no boot collect in src/) mem_free 76,656 B, largest free block 63,296 B (3,956 blocks); after 600 s of normal running 64,880 B free, largest 61,200 B (3,825 blocks); one gc.collect() after that reading (the measurement baseline only): 81,552 B free, largest 61,200 B. Sampled free over the 600 s: 61,200-82,416 B. imageFreeBytes 69,732 (the build record).
+item 3: deepest micropython.stack_use() seen at the instrumented leaves 5,636 B (FRAM _send_and_read; _send_and_write 5,108; I2C read 3,084, writeto 2,860; UART _rx_copy 3,060; the webserver flush and the log store's _write not reached in the run: no request, no log entry), against the 7,936 B limit; the wrapper's frame is inside the figure; top level 1,276 B. All peaks were set before BOOT_DONE and none moved in the 600 s.
+reset: the run ended in ResetReason 2 (_RR_WATCHDOG): my wrapper lacked main.py's KeyboardInterrupt clause, so the stop ended the loop unrecorded and the armed watchdog reset the board (inferred; the clause is now in the probe, so a rerun records 21). Not a firmware fault: errcount 21 sources unchanged.
+ResetReason after: 2 (above), SysUptime 16 s, STA; flash cycles today: 1; logs/day5_20261110/ (c_heap_stack_console.txt, c_start_status.json, c_end_status.json)
+status: figures confirmed as measured; the C-stack figure covers the instrumented leaves only; the RR 2 cause inferred.
