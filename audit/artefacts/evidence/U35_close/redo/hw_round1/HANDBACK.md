@@ -42974,3 +42974,63 @@ errcount: 21 sources unchanged; FRAM counter 0 -> 2, history gained E46 (_ERR_FR
 reading: the probe sends no WREN and no write, so these come from the firmware's boot after the soft reset finding one chunk's block-0 status byte left busy, i.e. the harness's Ctrl-C stopped the serving firmware mid block write (the SGP40 backup holds FRAM for 8-20 s, so a stop landing inside one is likely); the two-block scheme then recovered from block 1. Which chunk is not logged.
 ResetReason after: 21, SysUptime 16 s, Mode STA; flash cycles today: 0; logs/day4_20261109/ (fram_output.txt, fram_{start,end}_status.json)
 status: timings confirmed as measured; the E46/W63 cause inferred, not traced.
+
+06:03:18 UTC 2026-11-10 lead 05:45 (11-10), session start: HEAD 24278836; image 2026-11-07T16:04:12Z (trace, ea2f3a1c); STA; ResetReason 1, SysUptime 1348 s at 05:54:36 (the host restarted 05:32:15 and powered the board up with it); preflight OK
+item 1: /status errcount saved before anything else: errcount_20261110/20261110T055436Z_errcount.json (tracked) and logs/day5_20261110/20261110T055436Z_start_status.json. Nothing cleared.
+against 11-09's last read: FRAM 2 -> 0 (E46,W63 gone: the FRAM manager's own log is RAM-only, no fram_target, so the 05:32 power-on dropped them, not a clear); SGP40 10 -> 18 (W35,W33,W35); WIFI 6 -> 12 (W37,W38,W81,W79 once more: the power-on hotspot round, then STA by itself); 19 sources unchanged
+image currency: the firmware inputs differ from HEAD (the next image follows unit G, per the relay); no reflash.
+status: confirmed.
+
+06:03:18 UTC 2026-11-10 lead 05:45 item 2: e8d48fab's src/ compiled with mpy-cross v1.29.0 -march=armv6m (all 28 modules, so the whole import closure is e8d48fab's: it loaded asy_base_classes, asy_config_manager, asy_fram_driver, asy_fram_manager, asy_print_log, asy_spi_driver, crc_checks), mounted, never copied; probes_20261110/fram_chunk_timing.py via mpremote mount + the harness's watchdog arm + run, then soft reset and restore_board_to_serving(); board idle (main.py stopped), machine.freq 125 MHz; chunks allocated from 0x30000 (log 0x30000/0x3000f, backup 0x3001e/0x3012c), production's chunks untouched; FRAM writes only; 05:57:47-05:57:55
+verbatim:
+FRAMCHUNK initialized True write_protected False
+FRAMCHUNK addrs log 0x30000 0x3000f bak 0x3001e 0x3012c end 0x3023a
+FRAMCHUNK first_write_ok log True bak True
+FRAMCHUNK log_write_13B cmds 51 n 30 min 24509 med 26326 max 38287 us
+FRAMCHUNK log_write_13B all_ok True
+FRAMCHUNK log_read_13B cmds 46 n 30 min 23201 med 24663 max 35767 us
+FRAMCHUNK log_read_13B all_ok True
+FRAMCHUNK backup_write_268B cmds 51 n 30 min 25998 med 26903 max 40089 us
+FRAMCHUNK backup_write_268B all_ok True
+FRAMCHUNK backup_read_268B cmds 46 n 30 min 25559 med 26237 max 38085 us
+FRAMCHUNK backup_read_268B all_ok True
+FRAMCHUNK backup_readback_matches True
+FRAMCHUNK viper_crc32_add_into_264B cmds 0 n 30 min 1249 med 1267 max 1408 us
+FRAMCHUNK log_errors <deque> count 0
+FRAMCHUNK mounted ['asy_base_classes', 'asy_config_manager', 'asy_fram_driver', 'asy_fram_manager', 'asy_print_log', 'asy_spi_driver', 'crc_checks']
+FRAMCHUNK done
+against the acceptance: command counts as expected (51 / 51 / 46); time NOT met: entry write med 26.3 ms (<= 5 ms asked), backup write med 26.9 ms (<= 8 ms asked), reads 24.7 / 26.2 ms; viper CRC32 over 264 B 1.27 ms (estimate 0.95).
+breakdown, same mount, probes_20261110/fram_cmd_breakdown.py, 05:59:11-05:59:18, 300 calls each, writes at 0x3ff00 only:
+FRAMCMD2 initialized True write_protected False
+FRAMCMD2 empty_call n 300 min 24 med 25 p95 26 max 40 us
+FRAMCMD2 raw_rdsr n 300 min 58 med 61 p95 64 max 155 us
+FRAMCMD2 session_begin_end_only n 300 min 206 med 212 p95 230 max 408 us
+FRAMCMD2 session_rdsr_via_spidevice n 300 min 331 med 342 p95 361 max 433 us
+FRAMCMD2 driver_read_status n 300 min 445 med 461 p95 501 max 10321 us
+FRAMCMD2 driver_wel_is_set n 300 min 475 med 495 p95 533 max 10359 us
+FRAMCMD2 driver_get_values_1B n 300 min 582 med 601 p95 640 max 10492 us
+FRAMCMD2 driver_get_values_13B n 300 min 594 med 617 p95 654 max 10497 us
+FRAMCMD2 driver_set_values_1B n 300 min 2198 med 2419 p95 2475 max 12496 us
+FRAMCMD2 driver_set_values_13B n 300 min 2217 med 2434 p95 2500 max 12582 us
+FRAMCMD2 done
+reading: the mount is not the cost (raw machine.SPI status read 61 us, 11-09 64 us). A synchronous e8d48fab command costs 0.46-0.60 ms in Python layers: SPIDevice session_begin+session_end alone 212 us (locked(), _begin(), two Pin.value, two sleep_us), transfers through write_sync/readinto_sync +130 us, the driver's get_values/_send_and_read +250 us; set_values is 5 commands (WREN, RDSR, WRITE, WRDI, RDSR) = 2.4 ms. 51 x ~0.5 ms is the 26 ms. The ~10 ms maxima: inferred GC pauses (one per run of 300), not traced.
+status: figures confirmed as measured; the per-layer attribution confirmed by the breakdown; the GC reading inferred.
+
+06:03:18 UTC 2026-11-10 lead 05:45 item 3: the same mount; probes_20261110/i2c_bus_probe.py (every machine.I2C call timed through a recording stand-in), then soft reset and restore; 06:02:11-06:02:30; 125 MHz
+verbatim:
+I2CBUS freq 125000000
+I2CBUS a records 3000 cap 3000 scd30_calls 38 new_data 6 faults 0 isl_reads 1697 isl_id_ok 1697
+I2CBUS a sample co2_t_rh (952.8688, 20.681002, 53.9893)
+I2CBUS a scd30_waits 38 gap_us min/med/max (51151, 52361, 59350)
+I2CBUS a isl29125_calls_inside_each_wait min/med/max (10, 16, 18) waits_with_none 0
+I2CBUS a scd30_call_us min/med/max (709, 871, 3866)
+I2CBUS a isl_call_us min/med/max (476, 490, 1269)
+I2CBUS b osr 32 32
+I2CBUS b reads 10 faults 0 read_us min/med/max (164630, 167846, 181298)
+I2CBUS b machine_calls_per_read:longest_gap_us ['wrwwr:158487', 'wrwwr:158750', 'wrwwr:158979', 'wrwwr:159353', 'wrwwr:159400', 'wrwwr:159443', 'wrwwr:160228', 'wrwwr:160255', 'wrwwr:160407', 'wrwwr:160749']
+I2CBUS b first_sample_pa_degC (100225.79, 20.746534) last (100213.17, 20.863408)
+I2CBUS done
+reading (a): i2c1 at 50 kHz, timeout 200000: in every one of the 38 recorded SCD30 waits (51.2-59.4 ms after a command write) the ISL29125 completed 10-18 whole transactions (ID register, 1697/1697 read 0x7D); SCD30 read_measurement 38 calls, 6 with new data, no fault; sample CO2 952.9 ppm, 20.68 C, 54.0 %RH. SCD30 commands sent: data-ready and read-measurement only, its I2CDevice probe (zero-byte write); no soft reset, nothing to its NVM. The record buffer (3000 calls) filled before the 12 s ended: the wait count covers the first 3000 calls.
+reading (b): i2c0 at 50 kHz: BMP3XX setup (ID, coefficients, soft reset: RAM registers) then x32/x32 read back 32 32; 10 reads, 10 valid (100,225.79 Pa, 20.75 C first), 0 faults; each read exactly 5 machine calls w r w w r (OSR read, control write, the burst read from STATUS) with one gap of 158.5-160.7 ms between control write and burst, so one wait and no STATUS poll; read 164.6-181.3 ms whole.
+status: confirmed as measured.
+errcount (all three runs): 22 sources unchanged against each run's own start read; ResetReason after each: 21, SysUptime 16 s, STA; flash cycles today: 0; logs/day5_20261110/ (fc_*, fb_*, ib_*)
