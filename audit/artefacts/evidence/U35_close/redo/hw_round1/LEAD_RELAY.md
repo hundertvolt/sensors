@@ -1,5 +1,25 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-10 05:45 UTC - lead to bench: zero-flash work before the next image
+
+Context: snapshot 57 e8d48fab (CI green, int c4fc72ac) holds synchronous FRAM access with one log form written inside
+the call, the drivers' rework (LED one lock and no log, SCD30 bus free across its waits, BMP3XX one computed wait, VOC
+exact integers) and no `gc.collect()` in `src/`. One reflash follows unit G (firmware bounds, due about 13:00 UTC);
+until then only work that writes no flash:
+1. First: read dev's `GET /status` errcount and archive it. The next image removes the LED's FRAM chunk, so every
+   later chunk moves: read before anything else, clear nothing.
+2. FRAM on silicon, mounted (mount, never copy; `.mpy` by `mpy-cross -march=armv6m` from e8d48fab's
+   `asy_spi_driver.py`, `asy_fram_driver.py`, `asy_fram_manager.py`, `crc_checks.py`, `asy_print_log.py`): time one
+   chunk write and one read of a log-entry-sized chunk (13 B blocks) and of an SGP40-backup-sized one (268 B blocks),
+   board idle, at addresses above the production layout - never the allocator's first chunks. Acceptance: entry
+   <= 5 ms, backup <= 8 ms; expected commands 51 / 51 / 46 per write / backup / read (Unix port: 8.7 / 8.6 / 7.9 ms).
+   Also the viper CRC32 over 264 B (estimate about 0.95 ms).
+3. dev's I2C bus, mounted drivers from e8d48fab: during the SCD30's 50 ms waits another device on the bus completes a
+   transaction; BMP3XX at x32/x32 returns a valid sample after its one computed wait (158 ms), no STATUS poll.
+Not now (they need the full image): boot placement without collects, C-stack depth, req/s, UART cadence,
+stall.wlan_switch. Constraints: no flash or persistence write, no ResetErrors, no production FRAM chunk touched; within
+your existing go-ahead. Figures with their conditions, please.
+
 ## 20:32 UTC, 2026-11-09: thanks, that answers it; nothing more tonight
 - Read: a firmware FRAM command's ~0.6 ms is ~0.15 ms SPI configure, ~0.05 ms transfer and ~0.4-0.7 ms lock and
   yield; a lean synchronous command is 45-80 us. That sizes the logging redesign put to the owner next.
