@@ -178,7 +178,7 @@ _GC_THRESHOLD_DEFAULT = 32768
 _WDT_TIMEOUT_MS = 8000
 
 _SHUTDOWN_HANG_STEPS = ("S1", "S2", "S3", "S4", "S5reset", "S5erase", "S6")
-_DROP_TIMER_SITES = ("reset", "sequencer")  # the product one-shots --test-drop-timer-fire reaches: sysfunct's two
+_DROP_TIMER_SITES = ("reset",)  # the product one-shot --test-drop-timer-fire reaches: sysfunct's reset timer
 # MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0): the unit of mem_info()'s max free sz.
 _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
@@ -279,7 +279,7 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-hold-system-entry ERRNO[:cut] (SYSTEM's entry with that errno waits for ENTRY_RELEASE; with :cut its write is
         held inside its first block after the busy mark, never released),
   --test-loop-lag-ms N (a LOOP_LAG line every {_LOOP_LAG_REPORT_MS // 1000} s from a task sleeping N ms at a time, each link's transfers on it),
-  --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it),
+  --test-drop-timer-fire reset (that one-shot's fire lost as rp2's full scheduler queue loses it),
   --test-watchdog-fault supervisor-raise|main-exit|block (after the supervisor's first feed, one fault that ends the
     feeding; WDT_AT_FAULT <feed_count>)
   --test-defer-faults (every --fault waits for a FAULT_ARM line, then is queued at once; FAULTS_ARMED)
@@ -607,7 +607,7 @@ async def _test_arm_shutdown_hang(module: "ModuleType", chips: "dict[str, object
 async def _test_conn_line(module: "ModuleType") -> str:
     # The webserver's open-connection gauge and its listen backlog, the two numbers a slot scenario reads.
     service = module.webserver
-    return f"CONN_SLOTS open={await service._open_conns.get_value()} backlog={service._backlog}"
+    return f"CONN_SLOTS open={service._open_conns} backlog={service._backlog}"
 
 
 async def _test_conn_status(module: "ModuleType", interval_ms: int) -> None:
@@ -620,7 +620,7 @@ def _test_drop_timer_fire(module: "ModuleType", site: str, say: "Callable[[str],
     # Rebinds, from outside, the next init() of the one product one-shot `site` names, so the host sees what its lost fire
     # costs: the twin's drop knob is set before the arm (rp2's full depth-8 queue) and cleared once that fire was dropped.
     sysfunct = module.sysfunct
-    timer: machine.Timer = sysfunct._reset_timer if site == "reset" else sysfunct._sequencer_timer
+    timer: machine.Timer = sysfunct._reset_timer
     armed = asyncio.Event()
     real_init = timer.init
 

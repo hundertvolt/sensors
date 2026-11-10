@@ -30,9 +30,13 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+    from typing import TypeVar
+
     from asy_base_classes import JsonMapping, TaskStarter, TimerStarter
     from asy_config_manager import CfgValue, ConfigSchema, FieldSchema, WriteValidity
-    from asy_print_log import ErrorLog
+
+    _T = TypeVar("_T")
 
 
 _SCD30_ADDR = const(0x61)  # Interface Description 1.1.1: the address is fixed
@@ -75,8 +79,7 @@ _HUM_MAX_PCT = const(100.0)
 _CMD_RESPONSE_WAIT_MS = const(50)
 # @tunable scd30.asc_enable_wait_ms = 10
 _ASC_ENABLE_WAIT_MS = const(10)
-# @tunable scd30.soft_reset_wait_ms = 2500
-_SOFT_RESET_WAIT_MS = const(2500)
+_BOOT_UP_MAX_MS = const(2000)  # Interface Description 1.1: "The boot-up time is < 2 s"
 # @tunable scd30.start_trigger_period_ms = 500
 _START_TRIGGER_PERIOD_MS = const(500)
 
@@ -326,6 +329,23 @@ class SCD30_Reader(SensorReaderConfig):
             self._frc_noise, self._frc_rate = floats
             self._frc_window_s = ints[0]
 
+    async def _chip_get(self, read: "Awaitable[_T]", message: str) -> "_T | None":
+        # The chip-backed getters' one shape: a failure logged under its field's own message, then None.
+        try:
+            return await read
+        except Exception as e:
+            await self.pr.err_s(message, e, errno=_ERR_CHIP_GET)
+            return None
+
+    async def _chip_set(self, write: "Awaitable[None]", message: str) -> bool:
+        # The chip-backed setters' one shape: a failure logged under its field's own message, then False.
+        try:
+            await write
+        except Exception as e:
+            self.pr.err_q(message, e, errno=_ERR_CHIP_SET)
+            return False
+        return True
+
     async def _config_snapshot(self) -> "dict[str, CfgValue] | None":
         # One batched read (get_config_snapshot()), not six separately-locked get_*() calls, so a
         # concurrent write never mixes pre- and post-write values; a failure logs CHIP_GET and is None.
@@ -505,11 +525,10 @@ class SCD30_Reader(SensorReaderConfig):
             state, wait = self._frc_step(co2, temperature)
         wet_bulb = math_helpers.wet_bulb_temperature(temperature, humidity)
         dew_point = math_helpers.dew_point(temperature, humidity)
-        async with self._data_lock:  # one hold: a not-ready cycle keeps the state the sample already carries
-            if not new_data:
-                state = getattr(self._datastruct, "FRCState", None)
-                wait = getattr(self._datastruct, "FRCWait", None)
-            self._datastruct = SCD30(co2, temperature, humidity, wet_bulb, dew_point, state, wait, results[3])
+        if not new_data:  # no await from here to the store: a not-ready cycle keeps the state the sample already carries
+            state = getattr(self._datastruct, "FRCState", None)
+            wait = getattr(self._datastruct, "FRCWait", None)
+        self._datastruct = SCD30(co2, temperature, humidity, wet_bulb, dew_point, state, wait, results[3])
         self.pr.all("data stored")
 
     def get_task_starters(self) -> "list[TaskStarter]":
@@ -519,12 +538,10 @@ class SCD30_Reader(SensorReaderConfig):
         return [self.start_timer]
 
     def start_asy_irq(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._irq_loop())
+        return asyncio.create_task(self._irq_loop())
 
     def start_asy_read(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._read_loop())
+        return asyncio.create_task(self._read_loop())
 
     def start_timer(self) -> None:
         try:
@@ -545,18 +562,10 @@ class SCD30_Reader(SensorReaderConfig):
         self._start_trigger_timer.deinit()
 
     async def get_altitude(self) -> int | None:
-        try:
-            return await self._scd.get_altitude()
-        except Exception as e:
-            await self.pr.err_s("Error reading altitude:", e, errno=_ERR_CHIP_GET)
-            return None
+        return await self._chip_get(self._scd.get_altitude(), "Error reading altitude:")
 
     async def get_ambient_pressure(self) -> int | None:
-        try:
-            return await self._scd.get_ambient_pressure()
-        except Exception as e:
-            await self.pr.err_s("Error reading ambient pressure:", e, errno=_ERR_CHIP_GET)
-            return None
+        return await self._chip_get(self._scd.get_ambient_pressure(), "Error reading ambient pressure:")
 
     def get_cfg_schema(self) -> "ConfigSchema":
         # The nine keys a PUT may carry: six stored on the chip, three in the config file.
@@ -573,90 +582,35 @@ class SCD30_Reader(SensorReaderConfig):
         data = await self.get_data()
         return make_dict(data, _FIELDS, name=self.name)
 
-    async def get_error_counter(self) -> "ErrorLog":
-        return await self.pr.get_log()
-
     async def get_forced_recalibration_reference(self) -> int | None:
-        try:
-            return await self._scd.get_forced_recalibration_reference()
-        except Exception as e:
-            await self.pr.err_s("Error reading forced recalibration reference:", e, errno=_ERR_CHIP_GET)
-            return None
+        return await self._chip_get(self._scd.get_forced_recalibration_reference(), "Error reading forced recalibration reference:")
 
     async def get_measurement_interval(self) -> int | None:
-        try:
-            return await self._scd.get_measurement_interval()
-        except Exception as e:
-            await self.pr.err_s("Error reading measurement interval:", e, errno=_ERR_CHIP_GET)
-            return None
+        return await self._chip_get(self._scd.get_measurement_interval(), "Error reading measurement interval:")
 
     async def get_self_calibration_enabled(self) -> bool | None:
-        try:
-            return await self._scd.get_self_calibration_enabled()
-        except Exception as e:
-            await self.pr.err_s("Error reading self calibration enabled:", e, errno=_ERR_CHIP_GET)
-            return None
+        return await self._chip_get(self._scd.get_self_calibration_enabled(), "Error reading self calibration enabled:")
 
     async def get_temperature_offset(self) -> float | None:
-        try:
-            return await self._scd.get_temperature_offset()
-        except Exception as e:
-            await self.pr.err_s("Error reading temperature offset:", e, errno=_ERR_CHIP_GET)
-            return None
+        return await self._chip_get(self._scd.get_temperature_offset(), "Error reading temperature offset:")
 
     async def set_altitude(self, altitude: int) -> bool:
-        try:
-            await self._scd.set_altitude(altitude)
-        except Exception as e:
-            self.pr.err_q("Error setting altitude:", e, errno=_ERR_CHIP_SET)
-            return False
-        else:
-            return True
+        return await self._chip_set(self._scd.set_altitude(altitude), "Error setting altitude:")
 
     async def set_ambient_pressure(self, pressure_mbar: float) -> bool:
-        try:
-            await self._scd.set_ambient_pressure(pressure_mbar)
-        except Exception as e:
-            self.pr.err_q("Error setting ambient pressure:", e, errno=_ERR_CHIP_SET)
-            return False
-        else:
-            return True
+        return await self._chip_set(self._scd.set_ambient_pressure(pressure_mbar), "Error setting ambient pressure:")
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> bool:
-        try:
-            await self._scd.set_forced_recalibration_reference(reference_value)
-        except Exception as e:
-            self.pr.err_q("Error setting forced recalibration reference:", e, errno=_ERR_CHIP_SET)
-            return False
-        else:
-            return True
+        return await self._chip_set(self._scd.set_forced_recalibration_reference(reference_value), "Error setting forced recalibration reference:")
 
     async def set_measurement_interval(self, value: int) -> bool:
-        try:
-            await self._scd.set_measurement_interval(value)
-        except Exception as e:
-            self.pr.err_q("Error setting measurement interval:", e, errno=_ERR_CHIP_SET)
-            return False
-        else:
-            return True
+        return await self._chip_set(self._scd.set_measurement_interval(value), "Error setting measurement interval:")
 
     async def set_self_calibration_enabled(self, enabled: bool) -> bool:
-        try:
-            await self._scd.set_self_calibration_enabled(enabled)
-        except Exception as e:
-            self.pr.err_q("Error setting self calibration enabled:", e, errno=_ERR_CHIP_SET)
-            return False
-        else:
-            return True
+        return await self._chip_set(self._scd.set_self_calibration_enabled(enabled), "Error setting self calibration enabled:")
 
     async def set_temperature_offset(self, offset: float) -> bool:
-        try:
-            await self._scd.set_temperature_offset(offset)
-        except Exception as e:
-            self.pr.err_q("Error setting temperature offset:", e, errno=_ERR_CHIP_SET)
-            return False
-        else:
-            return True
+        return await self._chip_set(self._scd.set_temperature_offset(offset), "Error setting temperature offset:")
 
     # Selected low-level driver forwards (stop_continuous_measurement() and the chip-backed get_*()/set_*()):
     # each failure is logged via self.pr (not swallowed silently) so a transient bus fault on a REST-triggered
@@ -686,28 +640,30 @@ class SCD30_I2C:
         self._co2: float | None = None
         self._temp_offset_ticks = 0  # the chip's offset word, read at setup() and kept by set_temperature_offset()
 
-    async def _read_dev_register(self, i2c: I2CDevice, reg_addr: int) -> int:
+    async def _read_dev_register(self, scd30: DeviceSession, reg_addr: int) -> int:
+        # The caller holds the device session (it guards self._buffer); the bus is held per transfer and free across
+        # the wait. Separate readinto: no repeated start; the delay clears the >3 ms minimum (Interface Description 1.4.4).
         self._buffer[0] = reg_addr >> 8
         self._buffer[1] = reg_addr & 0xFF
-        await i2c.write(self._buffer, end=2)
-        # Separate readinto: the SCD30 has no repeated-start, so this stops the bus first; the
-        # delay clears the datasheet's >3ms minimum (Interface Description 1.4.4).
+        async with scd30.i2c_device as i2c:
+            await i2c.write(self._buffer, end=2)
         await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)
-        await i2c.readinto(self._buffer, end=3)
+        async with scd30.i2c_device as i2c:
+            await i2c.readinto(self._buffer, end=3)
         if await self.crc.check_from(self._buffer, 3) != _WORD_BYTES:
             raise RuntimeError("CRC check failed while reading data")
         value: int = unpack_from(">H", self._buffer)[0]
         return value
 
     async def _read_register(self, reg_addr: int) -> int:
-        async with self._i2c_scd30 as scd30, scd30.i2c_device as i2c:
-            return await self._read_dev_register(i2c, reg_addr)
+        async with self._i2c_scd30 as scd30:
+            return await self._read_dev_register(scd30, reg_addr)
 
     async def _send_command(self, command: int, arguments: int | None = None) -> None:
-        async with self._i2c_scd30 as scd30, scd30.i2c_device as i2c:
-            await self._send_dev_command(i2c, command, arguments)
+        async with self._i2c_scd30 as scd30:
+            await self._send_dev_command(scd30, command, arguments)
 
-    async def _send_dev_command(self, i2c: I2CDevice, command: int, arguments: int | None = None) -> None:
+    async def _send_dev_command(self, scd30: DeviceSession, command: int, arguments: int | None = None) -> None:
         # if there is an argument, calculate the CRC and include it as well.
         self._buffer[0] = command >> 8
         self._buffer[1] = command & 0xFF
@@ -718,8 +674,9 @@ class SCD30_I2C:
             if await self.crc.add_into(self._buffer, 2, start=2) != _WORD_CRC_BYTES:
                 raise RuntimeError("CRC generation failed")
             end_byte = 5
-        await i2c.write(self._buffer, end=end_byte)
-        await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)  # delay for response
+        async with scd30.i2c_device as i2c:
+            await i2c.write(self._buffer, end=end_byte)
+        await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)  # delay for response, the bus free
 
     async def get_CO2(self) -> float | None:
         # Pure cache read from the last read_measurement() call, no I2C of its own - see read_measurement()'s
@@ -736,13 +693,13 @@ class SCD30_I2C:
         # One device-session lock hold across all 6 config registers, closing the torn-read window a
         # concurrent set_*() could land inside mid-batch. Same "allowed to raise" layer as every
         # other SCD30_I2C method: a mid-batch fault fails the snapshot, never mixes fresh and stale.
-        async with self._i2c_scd30 as scd30, scd30.i2c_device as i2c:
-            temp_offset = await self._read_dev_register(i2c, _CMD_SET_TEMPERATURE_OFFSET) / 100.0
-            measurement_interval = await self._read_dev_register(i2c, _CMD_SET_MEASUREMENT_INTERVAL)
-            ambient_pressure = await self._read_dev_register(i2c, _CMD_CONTINUOUS_MEASUREMENT)
-            altitude = await self._read_dev_register(i2c, _CMD_SET_ALTITUDE_COMPENSATION)
-            frc = await self._read_dev_register(i2c, _CMD_SET_FORCED_RECALIBRATION_FACTOR)
-            self_cal = await self._read_dev_register(i2c, _CMD_AUTOMATIC_SELF_CALIBRATION) == 1
+        async with self._i2c_scd30 as scd30:
+            temp_offset = await self._read_dev_register(scd30, _CMD_SET_TEMPERATURE_OFFSET) / 100.0
+            measurement_interval = await self._read_dev_register(scd30, _CMD_SET_MEASUREMENT_INTERVAL)
+            ambient_pressure = await self._read_dev_register(scd30, _CMD_CONTINUOUS_MEASUREMENT)
+            altitude = await self._read_dev_register(scd30, _CMD_SET_ALTITUDE_COMPENSATION)
+            frc = await self._read_dev_register(scd30, _CMD_SET_FORCED_RECALIBRATION_FACTOR)
+            self_cal = await self._read_dev_register(scd30, _CMD_AUTOMATIC_SELF_CALIBRATION) == 1
         return temp_offset, measurement_interval, ambient_pressure, altitude, frc, self_cal
 
     async def get_forced_recalibration_reference(self) -> int:
@@ -816,13 +773,9 @@ class SCD30_I2C:
         # Description 1.4.4); a second call would wipe fresh data back to None. If not ready,
         # leaves the cache untouched, matching the legacy driver, and answers False.
         async with self._i2c_scd30 as scd30:
-            async with scd30.i2c_device as i2c:
-                new_data = await self._read_dev_register(i2c, _CMD_GET_DATA_READY) > 0
-            await asyncio.sleep(0)
+            new_data = await self._read_dev_register(scd30, _CMD_GET_DATA_READY) > 0
             if new_data:
-                async with scd30.i2c_device as i2c:
-                    await self._send_dev_command(i2c, _CMD_READ_MEASUREMENT)
-                await asyncio.sleep(0)
+                await self._send_dev_command(scd30, _CMD_READ_MEASUREMENT)
                 async with scd30.i2c_device as i2c:
                     await i2c.readinto(self._buffer)
 
@@ -857,9 +810,9 @@ class SCD30_I2C:
 
     async def reset(self) -> None:
         await self._send_command(_CMD_SOFT_RESET)
-        # Boot-up is documented as <2s (Interface Description 1.1); wait the full bound since this
-        # also runs on every failure-triggered restart, not just cold boot.
-        await asyncio.sleep_ms(_SOFT_RESET_WAIT_MS)
+        # The documented boot-up bound in full, as on every failure-triggered restart too, plus the tick sleep_ms()
+        # may end early by.
+        await asyncio.sleep_ms(_BOOT_UP_MAX_MS + 1)
 
     async def setup(self) -> None:
         async with self._i2c_scd30 as scd30, scd30.i2c_device as i2c:

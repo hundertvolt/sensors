@@ -120,7 +120,6 @@ _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     ("sgp40", "SGP40", True),
     ("bmp3xx", "BMP3xx", True),
     ("isl29125", "ISL29125", True),
-    ("neopixel", "Neopixel LED", False),
     ("notification", "Notification Service", True),
     ("uart_link", "UART Link", False),  # no CFGMGR_ companion: UARTComm has no config schema - its
     # parameters are an out-of-band two-implementation wire contract, never runtime-writable (Part J.6)

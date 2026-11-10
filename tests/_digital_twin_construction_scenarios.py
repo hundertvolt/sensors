@@ -77,8 +77,8 @@ async def _boot_device(port: int, device: str) -> "ModuleType":
 
 
 def _constructed_names(module: "ModuleType") -> "set[str]":
-    # Every module global holding a constructed product module (it has setup() and loggers), as the boot recorder finds them.
-    return {name for name in dir(module) if not name.startswith("_") and not isinstance(getattr(module, name), type) and hasattr(getattr(module, name), "setup") and hasattr(getattr(module, name), "get_loggers")}
+    # Every module global holding a constructed product module (it has loggers), as the boot recorder finds them.
+    return {name for name in dir(module) if not name.startswith("_") and not isinstance(getattr(module, name), type) and hasattr(getattr(module, name), "get_loggers")}
 
 
 def _expected_facts(device: str) -> "_ExpectedFacts":

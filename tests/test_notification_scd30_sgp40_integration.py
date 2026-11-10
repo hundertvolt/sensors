@@ -106,7 +106,6 @@ def _make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tup
     co2_signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     voc_signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (co2_signal, voc_signal), cfg_path=_tmp_cfg_dir("notify"))
-    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
     return pixel, notify
 

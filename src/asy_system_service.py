@@ -22,7 +22,7 @@ from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
 
-from asy_base_classes import UNAVAILABLE, LockedValue, TickSeconds, arm_tick_timer, utc_now
+from asy_base_classes import UNAVAILABLE, TickGrid, TickSeconds, utc_now
 from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg, schema_names
 from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger, report_if_fatal
 
@@ -49,7 +49,6 @@ if TYPE_CHECKING:
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and SYSTEM's bands.
 _ERR_CALLBACK = const(14)
-_ERR_TIMER = const(17)
 _ERR_UNEXPECTED = const(23)
 _ERR_STACK_EXHAUSTED = const(25)
 _ERR_TASK_STARTER_RAISED = const(40)
@@ -192,17 +191,12 @@ class SystemService:
         # callback for starting and stopping permanent storage communication
         self._storage_pause: _StoragePause | None = storage.set_pause if storage is not None else None
         self._uptime = TickSeconds()  # measured seconds since construction, saturating at COUNTER_CAP
-        self._uptime_event = asyncio.ThreadSafeFlag()
-        self._uptime_timer = Timer()
+        self._tick = TickGrid(1000)  # the status pass's 1 s cadence
         self._reset_timer = Timer()
-        # Preallocated like the other timers: start_timers() re-.init()s it for each stagger wait rather than constructing a
-        # fresh Timer() each time, which the GC would disarm before it fires (SPECIFICATION.md Part F.1).
-        self._sequencer_timer = Timer()
-        self._sequencer_flag = asyncio.ThreadSafeFlag()  # one waiter: start_timers() runs once per boot
         self._ntp_is_synced = asy_ntp_callback
         self._start_time_set = False
         # None until _status_loop() resolves it (owner, 2026-07-18) - a later change to this value signals a reboot happened.
-        self._boot_signature = LockedValue(init_value=None)
+        self._boot_signature: int | None = None
         self._watchdog = watchdog
         # One-way: set once a reset is armed or cannot be armed; no feed site feeds after it.
         self._force_watchdog_starve = False
@@ -484,9 +478,9 @@ class SystemService:
 
     async def _status_loop(self) -> None:
         # Uptime is measured, never counted, so a restart of this task keeps it and the boot signature. Each pass
-        # waits on the 1 s tick (SPECIFICATION.md Part C.9).
+        # waits for the next 1 s grid instant (SPECIFICATION.md Part C.9).
         while True:
-            await self._uptime_event.wait()
+            await self._tick.wait()
             uptime = self._uptime.read()
             self.pr.all("System uptime:", uptime)
             if self._unpause_at is not None and time.ticks_diff(time.ticks_ms(), self._unpause_at) >= 0:
@@ -499,13 +493,13 @@ class SystemService:
                 continue
             utc = await self._ntp_boot_signature()
             if utc is not None:
-                await self._boot_signature.set_value(utc)
+                self._boot_signature = utc
                 self.pr.one("System boot signature set by NTP.")
                 self._start_time_set = True
             elif uptime >= _NTP_WAIT_TIME:
                 # get_rand_32()-seeded (pico-sdk pico_rand, real ring-oscillator entropy) - unique
                 # per boot, not a fixed/repeatable seed.
-                await self._boot_signature.set_value(random.getrandbits(32))
+                self._boot_signature = random.getrandbits(32)
                 self.pr.one("System boot signature set by random number.")
                 self._start_time_set = True
 
@@ -580,21 +574,15 @@ class SystemService:
         return [self.start_asy_status]
 
     def get_timer_starters(self) -> "list[TimerStarter]":
-        return [self.start_uptime_timer]
+        return []  # its 1 s cadence is the status task's own deadline sleep
 
     def start_asy_status(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._status_loop())
+        return asyncio.create_task(self._status_loop())
 
-    def start_uptime_timer(self) -> None:
-        # A failed arm (refuted in normal operation) degrades rather than reboots: the passes it wakes stop, so a storage
-        # pause lasts until the reboot, and uptime reads right only while something reads it at least every 2**29 ms.
-        arm_tick_timer(self._uptime_timer, self._uptime_event, self.pr, "uptime")
-
-    async def get_boot_signature(self) -> int | float | None:
+    async def get_boot_signature(self) -> int | None:
         # None until resolved; then a UTC timestamp if NTP synced, else random after _NTP_WAIT_TIME -
         # stable for the rest of this boot, so a later change means a reboot happened.
-        return await self._boot_signature.get_value()
+        return self._boot_signature
 
     def get_cfg_schema(self) -> "ConfigSchema":
         return self._cfg_schema
@@ -651,7 +639,7 @@ class SystemService:
 
     def pause_permanent_storage(self, duration: int) -> bool:
         # Refused while a system command shuts down; otherwise True. The pause ends at its deadline, tested on each uptime
-        # pass; with the uptime tick refused (refuted in normal operation) no pass runs and it lasts until the reboot.
+        # pass, whose 1 s grid needs no timer.
         if self._shutdown:
             return False
         if self._storage_pause is not None:
@@ -727,8 +715,7 @@ class SystemService:
 
     async def start_timers(self, triggers: "list[TimerStarter]", timers: "list[TimerStarter]") -> None:
         # The unstaggered timer starters in order, then each read trigger k at t0 + k * slot from one shared
-        # start, in task context (SPECIFICATION.md Part C.9.1): a stagger wait is a one-shot that only sets a
-        # flag; its failed arm sleeps instead, so every trigger still starts.
+        # start, in task context, by deadline sleeps (SPECIFICATION.md Part C.9.1).
         for n, starter in enumerate(timers):
             await self._run_timer_starter(starter, n)
         t0 = time.ticks_ms()
@@ -736,13 +723,7 @@ class SystemService:
         for k, starter in enumerate(triggers):
             wait = time.ticks_diff(time.ticks_add(t0, k * slot), time.ticks_ms())
             if wait > 0:
-                try:
-                    self._sequencer_timer.init(period=wait, mode=Timer.ONE_SHOT, callback=lambda _b: self._sequencer_flag.set())
-                except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM)
-                    await self.pr.err_s("Could not arm the stagger timer, using sleep:", e, errno=_ERR_TIMER)
-                    await asyncio.sleep_ms(wait)
-                else:
-                    await self._sequencer_flag.wait()  # no software timeout: the watchdog is the backstop (owner, 2026-07-18)
+                await asyncio.sleep_ms(wait)
             await self._run_timer_starter(starter, len(timers) + k)
         self.pr.one("All timers running.")
 

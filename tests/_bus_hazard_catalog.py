@@ -374,7 +374,7 @@ def _bmp_data6(adc_p: int, adc_t: int) -> bytes:
 
 def _ready_bmp(fake_bus: FakeI2C, address: int, chip_id: int = 0x50) -> None:
     # STATUS: cmd_rdy | drdy_press | drdy_temp; ERR_REG clear - see test_asy_bmp3xx_driver.py's own ready_bmp() for
-    # the same shape, and the 6-byte burst from PRESSUREDATA.
+    # the same shape; the read burst runs from STATUS through the six data bytes.
     fake_bus.registers[(address, 0x03)] = bytearray([0x10 | 0x60])  # _REGISTER_STATUS
     fake_bus.registers[(address, 0x02)] = bytearray([0x00])  # _REGISTER_ERR
     fake_bus.registers[(address, 0x04)] = bytearray(_bmp_data6(_BMP_ADC_P, _BMP_ADC_T))  # _REGISTER_PRESSUREDATA

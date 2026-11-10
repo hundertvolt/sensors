@@ -15,7 +15,6 @@ from _async_harness import run
 from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime
-from _fake_timer_arm import RaiseOnArm
 from _fram_builders import make_fram_manager
 from _held_log import held_logger, until, written
 from _recording_print import record_prints
@@ -27,21 +26,18 @@ from _write_counters import WriteCountingOpen
 import asy_base_classes
 import asy_config_manager
 import asy_print_log
+import asy_uart_driver
 from asy_base_classes import (
     COUNTER_CAP,
     UNAVAILABLE,
     DeviceSession,
     HourlyWindowCounter,
     Lockable,
-    LockedCounter,
-    LockedFlag,
-    LockedValue,
-    PieceBuffer,
     RegionBuffer,
     SensorReader,
     SensorReaderConfig,
+    TickGrid,
     TickSeconds,
-    arm_tick_timer,
     set_utc_valid,
     utc_now,
 )
@@ -49,6 +45,7 @@ from asy_config_manager import schema_dict
 from asy_i2c_driver import I2C, I2CDevice
 from asy_print_log import LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore
 from asy_uart_comm import DEFAULT_LIMITS
+from asy_uart_driver import PieceBuffer  # its home since only the UART uses it; its unit tests stay here
 
 try:
     from typing import TYPE_CHECKING
@@ -124,7 +121,7 @@ class _DividingReader(SensorReader):
         super().__init__(Meas(None, 50), "DIVIDER", max_module_error=3)
         self._base_trigger_event = asyncio.ThreadSafeFlag()
         self._read_event = asyncio.ThreadSafeFlag()
-        self._trigger_period = LockedValue(init_value=period)
+        self._trigger_period = period
         self._trigger_counter = 0
         self._trigger_timer = machine.Timer()
 
@@ -617,14 +614,14 @@ def test_piecebuffer_allocates_no_block_larger_than_one_piece() -> None:
     size, piece_bytes = DEFAULT_LIMITS.max_transfer_bytes, DEFAULT_LIMITS.chunk_bytes  # the UART link's largest default train
     payload = bytes(i & 0xFF for i in range(size))
     dest = bytearray(size)
-    asy_base_classes.bytearray = recording  # type: ignore[attr-defined]
+    asy_uart_driver.bytearray = recording  # type: ignore[attr-defined]
     try:
         buf = PieceBuffer(size, piece_bytes)
         assert buf.write_at(0, memoryview(payload))
         assert buf.copy_into(dest)
         assert buf.trim(size - piece_bytes - 1)
     finally:
-        del asy_base_classes.bytearray  # type: ignore[attr-defined]
+        del asy_uart_driver.bytearray  # type: ignore[attr-defined]
     assert sizes, "no allocation was recorded: the shadow missed the module's bytearray"
     assert max(sizes) == piece_bytes, max(sizes)
     assert sum(sizes) == size  # one piece per piece_bytes, nothing joined or copied besides
@@ -652,158 +649,6 @@ def test_piecebuffer_retains_nothing_after_construction() -> None:
         # The collector scans the C stack conservatively, so a stale word can keep a block alive in one sample
         # (32 B on the settrace build): a per-round leak shows in all three windows, so the least must be 0.
         assert min(nets) <= 0, nets
-
-
-# ---------------------------------------------------------------------------
-# LockedCounter / LockedFlag / LockedValue
-# ---------------------------------------------------------------------------
-
-
-def test_lockedcounter_defaults() -> None:
-    counter = LockedCounter()
-    assert run(counter.get_value()) == 0
-    assert counter._max_val == COUNTER_CAP
-
-
-def test_a_max_val_above_the_cap_is_clamped_to_it() -> None:
-    assert COUNTER_CAP == 2**30 - 1
-    assert LockedCounter(max_val=COUNTER_CAP + 5)._max_val == COUNTER_CAP
-
-
-def test_increment_near_the_cap_stays_there() -> None:
-    counter = LockedCounter(init_value=COUNTER_CAP - 1)
-    assert run(counter.increment()) == COUNTER_CAP
-    assert run(counter.increment()) == COUNTER_CAP  # checked before the step: no intermediate above the cap
-
-
-def test_the_shared_scalars_hold_no_lock() -> None:
-    # No method awaits, so no other task runs between a read and its write: the lock attribute is gone.
-    for scalar in (LockedCounter(), LockedFlag(), LockedValue(init_value=None)):
-        assert not hasattr(scalar, "value_lock")
-        assert not hasattr(scalar, "_value_lock")
-
-
-def test_lockedcounter_increment_saturates_at_max() -> None:
-    counter = LockedCounter(init_value=0, max_val=2)
-    assert run(counter.increment()) == 1
-    assert run(counter.increment()) == 2
-    assert run(counter.increment()) == 2  # saturated, does not wrap
-
-
-def test_lockedcounter_decrement_floors_at_zero() -> None:
-    counter = LockedCounter(init_value=1, max_val=5)
-    assert run(counter.decrement()) == 0
-    assert run(counter.decrement()) == 0  # floored, does not go negative
-
-
-def test_lockedcounter_set_value_clamps_to_max() -> None:
-    counter = LockedCounter(max_val=10)
-    run(counter.set_value(999))
-    assert run(counter.get_value()) == 10
-    run(counter.set_value(3))
-    assert run(counter.get_value()) == 3
-
-
-def test_lockedcounter_set_value_clamps_negative_to_zero() -> None:
-    counter = LockedCounter(max_val=10)
-    run(counter.set_value(-7))
-    assert run(counter.get_value()) == 0
-
-
-def test_lockedcounter_init_value_is_clamped_same_as_set_value() -> None:
-    counter = LockedCounter(init_value=999, max_val=10)
-    assert run(counter.get_value()) == 10
-    counter = LockedCounter(init_value=-7, max_val=10)
-    assert run(counter.get_value()) == 0
-
-
-def test_lockedcounter_none_is_a_distinct_never_happened_sentinel() -> None:
-    counter = LockedCounter(init_value=None, max_val=10)
-    assert run(counter.get_value()) is None
-    run(counter.set_value(None))
-    assert run(counter.get_value()) is None
-
-
-def test_lockedcounter_increment_from_none_starts_at_one() -> None:
-    counter = LockedCounter(init_value=None, max_val=10)
-    assert run(counter.increment()) == 1
-
-
-def test_lockedcounter_decrement_from_none_stays_at_zero() -> None:
-    counter = LockedCounter(init_value=None, max_val=10)
-    assert run(counter.decrement()) == 0
-
-
-def test_lockedcounter_max_val_zero_stays_clamped_to_zero() -> None:
-    # An unusual but typed-valid config: a counter that can never hold a nonzero value.
-    counter = LockedCounter(init_value=5, max_val=0)
-    assert run(counter.get_value()) == 0
-    assert run(counter.increment()) == 0
-    assert run(counter.decrement()) == 0
-
-
-def test_lockedcounter_negative_max_val_is_clamped_to_zero_at_construction() -> None:
-    # A negative max_val is a dev-time-typo risk, never a runtime-computed value. Clamped to 0 in __init__
-    # so the counter's [0, max_val] invariant holds throughout: without it, _clamp's min(max(value, 0),
-    # max_val) would collapse every value to the negative max_val.
-    counter = LockedCounter(init_value=3, max_val=-5)
-    assert counter._max_val == 0
-    assert run(counter.get_value()) == 0
-    assert run(counter.increment()) == 0
-    assert run(counter.decrement()) == 0
-    run(counter.set_value(-7))
-    assert run(counter.get_value()) == 0
-
-
-def test_lockedcounter_concurrent_increments_are_not_lost() -> None:
-    counter = LockedCounter(init_value=0, max_val=1000)
-
-    async def scenario() -> None:
-        await asyncio.gather(*(counter.increment() for _ in range(50)))
-
-    run(scenario())
-    assert run(counter.get_value()) == 50
-
-
-def test_lockedflag_transitions() -> None:
-    flag = LockedFlag()
-    assert run(flag.get_value()) is False
-    run(flag.set_true())
-    assert run(flag.get_value()) is True
-    run(flag.set_false())
-    assert run(flag.get_value()) is False
-
-
-def test_lockedflag_init_value() -> None:
-    flag = LockedFlag(init_value=True)
-    assert run(flag.get_value()) is True
-
-
-def test_lockedvalue_roundtrip_int_and_float() -> None:
-    value = LockedValue(init_value=0)
-    run(value.set_value(42))
-    assert run(value.get_value()) == 42
-    run(value.set_value(3.5))
-    assert run(value.get_value()) == 3.5
-
-
-def test_lockedvalue_roundtrip_inf_and_nan() -> None:
-    # Unusual but typed-valid float content: LockedValue does no range clamping (unlike
-    # LockedCounter), so these must simply round-trip untouched.
-    value = LockedValue(init_value=0.0)
-    run(value.set_value(float("inf")))
-    assert run(value.get_value()) == float("inf")
-    run(value.set_value(float("nan")))
-    assert run(value.get_value()) != run(value.get_value())  # nan != nan is the only valid check
-
-
-def test_lockedvalue_round_trips_none_and_a_32_bit_value() -> None:
-    value = LockedValue(init_value=None)
-    assert run(value.get_value()) is None
-    run(value.set_value(0xFFFFFFFF))  # a boot signature: an identifier, never stepped, never clamped
-    assert run(value.get_value()) == 0xFFFFFFFF
-    run(value.set_value(None))
-    assert run(value.get_value()) is None
 
 
 # ---------------------------------------------------------------------------
@@ -935,7 +780,7 @@ def test_the_bins_are_allocated_once_at_construction() -> None:
 
 
 # ---------------------------------------------------------------------------
-# TickSeconds / arm_tick_timer / utc_now
+# TickSeconds / TickGrid / utc_now
 # ---------------------------------------------------------------------------
 
 class _WallTime(DrivenTime):
@@ -1028,38 +873,58 @@ def test_tickseconds_ignores_a_zero_or_negative_delta() -> None:
         _restore_time()
 
 
-_FIRED_BOUND_MS = 100  # a hang bound on a flag the triggered timer sets at once
+def _grid_wakes(start_ms: int, stalls_ms: "list[int]") -> "list[int]":
+    # A TickGrid(1000) built at start_ms on the driven clock: the instant of each wake, the loop held stalls_ms[k]
+    # after wake k (a busy step), so a late and a skipped instant are both seen.
+    async def scenario(clock: DrivenTime) -> "list[int]":
+        grid = TickGrid(1000)
+        wakes = []
+        for stall in stalls_ms:
+            await grid.wait()
+            wakes.append(clock.now)
+            clock.advance(stall)  # a synchronous busy step: no yield
+        return wakes
+
+    with DrivenTime(asy_base_classes, now=start_ms, sleeps=True) as clock:
+
+        async def driven() -> "list[int]":
+            task = asyncio.create_task(scenario(clock))
+            await clock.run_until(task.done, 20_000)
+            return await task
+
+        return run(driven())
 
 
-def test_arm_tick_timer_arms_a_periodic_one_second_timer() -> None:
-    timer = machine.Timer()
-    flag = asyncio.ThreadSafeFlag()
-    pr = PrintLogHistory(level=1, name="T")
-    assert arm_tick_timer(timer, flag, pr, "test") is True
-    assert (timer.period, timer.mode) == (1000, machine.Timer.PERIODIC)
-
-    async def fired() -> bool:
-        timer.trigger()
-        await asyncio.wait_for_ms(flag.wait(), _FIRED_BOUND_MS)
-        return True
-
-    assert run(fired()) is True
+def test_tick_grid_wakes_on_its_grid_without_drift_and_skips_what_a_stall_missed() -> None:
+    # On the grid when idle; a 300 ms step shortens only the next wait; a 2.5 s stall wakes once at once, then the grid.
+    assert _grid_wakes(500, [0, 300, 0, 2500, 0, 0]) == [1500, 2500, 3500, 4500, 7000, 7500]
 
 
-def test_arm_tick_timer_reports_a_failed_arm_with_one_line() -> None:
-    # An alarm-pool refusal prints at the error level, and so does an allocation failure with its own text, the line
-    # the memory gates read; level 0 prints neither.
-    for exc, level, head in ((OSError, 1, ("T", "Could not arm", "test")), (OSError, 0, None), (MemoryError, 0, None), (MemoryError, 1, ("T", "Could not arm a 1 s tick timer:"))):
-        with RaiseOnArm(exc), record_prints() as recorder:
-            timer = machine.Timer()
-            pr = PrintLogHistory(level=level, name="T")
-            assert arm_tick_timer(timer, asyncio.ThreadSafeFlag(), pr, "test") is False
-        assert timer.period == -1  # never armed
-        if head is None:
-            assert recorder.lines == [], recorder.lines
-        else:
-            assert len(recorder.lines) == 1 and recorder.lines[0][: len(head)] == head, (head, recorder.lines)
-    assert "simulated allocation failure" in recorder.text()
+def test_tick_grid_starts_at_its_first_wait_not_at_its_construction() -> None:
+    # A loop that first waits 5 s after the grid was built (a long boot, a clock installed meanwhile) wakes a period
+    # after that first wait, on the grid from there.
+    with DrivenTime(asy_base_classes, sleeps=True) as clock:
+        grid = TickGrid(1000)
+        clock.advance(5000)
+
+        async def loop() -> "list[int]":
+            wakes = []
+            for _ in range(2):
+                await grid.wait()
+                wakes.append(clock.now)
+            return wakes
+
+        async def driven() -> "list[int]":
+            task = asyncio.create_task(loop())
+            await clock.run_until(task.done, 20_000)
+            return await task
+
+        assert run(driven()) == [6000, 7000]
+
+
+def test_tick_grid_crosses_the_ticks_wrap() -> None:
+    start = TICKS_PERIOD - 1500
+    assert [(w - start) % TICKS_PERIOD for w in _grid_wakes(start, [0, 0, 0])] == [1000, 2000, 3000]
 
 
 def test_utc_now_is_none_until_the_clock_is_marked_valid() -> None:

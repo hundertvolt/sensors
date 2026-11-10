@@ -217,9 +217,9 @@ async def _until(clock: "DrivenTime | None", what: str, condition: "Callable[[],
         waited += _POLL_S
 
 
-def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> None:
-    # SYSTEM's uptime tick stays unarmed for the boot, printed and not persisted, its uptime still measured on each
-    # read; NTP's starters print their refusal and go on; once the pool frees, WiFi's tick timer re-arms. No reset arms.
+def test_an_empty_alarm_pool_leaves_the_tick_cadences_running_and_arms_no_reset() -> None:
+    # SYSTEM's, WiFi's and NTP's cadences are deadline sleeps, no Timer: with the pool empty, SYSTEM's uptime passes
+    # still run, nothing is persisted for them, and no reset arms.
     async def scenario(clock: "DrivenTime") -> None:
         watchdog = await _driven(clock, "the boot never finished", _boot(_POOL))
         sysfunct, ntp, conn = module.sysfunct, module.ntp, module.conn
@@ -230,9 +230,7 @@ def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> Non
             uptime = await sysfunct.get_uptime()
             await _until(clock, "SYSTEM's uptime stood still while its tick was unarmed", lambda: sysfunct._uptime.read() > uptime)
             assert await _errors(sysfunct, code("E", "TIMER")) == 0, f"{device}: SYSTEM persisted its failed uptime arm"
-            assert conn._tick_armed is False, "WiFi's tick timer armed from an empty pool"
             machine.set_alarm_pool_free(_POOL)
-            await _until(clock, "WiFi's uptime tick never re-armed", lambda: conn._tick_armed is True)
             assert not sysfunct._reset_armed and machine.reset_count == 0, f"{device}: an exhausted pool armed a reset"
             assert watchdog.would_have_triggered_count == 0
         finally:

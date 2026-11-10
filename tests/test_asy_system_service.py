@@ -20,7 +20,7 @@ import micropython
 import microtest
 from _async_harness import cancel, newest_start, run, track_starts
 from _error_codes import code
-from _fake_time import DrivenTime
+from _fake_time import DrivenTime, ManualTick
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
@@ -39,7 +39,7 @@ import asy_config_manager as cm
 import asy_fram_manager
 import asy_print_log
 import asy_system_service
-from asy_base_classes import UNAVAILABLE, SensorReaderConfig
+from asy_base_classes import UNAVAILABLE, SensorReaderConfig, TickGrid
 from asy_crc_checks import CRC8, CRC32
 from asy_fram_manager import FRAMChunk, FRAMManager
 from asy_i2c_driver import I2C, I2CDevice
@@ -125,6 +125,7 @@ def _make_service(  # keywords mirror SystemService.__init__()'s own
         reset_reason=reset_reason, cfg_path=_tmp_cfg_dir() if cfg_path is None else cfg_path, log=log,
     )
     _SEQUENCES[id(svc)] = track_starts(svc, "_shutdown_sequence")
+    svc._tick = ManualTick()  # the status pass runs where a test pumps it
     return svc
 
 
@@ -147,9 +148,11 @@ def _driven(*, strict: bool = False) -> DrivenTime:
     return DrivenTime(asy_base_classes, asy_system_service, now=1000, strict=strict)
 
 
-async def _pump(flag: "asyncio.ThreadSafeFlag", ticks: int, clock: "DrivenTime | None" = None, step_ms: int = 1000, settle: int = 5) -> None:
-    # Drives a ThreadSafeFlag-gated loop forward `ticks` times, the driven clock advanced `step_ms` before each wake-up;
+async def _pump(grid: TickGrid, ticks: int, clock: "DrivenTime | None" = None, step_ms: int = 1000, settle: int = 5) -> None:
+    # Drives a ManualTick-gated loop forward `ticks` times, the driven clock advanced `step_ms` before each wake-up;
     # `settle` extra yields per tick let every await point of one loop iteration resolve before the next.
+    assert isinstance(grid, ManualTick), grid
+    flag = grid
     for _ in range(ticks):
         if clock is not None:
             clock.advance(step_ms)
@@ -301,7 +304,7 @@ def test_get_uptime_initial_value_is_zero_before_status_counter_runs() -> None:
 
 def test_get_boot_signature_initial_value_before_status_counter_runs() -> None:
     svc = _make_service()
-    assert run(svc.get_boot_signature()) is None  # LockedValue(init_value=None)'s own default
+    assert run(svc.get_boot_signature()) is None  # unresolved until the status pass resolves it
 
 
 def test_ntp_boot_signature_not_synced_returns_none() -> None:
@@ -340,11 +343,11 @@ def test_a_synced_signature_reads_utc_now() -> None:
 
 
 def test_a_32_bit_signature_round_trips() -> None:
-    # The signature is an identifier, never stepped: a LockedValue, so no counter cap clamps it.
+    # The signature is an identifier, never stepped, so no counter cap clamps it.
     svc = _make_service()
-    run(svc._boot_signature.set_value(1_790_000_000))
+    svc._boot_signature = 1_790_000_000
     assert run(svc.get_boot_signature()) == 1_790_000_000
-    run(svc._boot_signature.set_value(0xFFFFFFFF))  # a random signature uses the full 32 bits
+    svc._boot_signature = 0xFFFFFFFF  # a random signature uses the full 32 bits
     assert run(svc.get_boot_signature()) == 0xFFFFFFFF
 
 
@@ -361,7 +364,7 @@ def _run_status_loop(svc: SystemService, clock: DrivenTime, ticks: int) -> "tupl
     # Runs the status loop over `ticks` driven seconds; answers (signature resolved, signature, uptime).
     async def scenario() -> "tuple[bool, int | float | None, int]":
         task = asyncio.create_task(svc._status_loop())
-        await _pump(svc._uptime_event, ticks, clock)
+        await _pump(svc._tick, ticks, clock)
         result = (svc._start_time_set, await svc.get_boot_signature(), await svc.get_uptime())
         await cancel(task)
         return result
@@ -434,11 +437,11 @@ def test_status_counter_boot_signature_never_changes_again_once_resolved() -> No
     ntp, _calls = _make_ntp_stub(synced=True)
     asy_base_classes.set_utc_valid()
 
-    async def scenario(svc: SystemService, clock: DrivenTime) -> "list[int | float | None]":
+    async def scenario(svc: SystemService, clock: DrivenTime) -> "list[int | None]":
         task = asyncio.create_task(svc._status_loop())
-        await _pump(svc._uptime_event, 1, clock)
+        await _pump(svc._tick, 1, clock)
         seen = [await svc.get_boot_signature()]
-        await _pump(svc._uptime_event, 10, clock)
+        await _pump(svc._tick, 10, clock)
         seen.append(await svc.get_boot_signature())
         await cancel(task)
         return seen
@@ -457,7 +460,7 @@ def test_uptime_is_measured_not_counted() -> None:
     async def wakes(svc: SystemService, clock: DrivenTime, gaps_ms: "list[int]") -> int:
         task = asyncio.create_task(svc._status_loop())
         for gap in gaps_ms:
-            await _pump(svc._uptime_event, 1, clock, step_ms=gap)
+            await _pump(svc._tick, 1, clock, step_ms=gap)
         uptime = await svc.get_uptime()
         await cancel(task)
         return uptime
@@ -467,16 +470,13 @@ def test_uptime_is_measured_not_counted() -> None:
         svc = _make_service()
         clock.advance(5000)  # (b) no wake-up for 5,000 ms, then one
         assert run(wakes(svc, clock, [0])) == 5
-    with _driven() as clock:  # (c) a dropped wake-up loses nothing: the next read carries the elapsed time
+    with _driven() as clock:  # (c) a skipped wake-up loses nothing: the next read carries the elapsed time
         svc = _make_service()
-        svc.start_uptime_timer()
 
         async def dropped() -> int:
             task = asyncio.create_task(svc._status_loop())
-            clock.advance(1000)
-            svc._uptime_timer.drop()
-            clock.advance(1000)
-            svc._uptime_timer.trigger()
+            clock.advance(2000)  # no pass at 1 s
+            await _pump(svc._tick, 1, settle=0)
             for _ in range(5):
                 await asyncio.sleep(0)
             uptime = await svc.get_uptime()
@@ -492,11 +492,11 @@ def test_a_restarted_counter_keeps_the_signature() -> None:
     # A supervisor restart of the uptime task changes neither the signature nor uptime (both live outside it).
     async def restart(svc: SystemService, clock: DrivenTime, first_ticks: int) -> "tuple[int | float | None, int | float | None, int]":
         task = asyncio.create_task(svc._status_loop())
-        await _pump(svc._uptime_event, first_ticks, clock)
+        await _pump(svc._tick, first_ticks, clock)
         before = await svc.get_boot_signature()
         await cancel(task)
         task = asyncio.create_task(svc._status_loop())
-        await _pump(svc._uptime_event, 2, clock)
+        await _pump(svc._tick, 2, clock)
         after = await svc.get_boot_signature()
         uptime = await svc.get_uptime()
         await cancel(task)
@@ -522,48 +522,31 @@ def test_a_restarted_counter_keeps_the_signature() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_start_timers_with_no_starters_arms_nothing() -> None:
+def test_start_timers_with_no_starters_waits_for_nothing() -> None:
+    svc = _make_service()
+    with FastAsyncSleep() as sleeps:
+        run(svc.start_timers([], []))
+    assert [ms for _task, _seconds, ms in sleeps.slept] == []
+
+
+def test_triggers_start_in_order_each_at_its_slot_by_deadline_sleeps() -> None:
+    # The timer starters first, then trigger k at t0 + k * slot (1000 // 4 here) on the driven clock: no Timer.
     svc = _make_service()
     before = list(Timer.all_timers)
-    run(svc.start_timers([], []))
-    assert Timer.all_timers == before
-    assert svc._sequencer_timer.period == -1  # never armed
+    started: list[tuple[str, int]] = []
 
+    async def scenario(clock: DrivenTime) -> None:
+        def mark(name: str) -> "Callable[[], None]":
+            return lambda: started.append((name, clock.now))
 
-def test_a_single_trigger_starts_without_a_stagger_timer() -> None:
-    svc = _make_service()
-    started: list[int] = []
-    run(svc.start_timers([lambda: started.append(1)], []))
-    assert started == [1]
-    assert svc._sequencer_timer.period == -1  # slot 0 starts at the shared start itself
-
-
-def test_triggers_start_in_order_on_the_one_preallocated_timer() -> None:
-    svc = _make_service()
-    before = list(Timer.all_timers)
-    started: list[str] = []
-    timers = [lambda: started.append("t1"), lambda: started.append("t2")]
-    triggers = [lambda: started.append("r1"), lambda: started.append("r2"), lambda: started.append("r3")]
-    first_id = id(svc._sequencer_timer)
-
-    async def scenario() -> None:
-        task = asyncio.create_task(svc.start_timers(triggers, timers))
-        for _ in range(5):
-            await asyncio.sleep(0)
-        assert started == ["t1", "t2", "r1"]  # the timer starters first, then trigger 0 at once
-        for n in (2, 3):
-            assert svc._sequencer_timer.mode == Timer.ONE_SHOT
-            assert 0 < svc._sequencer_timer.period <= (n - 1) * 250  # trigger n-1 waits for its slot
-            svc._sequencer_timer.trigger()
-            for _ in range(5):
-                await asyncio.sleep(0)
-            assert started[-1] == "r" + str(n)
+        task = asyncio.create_task(svc.start_timers([mark("r1"), mark("r2"), mark("r3")], [mark("t1"), mark("t2")]))
+        await clock.run_until(task.done, 1000)
         await task
 
-    run(scenario())
-    assert started == ["t1", "t2", "r1", "r2", "r3"]
-    assert id(svc._sequencer_timer) == first_id
-    assert Timer.all_timers == before  # one preallocated Timer re-armed through init(), none constructed
+    with DrivenTime(asy_system_service, now=0, sleeps=True) as clock:
+        run(scenario(clock))
+    assert started == [("t1", 0), ("t2", 0), ("r1", 0), ("r2", 250), ("r3", 500)], started
+    assert Timer.all_timers == before
 
 
 def test_a_raising_starter_is_persisted_and_sequencing_continues() -> None:
@@ -580,27 +563,6 @@ def test_a_raising_starter_is_persisted_and_sequencing_continues() -> None:
     assert _persisted(svc) == [code("E", "TASK_STARTER_RAISED")]
     assert [line[:3] for line in recorder.lines if line[1] == "Timer starter"] == [("SYSTEM", "Timer starter", 0)]
 
-
-def _start_triggers_with_every_arm_failing(exc: "type[BaseException]") -> "tuple[SystemService, list[int]]":
-    svc = _make_service()
-    started: list[int] = []
-    triggers = [lambda: started.append(1), lambda: started.append(2), lambda: started.append(3)]
-    with FastAsyncSleep(), RaiseOnArm(exc):
-        run(svc.start_timers(triggers, []))
-    return svc, started
-
-
-def test_an_arm_failure_falls_back_to_a_sleep_and_still_starts_every_trigger() -> None:
-    for exc in (OSError, MemoryError):
-        svc, started = _start_triggers_with_every_arm_failing(exc)
-        assert started == [1, 2, 3]  # degraded in place, never stopped early
-        assert svc.pr._err_count == 2  # one entry per failed stagger arm (trigger 0 needs none)
-        assert _persisted(svc) == [code("E", "TIMER")]
-
-
-# ---------------------------------------------------------------------------
-# The reset path: reboot_system()/reboot_bootloader() through the command gate, and _reboot() - record, flush, pause, arm
-# ---------------------------------------------------------------------------
 
 _SETTLE_MS = 30_000  # a limit, not a timing claim: the 256 KB erase's sequence ends far inside it
 _SEQUENCE_POLL_MS = 1  # how often _sequence_done() looks at the sequence's task again, in real time
@@ -744,7 +706,7 @@ def test_reboot_system_with_fram_pauses_storage_and_a_pending_unpause_never_reop
                 assert await _command(svc, svc.reboot_system) is True
             assert manager.get_pause() is True  # paused at once, before the reset timer ever fires
             loop = asyncio.create_task(svc._status_loop())
-            await _pump(svc._uptime_event, 61, clock)  # the pending deadline passes inside the countdown
+            await _pump(svc._tick, 61, clock)  # the pending deadline passes inside the countdown
             assert not loop.done()  # the pass that refused the deadline kept running; the run's end cancels it
             await _fire(svc)
 
@@ -2415,7 +2377,7 @@ def test_a_deadline_crossed_after_an_accepted_command_leaves_storage_paused() ->
             await rig.start(supervise=False)
             assert rig.svc.pause_permanent_storage(10) is True
             assert await rig.svc.reboot_system() is True
-            await _pump(rig.svc._uptime_event, 12, clock)
+            await _pump(rig.svc._tick, 12, clock)
             await _retire(status)
             await rig.stop(None)
 
@@ -2542,12 +2504,12 @@ def test_the_first_pass_past_the_deadline_unpauses_and_logs_one_line() -> None:
         async def scenario() -> None:
             task = asyncio.create_task(svc._status_loop())
             assert svc.pause_permanent_storage(60) is True
-            await _pump(svc._uptime_event, 59, clock)
-            await _pump(svc._uptime_event, 1, clock, step_ms=999)  # 1 ms before the deadline
+            await _pump(svc._tick, 59, clock)
+            await _pump(svc._tick, 1, clock, step_ms=999)  # 1 ms before the deadline
             assert (manager.get_pause(), _pending(svc)) == (True, True)
-            await _pump(svc._uptime_event, 1, clock, step_ms=1)  # the first pass at it
+            await _pump(svc._tick, 1, clock, step_ms=1)  # the first pass at it
             assert (manager.get_pause(), _pending(svc)) == (False, False)
-            await _pump(svc._uptime_event, 3, clock)
+            await _pump(svc._tick, 3, clock)
             await cancel(task)
 
         run(scenario())
@@ -2562,37 +2524,10 @@ def test_a_second_pause_replaces_the_first_deadline() -> None:
             task = asyncio.create_task(svc._status_loop())
             svc.pause_permanent_storage(60)
             svc.pause_permanent_storage(120)
-            await _pump(svc._uptime_event, 61, clock)
+            await _pump(svc._tick, 61, clock)
             assert manager.get_pause() is True  # the first deadline is gone
-            await _pump(svc._uptime_event, 60, clock)
+            await _pump(svc._tick, 60, clock)
             assert manager.get_pause() is False
-            await cancel(task)
-
-        run(scenario())
-
-
-def test_a_dropped_tick_delays_the_unpause_by_one_pass() -> None:
-    with _driven() as clock:
-        svc, manager = _paused_service()
-        svc.start_uptime_timer()
-
-        async def scenario() -> None:
-            task = asyncio.create_task(svc._status_loop())
-            svc.pause_permanent_storage(2)
-            for drop in (False, True):
-                clock.advance(1000)
-                if drop:
-                    svc._uptime_timer.drop()  # the crossing tick's callback lost to a full scheduler queue
-                else:
-                    svc._uptime_timer.trigger()
-                for _ in range(5):
-                    await asyncio.sleep(0)
-            assert manager.get_pause() is True  # crossed at 2 s, but the pass never ran
-            clock.advance(1000)
-            svc._uptime_timer.trigger()
-            for _ in range(5):
-                await asyncio.sleep(0)
-            assert manager.get_pause() is False  # the next pass unpauses
             await cancel(task)
 
         run(scenario())
@@ -2606,7 +2541,7 @@ def test_a_deadline_crossed_after_a_reset_leaves_storage_paused() -> None:
             task = asyncio.create_task(svc._status_loop())
             svc.pause_permanent_storage(10)
             await svc._reboot(_const("_RR_REBOOT"), "Reboot triggered", machine.reset)
-            await _pump(svc._uptime_event, 12, clock)
+            await _pump(svc._tick, 12, clock)
             await cancel(task)
             await cancel(svc._reset_task)  # type: ignore[arg-type]
 
@@ -2632,31 +2567,8 @@ def test_get_task_starters_starter_returns_a_real_task() -> None:
     run(scenario())
 
 
-def test_get_timer_starters_starter_arms_the_uptime_timer() -> None:
-    svc = _make_service()
-    starters = svc.get_timer_starters()
-    assert len(starters) == 1
-    starters[0]()
-    assert svc._uptime_timer.mode == Timer.PERIODIC
-    assert svc._uptime_timer.period == 1000
-
-
-def test_start_uptime_timer_degrades_when_it_cannot_be_armed() -> None:
-    # Owner-confirmed design (2026-07-18, `1df8bc4`): a failed arm degrades rather than reboots, printed, not persisted;
-    # uptime stays measured on each read, while the passes it wakes stop for the boot.
-    for exc in (OSError, MemoryError):
-        svc = _make_service()
-        with RaiseOnArm(exc):
-            svc.start_uptime_timer()  # must not raise despite the timer failing to arm
-        assert not svc._uptime_event.state  # no pass is woken
-        assert svc.pr._err_count == 0
-        assert svc._force_watchdog_starve is False  # graceful degradation, not a forced reboot
-        assert svc._uptime_timer.period == -1  # never actually armed
-
-
-# ---------------------------------------------------------------------------
-# get_error_counter / reset_error_counter
-# ---------------------------------------------------------------------------
+def test_get_timer_starters_is_empty_the_status_cadence_being_its_own_sleep() -> None:
+    assert _make_service().get_timer_starters() == []
 
 
 def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> None:

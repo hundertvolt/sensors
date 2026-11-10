@@ -310,13 +310,7 @@ def test_the_settle_window_is_held_at_its_p99_and_its_maximum_to_the_bound(harne
     assert (failures == []) if expected is None else any(expected in f for f in failures), failures
 
 
-def test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused(harness: ModuleType) -> None:
-    for device in harness.generated_devices():
-        text = (harness.GENERATED_SRC_DIR / f"sensortask_{device}.py").read_text(encoding="utf-8")
-        starter = text[text.index("def _collect_trigger_starters") :].split("\n\n", 1)[0]
-        modules = re.search(r"for module in \(([^)]*)\)", starter)
-        assert modules is not None, device
-        assert harness._stagger_waits(device) == (len([m for m in modules.group(1).split(",") if m.strip()]) > 1), (device, modules.group(1))
+def test_an_unknown_device_property_is_refused(harness: ModuleType) -> None:
     def body(_ctx: object) -> None:
         """A body asking for a property no device is read for."""
 

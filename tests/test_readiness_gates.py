@@ -270,20 +270,17 @@ def test_fram_manager_answers_before_and_after_a_setup_that_finds_no_chip() -> N
     assert _answers(manager, calls) == []
 
 
-def test_neopixel_driver_answers_before_and_after_a_setup_whose_logger_cannot_reach_its_store() -> None:
-    driver = NeopixelDriver(18, log=LogConfig(_fram(writable=False), 4, None))
+def test_neopixel_driver_answers_from_construction_with_no_setup_and_no_error_source() -> None:
+    driver = NeopixelDriver(18, log=LogConfig(_fram(writable=False), 4, None))  # a store it never reaches: no chunk
     calls: Calls = {
-        "get_error_counter": ((), _is_log_of(driver.name)),
-        "get_error_sources": ((), lambda r: r == [driver]),
+        "get_error_sources": ((), lambda r: r == []),
         "get_loggers": ((), lambda r: r == [driver.pr]),
         "get_timer_starters": ((), lambda r: r == []),
         "on": ((), _is(None)),
         "off": ((), _is(None)),
         "toggle": ((), _is(None)),
     }
-    assert _answers(driver, calls) == []
-    assert run(driver.setup()) is None  # a logger that cannot reach its store has logged it and runs in RAM
-    assert driver.pr.initialized is False
+    assert not hasattr(driver, "setup")
     assert _answers(driver, calls) == []
 
 

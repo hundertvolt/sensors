@@ -10,6 +10,7 @@ Verified against FN8424 Rev 3.00 (datasheets/isl29125/REN_isl29125_DST_20151201_
 """
 
 import asyncio
+import math
 import struct
 import time
 from collections import namedtuple
@@ -17,8 +18,7 @@ from collections import namedtuple
 from machine import Pin, Timer
 from micropython import const
 
-import math_helpers
-from asy_base_classes import COUNTER_CAP, DeviceSession, LockedValue, SensorReaderConfig, utc_now
+from asy_base_classes import COUNTER_CAP, DeviceSession, SensorReaderConfig, utc_now
 from asy_config_manager import checked_numeric, name_cfg
 from asy_i2c_driver import I2CDevice
 from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from asy_base_classes import JsonDict, TaskStarter, TimerStarter
     from asy_config_manager import CfgValue, ConfigSchema
     from asy_i2c_driver import I2C
-    from asy_print_log import ErrorLog
 
 
 # Codes from the global catalog (buildgen/error_catalog.json; SPECIFICATION.md Part C.7.1).
@@ -125,9 +124,6 @@ _CAL_STABILITY_TOL = const(0.02)  # 2% between the sandwich's first and third re
 _AR_DOWN_DIVISOR = const(53.333333333333336)  # 2 x the NOMINAL range ratio - see _down_thresh()
 # @tunable isl29125.settle_cycles = 2
 _SETTLE_CYCLES = const(2)  # conversions discarded after a CONFIG1 write, fixed - see configure()
-# @tunable isl29125.settle_wait_max_rounds = 2
-_SETTLE_WAIT_MAX_ROUNDS = const(2)  # one extra cycle past the deadline, so a stream of concurrent
-# config writes can extend the settle but can never starve the read loop indefinitely.
 # @tunable isl29125.periodic_only_warn_at = 5
 _PERIODIC_ONLY_WARN_AT = const(5)  # consecutive periodic-path switches with no preceding interrupt
 
@@ -139,6 +135,21 @@ _MIN_FILT_COEFF = const(-1.0)
 _MAX_FILT_COEFF = const(1.0)
 _MIN_AR_THRESH = const(50.0)
 _MAX_AR_THRESH = const(95.0)
+
+# Colour-chain domains. The RGB triples these take are already normalised 0-1 by the driver's own
+# scaling chain (SPECIFICATION.md Part M.1.3), so anything outside means that chain is
+# broken, not that the light was unusual - hence a reject rather than a clamp.
+_COLOUR_IN_MIN = const(0.0)
+_COLOUR_IN_MAX = const(1.0)
+# 1e-12 rather than 0.0: a denormal X+Y+Z would otherwise divide out to a ~1e300 chromaticity.
+# The upper bound is what rejects +-inf (and, through the sum, a NaN in any single component).
+_CHROMA_SUM_MIN = const(1e-12)
+_CHROMA_SUM_MAX = const(1e9)
+_CCT_EPICENTRE_EPS = const(1e-9)  # McCamy's n diverges at y = 0.1858 - a plausible chromaticity
+# Output span 2000-12500 K. On the Planckian locus the cubic is within 1 % up to 9000 K, -1.2 % at 10000 K,
+# -3.5 % at 12500 K (Planck's law, CIE 1931 2-degree observer; agent, 2026-09-29).
+_CCT_MIN = const(2000.0)
+_CCT_MAX = const(12500.0)
 
 _VAL_SAMPLE_INTERVAL = const((("SampleInterval", "int", 1, _MIN_TRIGGER_S, _MAX_TRIGGER_S, None),))
 # Resolution/Range/IRCompOffset are genuine discrete allowed-value sets, not
@@ -217,6 +228,85 @@ if TYPE_CHECKING:
 # @limits trigger_s 1..3600
 
 
+def cct_mccamy(chroma_x: float | None, chroma_y: float | None) -> float | None:
+    # McCamy (1992) cubic CCT from CIE 1931 chromaticity. The circulated sign-flipped form -
+    # n = (x - 0.3320)/(y - 0.1858) with -449/+3525/-6823.3 - is algebraically the same function.
+    # Out-of-span results are REJECTED, not clamped: a clamped 12500 would look like a real one.
+    if chroma_x is None or chroma_y is None:
+        return None
+    if not (_COLOUR_IN_MIN <= chroma_x <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= chroma_y <= _COLOUR_IN_MAX):
+        return None
+    denominator = 0.1858 - chroma_y
+    if abs(denominator) < _CCT_EPICENTRE_EPS:  # the epicentre is a real division by zero here
+        return None
+    n_val = (chroma_x - 0.3320) / denominator
+    cct = 449.0 * n_val**3 + 3525.0 * n_val**2 + 6823.3 * n_val + 5520.33
+    if not (_CCT_MIN <= cct <= _CCT_MAX):
+        return None
+    return cct
+
+
+def chromaticity_xy(x_val: float | None, y_val: float | None, z_val: float | None) -> tuple[float, float] | None:
+    # CIE 1931 chromaticity, the step that makes CCT range- and resolution-invariant: any common
+    # scale factor cancels. The single windowed sum test rejects darkness, a negative sum, +-inf and
+    # NaN at once. The low-light POLICY floor is a device fact and lives in the driver, in counts.
+    if x_val is None or y_val is None or z_val is None:
+        return None
+    total = x_val + y_val + z_val
+    if not (_CHROMA_SUM_MIN <= total <= _CHROMA_SUM_MAX):
+        return None
+    return x_val / total, y_val / total
+
+
+def ema_step(previous: float | None, sample: float | None, coefficient: float | None) -> float | None:
+    # The project's single first-order EMA (Part G.2), promoted from the legacy SHTC3/MPRLS
+    # readers. A coefficient outside (0, 1] means "filter off", the convention FiltCoeff = -1.0
+    # relies on. isfinite(), not a range gate: one NaN would poison the caller's state for good.
+    if sample is None or not math.isfinite(sample):
+        return None
+    if coefficient is None or not (0.0 < coefficient <= 1.0):  # a NaN coefficient lands here too
+        return sample
+    if previous is None or not math.isfinite(previous):  # unseeded, or an already-poisoned state
+        return sample
+    return previous + coefficient * (sample - previous)
+
+
+def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> tuple[float, float, float] | None:
+    # Standard HSV/HSB hexcone over a normalised 0-1 triple: hue in [0, 360), S and B in [0, 1].
+    # Returns a tuple, unlike the rest of this file, because all three derive from one max/min and
+    # separate entry points could disagree. The range gate also catches NaN, which compares false.
+    if red is None or green is None or blue is None:
+        return None
+    if not (_COLOUR_IN_MIN <= red <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= green <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= blue <= _COLOUR_IN_MAX):
+        return None
+    bri = max(red, green, blue)
+    chroma = bri - min(red, green, blue)
+    if chroma == 0.0:  # grey is a valid colour with no hue - None here would be a read failure
+        return 0.0, 0.0, bri
+    if bri == red:
+        hue = 60.0 * (((green - blue) / chroma) % 6.0)
+    elif bri == green:
+        hue = 60.0 * ((blue - red) / chroma + 2.0)
+    else:
+        hue = 60.0 * ((red - green) / chroma + 4.0)
+    hue %= 360.0  # wrapped exactly once, here, so no branch above has to get it right
+    return hue, chroma / bri, bri
+
+
+def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> tuple[float, float, float] | None:
+    # sRGB/Rec.709 D65 primaries, pinned as literals: a second published rounding differs in the 6th decimal, and neither
+    # corrects the other (agent, 2026-09-12; Part M.1.3; owner-reviewed, 2026-11-06). No gamma decode - this sensor is
+    # linear in irradiance. A documented PLACEHOLDER: p13 Eq. 1 says the coefficients are per-setup.
+    if red is None or green is None or blue is None:
+        return None
+    if not (_COLOUR_IN_MIN <= red <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= green <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= blue <= _COLOUR_IN_MAX):
+        return None
+    x_val = 0.4124564 * red + 0.3575761 * green + 0.1804375 * blue
+    y_val = 0.2126729 * red + 0.7151522 * green + 0.0721750 * blue
+    z_val = 0.0193339 * red + 0.1191920 * green + 0.9503041 * blue
+    return x_val, y_val, z_val
+
+
 class ISL29125_Reader(SensorReaderConfig):
     def __init__(
         self,
@@ -254,7 +344,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self._read_event = asyncio.ThreadSafeFlag()
         # Bare Timer() is valid on rp2 (id defaults to -1); the stub requires an id. Removal trigger: SPECIFICATION.md B.15.
         self._trigger_timer = Timer()
-        self._trigger_period = LockedValue(init_value=int(trigger_s))
+        self._trigger_period = int(trigger_s)
         self._trigger_counter = 0
         self._range_auto = True
         self._fixed_range = _RANGE_HIGH_LUX
@@ -285,7 +375,6 @@ class ISL29125_Reader(SensorReaderConfig):
         # FiltCoeff, cached like the other software knobs, and the value this cycle captured (schema default: off).
         self._filt_coeff = -1.0
         self._cycle_filter = -1.0
-        self._unsettled_cycle = False  # this cycle's settle outlasted its bound: discarded, never a failure
         # Calibration-run state, all RAM-only: a run is user-started, bounded, and publishes a
         # measurement - nothing here reaches the flash. A flag plus a bare deadline, not an Optional
         # one: time.ticks_ms() types as the stubs' _TicksMs, unspellable in an annotation (F.1).
@@ -360,13 +449,13 @@ class ISL29125_Reader(SensorReaderConfig):
         if green_counts < _CCT_FLOOR_COUNTS:
             self.pr.all("below the CCT low-light floor", green_counts)
             return None
-        xyz = math_helpers.rgb_to_xyz(norm[1], norm[0], norm[2])
+        xyz = rgb_to_xyz(norm[1], norm[0], norm[2])
         if xyz is None:
             return None
-        chroma = math_helpers.chromaticity_xy(xyz[0], xyz[1], xyz[2])
+        chroma = chromaticity_xy(xyz[0], xyz[1], xyz[2])
         if chroma is None:
             return None
-        return math_helpers.cct_mccamy(chroma[0], chroma[1])
+        return cct_mccamy(chroma[0], chroma[1])
 
     async def _device_id_answers(self) -> bool:
         # One extra transaction, spent only when the all-ones heuristic already fired - so a false
@@ -621,7 +710,6 @@ class ISL29125_Reader(SensorReaderConfig):
         return type(value) is int and await self.set_trigger_s(value)
 
     async def _read_isl(self) -> "ISLResults":
-        self._unsettled_cycle = False
         timestamp = utc_now()  # None until the NTP client has set the clock this boot
         green: int | None = None
         red: int | None = None
@@ -648,12 +736,7 @@ class ISL29125_Reader(SensorReaderConfig):
             # Before the settle wait, so a re-apply it triggers restarts the conversion in time for
             # that same wait to absorb it - no extra return path, and no sample taken mid-re-apply.
             await self._verify_after_failed_write()
-            if self._isl.time_to_settle_ms() > 0:
-                await self._settle_wait()
-                if self._isl.time_to_settle_ms() > 0:
-                    # Past the bound the data may come from the previous CONFIG1: discard the cycle, count nothing.
-                    self._unsettled_cycle = True
-                    return None, None, None, None, None, timestamp
+            await self._settle_wait()
             # The three inputs that scale this reading, captured after the settle wait - which is
             # what guarantees the conversion was made under the config live now - and before the
             # first await that can yield. p13: a later push cannot change what is read, only this.
@@ -707,9 +790,8 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._read_event.wait()  # timer divider or INT pin, whichever came first
             self.pr.evt("sensor trigger")
             results = await self._read_isl()  # read data
-            # A failed read clears every measured value; TS alone is None until the first NTP sync, and a cycle
-            # discarded past the settle bound read nothing to fail - neither counts.
-            if not await self._error_check(results, condition=results[0] is None and not self._unsettled_cycle):
+            # A failed read clears every measured value; TS alone is None until the first NTP sync, which never counts.
+            if not await self._error_check(results, condition=results[0] is None):
                 return  # break and restart if too many errors
             await self._store_isl(results)  # store data in result buffer
 
@@ -792,15 +874,13 @@ class ISL29125_Reader(SensorReaderConfig):
         return await self._reapply_configuration()
 
     async def _settle_wait(self) -> None:
-        # Bounded rather than an open `while pending`: concurrent config writes can keep pushing the
-        # deadline out; past the bound the cycle is discarded, never published, so the loop cannot
-        # starve and nothing stale is reported.
-        for _ in range(_SETTLE_WAIT_MAX_ROUNDS):
-            remaining = self._isl.time_to_settle_ms()
-            if remaining <= 0:
-                return
+        # Until the datasheet settle after the device's own last CONFIG1 write has passed: only its own writes move
+        # the deadline, so the wait ends, with no round cap (each write's settle is _SETTLE_CYCLES conversions).
+        remaining = self._isl.time_to_settle_ms()
+        while remaining > 0:
             self.pr.all("settle discard", remaining)
             await asyncio.sleep_ms(remaining)
+            remaining = self._isl.time_to_settle_ms()
 
     async def _snapshot_field(self, index: int, what: str) -> int | None:
         try:
@@ -823,7 +903,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # The filter runs on the three absolute lux channels, not on the derived outputs, so Lux,
         # RGB, HSB and CCT all stay mutually consistent and there is exactly one filter state.
         for index, value in enumerate(lux):
-            filtered = math_helpers.ema_step(self._filtered[index], value, filter_coefficient)
+            filtered = ema_step(self._filtered[index], value, filter_coefficient)
             if filtered is not None:
                 self._filtered[index] = filtered
                 lux[index] = filtered
@@ -834,7 +914,7 @@ class ISL29125_Reader(SensorReaderConfig):
         span = float(sample_span)
         norm = [min(1.0, max(0.0, value / span)) for value in lux]
 
-        hsb = math_helpers.rgb_to_hsb(norm[1], norm[0], norm[2])  # red, green, blue
+        hsb = rgb_to_hsb(norm[1], norm[0], norm[2])  # red, green, blue
         hue, sat, bri = hsb if hsb is not None else (None, None, None)
         await self._set_meas_data(
             ISL29125(
@@ -918,19 +998,14 @@ class ISL29125_Reader(SensorReaderConfig):
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_read, self.start_asy_trigger]
 
-    def get_timer_starters(self) -> "list[TimerStarter]":
-        return []
-
     def get_trigger_starters(self) -> "list[TimerStarter]":
         return [self.start_timer]
 
     def start_asy_read(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._read_loop())
+        return asyncio.create_task(self._read_loop())
 
     def start_asy_trigger(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._trigger_loop())
+        return asyncio.create_task(self._trigger_loop())
 
     def start_timer(self) -> None:
         try:
@@ -987,9 +1062,6 @@ class ISL29125_Reader(SensorReaderConfig):
                 "TS": data.TS,
             },
         }
-
-    async def get_error_counter(self) -> "ErrorLog":
-        return await self.pr.get_log()
 
     async def get_ir_comp_adjust(self) -> int | None:
         return await self._snapshot_field(3, "IR compensation adjust")
@@ -1094,8 +1166,7 @@ class ISL29125_Reader(SensorReaderConfig):
             self.pr.err_q("Error setting resolution:", e, errno=_ERR_CHIP_SET)
             return False
         # A resolution change changes the cycle length, so the derived persistence changes with it.
-        period = await self._trigger_period.get_value()
-        if not await self._reapply_persist(int(period)):  # type: ignore[arg-type]  # set at construction, never None
+        if not await self._reapply_persist(self._trigger_period):
             return False
         # The registers compare the RAW ADC value, so a resolution change rescales them, armed or not.
         await self._write_thresholds()
@@ -1105,7 +1176,7 @@ class ISL29125_Reader(SensorReaderConfig):
         trigger_s = await self._checked_cfg(value, _VAL_SAMPLE_INTERVAL)
         if trigger_s is None:
             return False
-        await self._trigger_period.set_value(int(trigger_s))
+        self._trigger_period = int(trigger_s)
         return await self._reapply_persist(int(trigger_s))
 
     # -- others ------------------------------------------------------------

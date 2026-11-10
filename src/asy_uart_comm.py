@@ -11,8 +11,9 @@ from collections import namedtuple
 
 from micropython import const
 
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
+from asy_uart_driver import PieceBuffer
 
 try:
     from typing import TYPE_CHECKING
@@ -1000,8 +1001,7 @@ class UARTComm:
         return []  # no machine.Timer anywhere in this module, deliberately
 
     def start_asy_listen(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._listen_loop())
+        return asyncio.create_task(self._listen_loop())
 
     # -- getters -----------------------------------------------------------
 

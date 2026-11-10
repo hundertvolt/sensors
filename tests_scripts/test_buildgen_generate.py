@@ -1292,7 +1292,7 @@ def test_a_device_with_led_target_builds_the_neopixel_first_and_passes_it_to_con
 
 def test_every_constructor_logs_through_its_fram_targets_log_config(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # One LogConfig per FRAM store, built right after it; the FRAM manager itself gets the FRAM-less
-    # one, and so does any module with no fram_target (here: the notification).
+    # one, and so does any module with no fram_target (here: the notification, and the neopixel, which has nothing to log).
     doc = base_doc()
     del table_at(doc, "instance", 4, "wiring")["fram_target"]
     source = generate_device(write_doc(tmp_path, "log_configs", doc), src_dir, ext_dir).module_source
@@ -1302,9 +1302,9 @@ def test_every_constructor_logs_through_its_fram_targets_log_config(tmp_path: Pa
     assert fram_line == "fram = FRAMManager(spi0, 1, max_size=0x2000, log=log_ram)"
     assert after == "log_fram = LogConfig(fram, DEFAULT_LOG.history_length, debug)"
     calls = {line.split(" = ")[0]: line for line in lines if re.match(r"\w+ = [A-Z]\w*\(", line) and not line.startswith(("log_", "watchdog", "app"))}
-    for var in ("scd30", "sgp40", "neopixel", "conn", "ntp", "sysfunct"):
+    for var in ("scd30", "sgp40", "conn", "ntp", "sysfunct"):
         assert "log=log_fram" in calls[var], calls[var]
-    assert "log=log_ram" in calls["notification"]
+    assert "log=log_ram" in calls["notification"] and "log=log_ram" in calls["neopixel"]
     assert "debug=debug" not in source.split("async def build_system(")[1].split("async def main(")[0].split(") -> None:")[1]
     assert "fram=" not in source
 

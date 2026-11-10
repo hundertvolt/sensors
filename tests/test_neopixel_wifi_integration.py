@@ -1,9 +1,7 @@
 """Cross-module seams of a real NeopixelDriver: asy_wifi_service.py's ext_led= on WifiService (the LEDControl Protocol
-and its flash task's hotspot patterns), a real WebserverService's error_sources (the _ModuleLike shape) and a generated
-device's timer-starter collection. Only tests/neopixel.py's fake write surface is mocked (and the patterns' sleeps)."""
+and its flash task's hotspot patterns), and a generated device's error-source and timer-starter collections. Only tests/neopixel.py's fake write surface is mocked (and the patterns' sleeps)."""
 
 import asyncio
-import json
 import os
 import sys
 
@@ -13,14 +11,10 @@ from _async_harness import cancel, run
 from _fast_sleep import check_sleep_ms
 from _generated_tree import require_fresh
 from _sensortask_scenarios import build
-from _shared_rest_roundtrip import drain_json
-from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
 from _twin_devices import devices_with, distinct_wirings
-from microdot import Microdot, Request, Response
 
 from asy_neopixel_driver import NeopixelDriver
-from asy_webserver_service import RouteSources, ServingLimits, WebserverService
 from asy_wifi_service import WifiConfig, WifiService
 
 try:
@@ -33,8 +27,6 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
-    from asy_base_classes import JsonDict
-
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
 # module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
@@ -43,7 +35,6 @@ _scratch = TmpScratch("neopixel_wifi")
 
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
     pixel = NeopixelDriver(0, neopixel_freq=100)
-    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
     run(conn.setup())
 
@@ -51,7 +42,6 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
         return lambda: pixel._pixel.writes[-1:] == [[colour]]
 
     async def scenario() -> "tuple[bool, bool, bool]":
-        overlay_task = pixel.start_asy_overlay()
         await asyncio.sleep(0)
         await conn.set_wifi_led(status=True)  # self._led becomes self._ext_led (pixel)
         conn._led_on()
@@ -60,7 +50,6 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
         off_seen = await _run_until(last_is((0, 0, 0)), 10)
         conn._led_toggle()
         toggle_seen = await _run_until(last_is((50, 50, 50)), 10)  # toggled from off -> on
-        await cancel(overlay_task)
         return on_seen, off_seen, toggle_seen
 
     assert run(scenario()) == (True, True, True)
@@ -160,18 +149,15 @@ async def _stop_flash(conn: WifiService) -> None:
 
 def test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_task() -> None:
     pixel = NeopixelDriver(0)
-    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = _hotspot_conn(pixel)
     with _FlashSleeps() as sleeps:
 
         async def scenario() -> "list[tuple[int, ...]]":
-            overlay_task = pixel.start_asy_overlay()
             await conn.set_wifi_led(status=True)
             await conn._hotspot_client_absent()  # no station on the hotspot: its pattern starts
             await _yields(_PATTERN_YIELDS)
             frames = _frames(pixel, 0)
             await _stop_flash(conn)
-            await cancel(overlay_task)
             return frames
 
         frames = run(scenario())
@@ -184,12 +170,10 @@ def test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_tas
 
 def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it() -> None:
     pixel = NeopixelDriver(0)
-    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = _hotspot_conn(pixel)
     with _FlashSleeps() as sleeps:
 
         async def scenario() -> "tuple[list[int], list[int], list[int], list[tuple[int, ...]]]":
-            overlay_task = pixel.start_asy_overlay()
             await conn.set_wifi_led(status=True)
             await conn._hotspot_client_absent()
             await _yields(_PATTERN_YIELDS)
@@ -201,7 +185,6 @@ def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_
             await conn._hotspot_client_absent()  # ... and left again
             await _yields(_PATTERN_YIELDS)
             await _stop_flash(conn)
-            await cancel(overlay_task)
             durations = sleeps.durations
             return durations[:joined_at], durations[joined_at:left_at], durations[left_at:], client_frames
 
@@ -217,19 +200,16 @@ def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_
 
 def test_with_the_wifi_led_off_both_hotspot_patterns_leave_the_real_pixel_dark() -> None:
     pixel = NeopixelDriver(0)
-    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = _hotspot_conn(pixel)
     with _FlashSleeps():
 
         async def scenario() -> "list[tuple[int, ...]]":
-            overlay_task = pixel.start_asy_overlay()
             await conn.set_wifi_led(status=False)  # LEDWifiOn off: every pattern obeys it
             await conn._hotspot_client_absent()
             await _yields(_PATTERN_YIELDS)
             conn._hotspot_client_connected()
             await _yields(_PATTERN_YIELDS)
             await _stop_flash(conn)
-            await cancel(overlay_task)
             return _frames(pixel, 0)
 
         frames = run(scenario())
@@ -240,12 +220,10 @@ def test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link() -> No
     # The second failed streak after a hotspot phase goes silent (owner, 2026-10-08: "It should look like turned off."):
     # the flash task ends and no frame lights the pixel, through a silent attempt's LED calls and LEDWifiOn, until a link.
     pixel = NeopixelDriver(0)
-    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = _hotspot_conn(pixel)
     with _FlashSleeps():
 
         async def scenario() -> "tuple[list[tuple[int, ...]], bool, list[tuple[int, ...]], list[tuple[int, ...]]]":
-            overlay_task = pixel.start_asy_overlay()
             await conn.set_wifi_led(status=True)
             await conn._hotspot_client_absent()  # the hotspot pattern blinks
             await _yields(_PATTERN_YIELDS)
@@ -253,8 +231,8 @@ def test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link() -> No
             flash = conn._ledflash
             conn._hotspot_started_once = True
             conn._connection_failures = conn._conn_fail_to_hotspot - 1  # the next failure ends the second streak
+            silent_from = len(pixel._pixel.writes)  # the entry writes its dark frame at once
             await conn._register_sta_connection_failure()
-            silent_from = len(pixel._pixel.writes)
             await _yields(_PATTERN_YIELDS)
             conn._led_toggle()  # a silent attempt's own LED calls
             conn._led_on()
@@ -267,13 +245,12 @@ def test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link() -> No
             await _yields(_PATTERN_YIELDS)
             linked = _frames(pixel, linked_from)
             await _stop_flash(conn)
-            await cancel(overlay_task)
             return blinking, ended, silent, linked
 
         blinking, ended, silent, linked = run(scenario())
     assert _ON in blinking and _OFF in blinking
     assert ended is True
-    assert silent == [_OFF]  # the entry's dark frame, nothing lit after it
+    assert silent == [_OFF], silent  # the entry's dark frame, nothing lit after it
     assert linked == [_ON]  # the link lights the LED as LEDWifiOn says
 
 
@@ -281,19 +258,17 @@ def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_le
     # Guard: with no readable configuration the connect loop shows its own pattern on the real pixel, a short blink
     # (the hotspot's inverted), dark while LEDWifiOn is off and shown again once it is on (owner, 2026-10-02).
     pixel = NeopixelDriver(0)
-    run(pixel.setup())  # the boot batch's setup(), before any task starts
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_blocked_dir())
     run(conn.setup())
     assert conn.cfgmgr.valid is False
     with _FlashSleeps(conn) as sleeps:
 
         async def scenario() -> "tuple[list[tuple[int, ...]], list[tuple[int, ...]], list[tuple[int, ...]]]":
-            overlay_task = pixel.start_asy_overlay()
             loop = conn.start_asy_connect()
             await _yields(_PATTERN_YIELDS)
             shown = _frames(pixel, 0)
+            dark_from = len(pixel._pixel.writes)  # off writes its dark frame at once
             await conn.set_wifi_led(status=False)
-            dark_from = len(pixel._pixel.writes)
             await _yields(_PATTERN_YIELDS)
             dark = _frames(pixel, dark_from)
             await conn.set_wifi_led(status=True)
@@ -302,7 +277,6 @@ def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_le
             back = _frames(pixel, back_from)
             await cancel(loop)
             await _stop_flash(conn)
-            await cancel(overlay_task)
             return shown, dark, back
 
         shown, dark, back = run(scenario())
@@ -311,7 +285,7 @@ def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_le
     assert len(pairs) == 1
     on_ms, off_ms = pairs.pop()
     assert on_ms < off_ms  # a short blink, the hotspot pattern's inverse
-    assert dark == [_OFF]
+    assert dark == [_OFF], dark
     assert _ON in back
 
 
@@ -319,48 +293,17 @@ def _tmp_cfg_dir() -> str:
     return _scratch.dir()
 
 
-async def _uptime_s() -> int:  # the drop window's clock; no connection is served here
-    return 0
-
-
 async def _yields(count: int) -> None:
     for _ in range(count):
         await asyncio.sleep(0)
 
 
-def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
-    pixel = NeopixelDriver(0)
-    run(pixel.setup())  # the boot batch's setup(), before any task starts
-    app = Microdot()
-    routes = RouteSources((), None, None, None, None, None, None, None, (), [pixel])
-    serving = ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80)
-    WebserverService(app, routes, serving, uptime_s=_uptime_s)
-
-    def dispatch(method: str, body: "JsonDict | None") -> Response:
-        raw = b"" if body is None else json.dumps(body).encode()
-        headers = {"Content-Length": str(len(raw)), "Content-Type": "application/json"}
-        return run(app.dispatch_request(Request(app, ("127.0.0.1", 12345), method, "/status", "1.1", headers, body=raw)))  # type: ignore[no-any-return]  # the upstream stub leaves dispatch_request() unannotated - removal trigger: SPECIFICATION.md B.15
-
-    def neopixel_entry() -> "tuple[int, list[dict[str, object]]]":
-        # The /status errcount entry of the pixel: its counter and its history slots.
-        status = drain_json(dispatch("GET", None).body)
-        assert isinstance(status, dict), status
-        entry = status["errcount"]["NEOPIXEL"]
-        counter: int = entry["counter"]
-        history: list[dict[str, object]] = entry["history"]
-        return counter, history
-
-    run(pixel.pr.err_s("boom", errno=1))
-    counter, history = neopixel_entry()
-    assert counter == 1
-    assert history[-1] == {"num": 1, "type": "E"}  # the newest slot holds the logged entry
-    reset = dispatch("PUT", {"ResetErrors": True})
-    assert reset.status_code == 200
-    reset_body = strict_loads(reset.body)
-    assert isinstance(reset_body, dict) and reset_body["res"] == "OK", reset_body
-    counter, history = neopixel_entry()
-    assert counter == 0
-    assert {"num": 1, "type": "E"} not in history
+def test_no_generated_device_lists_its_neopixel_among_the_status_error_sources() -> None:
+    # The pixel has nothing it can fail at: no /status errcount entry and no ResetErrors source, on every device.
+    for device in _devices_with_a_neopixel():
+        module = build(device, cfg_path=_tmp_cfg_dir())
+        names = [source.name for source in module._collect_error_sources()]
+        assert "NEOPIXEL" not in names and names, (device, names)
 
 
 def test_the_drivers_empty_timer_list_reaches_every_generated_device_wiring_it() -> None:

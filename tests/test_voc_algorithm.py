@@ -3,6 +3,7 @@ restore."""
 
 import struct
 
+import micropython
 from _async_harness import run
 from _fram_builders import make_fram_manager
 from voc_reference_vectors import DIV, EXP, INDEX_CRC32, INDEX_EVERY_500, MUL, SQRT, SRAW_COUNT, sraw_sequence
@@ -35,8 +36,9 @@ _PERSISTED_FIELDS = (
 )
 
 
-def _f16(n: int) -> int:
-    return n * 65536
+def _f16(x: float) -> int:
+    # C's F16() (libfixmath fix16.h): x * 65536, rounded half away from zero - the source folds its constants by it.
+    return int(x * 65536.0 + 0.5) if x >= 0 else int(x * 65536.0 - 0.5)
 
 
 # vocalgorithm_init(), then every sraw_sequence() sample: two tests only read this run, so the first to ask builds it
@@ -64,6 +66,21 @@ def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes
 # ---------------------------------------------------------------------------
 # get_params_memsize / initial state
 # ---------------------------------------------------------------------------
+
+
+def test_a_process_step_converts_no_float_on_a_64_bit_port() -> None:
+    # Constants folded to ints and mul/div as exact int products: a step past the 45 s blackout makes no float, so on
+    # this port (every int under 2**62 small) it runs with the heap locked; rp2's 31-bit ints still box the products.
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    for i in range(60):
+        algo.vocalgorithm_process(20000 + (i * 7919) % 33000)
+    micropython.heap_lock()
+    try:
+        for i in range(60):
+            algo.vocalgorithm_process(20000 + (i * 7919) % 33000)
+    finally:
+        micropython.heap_unlock()
 
 
 def test_get_params_memsize_matches_struct_size() -> None:
@@ -451,9 +468,9 @@ def test_fix16_exp_saturates_at_documented_bounds() -> None:
     algo = VOCAlgorithm()
     # Values from the C reference's own overflow guards (x >= f16(10.3972) -> FIX16_MAXIMUM,
     # x <= f16(-11.7835) -> 0).
-    assert algo._fix16_exp(algo._f16(11.0)) == 0x7FFFFFFF
-    assert algo._fix16_exp(algo._f16(-12.0)) == 0
-    assert algo._fix16_exp(algo._f16(0.0)) == algo._f16(1.0)  # e^0 == 1
+    assert algo._fix16_exp(_f16(11.0)) == 0x7FFFFFFF
+    assert algo._fix16_exp(_f16(-12.0)) == 0
+    assert algo._fix16_exp(_f16(0.0)) == _f16(1.0)  # e^0 == 1
 
 
 def test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch() -> None:
@@ -480,7 +497,7 @@ def test_fix16_div_overflow_returns_the_overflow_sentinel() -> None:
 def test_fix16_div_by_a_multiple_of_two_to_the_32_returns_at_once() -> None:
     # Wrapped to int32 the divisor is 0, so the call returns the sentinel instead of shifting forever.
     algo = VOCAlgorithm()
-    assert algo._fix16_div(algo._f16(1.0), -(1 << 32)) == -0x80000000  # _FIX16_MINIMUM
+    assert algo._fix16_div(_f16(1.0), -(1 << 32)) == -0x80000000  # _FIX16_MINIMUM
 
 
 # ---------------------------------------------------------------------------
@@ -689,7 +706,7 @@ def test_set_tuning_parameters_smoke_test_normal_values() -> None:
 def test_both_estimator_uptimes_stop_at_the_uptime_limit() -> None:
     # Checked before the step: one sampling interval below the limit steps onto it, at the limit both stay.
     algo = VOCAlgorithm()
-    limit, step, params = algo._f16(32767 - 1), algo._f16(1), algo.params  # FIX16_MAX less one sampling interval (1 s)
+    limit, step, params = _f16(32767 - 1), _f16(1), algo.params  # FIX16_MAX less one sampling interval (1 s)
     params.m_mean_variance_estimator_uptime_gamma = params.m_mean_variance_estimator_uptime_gating = limit - step
     for _ in range(2):
         algo._vocalgorithm__mean_variance_estimator___calculate_gamma(0)

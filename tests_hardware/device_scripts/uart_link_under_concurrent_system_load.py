@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from _shared.watchdog import arm
     from bench_facts import BenchFacts, BusFacts
 
-    from asy_base_classes import PieceBuffer
+    from asy_uart_driver import PieceBuffer
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 

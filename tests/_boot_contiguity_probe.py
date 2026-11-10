@@ -111,14 +111,11 @@ class _ProbeGc:
 
 
 async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Callable[[], None]]", timer_starters: "list[Callable[[], None]]") -> bool:
-    # main()'s step after the task starts. tests/machine.py's Timer fake never fires by itself, so each armed
-    # stagger wait is fired with the same _sequencer_timer.trigger() tests/test_asy_system_service.py uses.
+    # main()'s step after the task starts: the trigger stagger's deadline sleeps, under 1 s in all.
     task = asyncio.create_task(sysfunct.start_timers(trigger_starters, timer_starters))
     deadline = time.ticks_add(time.ticks_ms(), int(_TIMERS_TIMEOUT_S * 1000))
     while not task.done() and time.ticks_diff(deadline, time.ticks_ms()) > 0:
         await asyncio.sleep(0)
-        if sysfunct._sequencer_timer.callback is not None:
-            sysfunct._sequencer_timer.trigger()
     if not task.done():
         print(f"NOTE start_timers did not complete within {_TIMERS_TIMEOUT_S}s - a timer never fired")
         task.cancel()

@@ -44,6 +44,7 @@ from microdot import Request, Response
 
 import asy_base_classes
 import asy_config_manager
+import asy_isl29125_driver
 import asy_ntp_client
 import asy_scd30_driver
 import asy_spi_driver
@@ -580,7 +581,7 @@ def _scenario_no_dropped_logger(device: str) -> None:
         module = build(device)
     finally:
         PrintLog.__init__ = real_init  # type: ignore[method-assign]
-    names = [logger.name for logger in made]
+    names = [logger.name for logger in made if isinstance(logger, PrintLogHistory)]  # the LED's console printer keeps no log (A.4)
     assert len(set(names)) == len(names), f"two loggers share a name, so one of them has no errcount entry: {sorted(names)}"
     errcount = _strict(status_body(_dispatch(module, "GET", "/status")), "errcount")
     assert sorted(errcount) == sorted(names), (sorted(errcount), sorted(names))
@@ -661,7 +662,7 @@ class _DirWrites(WriteCountingOpen):
 def _scenario_collect_level_setters(device: str) -> None:
     module = build(device)
     setters = module._collect_level_setters()
-    loggers = _all_loggers(module)
+    loggers = _all_printers(module)
     assert len(setters) == len(loggers)
     # Each collected setter really is that logger's own bound set_level, confirmed by behavior
     # rather than identity (bound-method identity isn't guaranteed). Index-based, not zip() - that
@@ -678,7 +679,7 @@ def _scenario_debug_seed_value(device: str) -> None:
     # First boot - no persisted value yet, so sysfunct.setup() writes and resolves the schema default (0),
     # then pushes it through the registry, overriding the debug= seed each logger was constructed with.
     assert _system_debug_level(module) == 0
-    for pr in _all_loggers(module):
+    for pr in _all_printers(module):
         assert pr.level == 0, f"{pr.name!r} still shows the debug= seed, not the resolved default"
 
 
@@ -689,7 +690,7 @@ def _scenario_set_debug_level_updates_every_logger(device: str) -> None:
     module = build(device, log_errors=False)
     res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1})
     assert _strict(res.body, "result")["DebugLevel"] == "Valid"
-    for pr in _all_loggers(module):
+    for pr in _all_printers(module):
         assert pr.level == 1, f"{pr.name!r} did not observe the DebugLevel PUT"
 
 
@@ -702,7 +703,7 @@ def _scenario_debug_level_survives_reboot(device: str) -> None:
 
     module = build(device, cfg_path=cfg_path, log_errors=False)  # simulated reboot - same cfg_path, fresh objects
     assert _system_debug_level(module) == 1
-    for pr in _all_loggers(module):
+    for pr in _all_printers(module):
         assert pr.level == 1, f"{pr.name!r} did not get the persisted level on reboot"
 
 
@@ -799,6 +800,11 @@ class _StaggerClock:
 
 
 def _all_loggers(module: "ModuleType") -> "list[PrintLogHistory]":
+    # The loggers that keep a log, one /status errcount entry each; the LED's console printer keeps none (A.4).
+    return [logger for logger in _all_printers(module) if isinstance(logger, PrintLogHistory)]
+
+
+def _all_printers(module: "ModuleType") -> "list[PrintLog]":
     assert module.conn is not None and module.ntp is not None and module.fram is not None and module.sysfunct is not None
     assert module.neopixel is not None and module.notification is not None and module.webserver is not None
     loggers = [
@@ -1112,20 +1118,31 @@ def _expected_fram_chunk_owners(module: "ModuleType") -> "list[str]":
 
 
 async def _fire_stagger_waits(sysfunct: "SystemService", task: "asyncio.Task[None]", clock: _StaggerClock) -> "list[int]":
-    # Fires each armed stagger one-shot after advancing the fake clock by its period; returns the periods.
+    # Runs start_timers() to its end, each stagger sleep one yield with the fake clock advanced by its length; returns
+    # those lengths. The module's asyncio in place (a recorder, or the real one) still sees each wait, as 0 ms.
     periods: list[int] = []
-    for _ in range(100):
-        if task.done():
-            break
-        await asyncio.sleep(0)
-        timer = sysfunct._sequencer_timer
-        if timer.callback is not None:
-            periods.append(timer.period)
-            clock.now += timer.period
-            machine.Timer.clock_ms = clock.now  # the Timer fake's clock follows: each arm records its time
-            timer.trigger()
-    assert task.done(), "start_timers() did not finish: a stagger wait was never armed or fired"
-    await task
+    inner = asy_system_service.asyncio
+
+    class _Stagger:
+        def __getattr__(self, name: str) -> object:
+            return getattr(inner, name)
+
+        async def sleep_ms(self, ms: int) -> None:
+            if ms:
+                periods.append(ms)
+                clock.now += ms
+            await inner.sleep_ms(0)
+
+    asy_system_service.asyncio = _Stagger()  # type: ignore[assignment]  # a module attribute swap, restored below
+    try:
+        for _ in range(100):
+            if task.done():
+                break
+            await asyncio.sleep(0)
+        assert task.done(), "start_timers() did not finish"
+        await task
+    finally:
+        asy_system_service.asyncio = inner
     return periods
 
 
@@ -1279,9 +1296,6 @@ async def _main_until_supervised(module: "ModuleType", device: str, recorder: "B
                 if main.done():
                     break
                 await asyncio.sleep(0)
-                timer = module.sysfunct._sequencer_timer
-                if timer.callback is not None:
-                    timer.trigger()
             assert main.done(), "main() never reached supervise_tasks()"
             await main
         except Exception as e:
@@ -1425,12 +1439,7 @@ async def _scd30_cycles(module: "ModuleType") -> "list[tuple[int, int, int]]":
     await sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
     timers = asyncio.create_task(sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters()))
 
-    def stagger_done() -> bool:
-        if sysfunct._sequencer_timer.callback is not None:
-            sysfunct._sequencer_timer.trigger()
-        return timers.done()
-
-    await _until(stagger_done, "start_timers() never finished")
+    await _fire_stagger_waits(sysfunct, timers, _StaggerClock())
     for _ in range(_SCD30_SETUP_POLLS):  # the setup resets the idle count: a tick before it would be lost
         if len(initialized) == len(_scd30_readers(module)):
             break
@@ -1731,21 +1740,20 @@ def _scenario_read_trigger_stagger(device: str) -> None:
 
         return start
 
+    waits: list[int] = []
+
     async def drive() -> None:
         task = asyncio.create_task(sysfunct.start_timers([recorded(s) for s in triggers], module._collect_timer_starters()))
-        await _fire_stagger_waits(sysfunct, task, clock)
+        waits.extend(await _fire_stagger_waits(sysfunct, task, clock))
 
     asy_system_service.time = clock  # type: ignore[assignment]
-    machine.Timer.clock_ms = 0
     try:
         run(drive())
     finally:
         asy_system_service.time = time
-        machine.Timer.clock_ms = 0
     slot = _system_const("_TIMER_BASE_PERIOD") // (len(triggers) + 1)
     assert ran_at == [k * slot for k in range(len(triggers))]
-    # The sequencer's own arms, read off the Timer fake's clock: trigger k's one-shot armed when trigger k - 1 ran.
-    assert sysfunct._sequencer_timer.arms == [((k - 1) * slot, slot, machine.Timer.ONE_SHOT) for k in range(1, len(triggers))]
+    assert waits == [slot] * (len(triggers) - 1)  # each trigger's deadline sleep: one slot after the one before it
     n = len(triggers)
     base = _system_const("_TIMER_BASE_PERIOD")
 
@@ -1784,7 +1792,7 @@ def _scenario_read_trigger_stagger(device: str) -> None:
 @_register("the_unfed_boot_stretch_after_the_last_setup_feed_stays_within_two_seconds")
 def _scenario_unfed_boot_stretch(device: str) -> None:
     # From the batch's last feed to the supervisor's first, in main()'s order: the task-start spread (N sleeps
-    # of 1/N s) and the trigger plan's one-shot waits (under one second) are the only waits; any other fails here.
+    # of 1/N s) and the trigger plan's deadline sleeps (under one second) are the only waits; any other fails here.
     module = build(device, web_host="127.0.0.1", web_port=0)
     sysfunct = module.sysfunct
     clock = _StaggerClock()
@@ -1835,7 +1843,7 @@ def _scenario_unfed_boot_stretch(device: str) -> None:
         del sysfunct.feed_watchdog
     assert first_feed, "the supervisor never reached its first feed"
     n = len(task_starters)
-    assert waits.waits_ms[: first_feed[0]] == [1000 // n] * n  # the task-start spread, no other wait
+    assert waits.waits_ms[: first_feed[0]] == [1000 // n] * n + [0] * len(periods)  # the spread, then the plan's sleeps seen as 0 ms
     assert sum(periods) < 1000  # the read-trigger plan spans less than one second
     assert sum(periods) + sum(waits.waits_ms[: first_feed[0]]) <= 2000
 
@@ -2130,14 +2138,12 @@ def _scenario_forty_days_of_uptime(device: str) -> None:
         def seconds() -> int:
             return int(start_s + (start_ms + clock.now - base) // 1000)
 
-        sysfunct.start_uptime_timer()
         sup = await _start_supervised(clock, sysfunct, starters, names)
         fed = wdt.feed_count
         for step in range(steps):
             if step == 1:
                 planted.end(1)
-            sysfunct._uptime_timer.trigger()  # the stall's one delivered tick; the others are lost with it
-            await clock.jump(stall_ms)
+            await clock.jump(stall_ms)  # the status pass runs once after it, late, and resumes on its grid
             if step == 1:
                 got["end_at"] = seconds()
         got["fed"], got["armed"] = wdt.feed_count - fed, sysfunct._reset_armed
@@ -2159,8 +2165,8 @@ def _scenario_forty_days_of_uptime(device: str) -> None:
 @_register("forty_days_keep_the_wifi_uptime_and_the_ntp_sync_age_on_the_driven_seconds")
 def _scenario_forty_days_of_link_uptime_and_sync_age(device: str) -> None:
     # Forty driven days from an hour before a 2**30 ms wrap, the link up throughout and a sync on day 0 and day 20, as
-    # five-day stalls each delivering one tick to the real WiFi uptime and NTP sync-age loops, each tick's read inside
-    # ticks_diff()'s 2**29 ms horizon: the WiFi uptime and LastSyncAge are the driven seconds, four wraps crossed.
+    # five-day stalls, each followed by one WiFi uptime pass and one sync-age read inside ticks_diff()'s 2**29 ms
+    # horizon: the WiFi uptime and LastSyncAge are the driven seconds, four wraps crossed.
     module = build(device)
     conn, ntp = module.conn, module.ntp
     conn._wlan._status = network.STAT_GOT_IP
@@ -2168,9 +2174,7 @@ def _scenario_forty_days_of_link_uptime_and_sync_age(device: str) -> None:
     got: dict[str, object] = {}
 
     async def drive(clock: DrivenTime) -> None:
-        loops = [conn.start_asy_uptime(), ntp.start_asy_sync_age()]
-        conn.start_uptime_timer()
-        ntp.start_sync_age_timer()
+        loops = [conn.start_asy_uptime()]
         await clock.elapse(0)
         up_at = clock.now
         await ntp._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 3, 1))
@@ -2179,10 +2183,8 @@ def _scenario_forty_days_of_link_uptime_and_sync_age(device: str) -> None:
             if step == 4:
                 await ntp._handle_ntp_sync_success((2026, 1, 21, 0, 0, 0, 2, 21))
                 synced_at = clock.now
-            conn._counter_timer.trigger()
-            ntp._counter_timer.trigger()
-            await clock.jump(stall_ms)
-        ntp._counter_timer.trigger()
+            await ntp.get_data()  # one sync-age read per stall: the refresh check reads it every 10 s on the device
+            await clock.jump(stall_ms)  # the uptime pass runs once after it, late, and resumes on its grid
         await clock.elapse(0)
         got["wifi"], got["wifi_driven"] = await conn.get_wifi_uptime(), (clock.now - up_at) // 1000
         got["age"], got["age_driven"] = (await ntp.get_data()).LastSyncAge, (clock.now - synced_at) // 1000
@@ -2275,18 +2277,13 @@ def _scenario_dropped_one_second_wake_ups(device: str) -> None:
         await sysfunct.get_uptime()  # the first driven read: from here on the uptime counts driven milliseconds
         base, start_s, start_ms = clock.now, await sysfunct.get_uptime(), sysfunct._uptime._rem_ms
         sysfunct._storage_pause = recorded
-        sysfunct.start_uptime_timer()
         sup = await _start_supervised(clock, sysfunct, starters, names)
         for second in range(1, 121):
             if second == 62:
                 await clock.jump(7500)  # a stalled loop, below the watchdog's timeout
-            if second == 92:  # its deadline, second 102, is a dropped tick: the end comes one tick late, the bound's edge
+            if second == 92:  # its deadline, second 102: the pass on the grid at or after it ends the pause
                 assert sysfunct.pause_permanent_storage(10)
                 got["paused"] = clock.now
-            if second % 3 == 0 or 31 <= second < 36:
-                sysfunct._uptime_timer.drop()
-            else:
-                sysfunct._uptime_timer.trigger()
             await clock.elapse(1000)
         got["uptime"], got["expected"] = await sysfunct.get_uptime(), start_s + (start_ms + clock.now - base) // 1000
         await _stop_the_planted_graph(sysfunct, sup)
@@ -2459,7 +2456,8 @@ def _scenario_bus_nak_storm(device: str) -> None:
             task.cancel()
         await asyncio.sleep(0)
 
-    with FastAsyncSleep():
+    # Each fast sleep moves the ISL29125's clock by its length: its settle wait has no round cap, only the deadline.
+    with DrivenTime(asy_isl29125_driver) as clock, FastAsyncSleep(clock):
         run(scenario())
     assert alive == [(reader.name, 0, reader._max_module_error) for reader in readers], alive  # each episode starts in the storm
     assert ended == [reader not in gated for reader in readers], (ended, codes)
@@ -2496,10 +2494,10 @@ def _scenario_refused_connection_storm(device: str) -> None:
 
     async def storm() -> None:
         for _ in range(webserver._max_connections):  # every slot held, as by open connections
-            await webserver._open_conns.increment()
+            webserver._open_conns += 1
         await asyncio.gather(*[webserver._serve(stream, stream) for stream in streams])
         for _ in range(webserver._max_connections):
-            await webserver._open_conns.decrement()
+            webserver._open_conns -= 1
 
     run(storm())
     log = run(webserver.get_error_counter())["WEBSERVER"]
@@ -2577,8 +2575,8 @@ def _scenario_ntp_no_reply_storm(device: str) -> None:
         ntp._ntp_sync_trigger_event.set()
         for _ in range(_NTP_ATTEMPT_POLLS):
             await asyncio.sleep_ms(_NTP_ATTEMPT_POLL_MS)
-            if len(peer.peers) > opened and peer.closed == len(peer.peers) and not ntp.wifi_mode_lock.locked():
-                return  # torn down and the lock released: nothing yields before the loop waits again
+            if len(peer.peers) > opened and peer.closed == len(peer.peers) and not ntp.wifi_mode_lock.locked() and getattr(ntp.pr, "_writer", None) is None:
+                return  # torn down, the lock released and its entry's write-behind landed: the counts are final
         raise AssertionError(f"{device}: an NTP attempt never ended: {peer.peers}, {got}")
 
     async def scenario() -> None:
@@ -2587,9 +2585,6 @@ def _scenario_ntp_no_reply_storm(device: str) -> None:
             for _ in range(attempts):
                 await attempt()
                 waits.append(ntp._retry_wait_s)
-            writer = getattr(ntp.pr, "_writer", None)
-            if writer is not None:  # the entries written behind the call (C.7.1) on the chip before they are counted
-                await writer
             log = (await ntp.get_error_counter())[ntp.pr.name]
             storm.append((log["ErrCount"], list(log["ErrNum"]), writes[ntp.pr.name], (await ntp.get_data()).Synced))
             peer.reply = reply
@@ -2654,7 +2649,8 @@ def _scenario_loggers_set_up_by_the_batch(device: str) -> None:
     module = build(device)
     for name, obj in _module_objects(module).items():
         for logger in obj.get_loggers():
-            assert logger.initialized is True, f"{name}'s logger {logger.name} was not set up by the boot batch"
+            if isinstance(logger, PrintLogHistory):  # a console-only printer (the LED's, A.4) has nothing to set up
+                assert logger.initialized is True, f"{name}'s logger {logger.name} was not set up by the boot batch"
 
 
 _GET_ROUTES = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status")
@@ -3633,10 +3629,10 @@ def _scenario_http_dropped_counts_a_refusal(device: str) -> None:
 
     async def refuse_one() -> None:
         for _ in range(webserver._max_connections):  # every slot held, as by open connections
-            await webserver._open_conns.increment()
+            webserver._open_conns += 1
         await webserver._serve(stream, stream)
         for _ in range(webserver._max_connections):
-            await webserver._open_conns.decrement()
+            webserver._open_conns -= 1
 
     run(refuse_one())
     assert stream.closed

@@ -33,12 +33,12 @@ import asy_uart_comm
 import asy_uart_driver
 import asy_uart_link_driver
 import asy_webserver_service
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_config_manager import FAILED, INVALID, VALID
 from asy_crc_checks import CRC16
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
 from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER
-from asy_uart_driver import UART
+from asy_uart_driver import UART, PieceBuffer
 from asy_uart_link_driver import UARTLinkDriver
 from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
 

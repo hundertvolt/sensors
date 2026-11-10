@@ -36,7 +36,7 @@ class BootRecorder:
         classes: list[type[_SetUp]] = []
         for name in dir(module):
             obj = getattr(module, name)
-            if not name.startswith("_") and not isinstance(obj, type) and hasattr(obj, "setup") and hasattr(obj, "get_loggers") and type(obj) not in classes:
+            if not name.startswith("_") and not isinstance(obj, type) and hasattr(obj, "get_loggers") and type(obj) not in classes:
                 classes.append(type(obj))
         if not classes:
             raise ValueError(f"{module.__name__} holds no constructed module yet: build it once before recording")
@@ -60,7 +60,7 @@ class BootRecorder:
     def _wrap_module_class(self, cls: "type[_SetUp]") -> None:
         # Both originals are read before either wrap, so neither wrapper ever calls the other.
         real_init = cls.__init__
-        real_setup = cls.setup
+        real_setup = getattr(cls, "setup", None)  # a module with no setup unit (the LED) is constructed only
 
         def init(obj: "_SetUp", *args: object, **kwargs: object) -> None:
             self._record("construct", obj)
@@ -68,10 +68,13 @@ class BootRecorder:
 
         async def setup(obj: "_SetUp") -> bool:
             self._record("setup", obj)
-            return await real_setup(obj)
+            assert real_setup is not None
+            done: bool = await real_setup(obj)
+            return done
 
         self._replace(cls, "__init__", init)
-        self._replace(cls, "setup", setup)
+        if real_setup is not None:
+            self._replace(cls, "setup", setup)
 
     def _wrap_service(self, service: "type[SystemService]") -> None:
         real_phase = service.boot_phase

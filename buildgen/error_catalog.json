@@ -145,8 +145,6 @@
       "40": {"owner": "ntp", "name": "NTP_UNSYNC_REPLY", "text": "the reply is unsynchronised or a Kiss-o'-Death"},
       "41": {"owner": "dnssrv", "name": "DNS_REPLY_DROPPED", "text": "a reply was dropped by sendto()"},
       "42": {"owner": "dnssrv", "name": "DNS_RECV_FAILED", "text": "receiving a DNS request failed"},
-      "44": {"owner": "notify", "name": "NOTIFY_NAME_COLLISION", "text": "a signal's field name collides; ignored"},
-      "45": {"owner": "notify", "name": "NOTIFY_SCHEMA_SHAPE", "text": "a signal's schema has not exactly one field; ignored"},
       "48": {"owner": "webserver", "name": "HTTP_PEER_RESET", "text": "connection reset by the peer before or during its response"},
       "49": {"owner": "webserver", "name": "HTTP_CALL_TIMEOUT", "text": "connection reclaimed: one stream call exceeded per_call_timeout_s, or the request exceeded outer_cap_s"},
       "51": {"owner": "webserver", "name": "HTTP_SOCKET_ERROR", "text": "connection reclaimed: socket error"},

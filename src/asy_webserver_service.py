@@ -14,7 +14,7 @@ from microdot import Request, Response, abort, redirect, send_file
 from micropython import const
 
 import asy_api_response as ar
-from asy_base_classes import UNAVAILABLE, HourlyWindowCounter, LockedCounter
+from asy_base_classes import UNAVAILABLE, HourlyWindowCounter
 from asy_config_manager import FAILED, INVALID, VALID, checked_float, checked_int
 from asy_print_log import DEFAULT_LOG, LogConfig, make_logger, report_if_fatal
 
@@ -541,7 +541,7 @@ class WebserverService:
         max_connections = serving.max_connections
         self._max_connections = max_connections
         self._chunk_bytes = max(serving.chunk_bytes, 1)  # a read of 0 would never end microdot's loop
-        # Clamped rather than rejected, matching LockedCounter's own out-of-range convention: a
+        # Clamped rather than rejected: a
         # backlog under the ceiling resets part of a burst the ceiling admits, which reads as an
         # application bug. buildgen rejects the same mistake in config, where it can be named.
         self._backlog = max_connections + 1 if serving.backlog is None else max(serving.backlog, max_connections)
@@ -551,7 +551,7 @@ class WebserverService:
         self._outer_cap_ms = round(serving.outer_cap_s * 1000)
         self._host = serving.host
         self._port = serving.port
-        self._open_conns = LockedCounter(init_value=0)  # the shared COUNTER_CAP; a gauge bounded by the backlog
+        self._open_conns = 0  # a gauge bounded by the backlog; no step awaits, so it needs no lock
         self._dropped = HourlyWindowCounter()  # HTTPDropped: the last 24 hours in hourly bins, allocated once here
         self._status_lock = asyncio.Lock()  # one /status build at a time (Part I.3)
         max_content_length = serving.max_content_length
@@ -723,7 +723,7 @@ class WebserverService:
         except Exception as e:
             await self.pr.err_s("notification_led callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED, False
-        # External LED commands are refused while a signal runs and told to retry; internal ones wait, bounded (owner, 2026-10-02).
+        # External LED commands are refused while the LED is busy and told to retry (owner, 2026-10-02); internal ones queue.
         return (VALID, False) if ok else (FAILED, True)
 
     async def _dispatch_notification_pause(self, payload: object) -> str:
@@ -848,12 +848,13 @@ class WebserverService:
         counted = False  # this connection still holds its count, which the finally releases once
         try:
             try:
-                current = await self._open_conns.increment()
+                self._open_conns += 1
+                current = self._open_conns
                 counted = True
                 if current > self._max_connections:
                     # Reject-when-full (owner, 2026-08-12; SPEC A.8): its slot freed, closed with no response written. Every
                     # entry before the close is written behind, so no connection or task waits on FRAM (owner, 2026-11-07).
-                    await self._open_conns.decrement()
+                    self._open_conns -= 1
                     counted = False
                     await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")
                     return
@@ -886,14 +887,14 @@ class WebserverService:
                 raise  # never swallow a genuine task cancellation
             except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a
                 # proxy, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)
-                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, decrement() cannot raise
+                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, the decrement cannot raise
                 await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)
         finally:
             try:  # _close_writer()'s own logging can raise MemoryError on an exhausted heap,
                 await self._close_writer(writer)
             finally:  # and a slot skipped here would be lost until reboot
                 if counted:
-                    await self._open_conns.decrement()
+                    self._open_conns -= 1
 
     async def _serve_loop(self) -> None:
         # backlog is explicit, never MicroPython's default of 5 (extmod/asyncio/stream.py): inherited, a burst of a
@@ -948,8 +949,7 @@ class WebserverService:
         return []  # No machine.Timer in this module: kept empty, not omitted, so callers treat every module alike (SPECIFICATION.md C.9).
 
     def start_asy_serve(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._serve_loop())
+        return asyncio.create_task(self._serve_loop())
 
     # -- getters -----------------------------------------------------------
 

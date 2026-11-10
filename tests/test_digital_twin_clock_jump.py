@@ -61,7 +61,8 @@ if TYPE_CHECKING:
 _WAIT_TIMEOUT_S = 20.0
 _POLL_MS = 50  # how often a wait below looks again
 _RETRY_UNSYNCED_S: int = src_int("src/asy_ntp_client.py", "_NTP_RETRY_UNSYNCED_S")
-_TICKS_TO_RETRY = _RETRY_UNSYNCED_S // src_int("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")  # check ticks toward the next attempt
+_CHECK_MS = 1000 * src_int("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")  # the client's check period
+_TICKS_TO_RETRY = _RETRY_UNSYNCED_S * 1000 // _CHECK_MS  # check ticks toward the next attempt
 _SSID = "TestNet"
 _SCD30_READING = SCD30(800, 22.0, 45.0, None, None, None, None, None)  # the compensation the SGP40 reads first
 _DST_START = _wall_clock.epoch_seconds(2026, 3, 29, 1, 0, 0)  # the last Sunday of March, 01:00 UTC: CET to CEST
@@ -332,10 +333,10 @@ def _sync_age_across_steps_on(device: str) -> None:
 
 
 async def _ticks_to_attempt(module: "ModuleType", responder: NtpResponder, clock: "DrivenTime") -> None:
-    # Fires the client's check tick, as its 10 s timer does, until the responder takes a request.
+    # Driven time in polls, over at most _TICKS_TO_RETRY of the client's own 10 s check sleeps, until the responder takes
+    # a request.
     before = responder.requests
-    for _ in range(_TICKS_TO_RETRY):
-        module.ntp._ntp_timer_trigger_event.set()
+    for _ in range(_TICKS_TO_RETRY * _CHECK_MS // _POLL_MS):
         await clock.elapse(_POLL_MS)
         if responder.requests > before:
             return
