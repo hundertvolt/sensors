@@ -28,7 +28,6 @@ _TABLE: "dict[str, Kind]" = {
     "l0.vitest_timeout_retries": Kind(_TIMEOUT, reason="a JS test, its beforeEach/afterEach included, that ran into vitest's timeout"),
     "tool.uv_sync_attempts": Kind(_EVENT, "3", "a network step's transient failure: a third party's outage must never read as a red test; not a timeout retry"),
     "ntp.sync_retries": Kind(_EVENT, "3", "the firmware's own NTP sync retries, mirrored by its test: product behaviour; not a timeout retry"),
-    "runner.port_lock_attempts": Kind(_EVENT, "10", "a take lost to another taker of a dead holder's lock, the three libraries alike; not a timeout retry"),
 }
 
 _TIER_START = 'tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"\n'

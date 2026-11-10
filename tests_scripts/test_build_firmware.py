@@ -517,6 +517,22 @@ def test_source_state_names_the_commit_and_a_dirty_tree(build_firmware: ModuleTy
     assert build_firmware.source_state(tmp_path / "not-a-repo") == (None, None), "an unknown state is written as unknown, never as clean"
 
 
+def test_the_local_git_and_nm_queries_wait_for_their_answer(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Neither has a party outside the code to fail it: a slow answer is the answer, never a silent "git cannot tell".
+    seen: list[dict[str, object]] = []
+
+    def answered(cmd: list[str], **kwargs: object) -> "subprocess.CompletedProcess[str]":
+        seen.append(kwargs)
+        return subprocess.CompletedProcess(cmd, 0, stdout="0" * 40 + "\n", stderr="")
+
+    monkeypatch.setattr(build_firmware.subprocess, "run", answered)
+    assert build_firmware.source_state(tmp_path) == ("0" * 40, True)
+    with contextlib.suppress(Exception):
+        monkeypatch.setattr(build_firmware.st, "BUILD_ENV_PATH", str(_fake_nm(tmp_path, _LINK)))
+        build_firmware.image_report(tmp_path)
+    assert len(seen) == 3 and all("timeout" not in kwargs for kwargs in seen), seen
+
+
 def _toml_with_hotspot_password(tmp_path: Path, device: str, password: str) -> Path:
     # A copy of a real device's TOML under its own stem with another hotspot password - a value that
     # reaches the generated module (the hostname cannot vary: buildgen pins it to the name).

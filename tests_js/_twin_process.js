@@ -3,7 +3,7 @@
 // twin holds while it runs, and the verdict read from a stopped twin's output.
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,8 @@ export const SHUTDOWN_TIMEOUT_MS = 15000;
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The twin layout of the one MICROPYPATH definition, read once.
 export const MICROPYPATH = twinLayout(readFileSync(path.join(REPO_ROOT, LAYOUT_FILE), "utf8"), LAYOUT_FILE);
+/** The marker pair every memory gate matches, from its one definition (scripts/test.sh and scripts/_twin_process.py read it too). */
+export const MEMORY_ERROR_MARKERS = /** @type {string[]} */ (JSON.parse(readFileSync(path.join(REPO_ROOT, "scripts", "memory_markers.json"), "utf8")));
 const MISSING_INTERPRETER = "MicroPython Unix port not built - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)";
 /** @type {string | undefined} the standard binary the probe named, once asked */
 let interpreter;
@@ -25,9 +27,6 @@ const DNS_PORT = 53;
 const LOCK_RUNNER = "the vitest live tier";
 const CONFIG_DIR_PREFIX = path.join(tmpdir(), "sensors-live-");
 const RUNNER = "digital_twin/run_generic_integration.py";
-// Past this many bytes the Unix port cannot intern a string as a qstr and dies before the runner starts: scripts/
-// _twin_process.py's _QSTR_MAX_BYTES, read against the interpreter there and pinned to this copy by a tests_scripts test.
-const QSTR_MAX_BYTES = 255;
 /** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
 const spawnErrors = new WeakMap();
 /** @type {WeakMap<import("node:child_process").ChildProcess, () => void>} */
@@ -85,31 +84,6 @@ async function stopProcess(proc, stopFile) {
         clearTimeout(killTimer);
     }
     await exited; // a killed twin still holds the port until it has exited, and the next check needs it free
-}
-
-/**
- * Each string the interpreter would intern before the runner starts and cannot, named with its size in bytes: the
- * arguments from the runner on, the runner's real directory, every MICROPYPATH entry but a ~/ one it builds from $HOME.
- * @param {string[]} args
- * @param {NodeJS.ProcessEnv} env
- * @returns {string[]}
- */
-function uninternable(args, env) {
-    /** @type {[string, string][]} */
-    const named = args.map((value, i) => {
-        const before = args[i - 1] ?? "";
-        return [before.startsWith("--") && !value.startsWith("--") ? `${before}'s value` : `argument ${i}`, value];
-    });
-    named.push(["the runner's directory", path.dirname(realpathSync(path.join(REPO_ROOT, RUNNER)))]);
-    (env.MICROPYPATH ?? "").split(":").forEach((entry, i) => {
-        if (!entry.startsWith("~/") || env.HOME === undefined) {
-            named.push([`MICROPYPATH entry ${i + 1}`, entry]);
-        }
-    });
-    return named.flatMap(([name, value]) => {
-        const size = Buffer.byteLength(value, "utf8");
-        return size > QSTR_MAX_BYTES ? [`${name} (${size} bytes)`] : [];
-    });
 }
 
 /**
@@ -180,7 +154,7 @@ export function sleep(ms) {
 /**
  * Boots `device`'s twin on `port` under the captive-DNS lock: build/generated_src first, sensortask_<device>.py's one
  * home (SPECIFICATION.md Part L.2), its own site (build/generated_html/<device>, package.json's "pretest" hooks), the
- * caller's config directory (makeConfigDir()), the rest in memory; an uninternable string throws before any of it.
+ * caller's config directory (makeConfigDir()), the rest in memory.
  * @param {{device: string, port: number, configDir: string}} twin
  * @returns {import("node:child_process").ChildProcess}
  */
@@ -216,10 +190,6 @@ export function spawnTwin({ device, port, configDir }) {
     // scripts/test.sh's own address for each of its file jobs: a caller's would bind the twin's captive DNS off HOST, which
     // the port lock below assumes (scripts/_twin_process.py's twin_env drops it too; agent, 2026-10-28).
     delete env.TEST_TWIN_HOST;
-    const refused = uninternable(args, env);
-    if (refused.length > 0) {
-        throw new Error(`the twin was not started: ${refused.join(", ")} - the Unix port interns each as a qstr of at most ${QSTR_MAX_BYTES} bytes and dies before the runner starts`);
-    }
     const bin = requireInterpreter();
     rmSync(stopFile, { force: true }); // an earlier process's, left by a run killed before its stop, would end this one at once
     const release = acquirePortLock(DNS_PORT, LOCK_RUNNER);

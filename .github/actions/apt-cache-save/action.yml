@@ -5,7 +5,7 @@ description: >
   Copies each planned archive apt fetched, checked against the index, into the cache folder, drops what the set no
   longer holds, and saves the folder under apt-cache-restore's key when it holds the whole set and that key was not
   already a hit. Called with `if: !cancelled()` right after the install, so no later step's failure costs the save.
-  Used by firmware-build-verify and, through playwright-chromium, by web-unit-tests, web-put-matrix, web-coverage and
+  Used by firmware-build-verify and, through playwright-chromium, by web-unit-tests, web-put-matrix and
   web-cross-browser-smoke.
 
 inputs:

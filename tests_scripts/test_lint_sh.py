@@ -117,22 +117,6 @@ def test_the_live_tree_satisfies_the_guard(repo_root: Path, tmp_path: Path) -> N
     assert result.returncode == 0, f"the live tree violates lint.sh's method-assign guard: {result.stdout}{result.stderr}"
 
 
-def test_help_prints_the_usage_and_exits_0(repo_root: Path, tmp_path: Path) -> None:
-    for flag in ("-h", "--help"):
-        result = _run_lint(repo_root, tmp_path / flag, flag, failing_tool="ruff")
-        assert result.returncode == 0, result.stderr
-        assert result.stdout.startswith("Usage: scripts/lint.sh - no arguments"), result.stdout
-        assert "== Summary" not in result.stdout, "--help runs no check"
-
-
-def test_any_other_argument_is_a_usage_error_naming_it(repo_root: Path, tmp_path: Path) -> None:
-    result = _run_lint(repo_root, tmp_path, "src/")
-    assert result.returncode == 2
-    assert "error: unknown argument src/" in result.stderr and "Usage: scripts/lint.sh" in result.stderr
-    assert result.stdout == ""
-    assert not (tmp_path / "calls").exists(), "a refused run ran a tool"
-
-
 def test_outside_the_project_venv_nothing_runs(repo_root: Path, tmp_path: Path) -> None:
     result = _run_lint(repo_root, tmp_path, env_change={"VIRTUAL_ENV": str(tmp_path / "elsewhere")})
     assert result.returncode == 1

@@ -6,10 +6,10 @@ import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
 // Real subprocess boot, real HTTP, real browser navigation, well past the suite's 20000ms backstop (vitest.config.js).
 // Each command takes its test's timeout and ends its own waits one twin stop before it: Vitest never cancels a command.
-// The boot's 20 s bound, two Applies and the stop; measured 6.2-7.2 s on each of the six devices (agent, 2026-10-14; owner-reviewed, 2026-11-06).
+// The boot's 20 s bound, two Applies and the stop; measured 6.2-7.2 s on each of the six devices (agent, 2026-10-14).
 const SMOKE_TIMEOUT_MS = 45000;
 // Boot 20 s, the first pass within the page's 15 s request cap plus 5 s, one 20 s reload slot per tab of the six, each
-// slot including its drain (agent, 2026-10-13; owner-reviewed, 2026-11-06), the stop.
+// slot including its drain (agent, 2026-10-13), the stop.
 const CONCURRENT_TABS_TIMEOUT_MS = 200000;
 // Two boots of 20 s, the banner, the 60 s back-off cap the page may be waiting out, two stops and their drains.
 const RESTART_RECOVERY_TIMEOUT_MS = 180000;

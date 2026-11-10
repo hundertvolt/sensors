@@ -1,19 +1,16 @@
 """scripts/run_unix_port_integration.sh boots only the device it is told to (without one, or one no devices/*.toml
-carries, it exits 2 naming those it can boot) and nothing the Unix port cannot intern: it exits 1 naming the string, its
-bytes and the limit. Driven on a copy in a throwaway tree, its build steps, setcap and interpreter stubbed."""
+carries, it exits 2 naming those it can boot). Driven on a copy in a throwaway tree, its build steps, setcap and
+interpreter stubbed."""
 
 import hashlib
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-
-import scripts._twin_process as twin_process
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _RUNNER = "scripts/run_unix_port_integration.sh"
@@ -22,8 +19,6 @@ _VALID = "valid devices: fixture_device_a fixture_device_b"
 # The real files the runner sources, and the toolchain files its probe hashes against the record.
 _COPIED = (_RUNNER, "scripts/_devices.sh", "scripts/_port_lock.sh", "scripts/_unix_port.sh", "scripts/micropypath.toml")
 _INPUTS = ("versions.toml", "setup_toolchain.py", "micropython_overrides.py")
-_LIMIT = twin_process._QSTR_MAX_BYTES
-_OVER = "x" * (_LIMIT + 1)
 
 
 def _launch(tmp_path: Path, *args: str, root_dir: str = "repo", device: str = "", layout: str = "", home: bool = True, caller_env: "dict[str, str] | None" = None) -> tuple[subprocess.CompletedProcess[str], list[str]]:
@@ -56,7 +51,7 @@ def _launch(tmp_path: Path, *args: str, root_dir: str = "repo", device: str = ""
         stub_bin / "sudo": "sudo",
         root / "scripts" / "build_website.sh": "build_website.sh",
         # The interpreter also logs whether port 53's lock is held while it runs.
-        interpreter: 'micropython held=$(test -d "$XDG_RUNTIME_DIR/sensors-port-53.lock" && echo 53)',
+        interpreter: 'micropython held=$(flock -n "$XDG_RUNTIME_DIR/sensors-port-53.flock" true || echo 53)',
     }
     for path, line in stubs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,7 +65,8 @@ def _launch(tmp_path: Path, *args: str, root_dir: str = "repo", device: str = ""
     if not home:
         del env["HOME"]
     done = subprocess.run(["/bin/bash", str(root / _RUNNER), *args], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=60)
-    assert list(runtime.iterdir()) == [], "the runner's exit left a port lock behind"
+    flock = shutil.which("flock") or "/usr/bin/flock"
+    assert all(subprocess.run([flock, "-n", str(lock), "true"], check=False).returncode == 0 for lock in runtime.glob("*.flock")), "the runner's exit left a port lock held"
     return done, log.read_text(encoding="utf-8").splitlines() if log.exists() else []
 
 
@@ -99,8 +95,8 @@ def test_the_named_device_is_built_generated_and_booted_with_the_other_flags_for
     module = "sensortask_fixture_device_b"
     plan = f"build/generated_src/{module}_wiring_plan.json"
     assert calls[-3:] == [
-        "build_website.sh fixture_device_b build/generated_html/fixture_device_b/frozen_html.py",
         "uv run --no-sync scripts/_generate_sensortask_modules.py",
+        "build_website.sh fixture_device_b build/generated_html/fixture_device_b/frozen_html.py",
         f"micropython held=53 digital_twin/run_generic_integration.py --module {module} --wiring-plan {plan} --device fixture_device_b --port 9000 --fault sgp40:writeto",
     ], calls
 
@@ -112,55 +108,3 @@ def test_a_callers_twin_host_never_reaches_the_twin(tmp_path: Path) -> None:
     assert done.returncode == 0 and calls[-1].startswith("micropython "), (done.stderr, calls)
     seen = (tmp_path / "twin_host").read_text(encoding="utf-8")
     assert seen == "<unset>\n", f"the caller's TEST_TWIN_HOST reached the twin's environment: {seen!r}"
-
-
-@pytest.mark.parametrize(
-    ("case", "named"),
-    [
-        ("long device", "--wiring-plan's value (278 bytes)"),
-        ("forwarded value", "--fault's value (256 bytes)"),
-        ("multibyte forwarded value", "--fault's value (256 bytes)"),
-        ("forwarded argument", "argument 7 (256 bytes)"),
-        ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
-        ("home-relative entry without HOME", "MICROPYPATH entry 1 (258 bytes)"),
-        ("runner's directory", "the runner's directory"),
-    ],
-)
-def test_a_string_the_interpreter_cannot_intern_exits_1_naming_it_before_anything_runs(tmp_path: Path, case: str, named: str) -> None:
-    # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), after the lock, the builds
-    # and setcap: refused before all of them, in bytes as the interpreter measures, under a UTF-8 locale.
-    device, layout, root_dir, home = "fixture_device_b", "", "repo", True
-    args: tuple[str, ...] = ()
-    if case == "long device":
-        device = "d" * 230
-    elif case == "forwarded value":
-        args = ("--fault", _OVER)
-    elif case == "multibyte forwarded value":
-        args = ("--fault", "\u00e9" * ((_LIMIT + 1) // 2))
-    elif case == "forwarded argument":
-        args = (_OVER,)
-    elif case == "micropypath entry":
-        layout = _OVER
-    elif case == "home-relative entry without HOME":
-        layout, home = f"~/{_OVER}", False
-    else:
-        root_dir = f"{'r' * 200}/repo"
-        named += f" ({len(os.fsencode(os.path.realpath(tmp_path / root_dir / 'digital_twin')))} bytes)"
-    done, calls = _launch(tmp_path, "--device", device, *args, root_dir=root_dir, device=device, layout=layout, home=home)
-    assert (done.returncode, done.stdout, calls) == (1, "", []), (done.stderr, calls)
-    assert done.stderr.startswith("error: the twin was not started: ") and named in done.stderr, done.stderr
-    assert f"- the Unix port interns each as a qstr of at most {_LIMIT} bytes and dies before the runner starts\n" in done.stderr, done.stderr
-
-
-def test_a_string_at_the_limit_or_one_the_interpreter_expands_still_boots(tmp_path: Path) -> None:
-    # The boundary's other side: 255 bytes everywhere, and a ~/ entry the interpreter builds from $HOME, never interns.
-    at_limit = "x" * _LIMIT
-    done, calls = _launch(tmp_path, "--device", "fixture_device_b", "--fault", at_limit, layout=f"{at_limit}:~/{_OVER}")
-    assert done.returncode == 0, done.stderr
-    assert calls[-1].endswith(f"--device fixture_device_b --fault {at_limit}"), calls
-
-
-def test_the_runners_limit_is_the_twin_launchs_own() -> None:
-    # The runner's copy of the qstr limit is scripts/_twin_process.py's, which is checked against the interpreter itself.
-    copies = re.findall(r"^qstr_max_bytes=(\d+)$", (REPO_ROOT / _RUNNER).read_text(encoding="utf-8"), re.MULTILINE)
-    assert copies == [str(_LIMIT)], f"{_RUNNER} holds the qstr limit {copies}, scripts/_twin_process.py {_LIMIT}"

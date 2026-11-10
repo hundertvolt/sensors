@@ -5,11 +5,14 @@ which proves the served content. Same literal-path-string grep technique as test
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 from _devices import DEVICE_NAMES
+
+_DEFINITIONS_OPEN = '<script type="application/json" id="inlined-definitions">'
 
 
 def _run_build_website(repo_root: Path, device: str, output_path: Path, *options: str, check: bool = True, work: "Path | None" = None) -> subprocess.CompletedProcess[str]:
@@ -94,6 +97,17 @@ def test_every_device_inlines_generated_definitions_and_never_stages_them(repo_r
     assert "/definitions.json.gz" not in text
 
 
+def test_the_page_inlines_the_definitions_the_generator_wrote(repo_root: Path, tmp_path: Path) -> None:
+    # One derivation: the stage takes build/generated_src/definitions/<device>.json, generated first if its stamp is stale.
+    stage = tmp_path / "stage"
+    result = _run_build_website(repo_root, DEVICE_NAMES[0], stage, "--stage-only")
+    assert "python3 -m buildgen.definitions" not in (repo_root / "scripts" / "build_website.sh").read_text(encoding="utf-8")
+    page = (stage / "index.html").read_text(encoding="utf-8")
+    start = page.index(_DEFINITIONS_OPEN) + len(_DEFINITIONS_OPEN)
+    inlined = page[start : page.index("</script>", start)].replace("\\u003c", "<")
+    assert inlined == (repo_root / "build" / "generated_src" / "definitions" / f"{DEVICE_NAMES[0]}.json").read_text(encoding="utf-8"), result.stdout
+
+
 def test_device_toml_that_fails_buildgen_validation_fails_the_build_loud(repo_root: Path, tmp_path: Path) -> None:
     # The buildgen generation step's other failure surface: a devices/<device>.toml that exists but fails buildgen's
     # validation. A zz_test_ name is no derived device (refused before buildgen runs) and any other name in the live
@@ -102,7 +116,7 @@ def test_device_toml_that_fails_buildgen_validation_fails_the_build_loud(repo_ro
     sandbox.mkdir()
     for name in ("buildgen", "src", "ext", "html", "js"):
         (sandbox / name).symlink_to(repo_root / name)
-    (sandbox / "scripts").symlink_to(repo_root / "scripts", target_is_directory=True)
+    shutil.copytree(repo_root / "scripts", sandbox / "scripts", symlinks=True)  # a copy: the generator reads the tree it sits in
     (sandbox / "devices").mkdir()
     for toml in (repo_root / "devices").glob("*.toml"):
         (sandbox / "devices" / toml.name).symlink_to(toml)
@@ -157,5 +171,5 @@ def test_the_work_dir_is_wiped_at_the_start_and_kept_after_the_build(repo_root: 
     result = _run_build_website(repo_root, DEVICE_NAMES[0], tmp_path / "frozen_html.py")
     assert not stale.exists(), "the previous build's stage survived into this one"
     assert sorted(p.relative_to(work / "stage").as_posix() for p in (work / "stage").rglob("*") if p.is_file()) == ["index.html", "js/app.js"]
-    assert (work / "scratch" / "definitions.json").is_file() and (work / "gzipped" / "index.html.gz").is_file()
+    assert (work / "gzipped" / "index.html.gz").is_file()
     assert str(work) in result.stdout

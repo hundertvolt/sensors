@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "./_memory_markers.js";
 import { readIntConst } from "./_source_constants.js";
-import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, besideConfigDir, holdTwinPorts, makeConfigDir, removeConfigDir, requireInterpreter, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
+import { HOST, MEMORY_ERROR_MARKERS, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, besideConfigDir, holdTwinPorts, makeConfigDir, removeConfigDir, requireInterpreter, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Clear of every fixed port and band tests/, tests_scripts/, scripts/ and digital_twin/ bind (the
@@ -253,7 +253,7 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
     await assertPortFree(device, "before starting");
     const configDir = makeConfigDir(); // the run's own config, removed once its twin stopped
     const proc = spawnTwin({ device, port: PORT, configDir });
-    const output = drainChildOutput(proc);
+    const output = drainChildOutput(proc, MEMORY_ERROR_MARKERS);
 
     /** @type {import("playwright").BrowserContext[]} */
     const contexts = [];
@@ -335,7 +335,7 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
 /**
  * Records every page's requests in flight. A reload waits on `settled()` until the other tabs have nothing left on the
  * network (agent, 2026-10-13; SPECIFICATION.md Part H.7.1: a follow-up into a full ceiling is refused until it has
- * drained; owner-reviewed, 2026-11-06), and the reset probe names what they had open when a reload still fails.
+ * drained), and the reset probe names what they had open when a reload still fails.
  * @param {import("playwright").Page[]} pages
  */
 function trackInFlight(pages) {
@@ -418,7 +418,7 @@ function trackInFlight(pages) {
 /**
  * Keeps every new request of `pages` in the browser until `release()`, so those tabs open no connection while another
  * tab reloads: Playwright's routing, not Chromium's frozen lifecycle state, which left a headless page's timers running
- * (agent, 2026-10-13; owner-reviewed, 2026-11-06).
+ * (agent, 2026-10-13).
  * @param {import("playwright").Page[]} pages
  * @param {() => void} onHeld called after each request it holds
  */
@@ -495,7 +495,7 @@ async function loadPage(page, timeoutMs) {
 /**
  * Reloads tab `index` once the other tabs have drained, holding them meanwhile. Drain and reload share one TAB_WAIT_MS
  * slot; the drain gets at most its first TAB_WAIT_MS - SECTION_WAIT_MS, so the reload keeps at least one section wait,
- * and a drain still open then fails naming every request the other tabs had in flight (agent, 2026-10-13; owner-reviewed, 2026-11-06).
+ * and a drain still open then fails naming every request the other tabs had in flight (agent, 2026-10-13).
  * @param {import("playwright").Page[]} pages
  * @param {number} index the tab to reload
  * @param {ReturnType<typeof trackInFlight>} tracker
@@ -542,7 +542,7 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
     await assertPortFree(device, "before starting");
     const configDir = makeConfigDir();
     const proc = spawnTwin({ device, port: PORT, configDir });
-    const output = drainChildOutput(proc);
+    const output = drainChildOutput(proc, MEMORY_ERROR_MARKERS);
 
     /** @type {import("playwright").BrowserContext[]} */
     const contexts = [];
@@ -630,7 +630,7 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
     const releasePorts = holdTwinPorts(); // held across both boots, so no other runner takes the port between them
     const configDir = makeConfigDir(); // one config across both boots: the restart finds what the first boot wrote
     const procs = [spawnTwin({ device, port: PORT, configDir })];
-    const outputs = [drainChildOutput(/** @type {import("node:child_process").ChildProcess} */ (procs[0]))];
+    const outputs = [drainChildOutput(/** @type {import("node:child_process").ChildProcess} */ (procs[0]), MEMORY_ERROR_MARKERS)];
     /** @type {import("playwright").BrowserContext[]} */
     const contexts = [];
     /** @type {import("playwright").Page[]} */
@@ -665,7 +665,7 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
         clock.step("restarting its twin");
         const restarted = spawnTwin({ device, port: PORT, configDir });
         procs.push(restarted);
-        outputs.push(drainChildOutput(restarted));
+        outputs.push(drainChildOutput(restarted, MEMORY_ERROR_MARKERS));
         await waitUntilServing(restarted, PORT, READY_TIMEOUT_MS);
         clock.step("waiting for the page to recover");
         // A hidden banner is display: none, so it is waited for as attached, never as visible.

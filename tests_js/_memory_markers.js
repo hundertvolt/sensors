@@ -1,8 +1,6 @@
-// The allocation-failure marker pair the unit, twin, flash/bench and JS gates all match (CLAUDE.md's
-// memory rule, SPECIFICATION.md Part I.4(e)), the twin's restart signs, and the drain a JS gate reads a
-// twin's output through. Pure, no Node built-ins: tsconfig.json checks it as browser code.
-
-export const MEMORY_ERROR_MARKERS = ["MemoryError", "memory allocation failed"];
+// The drain a JS gate reads a twin's output through, scanning it for the allocation-failure markers the caller reads
+// from scripts/memory_markers.json (CLAUDE.md's memory rule, SPECIFICATION.md Part I.4(e)) and the twin's restart
+// signs. Pure, no Node built-ins: tsconfig.json checks it as browser code.
 
 // machine.reset() raises SimulatedResetError in the twin (digital_twin/machine.py), and the task supervisor logs
 // "reboot triggered" before it: a live command whose twin printed either has not tested a running device.
@@ -11,7 +9,6 @@ export const TWIN_RESET_MARKERS = ["SimulatedResetError", "reboot triggered"];
 // A child's kept output tail, in characters; trimming it never drops a marker line (scanned first).
 export const OUTPUT_TAIL_CHARS = 256 * 1024;
 const MARKER_LINES_QUOTED = 50;
-const MARKER_OVERLAP = Math.max(...[...MEMORY_ERROR_MARKERS, ...TWIN_RESET_MARKERS].map((marker) => marker.length)) - 1;
 
 /**
  * Every line of `text` holding any of `markers`, whole.
@@ -51,12 +48,13 @@ function markedLineLog(markers) {
 }
 
 /**
- * Every line of `text` holding either memory marker, whole.
+ * Every line of `text` holding any of the memory markers, whole.
  * @param {string} text
+ * @param {string[]} memoryMarkers
  * @returns {string[]}
  */
-export function memoryMarkerLines(text) {
-    return linesWith(text, MEMORY_ERROR_MARKERS);
+export function memoryMarkerLines(text, memoryMarkers) {
+    return linesWith(text, memoryMarkers);
 }
 
 /**
@@ -71,12 +69,14 @@ export function resetMarkerLines(text) {
 /**
  * A bounded, line-complete record of a child's output streams: complete lines join one tail in
  * arrival order, and each is scanned for both marker kinds before the tail is trimmed.
+ * @param {string[]} memoryMarkers
  * @param {number} [limit]
  */
-export function createOutputDrain(limit = OUTPUT_TAIL_CHARS) {
+export function createOutputDrain(memoryMarkers, limit = OUTPUT_TAIL_CHARS) {
     /** @type {Map<string, string>} */
     const partial = new Map();
-    const memory = markedLineLog(MEMORY_ERROR_MARKERS);
+    const memory = markedLineLog(memoryMarkers);
+    const overlap = Math.max(...[...memoryMarkers, ...TWIN_RESET_MARKERS].map((marker) => marker.length)) - 1;
     const reset = markedLineLog(TWIN_RESET_MARKERS);
     let tail = "";
     let dropped = 0;
@@ -105,7 +105,7 @@ export function createOutputDrain(limit = OUTPUT_TAIL_CHARS) {
             }
             // A line longer than the whole tail is broken rather than held back unbounded; the break
             // carries a marker's length minus one forward, so no marker can straddle it unseen.
-            const end = cut === -1 ? text.length - MARKER_OVERLAP : cut + 1;
+            const end = cut === -1 ? text.length - overlap : cut + 1;
             keep(cut === -1 ? `${text.slice(0, end)}\n` : text.slice(0, end));
             partial.set(stream, text.slice(end));
         },
@@ -130,9 +130,10 @@ export function createOutputDrain(limit = OUTPUT_TAIL_CHARS) {
  * child, and the drained text is what the memory gate scans. `closed(ms)` is true once both streams
  * have closed, so a verdict never reads output the child had not finished writing.
  * @param {{stdout: ReadableText | null, stderr: ReadableText | null}} child
+ * @param {string[]} memoryMarkers
  */
-export function drainChildOutput(child) {
-    const drain = createOutputDrain();
+export function drainChildOutput(child, memoryMarkers) {
+    const drain = createOutputDrain(memoryMarkers);
     /** @type {Promise<void>[]} */
     const ends = [];
     for (const [name, stream] of /** @type {const} */ ([["stdout", child.stdout], ["stderr", child.stderr]])) {

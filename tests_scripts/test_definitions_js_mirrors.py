@@ -1,8 +1,7 @@
-"""js/definitions.js keeps its own copies of two bounds (the schema major and the decimals ceiling) and of the
-field-format set, as do js/field-format.js's renderer and a tests_js leaf check, none able to import
-buildgen/. Read as text and pinned to their sources (the test_request_timeout_ceiling.py pattern: never imported)."""
+"""js/definitions.js keeps its own copies of two bounds (the schema major and the decimals ceiling), and
+js/field-format.js's renderer and a tests_js leaf check the field-format set, none able to import buildgen/.
+Read as text and pinned to their sources (the test_request_timeout_ceiling.py pattern: never imported)."""
 
-import ast
 import re
 from pathlib import Path
 
@@ -13,7 +12,6 @@ _TESTS_SCRIPTS = Path(__file__).resolve().parent
 _DEFINITIONS_JS = _TESTS_SCRIPTS.parent / "js" / "definitions.js"
 _FIELD_FORMAT_JS = _TESTS_SCRIPTS.parent / "js" / "field-format.js"
 _LEAF_CHECK_JS = _TESTS_SCRIPTS.parent / "tests_js" / "definitions-mockdata-coverage.test.js"
-_SHAPE_CHECK = _TESTS_SCRIPTS / "test_buildgen_definitions.py"
 
 
 def _js_compared_formats(text: str) -> set[str]:
@@ -48,42 +46,12 @@ def _js_map_keys(text: str, name: str) -> set[str]:
     return set(keys)
 
 
-def _js_string_set(text: str, name: str) -> set[str]:
-    # A top-level `const NAME = new Set([...]);` of double-quoted strings, whose list is also a Python literal.
-    found = re.findall(rf"^(?:export )?const {name} = new Set\((\[[^\]]*\])\);$", text, re.MULTILINE)
-    assert len(found) == 1, f"js/definitions.js declares {name} {len(found)} times as a set literal - expected exactly once"
-    return _strings(ast.parse(found[0], mode="eval").body)
-
-
-def _python_module_strings(path: Path, name: str) -> set[str]:
-    # The module-level `NAME = (<string literals>)` of a test module, read by ast: no test module is imported.
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and [ast.unparse(target) for target in node.targets] == [name]:
-            return _strings(node.value)
-    raise AssertionError(f"{path.name} defines no {name}")
-
-
-def _strings(node: ast.expr) -> set[str]:
-    # A list or tuple display of string literals, none repeated: a repeat would hide in the set the pins compare.
-    assert isinstance(node, ast.List | ast.Tuple), f"not a list of string literals: {ast.unparse(node)}"
-    values = [item.value for item in node.elts if isinstance(item, ast.Constant) and isinstance(item.value, str)]
-    assert len(values) == len(node.elts), f"not a list of string literals: {ast.unparse(node)}"
-    assert len(set(values)) == len(values), f"a repeated string: {ast.unparse(node)}"
-    return set(values)
-
-
 def test_the_supported_schema_major_is_the_generators() -> None:
     assert _js_int_const(_DEFINITIONS_JS.read_text(encoding="utf-8"), "SUPPORTED_SCHEMA_MAJOR") == int(SCHEMA_VERSION.split(".")[0])
 
 
 def test_the_decimals_ceiling_is_the_tag_parsers() -> None:
     assert _js_int_const(_DEFINITIONS_JS.read_text(encoding="utf-8"), "MAX_DECIMALS") == _MAX_DECIMALS
-
-
-def test_the_field_formats_are_the_tag_parsers_and_the_python_shape_checks() -> None:
-    # The tag parser emits a format, and both validators accept it on a readonly field: one set, three copies.
-    js_formats = _js_string_set(_DEFINITIONS_JS.read_text(encoding="utf-8"), "FIELD_FORMATS")
-    assert js_formats == _FORMATS == _python_module_strings(_SHAPE_CHECK, "_FIELD_FORMATS")
 
 
 def test_the_renderers_formats_and_the_leaf_checks_object_formats_are_the_field_formats() -> None:
@@ -93,7 +61,7 @@ def test_the_renderers_formats_and_the_leaf_checks_object_formats_are_the_field_
     record_formats = _js_map_keys(renderer, "RECORD_FORMATTERS")
     branched = _js_compared_formats(renderer)
     assert not record_formats & branched, f"formats both in RECORD_FORMATTERS and branched on: {sorted(record_formats & branched)}"
-    assert record_formats | branched == _js_string_set(_DEFINITIONS_JS.read_text(encoding="utf-8"), "FIELD_FORMATS")
+    assert record_formats | branched == set(_FORMATS)
     assert _js_format_disjunction(_LEAF_CHECK_JS.read_text(encoding="utf-8"), "isObjectFormat") == record_formats
 
 
@@ -101,16 +69,6 @@ def test_the_constant_reader_takes_both_declaration_forms_and_nothing_else() -> 
     assert _js_int_const("export const A = 1;\n", "A") == 1
     assert _js_int_const("const A = 100;\n", "A") == 100
     assert not re.findall(r"^(?:export )?const A = (\d+);$", "let A = 1;\n    const A = 2;\n", re.MULTILINE)
-
-
-def test_the_string_set_reader_takes_string_literals_once_each_and_refuses_anything_else() -> None:
-    assert _js_string_set('const A = new Set(["x", "y"]);\n', "A") == {"x", "y"}
-    for refused in ('["x", 1]', '["x", "x"]', "[x]", '{"x"}'):
-        try:
-            _strings(ast.parse(refused, mode="eval").body)
-        except AssertionError:
-            continue
-        raise AssertionError(f"{refused} was read as a list of distinct string literals")
 
 
 def test_the_format_readers_take_their_one_shape_and_refuse_anything_else() -> None:

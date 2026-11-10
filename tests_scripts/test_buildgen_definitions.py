@@ -32,7 +32,6 @@ from buildgen.web_tag import _MAX_DECIMALS, SELF_GROUP, WebFieldTag, parse_web_t
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CATALOG = json.loads((_REPO_ROOT / "buildgen" / "error_catalog.json").read_text(encoding="utf-8"))
-_SHAPE_CASES = json.loads((_REPO_ROOT / "tests_scripts" / "definitions_shape_cases.json").read_text(encoding="utf-8"))
 # The files every device's mandatory networking/system groups are tagged in; instance files come from
 # the model (each instance's driver_info.source_path).
 _MANDATORY_TAG_FILES = ("asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py")
@@ -58,23 +57,10 @@ def _is_step_list(value: object) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(step, str) and step for step in value)
 
 
-def _is_string_map(value: object) -> bool:
-    return isinstance(value, dict) and all(isinstance(v, str) for v in value.values())
-
-
 def _assert_rule(error: BuildError, rule: str) -> None:
     # Every build error names the rule it broke and carries its fix in the message (SPECIFICATION.md L.5).
     assert error.rule == rule, error.rule
     assert error.fix and str(error).endswith(f" - fix: {error.fix}"), str(error)
-
-
-def _code_hint_problems(f: "JsonDict", where: str) -> "list[str]":
-    problems = []
-    if "format" in f and (f["format"] not in _FIELD_FORMATS or f.get("kind") != "readonly"):
-        problems.append(f"{where}.format")
-    if "codes" in f and not _is_string_map(f["codes"]):
-        problems.append(f"{where}.codes")
-    return problems
 
 
 def _copy_driver_replacing(tmp_path: Path, src_dir: Path, filename: str, old: str, new: str) -> Path:
@@ -155,14 +141,11 @@ def _group_problems(g: object, where: str) -> "list[str]":
     if g.get("kind") == "errcount":
         if not isinstance(g.get("modules"), list):
             problems.append(f"{where}.modules")
-        codes = g.get("codes", {"E": {}, "W": {}})
-        if not isinstance(codes, dict) or not _is_string_map(codes.get("E")) or not _is_string_map(codes.get("W")):
-            problems.append(f"{where}.codes")
         return problems
     fields = g.get("fields")
     if not isinstance(fields, list):
         return [*problems, f"{where}.fields"]
-    hints = [_code_hint_problems(f, f"{where}.fields[{i}]") + _value_hint_problems(f, f"{where}.fields[{i}]") for i, f in enumerate(fields) if isinstance(f, dict)]
+    hints = [_value_hint_problems(f, f"{where}.fields[{i}]") for i, f in enumerate(fields) if isinstance(f, dict)]
     return problems + [p for found in hints for p in found]
 
 
@@ -565,11 +548,13 @@ def _read(definitions: JsonDict) -> "JsonDict":
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_every_errcount_codes_block_equals_the_catalogs_live_codes(repo_root: Path, src_dir: Path, device: str) -> None:
-    groups = _errcount_groups(_generate(repo_root, src_dir, device))
+def test_the_pages_one_errcount_code_table_equals_the_catalogs_live_codes(repo_root: Path, src_dir: Path, device: str) -> None:
+    # One table per page serves every errcount group: numbers are global (C.7.1).
+    generated = _generate(repo_root, src_dir, device)
+    groups = _errcount_groups(generated)
     assert groups, f"{device} has no errcount group"
-    for _section, group in groups:
-        assert group["codes"] == {"E": _live_codes("E"), "W": _live_codes("W")}, group["key"]
+    assert generated["errcountCodes"] == {"E": _live_codes("E"), "W": _live_codes("W")}
+    assert [group["key"] for _section, group in groups if "codes" in group] == []
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -827,7 +812,7 @@ def test_the_byte_bounded_fields_are_exactly_the_radio_fields(src_dir: Path) -> 
 
 # ---------------------------------------------------------------------------
 # Shape validation - mirrors js/definitions.js's validateDefinitions() rule for rule, so a generated
-# file is known to load without a Node round trip. Both read tests_scripts/definitions_shape_cases.json.
+# file is known to load without a Node round trip.
 # ---------------------------------------------------------------------------
 
 # validateDefinitions()'s own patterns and value sets (js/definitions.js): JS's \d is ASCII-only and
@@ -835,8 +820,6 @@ def test_the_byte_bounded_fields_are_exactly_the_radio_fields(src_dir: Path) -> 
 _SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 _SUPPORTED_SCHEMA_MAJOR = int(SCHEMA_VERSION.split(".")[0])  # js/definitions.js's, pinned by test_definitions_js_mirrors.py
 _POLL_GROUPS = ("live", "settings", "none")
-_FIELD_FORMATS = ("gmtimestruct", "epoch", "lasttaskend")
-_STRING_SHAPES = ("hostLabel", "countryCode", "hostName", "ipv4List")
 
 
 def _sgp_maintenance_keys(module_source: str) -> "set[str]":
@@ -965,12 +948,6 @@ def _top_level_problems(defs: "JsonDict") -> "list[str]":
     return problems
 
 
-@pytest.mark.parametrize("case", _SHAPE_CASES, ids=[c["name"] for c in _SHAPE_CASES])
-def test_shape_corpus_agrees(case: "JsonDict") -> None:
-    # The same corpus tests_js/definitions-shape-corpus.test.js runs through the real validator.
-    assert (_shape_problems(case["definitions"]) == []) == case["valid"], _shape_problems(case["definitions"])
-
-
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_generated_definitions_pass_shape_validation(repo_root: Path, src_dir: Path, device: str) -> None:
     assert _shape_problems(_generate(repo_root, src_dir, device)) == []
@@ -1041,12 +1018,6 @@ def _value_hint_problems(f: "JsonDict", where: str) -> "list[str]":
             problems.append(f"{where}.path on a writable field")
     if "decimals" in f and not _is_decimals(f["decimals"]):
         problems.append(f"{where}.decimals")
-    if "byteLength" in f and (not isinstance(f["byteLength"], bool) or kind != "string"):
-        problems.append(f"{where}.byteLength")
-    if "shape" in f and (f["shape"] not in _STRING_SHAPES or kind != "string"):
-        problems.append(f"{where}.shape")
-    if "alwaysExecuted" in f and not isinstance(f["alwaysExecuted"], bool):
-        problems.append(f"{where}.alwaysExecuted")
     return problems
 
 

@@ -924,8 +924,9 @@ describe("buildErrcountGroup", () => {
             { key: "SGP40", label: "SGP40" },
             { key: "BMP3XX", label: "BMP388" },
         ],
-        codes: { E: { 2: "the sensor did not answer", 4: "a read failed" }, W: { 5: "a reading was out of range" } },
     };
+    /** @type {import("../js/definitions.js").ErrcountCodes} */
+    const CODES = { E: { 2: "the sensor did not answer", 4: "a read failed" }, W: { 5: "a reading was out of range" } };
     /** @type {Record<string, ErrcountEntry>} */
     const THREE_MODULE_ERRCOUNT = {
         SCD30: { counter: 0, history: [{ num: 0, type: "N" }] },
@@ -1111,7 +1112,7 @@ describe("buildErrcountGroup", () => {
     });
 
     it("shows a history code's catalog text below the row's history on click, hides it on a second click, and moves it on another pill", () => {
-        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT));
+        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT, CODES));
         clickAction(wrapper, "all");
         const bmp = mustQuery(wrapper, '.errcount-row-wrapper[data-worst="E"]');
         const [first, second] = /** @type {HTMLButtonElement[]} */ ([...bmp.querySelectorAll("button.history-entry-num")]);
@@ -1135,7 +1136,7 @@ describe("buildErrcountGroup", () => {
     });
 
     it("opens a history code's description from the keyboard", async () => {
-        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT));
+        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT, CODES));
         clickAction(wrapper, "all");
         const sgp40 = rowAt(wrapper, 1);
         mustQuery(sgp40, "button.history-entry-num").focus();
@@ -1144,7 +1145,7 @@ describe("buildErrcountGroup", () => {
     });
 
     it("says a history code with no catalog entry has no description", () => {
-        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, { SCD30: { counter: 1, history: [{ num: 77, type: "E" }] } }));
+        const wrapper = mount(buildErrcountGroup(THREE_MODULE_GROUP, { SCD30: { counter: 1, history: [{ num: 77, type: "E" }] } }, CODES));
         clickAction(wrapper, "all");
         mustQuery(wrapper, "button.history-entry-num").click();
         expect(mustQuery(wrapper, ".code-description").textContent).toBe("No description for code 77");
@@ -1161,8 +1162,9 @@ describe("updateErrcountGroup", () => {
             { key: "SCD30", label: "SCD30" },
             { key: "SGP40", label: "SGP40" },
         ],
-        codes: { E: { 2: "the sensor did not answer" }, W: {} },
     };
+    /** @type {import("../js/definitions.js").ErrcountCodes} */
+    const CODES = { E: { 2: "the sensor did not answer" }, W: {} };
     /** @type {Record<string, ErrcountEntry>} */
     const HEALTHY = { SCD30: { counter: 0, history: [{ num: 0, type: "N" }] }, SGP40: { counter: 0, history: [{ num: 0, type: "N" }] } };
     /** @type {Record<string, ErrcountEntry>} */
@@ -1192,14 +1194,14 @@ describe("updateErrcountGroup", () => {
     });
 
     it("keeps a row's history nodes and open description while the history is unchanged, and rebuilds and closes them when it changes", () => {
-        const card = mount(buildErrcountGroup(GROUP, FAILING));
+        const card = mount(buildErrcountGroup(GROUP, FAILING, CODES));
         const pill = mustQuery(card, "button.history-entry-num");
         pill.click();
-        updateErrcountGroup(card, GROUP, { ...FAILING, SCD30: { counter: 5, history: [{ num: 0, type: "N" }, { num: 2, type: "E" }] } });
+        updateErrcountGroup(card, GROUP, { ...FAILING, SCD30: { counter: 5, history: [{ num: 0, type: "N" }, { num: 2, type: "E" }] } }, CODES);
         expect(mustQuery(card, "button.history-entry-num")).toBe(pill);
         expect(mustQuery(card, ".code-description").textContent).toBe("2: the sensor did not answer");
 
-        updateErrcountGroup(card, GROUP, { ...FAILING, SCD30: { counter: 6, history: [{ num: 2, type: "E" }, { num: 2, type: "E" }] } });
+        updateErrcountGroup(card, GROUP, { ...FAILING, SCD30: { counter: 6, history: [{ num: 2, type: "E" }, { num: 2, type: "E" }] } }, CODES);
         expect(card.querySelector(".code-description")).toBeNull();
         expect(card.querySelectorAll("button.history-entry-num")).toHaveLength(2);
         expect(card.contains(pill)).toBe(false);
@@ -1313,8 +1315,8 @@ describe("XSS safety (standing guideline: textContent only, never innerHTML)", (
         mustQuery(el, "button.code-value").click();
         expectLiteral(el);
         /** @type {ErrcountGroup} */
-        const group = { key: "errcount", label: "Errors", kind: "errcount", modules: [{ key: "SCD30", label: "SCD30" }], codes: { E: { 1: HOSTILE }, W: {} } };
-        const card = mount(buildErrcountGroup(group, { SCD30: { counter: 1, history: [{ num: 1, type: "E" }] } }));
+        const group = { key: "errcount", label: "Errors", kind: "errcount", modules: [{ key: "SCD30", label: "SCD30" }] };
+        const card = mount(buildErrcountGroup(group, { SCD30: { counter: 1, history: [{ num: 1, type: "E" }] } }, { E: { 1: HOSTILE }, W: {} }));
         mustQuery(card, "button.history-entry-num").click();
         expectLiteral(card);
     });

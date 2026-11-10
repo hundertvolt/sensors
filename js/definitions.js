@@ -16,10 +16,8 @@
  *   codes?: Record<string, string>, codeTones?: Record<string, "good"|"neutral"|"warn">, confirm?: boolean,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
- * @typedef {{
- *   key: string, label: string, kind: "errcount", modules: {key: string, label: string}[],
- *   codes?: {E: Record<string, string>, W: Record<string, string>},
- * }} ErrcountGroup
+ * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
+ * @typedef {{E: Record<string, string>, W: Record<string, string>}} ErrcountCodes
  * @typedef {{
  *   key: string, label: string, description?: string,
  *   rest: {get: string, put?: string},
@@ -28,7 +26,8 @@
  * }} Section
  * @typedef {{
  *   schemaVersion: string, websiteVersion?: string, device: {id: string, displayName: string},
- *   landingSection: string, defaultPollIntervalMs: number, defaultDecimals?: number, sections: Section[],
+ *   landingSection: string, defaultPollIntervalMs: number, defaultDecimals?: number, errcountCodes?: ErrcountCodes,
+ *   sections: Section[],
  * }} SiteDefinitions
  * @typedef {{
  *   measurements: Record<string, Record<string, unknown>>,
@@ -74,9 +73,6 @@ const SUPPORTED_SCHEMA_MAJOR = 1;
 // Number#toFixed's own ceiling: a larger value would throw a RangeError in the card.
 const MAX_DECIMALS = 100;
 
-// The enumerated hint values the generator emits (buildgen/web_tag.py's _FORMATS and _SHAPES).
-const FIELD_FORMATS = new Set(["gmtimestruct", "epoch", "lasttaskend"]);
-const STRING_SHAPES = new Set(["hostLabel", "countryCode", "hostName", "ipv4List"]);
 const POLL_GROUPS = new Set(["live", "settings", "none"]);
 
 // websiteVersion is build provenance only (SPECIFICATION.md Part L.7), distinct from
@@ -92,32 +88,6 @@ function isPollInterval(value) {
 }
 
 /**
- * @param {unknown} value
- * @returns {boolean} true for a plain object whose every value is a string.
- */
-function isStringMap(value) {
-    return isRecord(value) && Object.values(value).every((v) => typeof v === "string");
-}
-
-/**
- * An errcount group's module list and, when present, its code-description block.
- * @param {Record<string, unknown>} g
- * @param {string} where
- * @param {string[]} problems
- */
-function validateErrcountGroup(g, where, problems) {
-    if (!Array.isArray(g.modules)) {
-        problems.push(`${where}.modules must be an array for an errcount group`);
-    }
-    if (g.codes !== undefined) {
-        const codes = isRecord(g.codes) ? g.codes : null;
-        if (codes === null || !isStringMap(codes.E) || !isStringMap(codes.W)) {
-            problems.push(`${where}.codes must map E and W to code descriptions`);
-        }
-    }
-}
-
-/**
  * One group of a section: an errcount group, or a field group whose fields carry hints.
  * @param {Record<string, unknown>} g
  * @param {string} where
@@ -128,7 +98,9 @@ function validateGroup(g, where, problems) {
         problems.push(`${where} is missing key/label`);
     }
     if (g.kind === "errcount") {
-        validateErrcountGroup(g, where, problems);
+        if (!Array.isArray(g.modules)) {
+            problems.push(`${where}.modules must be an array for an errcount group`);
+        }
         return;
     }
     if (!Array.isArray(g.fields)) {
@@ -143,8 +115,8 @@ function validateGroup(g, where, problems) {
 }
 
 /**
- * Validates the display and value hints a field carries. This file's contract is to fail loudly
- * rather than in the browser, so a malformed hint has to surface here, naming where it sits.
+ * Validates the two display hints a nested, precision-declared readonly field carries: this file's
+ * contract is to fail loudly rather than in the browser, so a malformed one surfaces here.
  * @param {Record<string, unknown>} f
  * @param {string} where
  * @param {string[]} problems
@@ -162,16 +134,6 @@ function validateHints(f, where, problems) {
     if (f.decimals !== undefined && !(typeof f.decimals === "number" && Number.isInteger(f.decimals) && f.decimals >= 0 && f.decimals <= MAX_DECIMALS)) {
         problems.push(`${where}.decimals must be an integer from 0 to ${MAX_DECIMALS} when present`);
     }
-    if (f.format !== undefined && (typeof f.format !== "string" || !FIELD_FORMATS.has(f.format) || f.kind !== "readonly")) {
-        problems.push(`${where}.format must be one of ${[...FIELD_FORMATS].join(", ")} on a readonly field when present`);
-    }
-    if (f.codes !== undefined && !isStringMap(f.codes)) {
-        problems.push(`${where}.codes must map each code to its description when present`);
-    }
-    if (f.alwaysExecuted !== undefined && typeof f.alwaysExecuted !== "boolean") {
-        problems.push(`${where}.alwaysExecuted must be a boolean when present`);
-    }
-    validateStringHints(f, where, problems);
 }
 
 /**
@@ -202,21 +164,6 @@ function validateSection(s, where, problems) {
     }
     for (const [index, group] of s.groups.entries()) {
         validateGroup(/** @type {Record<string, unknown>} */ (group), `${where}.groups[${index}]`, problems);
-    }
-}
-
-/**
- * The value-kind hints a string field carries: a byte bound and a shape, each only on a string.
- * @param {Record<string, unknown>} f
- * @param {string} where
- * @param {string[]} problems
- */
-function validateStringHints(f, where, problems) {
-    if (f.byteLength !== undefined && (typeof f.byteLength !== "boolean" || f.kind !== "string")) {
-        problems.push(`${where}.byteLength must be a boolean on a string field when present`);
-    }
-    if (f.shape !== undefined && (typeof f.shape !== "string" || !STRING_SHAPES.has(f.shape) || f.kind !== "string")) {
-        problems.push(`${where}.shape must be one of ${[...STRING_SHAPES].join(", ")} on a string field when present`);
     }
 }
 

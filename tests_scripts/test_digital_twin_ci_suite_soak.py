@@ -2,6 +2,7 @@
 of a fixed length, _run_11_soak()'s one-boot verdict over a stubbed twin, a missing API reference,
 a held port and the log default. The real twin runs it in scripts/run_digital_twin_ci.sh (SPECIFICATION.md Part E.9)."""
 
+import os
 import subprocess
 import sys
 import time
@@ -179,11 +180,7 @@ def test_a_held_product_port_fails_the_suite_at_once_naming_it(ci_suite: ModuleT
     _fresh_summary(ci_suite, monkeypatch)
     passes: list[object] = []
     monkeypatch.setattr(ci_suite, "_run_both_passes", passes.append)
-    holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
-    lock = own_lock_root / "sensors-port-53.lock"
-    lock.mkdir()
-    (lock / "runner").write_text("another suite\n", encoding="utf-8")
-    (lock / "pid").write_text(f"{holder.pid}\n", encoding="utf-8")
+    holder = _hold_port(own_lock_root, 53)
     monkeypatch.setattr(sys, "argv", ["_digital_twin_ci_suite.py", "--micropython-bin", "mp", "--device", "fixture_device"])
     try:
         assert ci_suite.main() == 1
@@ -307,6 +304,15 @@ def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.M
 def _stub_runs(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, body: "Callable[[object], object]") -> None:
     for name in [n for n in dir(ci_suite) if n.startswith("_run_") and n[5].isdigit()]:
         monkeypatch.setattr(ci_suite, name, body)
+
+
+def _hold_port(root: Path, port: int) -> "subprocess.Popen[str]":
+    # Another runner's live lock on `port`, taken by scripts/_port_lock.sh itself outside this chain; kill it to free it.
+    env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK")} | {"XDG_RUNTIME_DIR": str(root)}
+    take = f'source {Path(__file__).resolve().parent.parent}/scripts/_port_lock.sh; port_lock_take {port} "another suite"; echo held; exec sleep 60'
+    holder = subprocess.Popen(["/bin/bash", "-c", take], env=env, stdout=subprocess.PIPE, text=True)
+    assert holder.stdout is not None and holder.stdout.readline() == "held\n", "the stand-in holder never took its lock"
+    return holder
 
 
 @pytest.fixture

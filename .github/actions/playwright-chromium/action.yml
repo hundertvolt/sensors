@@ -5,7 +5,7 @@ description: >
   Restores Playwright's Chromium from the cache keyed on package-lock.json and the runner identity, bounds and retries
   apt's fetches, runs apt-cache-restore on Playwright's own package list, installs (the browser and its packages on a
   browser-cache miss, the packages alone on a hit) and keeps the fetched packages with apt-cache-save. Used by
-  web-unit-tests, web-put-matrix, web-coverage and web-cross-browser-smoke.
+  web-unit-tests, web-put-matrix and web-cross-browser-smoke.
 
 inputs:
   always-check:

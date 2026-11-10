@@ -399,7 +399,8 @@ gates, traps).
   - **The installer, much changed since the legs** (the recipe's `env --tier generic` step runs it):
     the `[lwip]` table and its readback through the C compiler CMake recorded, the patched `modlwip.c`
     copy in every rp2 image and in `build-lwip` (SPECIFICATION.md B.14.4), the Unix variant header's
-    GC mark stack (B.14.6), bounded and retried subprocesses and apt calls, `sudo --preserve-env`, the
+    GC mark stack (B.14.6) and two-byte qstr lengths (F.7 row 32, read back by each Unix build's version
+    probe), bounded and retried network steps and apt calls, `sudo --preserve-env`, the
     tier command table, Node's checksum-verified install. The host lwIP build has met only GCC 13.3 on x86-64, and
     only the GCC 14 leg exercises the mbedtls `-Wno-array-bounds` rule. Two readings are owed too: the
     apt-get(8), apt.conf(5) and dpkg(1) pages behind the installer's apt download/install split, and

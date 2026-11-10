@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "../tests_js/_memory_markers.js";
 import { acquirePortLock } from "../tests_js/_port_lock.js";
-import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, makeConfigDir, removeConfigDir, requireInterpreter, spawnTwin, stopTwin, waitUntilServing } from "../tests_js/_twin_process.js";
+import { HOST, MEMORY_ERROR_MARKERS, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, makeConfigDir, removeConfigDir, requireInterpreter, spawnTwin, stopTwin, waitUntilServing } from "../tests_js/_twin_process.js";
 import { engineVerdict, pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
 import { classifyConnections, settledPageLoadConnections, startCountingProxy } from "./_page_load_connections.mjs";
 
@@ -538,7 +538,7 @@ async function smokeDevice(device, probe, engines, counter, results) {
     const configDir = makeConfigDir(); // its own config directory, never the manual run's
     const twin = spawnTwin({ device, port: PORT, configDir });
     activeProcesses.add(twin); // a signal mid-run kills it with the drivers
-    const output = drainChildOutput(twin);
+    const output = drainChildOutput(twin, MEMORY_ERROR_MARKERS);
     let failed = false;
     /** @type {CountingProxy | undefined} */
     let proxy;

@@ -674,7 +674,7 @@ Three standing practices:
   implies success-gating, which was never chosen here (that job's own comment says the sequencing
   "isn't required" for the hang) and would let a red `lint-and-typecheck` silently skip every Python
   test lane, hiding that the tests never ran. Keep the sequencing; never restore the gating.
-  `digital-twin-e2e`, `unit-tests-coverage`, `web-put-matrix`, `web-coverage` and
+  `digital-twin-e2e`, `unit-tests-coverage`, `web-put-matrix` and
   `web-cross-browser-smoke` stay success-gated, each job's comment stating why;
   `tests_scripts/test_ci_workflow.py` fails on an edge that has neither.
 - **Known hang cause: any test double for `uart.poller`, or an equivalent fake-stream object, is a
@@ -734,7 +734,7 @@ Three standing practices:
   it as either. A per-port lock enforces it (`scripts/_port_lock.sh`, `tests_js/_port_lock.js`): an
   unrelated second suite fails at once with `port <port> is held by <runner> (pid <pid>) - run the
   suites one after the other (CLAUDE.md)`. Which runner holds which port, the owner chain and the
-  lock directory: SPECIFICATION.md Part E.1. `scripts/test.sh`'s own backgrounded `tests_scripts/`
+  lock file: SPECIFICATION.md Part E.1. `scripts/test.sh`'s own backgrounded `tests_scripts/`
   tier overlaps it safely: its HTTP ports are ephemeral, and a booted twin's captive DNS on 53
   degrades to "not connected" rather than failing the boot.
 - **Tuned values carry `@tunable` and a Part N row, both changed in the same change** (owner,

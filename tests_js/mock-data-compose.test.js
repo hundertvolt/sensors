@@ -3,10 +3,8 @@
 import { describe, expect, it } from "vitest";
 import samples from "../mockdata/samples.json";
 import { resolveFieldValue } from "../js/definitions.js";
-import DEFINITIONS_SOURCE from "../js/definitions.js?raw";
 import { composeMockData } from "../js/mock-server.js";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
-import { readStringSetConst } from "./_source_constants.js";
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
@@ -15,6 +13,15 @@ import { readStringSetConst } from "./_source_constants.js";
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
 
 const SAMPLES = /** @type {import("../js/definitions.js").MockSamples} */ (samples);
+
+/**
+ * Every field of every field group of `defs`.
+ * @param {SiteDefinitions} defs
+ * @returns {FieldDef[]}
+ */
+function fieldsOf(defs) {
+    return defs.sections.flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])));
+}
 
 /**
  * @param {string} device
@@ -66,8 +73,8 @@ function isTaskEndRecord(value) {
 }
 
 /**
- * Each readonly format's check of a composed value: one row per format js/definitions.js's FIELD_FORMATS accepts (a
- * test below holds the two equal), so a format added to the pinned sets cannot pass here unjudged.
+ * Each readonly format's check of a composed value: one row per format a generated definitions file uses (a test
+ * below holds that), so a format a device takes up cannot pass here unjudged.
  * @type {Record<string, (field: FieldDef, value: unknown) => string | null>}
  */
 const FORMAT_PROBLEMS = {
@@ -227,9 +234,8 @@ describe.each(DEVICE_IDS)("%s's composed mock data", (device) => {
     });
 
     it("holds only codes the definitions' code tables describe", () => {
-        const tables = errcountGroups(defs).map((g) => g.codes ?? { E: {}, W: {} });
-        expect(tables.length).toBeGreaterThan(0);
-        expect(undescribedCodes(tables, data)).toEqual([]);
+        expect(errcountGroups(defs).length).toBeGreaterThan(0);
+        expect(undescribedCodes([defs.errcountCodes ?? { E: {}, W: {} }], data)).toEqual([]);
     });
 });
 
@@ -301,10 +307,9 @@ describe("composeMockData", () => {
         expect(wrong.map((value) => valueProblem(field, { TS: value }))).toEqual(wrong.map(() => "neither a timestamp nor one of its special values"));
     });
 
-    it("judges a readonly value by a check of its own for every format js/definitions.js accepts", () => {
-        const formats = readStringSetConst(DEFINITIONS_SOURCE, "FIELD_FORMATS");
+    it("judges a readonly value by a check of its own for every format a generated definitions file uses", () => {
+        const formats = [...GENERATED_DEFINITIONS.values()].flatMap((defs) => fieldsOf(defs)).flatMap((field) => (field.format === undefined ? [] : [field.format]));
         expect(formats.length).toBeGreaterThan(0);
         expect(formats.filter((format) => !Object.hasOwn(FORMAT_PROBLEMS, format)), "formats the compose check has no check for").toEqual([]);
-        expect(Object.keys(FORMAT_PROBLEMS).filter((format) => !formats.includes(format)), "checks for no accepted format").toEqual([]);
     });
 });

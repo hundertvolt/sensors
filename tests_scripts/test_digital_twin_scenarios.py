@@ -123,13 +123,12 @@ def _lag_run(harness: ModuleType, device: str, tmp_path: Path, monkeypatch: pyte
     return ctx.failures, capsys.readouterr().out, evidence.read_text(encoding="utf-8") if evidence.exists() else ""
 
 
-def _plant_held_lock(runtime: Path, port: int) -> "subprocess.Popen[bytes]":
-    # Another runner's live lock on `port`, as scripts/_port_lock.sh leaves it: its pid alive, outside this chain.
-    holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
-    lock = runtime / f"sensors-port-{port}.lock"
-    lock.mkdir(parents=True)
-    (lock / "runner").write_text("another suite\n", encoding="utf-8")
-    (lock / "pid").write_text(f"{holder.pid}\n", encoding="utf-8")
+def _hold_port(root: Path, port: int) -> "subprocess.Popen[str]":
+    # Another runner's live lock on `port`, taken by scripts/_port_lock.sh itself outside this chain; kill it to free it.
+    env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK")} | {"XDG_RUNTIME_DIR": str(root)}
+    take = f'source {_REPO_ROOT}/scripts/_port_lock.sh; port_lock_take {port} "another suite"; echo held; exec sleep 60'
+    holder = subprocess.Popen(["/bin/bash", "-c", take], env=env, stdout=subprocess.PIPE, text=True)
+    assert holder.stdout is not None and holder.stdout.readline() == "held\n", "the stand-in holder never took its lock"
     return holder
 
 
@@ -439,7 +438,7 @@ def test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing(harnes
         ran.append("ran")
 
     monkeypatch.setattr(harness, "SCENARIOS", {"records": harness.Scenario("records", body, "Records that it ran.", "fixture")})
-    holder = _plant_held_lock(own_lock_root, 53)
+    holder = _hold_port(own_lock_root, 53)
     try:
         code = harness.main(["--device", DEVICE_NAMES[0], "--logs-dir", str(tmp_path / "logs")])
     finally:

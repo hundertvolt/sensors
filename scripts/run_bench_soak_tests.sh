@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs only @pytest.mark.soak_duration tests at one named duration - an opt-in on top of the bench tier (owner,
+# Runs only @pytest.mark.soak_duration tests at one named duration - an opt-in on top of the bench tier (agent,
 # 2026-09-26) that the general runners never bundle (owner's direction, 2026-09-04). Durations:
 # tests_hardware/soak_durations.py; the tick-rollover round is not a soak: scripts/run_bench_rollover_test.sh.
 set -euo pipefail

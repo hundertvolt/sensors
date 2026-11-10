@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Builds one device's website: generates its definitions (SPECIFICATION.md H.5), stages html/ and js/ through
-# scripts/_stage_website.py (H.2) and freezes the stage with build_frozen_html.sh. Intermediates stay in
-# build/website/<device>/ (or $WEBSITE_WORK_DIR) until that device's next build.
+# Builds one device's website: stages the definitions the generator wrote (SPECIFICATION.md H.5, generating them first
+# when its stamp no longer holds) with html/ and js/ through scripts/_stage_website.py (H.2) and freezes the stage
+# with build_frozen_html.sh. Intermediates stay in build/website/<device>/ (or $WEBSITE_WORK_DIR) until its next build.
 set -euo pipefail
 usage="Usage: scripts/build_website.sh [--stage-only] <device> [output]"
 help() {
@@ -52,13 +52,13 @@ mkdir -p "$(dirname "$work")"
 exec {work_lock}>"$work.lock"
 flock "$work_lock"
 rm -rf "$work"
-mkdir -p "$work/scratch"
+mkdir -p "$work"
 echo "== Website work dir: $work"
 
-# Every device's definitions are generated from its TOML and the src/ tags, never hand-kept. A sibling of the stage,
-# never inside it: the stage is the served /html root and gets frozen whole (H.7 inlines the definitions).
-definitions="$work/scratch/definitions.json"
-python3 -m buildgen.definitions "devices/$device.toml" --src-dir src --out "$definitions"
+# Every device's definitions are generated from its TOML and the src/ tags, never hand-kept: the generator's own copy,
+# outside the stage (the served /html root, frozen whole; H.7 inlines the definitions).
+python3 scripts/_generate_sensortask_modules.py --if-stale
+definitions="build/generated_src/definitions/$device.json"
 
 if $stage_only; then
     python3 scripts/_stage_website.py "$definitions" "${positional[1]}"

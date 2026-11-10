@@ -949,7 +949,7 @@ when its instance is wired to FRAM (step 4's owner rule): an `[[instance]]` thro
 `fram_target`; `conn` (its `CaptiveDNS` included), `ntp`, `sysfunct` and the webserver whenever
 `[device.wiring].fram_target` is set; a module's `CFGMGR_<name>` logger with it, where its config
 log stays on FRAM. The set is one fact per device, computed by buildgen from the TOML
-(`fram_wired`, `fram_backed_loggers`: `buildgen/generate.py`'s `expected_facts()`); every test and
+(`fram_wired`, `fram_backed_loggers`: `scripts/_generate_sensortask_modules.py`'s `expected_facts()`); every test and
 the bench harness read it, keeping no list of their own.
 
 **Boot latency (the evidence behind CLAUDE.md's "boot latency is not a metric" rule).** Every logger
@@ -980,8 +980,8 @@ every module's `get_task_starters()`/`get_timer_starters()` is called uniformly,
 order and names each task starter `<logger name>.<starter name>` (`module.pr.name` and the
 starter's `__name__`), one name per starter, which `start_tasks()` takes as a required argument
 beside the starters and which the supervisor's log lines and `/status`'s `LastTaskEnd` show (A.8);
-`get_trigger_starters()` is called on each reader whose class declares one, in the order that puts
-instances sharing a bus furthest apart (C.9.1).
+`get_trigger_starters()` is called on each reader whose class declares one, in construction order
+(C.9.1).
 
 **Error-source/debug-level fan-in** (`_collect_error_sources()`/`_collect_level_setters()`, Part
 C.14): generic, not hand-enumerated — every constructed module's own `get_error_sources()`/
@@ -1569,13 +1569,12 @@ constructed environment, never the caller's shell wholesale:
 
 `picotool`'s install location is pinned explicitly (`-DCMAKE_INSTALL_PREFIX=/usr/local`).
 
-**Every subprocess is bounded and streams its output** (`run()`). Its budget is one of three —
-`tool.remote_query_timeout_s` for a short query or probe (`git` queries and checkouts, the built
-binaries' probes, `nmcli`/`ip`/`systemctl` and the other bench and host commands, the sudo probe),
-`tool.network_step_timeout_s` for a third-party download (clones, fetches, submodule updates, `uv
-sync`, `npm ci`, the Playwright installs) and `tool.build_step_timeout_s` for a compile or install
-(every `make`/`cmake`, `sudo make install`, `mpy-cross`, the apt install from the cache, the Node
-unpack) — or a step's own (Part N `tool.*`). Each output line is printed as it arrives, flushed, so
+**Every subprocess streams its output** (`run()`), and a step that waits on a third party is
+bounded: `tool.remote_query_timeout_s` for the two `git ls-remote` tag queries,
+`tool.network_step_timeout_s` for a download (clones, fetches, submodule updates, `uv sync`, `npm
+ci`, the Playwright installs), or a step's own (Part N `tool.*`). A local command (a compile or
+install, a `git` checkout, a binary's probe, the bench and host commands) has no party outside the
+code to fail it, so it runs unbounded under CI's job `timeout-minutes` (agent, 2026-11-09). Each output line is printed as it arrives, flushed, so
 a stalled step is named by the last line it printed. A timeout stops the command — SIGTERM, then
 SIGKILL after 5 s — and fails naming the limit. Every command gets its own session, so the stop
 reaches everything it started, except one run through `sudo` (or one that runs sudo itself, the
@@ -1743,8 +1742,8 @@ going red under a shared "lint" label. Python side: `lint-and-typecheck`, `shell
 `actionlint`, `zizmor`, `unit-tests` (`scripts/test.sh`, building via `setup` on a cache miss),
 `unit-tests-gc-threshold` (the (f) stage, `GC_THRESHOLD=32768`), `unit-tests-coverage`,
 `digital-twin-e2e` and **`firmware-build-verify`, which builds a real `firmware.uf2` for every
-device and verifies it**. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-put-matrix` (3 shards),
-`web-coverage`, `web-cross-browser-smoke` (the live PUT matrix sharded on its own, B.10.1).
+device and verifies it**. Web side: `web-lint-and-typecheck`, `web-unit-tests` (with V8 coverage), `web-put-matrix` (3 shards),
+`web-cross-browser-smoke` (the live PUT matrix sharded on its own, B.10.1).
 `devices` globs
 `devices/*.toml` without the `zz_test_` fixtures (the `tests_scripts/_devices.py` rule) and fails
 on an empty set, so no job names a device.
@@ -1778,9 +1777,8 @@ required-version` pins (any other uv refuses to run in this tree), every hardwar
 script once before its hardware step, and `setup_toolchain.py`'s `run_retried()` takes the same
 attempts and pauses (`tests_scripts/test_uv_sync_retried_sh.py`).
 
-**The coverage rerun is its own job**, `unit-tests-coverage`, for the same reason `web-coverage` is
-separate from `web-unit-tests`: `timeout-minutes` gates a whole job, not its real step, so a slow
-instrumented rerun can kill a test step that already passed. Its coverage report gates nothing
+**The coverage rerun is its own job**, `unit-tests-coverage`: `timeout-minutes` gates a whole job,
+not its real step, so a slow instrumented rerun can kill a test step that already passed. Its coverage report gates nothing
 and its test result does (E.5.3), so it gets its own budget either way.
 
 ### B.10.1 Why each job is shaped the way it is
@@ -1854,13 +1852,11 @@ and its test result does (E.5.3), so it gets its own budget either way.
   the harness's fixed twin port never collides; `tests_js/mock-server-put-matrix.test.js` proves
   the partition. It `needs: web-unit-tests`, success-gated on purpose: no three runners on the
   slow matrix if the fast suite already failed.
-- **`web-coverage`** is its own job because `timeout-minutes` gates a whole job: inside one job an
-  instrumented rerun can be cut after the real test step has passed. It
-  excludes the live matrix at almost no cost to the number, since the mock-server matrix drives
-  the same `js/` paths. Its test step gates (`set -o pipefail` through the `tee`, no
-  `continue-on-error`) and its report steps (`always() && hashFiles(...)`, `continue-on-error`) do
-  not; it is success-gated on `web-unit-tests` on purpose: nothing to measure if the plain suite
-  failed.
+- **`web-unit-tests` runs the suite once, with coverage**: V8's coverage instruments no source, so
+  there is no second, instrumented run to cut after a passed step (agent, 2026-11-10). It excludes
+  the live matrix at almost no cost to the number, since the mock-server matrix drives the same
+  `js/` paths. Its test step gates (`set -o pipefail` through the `tee`, no `continue-on-error`) and
+  its report steps (`always() && hashFiles(...)`, `continue-on-error`) do not.
 - **`web-cross-browser-smoke`** runs the production site through WebKitGTK, Firefox and Edge —
   engines Vitest's Playwright mode cannot reach — plus Chromium as a baseline, one field edit per
   engine and viewport (H.7 "Cross-browser coverage"), with `--require-all-engines`: a missing
@@ -2715,7 +2711,7 @@ anchors; and `lib/lwip/src/core/tcp_out.c` present. **Its proof, after the build
 (`verify_unix_lwip_host_in_build()`): `build-lwip/extmod/modlwip.P` names the copy first and never
 the original, the copy holds the `EAGAIN` block, and the binary runs `import lwip, socket, time;
 print(socket is lwip); lwip.reset(); time.sleep_ms(2500); lwip.callback(); print('lwip timers ok')`,
-printing `True` and then that sentinel, exiting 0, within `tool.preprocess_timeout_s` — lwIP's own
+printing `True` and then that sentinel, exiting 0 — lwIP's own
 timers have then run through two IPv6 reassembly ticks. Where the host build differs from rp2 is
 F.7.
 
@@ -2808,9 +2804,10 @@ was most of the (f) stage's extra time.
 
 **Mechanism.** The generated `mpconfigvariant.h` that `build-standard` and `build-settrace` share,
 and that the `build-lwip` header starts from (`_unix_variant_header()`, written by
-`apply_unix_kbd_intr_override()` and `apply_unix_lwip_host_override()`), ends with
+`apply_unix_kbd_intr_override()` and `apply_unix_lwip_host_override()`), holds
 `#define MICROPY_ALLOC_GC_STACK_SIZE (1024)` (`UNIX_GC_STACK_ENTRIES`, Part N
-`l1.unix_gc_stack_entries`). The header and not another form: upstream's default
+`l1.unix_gc_stack_entries`), then the qstr length width of F.7 row 32 (`UNIX_QSTR_BYTES_IN_LEN`,
+two bytes, guarded upstream the same way). The header and not another form: upstream's default
 is `#ifndef`-guarded, so this plain `#define` is the only definition a build reaches, and one added
 upstream would be a redefinition warning, which fails the build (B.7); it takes no make variable of
 its own, where each has one owner (`_merge_make_vars()`: `VARIANT_DIR` belongs to B.14.1's override
@@ -4365,10 +4362,9 @@ are added and can itself become a multiple of some sensor's own period.
   offset lands in `[0, 1000)` ms. Each wait is a plain `asyncio.sleep_ms()` to that deadline, with no
   timer to refuse or drop. A raising starter is persisted (`TASK_STARTER_RAISED`) and the sequence
   continues.
-- The generated `_collect_trigger_starters()` orders the sensor instances so that those sharing a
-  bus sit furthest apart: grouped by `bus`, one from each group in turn, largest group first, ties
-  in construction order (dev: sgp40 i2c1, bmp3xx i2c0, isl29125 i2c1 → 0, 250, 500 ms; wozi: sgp40,
-  bmp3xx on i2c1 → 0, 333 ms).
+- The generated `_collect_trigger_starters()` takes the sensor instances in construction order
+  (dev: sgp40 i2c1, bmp3xx i2c0, isl29125 i2c1 → 0, 250, 500 ms; wozi: sgp40, bmp3xx on i2c1 → 0,
+  333 ms).
 - Each counting reader (`asy_bmp3xx_driver.py`/`asy_isl29125_driver.py`) arms its own
   `Timer.PERIODIC` at a fixed 1000ms base tick (`asy_sgp40_driver.py`'s is also 1000ms, fixed, and
   never divided down — "voc algorithm needs 1s period fixed", its own comment) and counts ticks up
@@ -5069,17 +5065,19 @@ when a test file starts opening a socket or a port changes owner.
 
 **Fixed ports** the product itself binds — 53 for the captive DNS, 18080 for the CI suite's twin —
 are held by one runner at a time through a per-port lock, `scripts/_port_lock.sh` (and
-`tests_js/_port_lock.js` with the same directory, files, message and owner chain):
+`tests_js/_port_lock.js` with the same file, lines, message and owner chain):
 `scripts/test.sh` and `scripts/run_unix_port_integration.sh` take 53, and
 `scripts/run_digital_twin_ci.sh` 53 and 18080, right after validating their arguments; the CI suite
 run alone takes 53 and 18080 itself, and the scenario harness and the cross-browser smoke 53
 (`scripts/_port_lock.py` is the Python form of the same lock, re-entrant in one process, passed by
-a bash or CPython ancestor holding the port); every live-tier twin takes 53, re-entrantly with a
-count, released after the twin exits and at process exit, and the restart check holds it across
-both boots (H.7). A lock is the directory
-`${XDG_RUNTIME_DIR:-/tmp}/sensors-port-<port>.lock/` holding `pid` and `runner`. The holder's
-descendants pass through the owner chain (`SENSORS_PORT_LOCK_OWNER`, `SENSORS_PORT_LOCKS_HELD`), a
-dead holder's lock is taken over, and an unrelated second suite fails at once with `port <port> is
+a bash or CPython ancestor holding the port); every live-tier twin takes 53, re-entrantly,
+released after the twin exits and at process exit, and the restart check holds it across both
+boots (H.7). A lock is flock(2) on `${XDG_RUNTIME_DIR:-/tmp}/sensors-port-<port>.flock`, whose
+first two lines name the runner and its pid, written in place (agent, 2026-11-09: the kernel frees
+the lock with its last descriptor, so a dead holder's lock is never stale and needs no takeover;
+Node holds it through a `flock` child given its descriptor). The holder's descendants pass through
+the owner chain (`SENSORS_PORT_LOCK_OWNER`, `SENSORS_PORT_LOCKS_HELD`), and an unrelated second
+suite fails at once with `port <port> is
 held by <runner> (pid <pid>) - run the suites one after the other (CLAUDE.md)`. A shell runner
 releases its locks from its EXIT trap, `scripts/test.sh` only once every background job it started
 has stopped (E.3.1). Suites in separate network namespaces cannot collide on a port, so each takes a
@@ -5347,9 +5345,8 @@ would append to its parent's. The annotations come first; the run ends with the 
 E.10, per level.
 
 A usage or setting error — an unknown option, an invalid `GC_THRESHOLD`, `PER_FILE_TIMEOUT_S`,
-`TESTS_SCRIPTS_TIMEOUT_S` or `TEST_PARALLELISM`, or a launch string the Unix port cannot intern (a
-test script's real directory, a `MICROPYPATH` entry or an argument over 255 bytes, F.7 row 32) —
-exits 2 before the run touches the live tree (E.10).
+`TESTS_SCRIPTS_TIMEOUT_S` or `TEST_PARALLELISM` — exits 2 before the run touches the live tree
+(E.10).
 
 ### E.3.1 The Unix-port test heap, and the two timeouts around each file
 
@@ -6111,9 +6108,10 @@ value), in every runner, `scripts/test.sh` included, with no exception (owner,
 a rendering failed or a tracer ended early (`Result: PASS (<what is short>)`, E.5.3); 4 — NOT CLEAN, a run that cannot be
 read as clean. A usage error prints the usage line on stderr.
 
-**Emitters**: `scripts/_summary_block.sh` and `scripts/_summary_block.py` print byte-identical
-layouts (checked); `tests_js/_summary_reporter.js` prints the same for `npm test`; the backgrounded
-pytest tier and every hardware run write a run record the summary reads. A gate's verdict is its exit
+**The emitter**: `scripts/_summary_block.py` alone prints the block. The pytest runners call it in
+process; the shell accumulator `scripts/_summary_block.sh` and `npm test`'s
+`tests_js/_summary_reporter.js` hand it their items as NUL-separated records (`--print RUNNER EXIT`);
+the backgrounded pytest tier and every hardware run write a run record the summary reads. A gate's verdict is its exit
 status or this block, never a truncated view of its output (`| tail`, `| head`).
 
 **The run record** is one JSON file per pytest run, written by the plugin
@@ -7456,7 +7454,7 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 | 29 | `modlwip.o`'s compile flags and the `listen()` backlog (`build-lwip`) | `-Wno-sign-compare` and `-DSOMAXCONN=2`, private to that object (B.7): the Unix port compiles with `-Wextra` and takes its default backlog from `<sys/socket.h>`, which `modlwip.c` never includes (`ports/unix/mpconfigport.h:176`) | `-Wall -Werror` without `-Wextra`; default backlog 2 (`py/mpconfig.h:2148`), which `SOMAXCONN=2` reproduces | the generated host `mpconfigvariant.mk` | — | upstream `modlwip.c` compiles clean under the Unix port's `-Wextra` and its backlog default stops needing the socket header |
 | 30 | a timeout-0 `select.poll()` with a non-fd object registered | the POSIX path sleeps `MICROPY_PY_SELECT_IOCTL_CALL_PERIOD_MS` (1 ms) in `poll()` before asking the non-fd objects (`extmod/modselect.c:58, :353, :370-386`), so a `poll(0)` on an lwIP socket costs about 1 ms | no POSIX path (row 12): a `poll(0)` asks each object once and returns | the host spin-round bound (20,000 µs) includes that sleep | L4 | as row 12 |
 | 31 | GC mark stack (`MICROPY_ALLOC_GC_STACK_SIZE`) | 1024 entries in every Unix build, through B.14.6's override, so an object with more unmarked heap children than the stack holds no longer makes a collection re-scan the whole 16M heap (`py/gc.c:574-582, :621-640`): about 2 µs a collection where 64 entries cost about 510 µs; time only, since the overflow path only re-traces, so the marked set and with it every result, bound and heap figure is the same | 64, `py/mpconfig.h:255-257`'s default (`ports/rp2/mpconfigport.h:89-99` sets 1024 only on its PSRAM branch, which `RPI_PICO_W` does not take): an object with about 55 or more unmarked children makes each collection re-scan the board's whole heap | the generated Unix variant header, `toolchain/micropython_overrides.py` (B.14.6) | — (nothing to prove on the board: the difference is time only) | the pinned default reaches 1024, or the overflow stops re-scanning the heap |
-| 32 | launch strings interned at start | every argument from the script on, the script's real directory and every `MICROPYPATH` entry but a `~/` one built from `$HOME` are interned as qstrs (`ports/unix/main.c:412, 560, 688`), and one over 255 bytes raises `RuntimeError("name too long")` outside any handler (`py/qstr.c:319-321`, `MICROPY_QSTR_BYTES_IN_LEN` 1, `py/mpconfig.h:367-369`), so the port dies (`FATAL: uncaught NLR`, exit 1) before the script runs | interns no launch string: its `sys.path` entries are compiled-in qstrs (`/lib`, `ports/rp2/main.c:208`) | every launcher refuses such a launch first, naming each string and its size: `scripts/_twin_process.py`'s `spawn()` (`_QSTR_MAX_BYTES`, checked against the interpreter by `tests_scripts/test_twin_process_spawn.py`), `scripts/test.sh` (exit 2, E.3), `tests_js/_twin_process.js`'s `spawnTwin()`, `tests_hardware/twin_board.py`, `scripts/run_unix_port_integration.sh`; a module path over 255 bytes (a directory these pass, plus the imported file's name) is not refused: it fails at that import with a plain `RuntimeError: name too long` traceback naming it (`py/builtinimport.c:242`), unlike the start-time death, so its cause reads plainly and no launcher predicts every imported path | — (not a divergence for `src/`, listed so nothing relies on it) | none |
+| 32 | launch strings interned at start | every argument from the script on, the script's real directory and every `MICROPYPATH` entry but a `~/` one built from `$HOME` are interned as qstrs (`ports/unix/main.c:412, 560, 688`), and one as long as `MICROPY_QSTR_BYTES_IN_LEN` length bytes cannot hold raises `RuntimeError("name too long")` outside any handler (`py/qstr.c:319-321`; default one byte, 255, `py/mpconfig.h:367-369`), so the port dies (`FATAL: uncaught NLR`, exit 1) before the script runs; a module path takes the same limit at its import (`py/builtinimport.c:242`) | interns no launch string: its `sys.path` entries are compiled-in qstrs (`/lib`, `ports/rp2/main.c:208`); the firmware keeps one length byte | the rig's variant header sets two length bytes (`toolchain/micropython_overrides.py`'s `UNIX_QSTR_BYTES_IN_LEN`, B.14), so a string may hold 65,535 bytes, past Linux's 4,096-byte `PATH_MAX`; every launcher's strings are paths and names, so none checks them; each build's version probe interns a 300-byte name, so a one-byte build fails there (`toolchain/setup_toolchain.py`) | — (not a divergence for `src/`, listed so nothing relies on it) | none |
 
 These further settings differ and are used by nothing here: `MICROPY_BANNER_MACHINE`,
 `MICROPY_BLUETOOTH_BTSTACK`, `MICROPY_BLUETOOTH_BTSTACK_CONFIG_FILE`, `MICROPY_BOARD_BUILD_NAME`,
@@ -7806,14 +7804,11 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `tests_scripts/test_js_api_mirrors.py`, each pin biting on a planted mismatch. Each device's
   generated REST reference agrees with its definitions' routes, the result words and the mock's
   code table (`tests_js/api-reference-agreement.test.js`). The website's copies of generator bounds
-  (`js/definitions.js`'s `SUPPORTED_SCHEMA_MAJOR` and `MAX_DECIMALS`, and the shape rules of
-  `validateDefinitions()`) against `buildgen/`, and its
-  `FIELD_FORMATS` against `buildgen/web_tag.py`'s `_FORMATS` and the shape check's `_FIELD_FORMATS`,
-  and `js/field-format.js`'s `RECORD_FORMATTERS` keys with its own format branches, and
+  (`js/definitions.js`'s `SUPPORTED_SCHEMA_MAJOR` and `MAX_DECIMALS`) against `buildgen/`, and
+  `js/field-format.js`'s `RECORD_FORMATTERS` keys with its own format branches against
+  `buildgen/web_tag.py`'s `_FORMATS`, and
   `tests_js/definitions-mockdata-coverage.test.js`'s `isObjectFormat()`, pinned by
-  `tests_scripts/test_definitions_js_mirrors.py` and the shape corpus
-  `tests_scripts/definitions_shape_cases.json`, which the Python shape check and the JS validator
-  both read; and the facts `buildgen/` restates from `src/` with the two owner-kept catalogs (K.3),
+  `tests_scripts/test_definitions_js_mirrors.py`; and the facts `buildgen/` restates from `src/` with the two owner-kept catalogs (K.3),
   pinned to their sources both ways by `tests_scripts/test_buildgen_source_agreement.py`. A JS test
   reads a JS module's own constant from its source rather than restating it
   (`tests_js/_source_constants.js`'s `readIntConst()`/`readObjectConst()`: `POLL_BACKOFF_MAX_MS`,
@@ -7958,8 +7953,10 @@ answering the REST paths the definitions declare, A.8, from data composed out of
 `tests_js/_expected_display.js` is the expected-display helper the Node-context and browser tests
 share (H.7, H.8.1).
 
-**`scripts/build_website.sh [--stage-only] <device> [output]`** generates the device's
-definitions from `devices/<device>.toml` (H.5) and stages its real site through
+**`scripts/build_website.sh [--stage-only] <device> [output]`** takes the device's definitions
+the generator wrote (`build/generated_src/definitions/<device>.json`, H.5; it runs
+`scripts/_generate_sensortask_modules.py --if-stale` first, which regenerates only once the tree's
+stamp no longer holds) and stages its real site through
 `scripts/_stage_website.py` (CPython stdlib only): `index.html` with the stylesheet, the icon and
 `definitions.json` inlined (H.7), and `js/main.js`'s import closure bundled into one `js/app.js` (a
 three-line banner naming the derived order, then each module under `// ---- js/<file> ----`);
@@ -7967,10 +7964,8 @@ three-line banner naming the derived order, then each module under `// ---- js/<
 name `app.js` means `index.html`'s import path never needs a build-time rewrite.
 `js/mock-server.js` is deliberately never staged at all — its `fetch` patching has no business near
 production. That same path also stays identical under `npm run preview`, which serves the site's
-own directories from the repo layout, where `js/app.js` is the prototype-only entry file. The drift rule: every file under `html/`
-and `js/` is `index.html`, a file it links, or a module of `js/main.js`'s or `js/app.js`'s import
-closure, else the build fails; it and every other refusal are pinned by
-`tests_scripts/test_stage_website.py`. `scripts/build_device_websites.sh [--stage-only] [out_root]`
+own directories from the repo layout, where `js/app.js` is the prototype-only entry file. Every
+refusal is pinned by `tests_scripts/test_stage_website.py`. `scripts/build_device_websites.sh [--stage-only] [out_root]`
 builds every device's site (each `devices/*.toml` but the `zz_test_` fixtures) into
 `build/generated_html/<device>/`, or with `--stage-only` stages each page and bundle into
 `build/staged_html/<device>/`.
@@ -7982,11 +7977,12 @@ concatenated, so every top-level name is unique across the production modules; a
 from `js/main.js` that puts each module after the ones it imports, which matters only for the
 handful of top-level `const`s (`DEFAULT_TIMEOUT_MS`/`pollManager`, `SUPPORTED_SCHEMA_MAJOR`,
 `MAX_DECIMALS`) since function and class declarations hoist anyway. The stager refuses, naming file
-and line, every import outside the one-line `import { a, b } from "./x.js";` form (multi-line,
-namespace, default, bare, dynamic, `import.meta`, a non-relative specifier), an import of a missing
-module, a default export, a re-export, an import cycle, a top-level name declared twice across the
-bundle (exported or not) and a top-level destructuring declaration; it also checks the inline
-bootstrap's element ids against `index.html` and its `startApp` keys against `js/main.js`'s JSDoc.
+and line, every line opening with `import` outside the one-line `import { a, b } from "./x.js";`
+form, an import of a missing module and an import cycle. A top-level name declared twice across the
+bundle, a default export or re-export, or a bootstrap reading an id or passing a key the page or
+`startApp` does not have breaks the page at load, which the staged-page tiers catch:
+`tests_js/live-backend.test.js` (every device's real site in Chromium against a live twin, part of
+`npm run test:unit`) and the cross-browser smoke.
 **`index.html`'s inline bootstrap `<script type="module">`** can't be extracted (must keep importing
 the literal, never-rewritten path).
 `eslint-plugin-html` still lints it in place; `tsc`'s JSDoc checking doesn't cover inline scripts
@@ -8095,19 +8091,20 @@ reloads as (A.8).
 
 Every device's `definitions.json` is generated at build time from the `@web`/`@web-group` tags
 (H.5.1) — never hand-written or committed; adding a driver field needs only its tag (owner,
-2026-09-26). `scripts/build_website.sh <device>` generates it into the staged site, and
-`scripts/_generate_sensortask_modules.py` writes every device's copy and an `index.json` manifest
-into `build/generated_src/definitions/`, which the JS tests and `npm run preview` read.
-`js/definitions.js` documents the shape via JSDoc and strictly validates it at load time. **Top
+2026-09-26). `scripts/_generate_sensortask_modules.py` writes every device's copy and an
+`index.json` manifest into `build/generated_src/definitions/`, which the staged site (inlined by
+`scripts/build_website.sh <device>`), the JS tests and `npm run preview` read.
+`js/definitions.js` documents the shape via JSDoc and validates it at load time: the schema major,
+the top level, each section's route, poll group and intervals, each group's key, and the `path` and
+`decimals` hints; every other hint is the generator's (`buildgen/` refuses a malformed one). **Top
 level**: `{schemaVersion, websiteVersion, device, landingSection, defaultPollIntervalMs,
-defaultDecimals, sections[]}`; `defaultDecimals` (H.5.1) is optional in the validator and always
-emitted. `websiteVersion` (SPECIFICATION.md Part L.7, `buildgen.version.WEBSITE_VERSION`) is
+defaultDecimals, errcountCodes, sections[]}`; `defaultDecimals` (H.5.1) is optional in the validator and always
+emitted; `errcountCodes` (`{E, W}`, the error catalog's descriptions, H.6) is the page's one table every errcount group reads. `websiteVersion` (SPECIFICATION.md Part L.7, `buildgen.version.WEBSITE_VERSION`) is
 the bundle's own build provenance, never validated; the page shows the device's own versions from
 `GET /system` (L.7). It is a genuinely different concept from `schemaVersion` (that field's own
 wire-format-shape concern) — never conflate the two. **`section`** mirrors one REST endpoint
 (`key`, `rest: {get, put?}`, `pollGroup: "live"|"settings"|"none"`, `groups[]`). **`group`** is a
-`FieldGroup` or an `ErrcountGroup` (`kind: "errcount"`, `modules[]`, `codes` — the error catalog's
-descriptions, H.6); the DNS server's errcount group sits in the Networking section, every other
+`FieldGroup` or an `ErrcountGroup` (`kind: "errcount"`, `modules[]`); the DNS server's errcount group sits in the Networking section, every other
 module's in Status. **`FieldDef`**: a `kind` (`readonly|number|string|enum|toggle|composite`) plus
 kind-specific metadata (`min`/`max`, `mask`, `options`, `specialValues` (listed in a number or
 string field's hint), `subFields`, `onLabel`/`offLabel`, `float`, `decimals`, `path`,
@@ -8258,8 +8255,7 @@ catalog, `WARN_SIGNALS`.
 **Correctness proof**: for every device, each tagged field lands exactly once in its group with its
 label and unit, checked against the tags independently of the generator
 (`tests_scripts/test_buildgen_definitions.py`); every device's output passes the Python shape check
-and `js/definitions.js`'s validator, which agree over one shared case corpus
-(`tests_scripts/definitions_shape_cases.json`); the mandatory `novel_combo.toml`/
+and `js/definitions.js`'s validator; the mandatory `novel_combo.toml`/
 `multi_instance.toml` fixtures generate, proving per-instance `resolved_name` keying beyond the real
 devices.
 
@@ -8354,7 +8350,7 @@ owner's behalf; owner-reviewed, 2026-11-06); its three CI shards took 245-255 s 
 pool this project pins itself — `toolchain/versions.toml`'s `[lwip].MEMP_NUM_TCP_PCB`, injected
 per Part B.14.2 — rather than lwIP's own default of 5. A page load stays well under it via
 **bundling** (`js/main.js`'s import closure, nine modules, bundled into one `js/app.js` in its
-derived order, the stager refusing whatever would break their one shared scope, H.2) and
+derived order, H.2) and
 **inlining** (the stylesheet, the device's `definitions.json` with every `<` written `\u003c` so no
 literal `</script` closes its block early, and the icon as a `data:image/x-icon;base64,` link, all
 embedded in the staged `index.html`) — 2 connections per page load (about 9 unbundled), and a
@@ -8664,8 +8660,7 @@ policy, and only ever ratchet down, pinned by `tests_js/lint-ceilings.test.js` (
 below each, none at it, through ESLint's Node API in a Commands API module,
 `tests_js/_lint_command.js`).
 `html/index.html`'s inline `<script type="module">` stays inline and is linted in place through
-`eslint-plugin-html`: `scripts/_stage_website.py` checks that it imports the literal
-`../js/app.js` (and its element ids and `startApp` keys, H.2), which resolves both under
+`eslint-plugin-html`; it imports the literal `../js/app.js`, which resolves both under
 `npm run preview` and in a device build.
 
 **CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate job feeding `if:`
@@ -9213,11 +9208,11 @@ gates are the unit tier (`scripts/test.sh`), the twin tier
 (`test_digital_twin_generated_boot.py`, `test_digital_twin_boot_contiguity.py`), the two
 real-hardware soak/hammer gates (`tests_hardware/flash/test_memory_stress.py`,
 `tests_hardware/bench/test_memory_stress_bench.py`), and the JS live twins and the cross-browser smoke. Every one matches
-`MemoryError` *or* `memory allocation failed` — the hardware pair and the twin boots through one
-shared `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS`, the JS gates through
-`tests_js/_memory_markers.js`; their agreement is pinned by
-`tests_scripts/test_memory_error_gate_agreement.py`, which also fails a new hardware-tier assertion
-written with the bare class name. Don't narrow any of them back
+`MemoryError` *or* `memory allocation failed`, read from their one definition,
+`scripts/memory_markers.json`: the Python gates through `scripts/_twin_process.py`'s
+`MEMORY_ERROR_MARKERS`, `scripts/test.sh` and the JS gates' Node frame (`tests_js/_twin_process.js`)
+from the file itself; `tests_scripts/test_memory_error_gate_agreement.py` pins that no gate spells
+the pair itself, and fails a new hardware-tier assertion written with the bare class name. Don't narrow any of them back
 to it. **The PC tiers print every unretrieved task exception at every level**, so a task that died
 of an exhausted heap reaches their gates even at DebugLevel 0, where the firmware's own report is
 silent (F.1): `digital_twin/unix_port_unretrieved_report.py`, installed first by `tests/microtest.py`'s
@@ -10888,10 +10883,12 @@ through `host_typecheck.ini`'s own mypy pass rather than the MicroPython-stubbed
 `buildgen.codegen.generate_module_source()`/`generate_boot_entry_source()` — and returns a
 `GeneratedDevice`: the module source; the boot entry `sensortask_<device>_main.py`, which arms the
 watchdog as its first statement and passes it to `main()` (A.7), and its no-autostart variant
-`sensortask_<device>_main_noautostart.py`; the expected facts (`expected_facts(model)`: the boot
-sequence's constructions, setups and phases, and the FRAM-wired labels, written as
-`sensortask_<device>_expected.json`); and `buildgen.frozen_modules.compute_frozen_modules(
-module_source, src_dir, ext_dir)`'s module set (L.2). There
+`sensortask_<device>_main_noautostart.py`; and `buildgen.frozen_modules.compute_frozen_modules(
+module_source, src_dir, ext_dir)`'s module set (L.2). The expected facts (the boot sequence's
+constructions, setups and phases, and the FRAM-wired labels) are the test generator's:
+`scripts/_generate_sensortask_modules.py`'s `expected_facts(model)` writes them as
+`sensortask_<device>_expected.json`, and no image build computes them. The mandatory modules'
+files are one table, `buildgen/buildspec.py`'s `MANDATORY_FILES`. There
 is no separate `boot_entry/` directory: the boot entries are generated too. Generation is
 deterministic across hash seeds: with one fixed build date, two generations under different
 `PYTHONHASHSEED`s are byte-identical for every device and both fixtures
@@ -11947,7 +11944,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | each stream call of a connection (A.5; `tests/test_asy_webserver_connections.py`); the twin UART load's client timeout, `_UART_LOAD_REQUEST_S` (`scripts/_digital_twin_scenarios.py`), includes it once; `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; the bench resilience test's admitted silence plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` and `_RESET_ERRORS_BUDGET_S`; the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; the slowloris test's 30 s socket timeout sits above it and its 6 header lines × 3 s (18 s) run past it; the twin UART load's client timeout, `_UART_LOAD_REQUEST_S` (`scripts/_digital_twin_scenarios.py`), is it plus `web.per_call_timeout_s` and two 2,129 ms flash holds | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.poll_backoff_max_ms` | 60000 ms | `js/poll-manager.js` — `60000` | after the k-th consecutive failure of a section's GET the next attempt comes min(interval × 2^(k−1), this cap) later, back to the interval after one success (`tests_js/poll-manager.test.js` reads it with `readIntConst()`) | chosen (agent, 2026-09-30; owner-reviewed, 2026-11-06), no measurement owed | choice; one request per minute per failing section against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
-| `web.device_watch_interval_ms` | 60000 ms | `js/shell.js` — `60000` | the shell's device watch: `GET /status` for the device clock, `GET /system` for the build compare, a changed build reloading the page once no Apply is pending; one extra watch runs when a section's failure episode ends, none while the tab is hidden (`tests_js/shell.test.js` reads it with `readIntConst()`) | chosen (agent, 2026-09-30; owner-reviewed, 2026-11-06), no measurement owed | choice; two requests per minute per tab against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
+| `web.device_watch_interval_ms` | 60000 ms | `js/shell.js` — `60000` | the shell's device watch: `GET /status` for the device clock (skipped while the open section read it within the interval), `GET /system` for the build compare, a changed build reloading the page once no Apply is pending; one extra watch runs when a section's failure episode ends, none while the tab is hidden (`tests_js/shell.test.js` reads it with `readIntConst()`) | chosen (agent, 2026-09-30; owner-reviewed, 2026-11-06), no measurement owed | choice; two requests per minute per tab against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
 | `web.clock_mismatch_s` | 5 s | `js/field-format.js` — `5` | an epoch value up to this far ahead of the page's estimate of the device clock reads "0 s ago", further ahead "clock mismatch" (the age display, H.4's "Divergences from the legacy site" row) | chosen (agent, 2026-10-13; owner-reviewed, 2026-11-06), no measurement owed | choice; none owed | the device-clock derivation or the request path changes |
 | `web.max_pending_fragments` | 16 | `src/asy_webserver_service.py` — `16`; `tests/test_asy_webserver_service.py` — `16` | `_PieceWriter`'s list (64 B on the RP2040) | estimated (agent, `79cb3b1`) — measurement owed: the largest pending-fragment count a streamed route reaches under the L1 hammers | unknown until measured | a streamed route's piece shape changes |
 | `web.chunk_bytes` | 256 B | `src/asy_webserver_service.py` — `256` | one bound for JSON pieces and static-file reads; `tests/test_asy_webserver_service.py` reads it from the source (`src_const()`) | owner decision (owner, 2026-09-26) | a 256 B piece, against the ~105,000 B free after boot (I.6) | a heap-placement or serving-throughput measurement favours another piece size |
@@ -12057,13 +12054,11 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `lwip.tcp_snd_buf` | 6400 | `toolchain/versions.toml` — `6400` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
 | `lwip.mem_size_per_connection_floor` | 2000 B | `toolchain/micropython_overrides.py` — `2000` | `MEM_SIZE` (derived per `max_connections`, `toolchain/versions.toml`) | estimated (agent, `31da2b3`) — measurement owed: a connection's arena share at the ceiling, L4 | unknown until measured | the pin moves or the serving piece size changes |
 | `lwip.spare_tcp_pcbs` | 3 | `toolchain/micropython_overrides.py` — `3` | `MEMP_NUM_TCP_PCB` and `MEMP_NUM_TCP_SEG` (derived per `max_connections`) | estimated (agent, `58b14ac`) — measurement owed: pcbs in TIME_WAIT at the ceiling, L4 | unknown until measured | the pin moves or the close linger changes |
-| `tool.preprocess_timeout_s` | 120 s | `toolchain/micropython_overrides.py` — `120` | each post-build proof that runs a subprocess: the lwIP options' and the tick-offset sentinel's `-E` readbacks, the SIGINT readback's `make <build>/unix_mphal.pp`, and the host lwIP binary's runtime probe, which sleeps 2.5 s (B.14) | estimated (agent, `bcea110`) — measurement owed: the readback's wall clock on the bench Pi4 | unknown until measured | the toolchain or the host class changes |
 | `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30`; `.github/actions/playwright-chromium/action.yml` — `30`; `.github/actions/apt-cache-restore/action.yml` — `30`; `scripts/setup_cross_browser_toolchain.sh` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the package download is the step retried (B.4); the same bound in the shared Playwright action's apt drop-in before its install (CI, B.10.1), which on the 20261012 runner image the image's own later-sorting `zz-retries` (15 s, one retry) overrides; in the `-o` options of `.github/actions/apt-cache-restore`'s list update, which win over every drop-in; and on every apt fetch `scripts/setup_cross_browser_toolchain.sh` makes (H.7) | estimated (agent, 2026-10-08; owner-reviewed, 2026-11-06) — measurement owed: a healthy mirror's longest silent gap, L0 | attention; three 30 s attempts fit the firmware job's 15-minute limit 10x over | a mirror's failure pattern changes |
 | `tool.uv_sync_attempts` | 3 | `toolchain/setup_toolchain.py` — `3`; `scripts/uv_sync_retried.sh` — `3`; `.github/actions/playwright-chromium/action.yml` — `3`; `.github/actions/apt-cache-restore/action.yml` — `3`; `scripts/setup_cross_browser_toolchain.sh` — `3` | `NETWORK_ATTEMPTS`, every retried network step of the installer (B.4): the clones, the fetches, both `git ls-remote` tag queries, the pico-sdk `lib/mbedtls` and both ports' submodule updates, `uv sync`, apt's package download and both Node `curl` calls; `scripts/uv_sync_retried.sh`, the one retried `uv sync --locked` every CI job that syncs and every hardware runner calls (B.10), pinned equal by `tests_scripts/test_uv_sync_retried_sh.py`; and, one under it, `Acquire::Retries` of the shared Playwright action's apt drop-in, of `.github/actions/apt-cache-restore`'s list update and of `scripts/setup_cross_browser_toolchain.sh`'s apt fetches | owner decision (owner, 2026-09-26: the three-attempt retry stays) | two transient failures absorbed | a third party's failure pattern changes |
 | `tool.uv_sync_backoff_step_s` | 10 s | `toolchain/setup_toolchain.py` — `10.0`; `scripts/uv_sync_retried.sh` — `10` | the pause before each retry of every step `tool.uv_sync_attempts` lists, growing by one step per attempt, in the installer and in `scripts/uv_sync_retried.sh` alike | owner decision (owner, 2026-09-26: the three-attempt retry stays) | 10 s, then 20 s | a third party's failure pattern changes |
-| `tool.remote_query_timeout_s` | 120 s | `toolchain/setup_toolchain.py` — `120` | every short query or probe `run()` makes: `git` queries and checkouts, both `git ls-remote` tag queries (per attempt), the built binaries' version and frozen-module probes, `picotool version`, the `nmcli`/`ip`/`systemctl` calls and bridge changes, the sudo probe; `node_on_path_matches()`'s own `node --version` | estimated (agent, `65088de`) — measurement owed: the longest probe on a loaded CI runner and on the bench Pi4, L0 | unknown until measured | a probe's work or the host class changes |
+| `tool.remote_query_timeout_s` | 120 s | `toolchain/setup_toolchain.py` — `120` | both `git ls-remote` tag queries (per attempt) | estimated (agent, `65088de`) — measurement owed: the longest probe on a loaded CI runner and on the bench Pi4, L0 | unknown until measured | a probe's work or the host class changes |
 | `tool.network_step_timeout_s` | 1800 s | `toolchain/setup_toolchain.py` — `1800` | one attempt of a third-party download: clones, fetches, submodule updates, `uv sync`, `npm ci`, the Playwright `install`/`install-deps`; × `tool.uv_sync_attempts` for a retried one | estimated (agent, `65088de`) — measurement owed: a cold MicroPython/pico-sdk clone with submodules on CI and over the bench Pi4's uplink, L0 | unknown until measured | a source's size or the uplink changes |
-| `tool.build_step_timeout_s` | 3600 s | `toolchain/setup_toolchain.py` — `3600` | every compile or install: each `make`/`cmake`, `sudo make install`, `mpy-cross`, the apt install from the local cache, the Node unpack | estimated (agent, `65088de`) — measurement owed: the longest build step on the bench Pi4, L0; a whole `test` run took 161-169 s at `-j2` on this host (2026-10-08) | unknown until measured on the Pi4 | a build's size or the host class changes |
 | `tool.apt_step_timeout_s` | 150 s | `toolchain/setup_toolchain.py` — `150`; `.github/actions/apt-cache-restore/action.yml` — `150` | one apt attempt: the list `update` (once, non-fatal) and each `install --download-only` attempt (B.4); worst case 150 + 3 × 150 + 10 + 20 = 630 s of fetching, the largest single retry inside `ci.firmware_build_verify_timeout_min`; and the list `update` `.github/actions/apt-cache-restore` runs before it plans (CI, B.10.1), non-fatal too; one attempt's bound is also what the firmware set's required mirror rate is sized on (`ci.apt_mirror_rate_margin`), read from this site by `firmware-build-verify` | estimated (agent, `65088de`) — measurement owed: the download share of the apt step on CI (the whole step took 27-66 s on run 37799699030), the sandbox and the bench Pi4, L0 | about 2.3× the longest whole apt step seen on CI | a mirror's failure pattern or the package list changes |
 | `tool.bench_bridge_recovery_arm_s` | 300 s | `toolchain/setup_toolchain.py` — `300` | the recovery timer's window around a bridge creation or channel re-pin (B.13); must cover the change plus `tool.bench_bridge_up_poll_s` | estimated (agent, `65088de`) — measurement owed: a real bridge creation's wall time and its time to a DHCP lease on the bench Pi4 (B.13 measured about 30 s to a lease, 2026-09-04), L4 | arm ≥ the sequence + the poll + 60 s | the bridge sequence or the bench host changes |
 | `tool.bench_bridge_up_poll_s` | 90 s | `toolchain/setup_toolchain.py` — `90` | how long `br0` may take after `up` to hold an address and the default route before the change counts as failed and the timer stays armed (B.13) | estimated (agent, `65088de`) — measurement owed: as `tool.bench_bridge_recovery_arm_s`, L4 | 3× the single 30 s lease measured on the bench Pi4 (2026-09-04) | the bridge sequence or the bench host changes |
@@ -12121,11 +12116,10 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `ci.last_green_lookup_timeout_s` | 60 s | `.github/workflows/ci.yml` — `60` | `web-changes`' base step (`timeout` around one `gh api` call), inside `ci.web_changes_timeout_min`; a timeout leaves the base empty, so the whole web tier runs rather than the job failing (B.10.1) | estimated (agent, 2026-10-19; owner-reviewed, 2026-11-06): one REST call — measurement owed: the lookup's time on GitHub runners, at the next CI run | attention; 5× inside the job's 5 minutes | the lookup grows beyond one call |
 | `ci.devices_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 2 runs: 0.12 min (run `39335426899`) and 0.15 min (run `39344544377`); no retry; B.10.1's budget rule | the 5-minute floor, 33× the slower run | the job's steps grow |
 | `ci.web_lint_and_typecheck_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | measured 2026-10-20, GitHub's ubuntu-latest runners, 3 runs: cold 0.50 min (run `39335426899`), warm 0.57 and 0.28 min (runs `39344544377`, `38777834467`); largest single retry the retried `uv sync`, 0.7 min (its 10 s and 20 s pauses and two more syncs of at most 6 s); B.10.1's budget rule | 3.9× the warmer run plus the retried sync | the job's steps or its tier grows |
-| `ci.web_unit_tests_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | derived (2026-10-20): warm 3.28 and 3.28 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, the larger of the two cold `setup_toolchain.py setup` builds `scripts/_unix_port.sh ensure` ran on run `39335426899` (167 s in `unit-tests`, 220 s in `unit-tests-gc-threshold`: the test step's start to the pytest tier's launch, 3-4 s warm), the build the toolchain action's build step runs on a miss, so cold 7.0 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry a timed-out live test's three attempts, the first and `l0.vitest_timeout_retries`' two, × the concurrent-tabs test's 200 s, 10 min, over the Playwright install's 5-minute bound (`ci.playwright_install_timeout_min`), so (3.28 + 10) × 1.25 = 16.6, rounded up; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.5× the warm run plus that retry | the job's steps or its tier grows, or the cold web run is measured |
+| `ci.web_unit_tests_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | derived (2026-10-20, the job's one run instrumented since 2026-11-10, agent): warm 3.40 and 3.37 min, the instrumented job's (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, the larger of the two cold `setup_toolchain.py setup` builds `scripts/_unix_port.sh ensure` ran on run `39335426899` (167 s in `unit-tests`, 220 s in `unit-tests-gc-threshold`: the test step's start to the pytest tier's launch, 3-4 s warm), the build the toolchain action's build step runs on a miss, so cold 7.1 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry a timed-out live test's three attempts, the first and `l0.vitest_timeout_retries`' two, × the concurrent-tabs test's 200 s, 10 min, over the Playwright install's 5-minute bound (`ci.playwright_install_timeout_min`), so (3.40 + 10) × 1.25 = 16.75, rounded up; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.5× the warmer run plus that retry | the job's steps or its tier grows, or the cold web run is measured |
 | `ci.web_put_matrix_timeout_min` | 15 min | `.github/workflows/ci.yml` — `15` | — | derived (2026-10-20): warm 5.22 and 5.20 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, derived as in `ci.web_unit_tests_timeout_min`, so cold 8.9 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry the Playwright install's 5-minute bound (`ci.playwright_install_timeout_min`), so warm 5.22 + 5 min decides; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.5× the warmer shard plus the install's bound | the job's steps or its tier grows, or the cold web run is measured |
-| `ci.web_coverage_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | derived (2026-10-20): warm 3.40 and 3.37 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, derived as in `ci.web_unit_tests_timeout_min`, so cold 7.1 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry a timed-out live test's three attempts, the first and `l0.vitest_timeout_retries`' two, × the concurrent-tabs test's 200 s, 10 min, over the Playwright install's 5-minute bound (`ci.playwright_install_timeout_min`), so (3.40 + 10) × 1.25 = 16.75, rounded up; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.5× the warmer run plus that retry | the job's steps or its tier grows, or the cold web run is measured |
 | `ci.web_cross_browser_smoke_timeout_min` | 15 min | `.github/workflows/ci.yml` — `15` | — | derived (2026-10-20): warm 5.60 and 6.40 min (runs `39344544377`, `38777834467`) plus the cold toolchain build's 3.7 min, derived as in `ci.web_unit_tests_timeout_min`, so cold 10.1 min; the cold run `39335426899` measured none (`web-unit-tests` failed at 0.5 min, the other three skipped); largest single retry the Playwright install's 5-minute bound (`ci.playwright_install_timeout_min`), so warm 6.40 + 5 min decides; B.10.1's budget rule — measurement owed: a cold web run, at the next toolchain key change | 1.3× the warmer run plus the install's bound; a month's first Firefox install (a cache miss) is unmeasured | the job's steps or its tier grows, or the cold web run is measured |
-| `ci.playwright_install_timeout_min` | 5 min | `.github/actions/playwright-chromium/action.yml` — `5` | the shared Playwright action's one install step, which `web-unit-tests`, `web-put-matrix`, `web-coverage` and `web-cross-browser-smoke` run (the browser and its packages on a browser-cache miss, `npx playwright install --with-deps chromium`; the packages alone on a hit, `npx playwright install-deps chromium`), held by `timeout` since a composite step takes no `timeout-minutes`, and the bound Playwright's required mirror rate is sized on (`ci.apt_mirror_rate_margin`), both read from the action's one bound step, under its job's `ci.web_unit_tests_timeout_min`, `ci.web_put_matrix_timeout_min`, `ci.web_coverage_timeout_min` or `ci.web_cross_browser_smoke_timeout_min` | measured (2026-10-19) from CI logs on GitHub's ubuntu-latest runners, five runs: the longest cold install 30 s (run 37421540220; 21-23 s on runs 37439055590, 37764306450 and 37799699030), the cache-hit `install-deps` 12-24 s (run 38777834467) | 10× the longest install | Playwright's dependency list or the runner image changes |
+| `ci.playwright_install_timeout_min` | 5 min | `.github/actions/playwright-chromium/action.yml` — `5` | the shared Playwright action's one install step, which `web-unit-tests`, `web-put-matrix` and `web-cross-browser-smoke` run (the browser and its packages on a browser-cache miss, `npx playwright install --with-deps chromium`; the packages alone on a hit, `npx playwright install-deps chromium`), held by `timeout` since a composite step takes no `timeout-minutes`, and the bound Playwright's required mirror rate is sized on (`ci.apt_mirror_rate_margin`), both read from the action's one bound step, under its job's `ci.web_unit_tests_timeout_min`, `ci.web_put_matrix_timeout_min`, `ci.web_coverage_timeout_min` or `ci.web_cross_browser_smoke_timeout_min` | measured (2026-10-19) from CI logs on GitHub's ubuntu-latest runners, five runs: the longest cold install 30 s (run 37421540220; 21-23 s on runs 37439055590, 37764306450 and 37799699030), the cache-hit `install-deps` 12-24 s (run 38777834467) | 10× the longest install | Playwright's dependency list or the runner image changes |
 | `ci.apt_mirror_probe_cap_s` | 10 s | `scripts/ci_apt_cache.py` — `10` | the longest one mirror's probe runs (`check`, each read waiting only the time left), at most once per mirror of the runner's list, before apt's own fetch in every job running `.github/actions/apt-cache-restore` with an archive left to fetch (B.10.1); with the required rate (`ci.apt_mirror_rate_margin`, `ci.apt_mirror_min_bytes_per_s`) it sets the probe's byte budget, cap × that rate, the most a mirror at exactly that rate moves inside the cap (10 MB on the floor, 78 MB for the firmware set), so "fast enough" is "the budget, or the whole archive, inside the cap at that rate"; kept fixed rather than derived, so the probe costs at most 10 s a mirror whatever the set | estimated (agent, 2026-10-27; owner-reviewed, 2026-11-06) — measurement owed: the probe's seconds on a healthy runner node, from the next CI runs' logs, CI; one measurement so far, single observation (2026-10-27): on a 1.3 MB/s azure node (run 40603784233, job 122543124264) the 10 MB budget took 7.75 s, 1290 kB/s, against the install's steady 1.3 MB/s right after it (cmake's 11.2 MB in 8.7 s, gcc-arm-none-eabi's 57.5 MB in 43.9 s, libnewlib-arm-none-eabi's 49.2 MB in 37.2 s): the probe reads the node's real rate | attention; a slow node (45-130 kB/s, actions/runner-images#14823) moves at most 1.3 MB in the cap; a healthy one (30 MB/s or more) the firmware set's 78 MB budget in about 2.6 s | the runner's mirror list or its slow-node pattern changes |
 | `ci.apt_mirror_min_bytes_per_s` | 1000000 B/s | `scripts/ci_apt_cache.py` — `1000000` | the floor of the mirror check's required rate (`check`): a probed mirror never counts as fast enough under it, whatever the set; it decides when the set is small against its bound (Playwright's 25.9 MB over its 300 s install needs 173 kB/s at `ci.apt_mirror_rate_margin`), and the derived rate above it decides the rest (the firmware set's 7.84 MB/s) | estimated (agent, 2026-10-27; owner-reviewed, 2026-11-06) — measurement owed: the rates the probe logs on healthy and slow runner nodes, from the next CI runs' logs, CI; one measurement so far, single observation (2026-10-27): a 1.3 MB/s azure node (job 122543124264) passed this floor, then could not fit the firmware set's 588 MB inside its 150 s attempts, which is why it is now the floor and not the rule | attention; about 8x the fastest slow node reported (130 kB/s; job 122430825421 fetched cmake's 11.2 MB at 112 kB/s) and a thirtieth of a healthy node's 30 MB/s | the runner's mirror list or its slow-node pattern changes |
 | `ci.apt_mirror_rate_margin` | 2.0 | `scripts/ci_apt_cache.py` — `2.0` | the mirror check's required rate: margin × the bytes still to fetch after copy-in over the bound of the step that fetches them (`tool.apt_step_timeout_s`, 150 s, for the firmware set's download attempts; `ci.playwright_install_timeout_min`, 300 s, for Playwright's install), each caller passing its bound read from that tag's own site, and never under `ci.apt_mirror_min_bytes_per_s`: the firmware set's 588 MB needs 7.84 MB/s, which the 1.3 MB/s node of job 122543124264 misses; Playwright's 25.9 MB needs 173 kB/s, under the floor | estimated (agent, 2026-10-28; owner-reviewed, 2026-11-06) — measurement owed: the install's own rate against the probe's on the next CI runs that fetch (each probe and the required rate print in the job log), CI | attention; the fetch fits half its bound: the other half covers the node's rate drifting within an attempt and apt's per-archive work; a larger margin costs only probe time, since with no mirror fast enough the fastest measured still goes first | a fetching step's bound, a package set or the runner's slow-node pattern changes |
@@ -12145,7 +12139,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` and `ci.unit_tests_gc_threshold_timeout_min`, and the largest one inside `ci.unit_tests_coverage_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | about 2.9× the slowest job alone (`tests/test_sensortask.py`'s `dev` job: 56 s at -1, 82 s at 32768, 2026-10-13) | a file's elapsed approaches it |
 | `runner.per_file_attempts` | 3 | `scripts/test.sh` — `3` | every per-file job, every `scenarios[<device>]` job and the backgrounded `tests_scripts/` tier, retried on a timeout only; a pass after a retry reports `RETRIED-PASS` | owner decision (owner, 2026-09-26: the per-file timeout with two retries is a standing backstop; owner, 2026-10-20: 'Simply put, do the consistent rule adaptation to tests only and only for those running into timeout.') | two transient timeouts absorbed | the backstop rule changes |
-| `runner.port_lock_attempts` | 10 | `scripts/_port_lock.sh` — `10`; `scripts/_port_lock.py` — `10`; `tests_js/_port_lock.js` — `10` | the takes of one product-fixed port's lock: a take lost to another taker of a dead holder's lock is one, after which the runner stops naming the lock directory; the three libraries agree | estimated (agent, `aa3530f`) — measurement owed: the takes a lock needs when runners overlap on the slowest host, L0 | against that measurement, once taken | the lock library or the runners sharing a port change |
 | `runner.scenarios_timeout_s` | 2555 s | `scripts/test.sh` — `2555` | each `scenarios[<device>]` job's per-attempt bound in place of `runner.per_file_timeout_s`, one job per device E.2.1 lists, all at once on CI; × `runner.per_file_attempts` (7,665 s, about 128 min) is the largest retry budget `ci.unit_tests_timeout_min` and `ci.unit_tests_gc_threshold_timeout_min` take in full, so a hung job ends `FAIL` with the summary block printed | measured 2026-10-15, the Unix-port twin, single observation: a standalone `dev` scenario-harness run took 396 s at gc -1, one device, nothing beside it; on GitHub's ubuntu-latest runners (2026-10-20, runs `39335426899`, `39344544377`) `dev` is the slowest device: its in-suite job at most 439 s at -1 and 511 s at 32768 (the pytest tier's start to the job's last line, beside the whole suite), its `digital-twin-e2e` harness-leg step 486-511 s | attention; 2.5× on the bench Pi4, the slowest local host (N.1): the 65 `dev` scenarios sum to 1,003 s at 32768 (2026-11-05); 4.5× on CI (563 s, run `39647170466`); 6.5× the standalone local run | a scenario or a device is added, a scenario's boot changes, or the host class changes |
 | `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound per attempt; × `runner.per_file_attempts` (3,600 s, 60 min) is its retry budget, the largest one inside `ci.unit_tests_coverage_timeout_min` | estimated (agent, `a092800`); the tier measured 698 s at either GC stage beside the MicroPython tier (2026-10-15) and 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | 1.7× the 698 s tier, a hang backstop | the pytest tier grows |
 | `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` (4 tags) | every `timeout` in the runner, the per-file one sending SIGINT first (microtest's `ABORT` line, E.3.1); the EXIT trap's stop of the background jobs sends SIGKILL to what is left after twice it | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after the timeout's first signal (SIGINT for a test file, SIGTERM for the pytest tier) | unknown until measured | the interpreter's signal handling changes |

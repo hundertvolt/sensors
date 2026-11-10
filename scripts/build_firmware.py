@@ -127,7 +127,7 @@ def image_report(build_dir: Path) -> ImageReport:
     nm = shutil.which("arm-none-eabi-nm", path=st.BUILD_ENV_PATH)
     if nm is None:
         raise st.SetupError(f"arm-none-eabi-nm is not on {st.BUILD_ENV_PATH} - install the toolchain's apt packages (uv run toolchain/setup_toolchain.py setup)")
-    listing = subprocess.run([nm, str(build_dir / "firmware.elf")], capture_output=True, text=True, check=True, timeout=120).stdout
+    listing = subprocess.run([nm, str(build_dir / "firmware.elf")], capture_output=True, text=True, check=True).stdout
     symbols = {parts[2]: int(parts[0], 16) for parts in (line.split() for line in listing.splitlines()) if len(parts) == _NM_FIELDS}
     wanted = ("__flash_binary_end", "__micropy_flash_size__", "__micropy_flash_storage_bytes__", "__micropy_romfs_bytes__")
     missing = [name for name in wanted if name not in symbols]
@@ -152,8 +152,8 @@ def source_state(repo_root: Path) -> "tuple[str | None, bool | None]":
         if git_bin is None:
             return None
         try:
-            done = subprocess.run([git_bin, *argv], cwd=repo_root, capture_output=True, text=True, check=False, timeout=30)
-        except (OSError, subprocess.TimeoutExpired):
+            done = subprocess.run([git_bin, *argv], cwd=repo_root, capture_output=True, text=True, check=False)
+        except OSError:
             return None
         return done.stdout if done.returncode == 0 else None
 

@@ -25,7 +25,7 @@ _APT_SAVE_ACTION = _ACTIONS / "apt-cache-save" / "action.yml"
 _PLAYWRIGHT_USES = "uses: ./.github/actions/playwright-chromium"
 _APT_RESTORE_USES = "uses: ./.github/actions/apt-cache-restore"
 _APT_SAVE_USES = "uses: ./.github/actions/apt-cache-save"
-_WEB_TEST_JOBS = ("web-unit-tests", "web-put-matrix", "web-coverage", "web-cross-browser-smoke")
+_WEB_TEST_JOBS = ("web-unit-tests", "web-put-matrix", "web-cross-browser-smoke")
 _APT_PACKAGES = 'versions["toolchain"]["apt_packages"]'
 _CACHE_ACTION = re.compile(r"uses: actions/cache(?:/restore|/save)?@(\S+)")
 _SUCCESS_GATED = "success-gated on purpose"
@@ -316,6 +316,18 @@ def test_every_script_a_run_calls_as_a_command_is_executable_in_git() -> None:
         modes[script] = entry[0].split()[0] if entry else "untracked"
     wrong = sorted(f"{where}: {script} ({modes[script]})" for where, script in called if modes[script] != "100755")
     assert not wrong, f"these steps run a script as a command that git does not mark executable - `git update-index --chmod=+x` it, or run it through its interpreter: {wrong}"
+
+
+def test_the_web_suite_runs_once_instrumented_and_its_report_never_gates() -> None:
+    # One run gates and reports: V8 coverage instruments no source, so a second, plain run would prove nothing more.
+    jobs = _jobs()
+    runners = sorted(name for name, job in jobs.items() if re.search(r"npm run test:(unit|coverage)\b", job))
+    assert runners == ["web-unit-tests"], runners
+    steps = _steps(jobs["web-unit-tests"], 6)
+    tests = [step for step in steps if "npm run test:coverage" in step]
+    assert len(tests) == 1 and "continue-on-error" not in tests[0], tests
+    reports = steps[steps.index(tests[0]) + 1 :]
+    assert reports and all("continue-on-error: true" in step and "always()" in step for step in reports), reports
 
 
 def test_every_job_budget_is_tagged() -> None:

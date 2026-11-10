@@ -1,25 +1,17 @@
-"""tests_js/_twin_process.js's spawnTwin(): a string the Unix port interns before the runner starts and cannot (an
-argument, the runner's directory, a MICROPYPATH entry) is refused before anything is probed, locked or started, naming
-it and the limit (scripts/_twin_process.py's). Driven by Node on a copy in a throwaway tree with a stub interpreter."""
+"""tests_js/_twin_process.js's spawnTwin(): a caller's TEST_TWIN_HOST never reaches the twin. Driven by Node on a copy
+in a throwaway tree with a stub interpreter."""
 
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
-
-import scripts._twin_process as twin_process
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _LAUNCH = "tests_js/_twin_process.js"
 # The launch frame, the modules it imports and the files it reads or runs, copied into each throwaway tree.
-_COPIED = (_LAUNCH, "tests_js/_micropypath.js", "tests_js/_port_lock.js", "tests_js/_twin_start_failure.js", "scripts/_unix_port.sh", "scripts/micropypath.toml", "package.json")
-_LIMIT = twin_process._QSTR_MAX_BYTES
-_OVER = "x" * (_LIMIT + 1)
+_COPIED = (_LAUNCH, "tests_js/_micropypath.js", "tests_js/_port_lock.js", "tests_js/_twin_start_failure.js", "scripts/_unix_port.sh", "scripts/micropypath.toml", "scripts/memory_markers.json", "package.json")
 
 
 def _spawn(tmp_path: Path, *, device: str = "fixture-device", config_dir: str = "", root_dir: str = "repo", layout: str = "", home: bool = True, caller_env: "dict[str, str] | None" = None) -> "tuple[dict[str, object], list[str]]":
@@ -55,55 +47,11 @@ def _spawn(tmp_path: Path, *, device: str = "fixture-device", config_dir: str = 
     assert node is not None, "node is not on PATH - the live tier this launch serves cannot run without it either"
     done = subprocess.run([node, "--input-type=module", "-e", script], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=60)
     assert done.returncode == 0, done.stderr
-    assert list(runtime.iterdir()) == [], "the launch left a port lock behind"
+    flock = shutil.which("flock") or "/usr/bin/flock"
+    assert all(subprocess.run([flock, "-n", str(lock), "true"], check=False).returncode == 0 for lock in runtime.glob("*.flock")), "the launch left a port lock held"
     outcome = json.loads(done.stdout.strip().splitlines()[-1])
     assert isinstance(outcome, dict), outcome
     return outcome, log.read_text(encoding="utf-8").splitlines() if log.exists() else []
-
-
-@pytest.mark.parametrize(
-    ("case", "named"),
-    [
-        ("device", "--device's value (256 bytes)"),
-        ("multibyte device", "--device's value (256 bytes)"),
-        ("config directory", "--config-dir's value"),
-        ("micropypath entry", "MICROPYPATH entry 1 (256 bytes)"),
-        ("home-relative entry without HOME", "MICROPYPATH entry 1 (258 bytes)"),
-        ("runner's directory", "the runner's directory"),
-    ],
-)
-def test_a_string_the_interpreter_cannot_intern_is_refused_before_anything_starts(tmp_path: Path, case: str, named: str) -> None:
-    # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1), which read as a twin that
-    # "exited before ever serving"; a byte count, not characters, is what the interpreter measures.
-    device, config_dir, layout, root_dir, home = "fixture-device", "", "", "repo", True
-    if case == "device":
-        device = _OVER
-    elif case == "multibyte device":
-        device = "é" * ((_LIMIT + 1) // 2)
-    elif case == "config directory":
-        config_dir = str(tmp_path / ("c" * 250))
-        named += f" ({len(os.fsencode(config_dir))} bytes)"
-    elif case == "micropypath entry":
-        layout = _OVER
-    elif case == "home-relative entry without HOME":
-        layout, home = f"~/{_OVER}", False
-    else:
-        root_dir = f"{'r' * 200}/repo"
-        named += f" ({len(os.fsencode(os.path.realpath(tmp_path / root_dir / 'digital_twin')))} bytes)"
-    outcome, calls = _spawn(tmp_path, device=device, config_dir=config_dir, root_dir=root_dir, layout=layout, home=home)
-    refused = str(outcome.get("refused", outcome))
-    assert refused.startswith("the twin was not started: ") and named in refused, refused
-    assert refused.endswith(f"- the Unix port interns each as a qstr of at most {_LIMIT} bytes and dies before the runner starts"), refused
-    assert calls == [], f"spawnTwin() probed or started the interpreter before refusing: {calls}"
-
-
-def test_a_string_at_the_limit_or_one_the_interpreter_expands_still_starts(tmp_path: Path) -> None:
-    # The boundary's other side: 255 bytes everywhere, and a ~/ entry the interpreter builds from $HOME, never interns.
-    at_limit = "x" * _LIMIT
-    config_dir = str(tmp_path / ("c" * (_LIMIT - len(os.fsencode(str(tmp_path))) - 1)))
-    outcome, calls = _spawn(tmp_path, config_dir=config_dir, layout=f"{at_limit}:~/{_OVER}")
-    assert outcome == {"exited": 0} and len(os.fsencode(config_dir)) == _LIMIT, outcome
-    assert calls[0] == "probe" and calls[1].endswith(f"--config-dir {config_dir}") and len(calls) == 2, calls
 
 
 def test_a_callers_twin_host_never_reaches_the_twin(tmp_path: Path) -> None:
@@ -113,9 +61,3 @@ def test_a_callers_twin_host_never_reaches_the_twin(tmp_path: Path) -> None:
     assert outcome == {"exited": 0} and len(calls) == 2, (outcome, calls)
     seen = (tmp_path / "twin_host").read_text(encoding="utf-8")
     assert seen == "<unset>\n", f"the caller's TEST_TWIN_HOST reached the twin's environment: {seen!r}"
-
-
-def test_the_launchs_limit_is_the_python_launchs_own() -> None:
-    # The JS copy of the qstr limit is scripts/_twin_process.py's, which is checked against the interpreter itself.
-    copies = re.findall(r"^const QSTR_MAX_BYTES = (\d+);", (REPO_ROOT / _LAUNCH).read_text(encoding="utf-8"), re.MULTILINE)
-    assert copies == [str(_LIMIT)], f"{_LAUNCH} holds the qstr limit {copies}, scripts/_twin_process.py {_LIMIT}"

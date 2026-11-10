@@ -167,13 +167,18 @@ def test_the_ci_runner_builds_the_site_each_part_boots_from(sandbox: Path, args:
     assert [call for call in calls if call[0] == "build_website.sh"] == [want[part] for part in parts]
 
 
+def _hold_port(root: Path, port: int) -> "subprocess.Popen[str]":
+    # Another runner's live lock on `port`, taken by scripts/_port_lock.sh itself outside this chain; kill it to free it.
+    env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK")} | {"XDG_RUNTIME_DIR": str(root)}
+    take = f'source {REPO_ROOT}/scripts/_port_lock.sh; port_lock_take {port} "another suite"; echo held; exec sleep 60'
+    holder = subprocess.Popen(["/bin/bash", "-c", take], env=env, stdout=subprocess.PIPE, text=True)
+    assert holder.stdout is not None and holder.stdout.readline() == "held\n", "the stand-in holder never took its lock"
+    return holder
+
+
 @pytest.mark.parametrize(("runner", "args"), [(_RUNNER, (DEVICE_NAMES[0],)), ("scripts/run_unix_port_integration.sh", ("--device", DEVICE_NAMES[0]))])
 def test_a_held_port_53_fails_a_twin_runner_at_once_naming_it_before_any_tool_runs(sandbox: Path, runner: str, args: "tuple[str, ...]") -> None:
-    holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
-    lock = sandbox / "runtime" / "sensors-port-53.lock"
-    lock.mkdir()
-    (lock / "runner").write_text("another suite\n", encoding="utf-8")
-    (lock / "pid").write_text(f"{holder.pid}\n", encoding="utf-8")
+    holder = _hold_port(sandbox / "runtime", 53)
     try:
         done, calls = _run(sandbox, *args, runner=runner)
     finally:
