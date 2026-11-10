@@ -56,7 +56,7 @@ def ci_suite(repo_root: Path) -> ModuleType:
 def micropython_bin() -> "Iterator[Path]":
     # The standard build, through the one probe: a missing or wrong-flavour one fails every test that needs it, never skips
     # it. The toolchain lock is held shared for the session, so a setup cannot rebuild the binary under the twins this tier
-    # boots; a setup holding it fails the session's first use, named (agent, 2026-10-15; owner-reviewed, 2026-11-06).
+    # boots; a setup holding it fails the session's first use, named (agent, 2026-10-15).
     path = _unix_port("check", "standard")
     toolchain = path.parents[4]
     with (toolchain / ".toolchain.lock").open("a+", encoding="utf-8") as lock:

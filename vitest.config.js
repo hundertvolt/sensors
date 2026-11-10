@@ -23,7 +23,7 @@ import { probeLintRule } from "./tests_js/_lint_command.js";
 import { probePortLock } from "./tests_js/_port_lock.js";
 
 // The lock-pinned Playwright Chromium runs whenever it is installed; a session sandbox that cannot download it
-// pre-installs one here (agent, 2026-08-21; owner-reviewed, 2026-11-06). Remove this fallback once the sandbox can run `npx playwright install chromium`.
+// pre-installs one here (agent, 2026-08-21). Remove this fallback once the sandbox can run `npx playwright install chromium`.
 const sandboxChromium = "/opt/pw-browsers/chromium";
 const launchOptions = !existsSync(chromium.executablePath()) && existsSync(sandboxChromium) ? { executablePath: sandboxChromium } : {};
 
@@ -51,7 +51,7 @@ export default defineConfig({
         coverage: {
             // A `coverage/` directory at the repo root is importable as a namespace package and
             // shadows the real `coverage` distribution scripts/_render_coverage.py imports, so a
-            // web-coverage run turned scripts/typecheck.sh red. htmlcov_js/ matches htmlcov*/.
+            // JS coverage run turned scripts/typecheck.sh red. htmlcov_js/ matches htmlcov*/.
             reportsDirectory: "htmlcov_js",
             // The v8 provider re-parses every file V8 reported coverage for as JavaScript, so the
             // JSON the site fetches at runtime (the generated definitions and mockdata/) threw a

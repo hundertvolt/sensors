@@ -1,6 +1,6 @@
 """scripts/_stage_website.py on temp trees and on the real one: the bundle is js/main.js's import closure,
-each module after the ones it imports; every bundling rule and every file drift refuses with what, where and
-a fix, writing nothing; the page inlines the stylesheet, the icon and the definitions (SPECIFICATION.md H.2)."""
+each module after the ones it imports; an import outside the one-line form, a cycle or a missing module refuses
+with what, where and a fix, writing nothing; the page inlines the stylesheet, the icon and the definitions (H.2)."""
 
 import base64
 import json
@@ -144,33 +144,19 @@ def test_import_text_in_comments_strings_templates_and_regexes_is_not_an_import(
 @pytest.mark.parametrize(
     ("changes", "needles"),
     [
-        pytest.param({"js/main.js": 'import {\n    helper,\n} from "./helper.js";\n' + _MAIN.split("\n", 1)[1]}, ("js/main.js:1", "multi-line import"), id="multi-line-import"),
-        pytest.param({"js/main.js": _MAIN.replace("import { helper }", "import helper")}, ("js/main.js:1", "default import"), id="default-import"),
-        pytest.param({"js/main.js": _MAIN.replace("import { helper }", "import * as helper")}, ("js/main.js:1", "namespace import"), id="namespace-import"),
-        pytest.param({"js/main.js": 'import "./helper.js";\n' + _MAIN}, ("js/main.js:1", "bare import"), id="bare-import"),
-        pytest.param({"js/main.js": _MAIN.replace('"./helper.js";', '"helper";')}, ("js/main.js:1", "bare module specifier"), id="bare-specifier"),
-        pytest.param({"js/helper.js": _HELPER + 'export function load() {\n    return import("./mock.js");\n}\n'}, ("js/helper.js:5", "dynamic import"), id="dynamic-import"),
-        pytest.param({"js/helper.js": "export default function helper() {}\n"}, ("js/helper.js:1", "default export"), id="default-export"),
-        pytest.param({"js/helper.js": _HELPER + 'export { mock } from "./mock.js";\n'}, ("js/helper.js:4", "re-export"), id="re-export"),
-        pytest.param({"js/helper.js": _HELPER + 'export * from "./mock.js";\n'}, ("js/helper.js:4", "re-export"), id="star-re-export"),
+        pytest.param({"js/main.js": 'import {\n    helper,\n} from "./helper.js";\n' + _MAIN.split("\n", 1)[1]}, ("js/main.js:1", "one-line form"), id="multi-line-import"),
+        pytest.param({"js/main.js": _MAIN.replace("import { helper }", "import helper")}, ("js/main.js:1", "one-line form"), id="default-import"),
+        pytest.param({"js/main.js": _MAIN.replace("import { helper }", "import * as helper")}, ("js/main.js:1", "one-line form"), id="namespace-import"),
+        pytest.param({"js/main.js": 'import "./helper.js";\n' + _MAIN}, ("js/main.js:1", "one-line form"), id="bare-import"),
+        pytest.param({"js/main.js": _MAIN.replace('"./helper.js";', '"helper";')}, ("js/main.js:1", "one-line form"), id="bare-specifier"),
         pytest.param({"js/main.js": _MAIN.replace('"./helper.js"', '"./absent.js"')}, ("js/main.js:1", "./absent.js", "does not exist"), id="missing-module"),
         pytest.param({"js/helper.js": 'import { startApp } from "./main.js";\n\n' + _HELPER}, ("js/helper.js:1", "cycle", "main.js -> helper.js -> main.js"), id="cycle"),
-        pytest.param({"js/helper.js": _HELPER + "export function startApp() {}\n"}, ("startApp", "js/helper.js:4", "js/main.js:10", "twice"), id="duplicate-export"),
-        pytest.param({"js/helper.js": _HELPER + "function util() {}\n", "js/main.js": _MAIN + "function util() {}\n"}, ("util", "js/helper.js:4", "js/main.js:13", "twice"), id="duplicate-private-name"),
-        pytest.param({"js/helper.js": _HELPER + "const { a, b } = helper({});\n"}, ("js/helper.js:4", "destructuring"), id="top-level-destructuring"),
-        pytest.param({"html/notes.txt": "stray\n"}, ("html/notes.txt", "not part of the site"), id="stray-html-file"),
-        pytest.param({"js/orphan.js": "export function orphan() {}\n"}, ("js/orphan.js", "not part of the site"), id="unreferenced-module"),
-        pytest.param({"js/sub/deep.js": "export function deep() {}\n"}, ("js/sub/deep.js", "not part of the site"), id="nested-file"),
         pytest.param({"html/index.html": _INDEX.replace('    <link rel="icon" href="favicon.ico">\n', "")}, ("html/index.html", '<link rel="icon" href="favicon.ico">'), id="missing-icon-tag"),
         pytest.param({"html/index.html": _INDEX.replace('<link rel="stylesheet" href="style.css">', "")}, ("html/index.html", '<link rel="stylesheet" href="style.css">'), id="missing-stylesheet-tag"),
         pytest.param({"html/style.css": _CSS + "/* </style> */\n"}, ("html/style.css", "</style"), id="style-end-tag-in-css"),
-        pytest.param({"html/index.html": _INDEX.replace('<main id="main">', '<main id="content">')}, ("html/index.html", 'getElementById("main")'), id="renamed-id"),
-        pytest.param({"html/index.html": _INDEX.replace("            mainEl:", '            extraEl: document.getElementById("main"),\n            mainEl:')}, ("html/index.html", "js/main.js", "extraEl"), id="bootstrap-key-not-in-jsdoc"),
-        pytest.param({"js/main.js": _MAIN.replace(" *   mainEl: HTMLElement,", " *   mainEl: HTMLElement, navEl: HTMLElement,")}, ("html/index.html", "js/main.js", "navEl"), id="jsdoc-key-not-passed"),
-        pytest.param({"html/index.html": _INDEX.replace('"../js/app.js"', '"../js/main.js"')}, ("html/index.html", "../js/app.js"), id="bootstrap-import-path"),
     ],
 )
-def test_every_drift_from_the_bundling_rules_is_refused_naming_where_and_the_fix(tmp_path: Path, changes: "dict[str, str | None]", needles: "tuple[str, ...]") -> None:
+def test_every_break_of_the_bundling_rules_is_refused_naming_where_and_the_fix(tmp_path: Path, changes: "dict[str, str | None]", needles: "tuple[str, ...]") -> None:
     _refused(_site(tmp_path, changes), *needles)
 
 

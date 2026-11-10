@@ -1093,15 +1093,15 @@ def test_the_last_failed_attempt_names_the_step_and_the_fix(setup_toolchain: Mod
         setup_toolchain.run_retried(["git", "fetch"], timeout_s=1)
 
 
-def test_node_on_path_matches_treats_a_hung_probe_as_no_match(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A node that never answers --version must not hold the installer forever.
-    def hung(cmd: list[str], **kwargs: object) -> NoReturn:
-        assert kwargs.get("timeout") == setup_toolchain._REMOTE_QUERY_TIMEOUT_S
-        raise subprocess.TimeoutExpired(cmd, 1)
+def test_node_on_path_matches_waits_for_a_slow_probe_rather_than_reinstalling(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A local `node --version` has no outside party: a slow answer is still the answer, never a silent reinstall.
+    def answered(cmd: list[str], **kwargs: object) -> "subprocess.CompletedProcess[str]":
+        assert "timeout" not in kwargs, kwargs
+        return subprocess.CompletedProcess(cmd, 0, stdout="v22.1.0\n", stderr="")
 
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: "/usr/bin/node")
-    monkeypatch.setattr(setup_toolchain.subprocess, "run", hung)
-    assert setup_toolchain.node_on_path_matches("22") is False
+    monkeypatch.setattr(setup_toolchain.subprocess, "run", answered)
+    assert setup_toolchain.node_on_path_matches("22") is True
 
 
 # --- versions.toml as a typed table ------------------------------------------------------------------
@@ -1504,8 +1504,8 @@ def test_apt_keeps_the_proxy_in_the_environment_through_sudo(setup_toolchain: Mo
     sudo = ["sudo", "--preserve-env=DEBIAN_FRONTEND,HTTPS_PROXY,SSL_CERT_FILE", "apt-get", *setup_toolchain.apt_options()]
     tail = ["-y", "--no-install-recommends", "git", "cmake"]
     assert fake.argvs() == [[*sudo, "update"], [*sudo, "install", "--download-only", *tail], [*sudo, "install", *tail]]
-    budgets = [call["timeout_s"] for call in fake.calls]
-    assert budgets == [setup_toolchain._APT_STEP_TIMEOUT_S, setup_toolchain._APT_STEP_TIMEOUT_S, setup_toolchain._BUILD_STEP_TIMEOUT_S]
+    budgets = [call.get("timeout_s") for call in fake.calls]
+    assert budgets == [setup_toolchain._APT_STEP_TIMEOUT_S, setup_toolchain._APT_STEP_TIMEOUT_S, None], "the local install from the downloaded packages is unbounded"
     assert fake.calls[0]["check"] is False, "an unrelated broken source must not stop the install"
     for call in fake.calls:
         env = call["env"]

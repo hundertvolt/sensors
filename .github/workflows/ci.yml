@@ -168,88 +168,16 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      # Browser cache, apt mirror check and package cache, one shared action for the four web jobs (B.10.1).
+      # Browser cache, apt mirror check and package cache, one shared action for the three web jobs (B.10.1).
       - name: Install Playwright Chromium and its OS packages
         uses: ./.github/actions/playwright-chromium
       - name: Set up MicroPython toolchain (uv sync, restore or build)
         uses: ./.github/actions/setup-micropython-toolchain
         with:
           build-unix-port: 'true'
-      # npm's pretest hook builds every device's website first. Everything but the live PUT matrix,
-      # which is its own sharded job below (B.10.1).
-      - name: Run unit tests (Vitest, real-browser mode)
-        run: npm run test:unit
-
-  web-put-matrix:
-    # The live PUT matrix, split out and sharded because it IS the web tier's wall clock (B.10.1);
-    # one runner per shard, so the twin's fixed port never collides.
-    #
-    # needs: web-unit-tests, success-gated on purpose: no three runners on the slow matrix if the
-    # fast suite already failed.
-    needs: [web-changes, web-unit-tests]
-    if: needs.web-changes.outputs.web == 'true'
-    permissions:
-      contents: read
-    runs-on: ubuntu-24.04
-    # @tunable ci.web_put_matrix_timeout_min = 15
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false  # one shard's failure must not hide which cases the other two would have caught
-      matrix:
-        shard: [1, 2, 3]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      # Browser cache, apt mirror check and package cache, one shared action for the four web jobs (B.10.1).
-      - name: Install Playwright Chromium and its OS packages
-        uses: ./.github/actions/playwright-chromium
-      - name: Set up MicroPython toolchain (uv sync, restore or build)
-        uses: ./.github/actions/setup-micropython-toolchain
-        with:
-          build-unix-port: 'true'
-      - name: Run the live PUT matrix (shard ${{ matrix.shard }} of 3)
-        run: npm run test:put-matrix
-        env:
-          PUT_MATRIX_SHARD: ${{ matrix.shard }}/3
-
-  # Split from web-unit-tests because timeout-minutes gates a whole job: an instrumented rerun once
-  # killed a job whose real test step had passed (PR #50, run 33856690559; B.10.1).
-  web-coverage:
-    # Success-gated on purpose, like unit-tests-coverage: nothing to measure if the plain suite failed.
-    needs: [web-changes, web-unit-tests]
-    if: needs.web-changes.outputs.web == 'true'
-    permissions:
-      contents: read
-    runs-on: ubuntu-24.04
-    # @tunable ci.web_coverage_timeout_min = 20
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      # Browser cache, apt mirror check and package cache, one shared action for the four web jobs (B.10.1).
-      - name: Install Playwright Chromium and its OS packages
-        uses: ./.github/actions/playwright-chromium
-      - name: Set up MicroPython toolchain (uv sync, restore or build)
-        uses: ./.github/actions/setup-micropython-toolchain
-        with:
-          build-unix-port: 'true'
-      # Re-runs the suite instrumented, minus the live matrix, whose js/ paths the mock-server matrix
-      # already drives; a red test gates, the report never does (B.10.1).
-      - name: Run unit tests with coverage (the test result gates, the report does not)
+      # npm's pretest hook builds every device's website first. Everything but the live PUT matrix, which is its own
+      # sharded job below, once, with V8's coverage (it instruments no source): a red test gates, the report never does.
+      - name: Run unit tests with coverage (Vitest, real-browser mode)
         run: |
           set -o pipefail
           npm run test:coverage 2>&1 | tee coverage-output.txt
@@ -280,6 +208,45 @@ jobs:
           name: coverage-html-js
           path: htmlcov_js/
         continue-on-error: true
+
+  web-put-matrix:
+    # The live PUT matrix, split out and sharded because it IS the web tier's wall clock (B.10.1);
+    # one runner per shard, so the twin's fixed port never collides.
+    #
+    # needs: web-unit-tests, success-gated on purpose: no three runners on the slow matrix if the
+    # fast suite already failed.
+    needs: [web-changes, web-unit-tests]
+    if: needs.web-changes.outputs.web == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    # @tunable ci.web_put_matrix_timeout_min = 15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false  # one shard's failure must not hide which cases the other two would have caught
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # Browser cache, apt mirror check and package cache, one shared action for the three web jobs (B.10.1).
+      - name: Install Playwright Chromium and its OS packages
+        uses: ./.github/actions/playwright-chromium
+      - name: Set up MicroPython toolchain (uv sync, restore or build)
+        uses: ./.github/actions/setup-micropython-toolchain
+        with:
+          build-unix-port: 'true'
+      - name: Run the live PUT matrix (shard ${{ matrix.shard }} of 3)
+        run: npm run test:put-matrix
+        env:
+          PUT_MATRIX_SHARD: ${{ matrix.shard }}/3
 
   web-cross-browser-smoke:
     # WebKitGTK, Firefox and Edge - engines Vitest's Playwright mode cannot reach - plus Chromium,
@@ -320,7 +287,7 @@ jobs:
         id: month
         run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
       # Firefox+geckodriver float by design: the floor is current Chromium, Firefox and Safari (owner, 2026-09-26,
-      # paraphrase); the key rolls monthly and with the installer (agent, 2026-09-30; B.10.1; owner-reviewed, 2026-11-06). WebKit and Edge
+      # paraphrase); the key rolls monthly and with the installer (agent, 2026-09-30; B.10.1). WebKit and Edge
       # reinstall every run.
       - name: Cache Firefox + geckodriver (conda-forge)
         uses: actions/cache@v6
@@ -452,7 +419,8 @@ jobs:
         # @tunable gc.threshold_bytes = 32768
         run: GC_THRESHOLD=32768 scripts/test.sh
 
-  # Split from unit-tests for the same reason web-coverage is; needs: unit-tests only to reuse its
+  # Split from unit-tests because timeout-minutes gates a whole job: an instrumented rerun once killed a job whose
+  # real test step had passed (PR #50, run 33856690559; B.10.1); needs: unit-tests only to reuse its
   # toolchain cache, running in parallel with the two jobs below (B.10.1).
   #
   # Its budget: a warm run plus the pytest tier's full timeout-retry budget, plus 25% (Part N); a

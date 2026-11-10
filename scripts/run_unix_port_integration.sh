@@ -15,9 +15,6 @@
 set -euo pipefail
 usage_line="Usage: scripts/run_unix_port_integration.sh --device <name> [flags forwarded to the twin]"
 runner=digital_twin/run_generic_integration.py
-# Past this many bytes the Unix port cannot intern a string as a qstr: scripts/_twin_process.py's _QSTR_MAX_BYTES, read
-# against the interpreter there and pinned to this copy by tests_scripts/test_run_unix_port_integration_sh.py.
-qstr_max_bytes=255
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     cat <<EOF
 $usage_line
@@ -42,32 +39,6 @@ unset TEST_TWIN_HOST
 
 # shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
 source scripts/_devices.sh
-# _uninternable <MICROPYPATH> <runner's directory> <argument>...: each string the interpreter would intern before the
-# runner starts and cannot, "<what> (<bytes> bytes)" per line; a ~/ MICROPYPATH entry it builds from $HOME is not one.
-_uninternable() {
-    local LC_ALL=C named=() entries=() previous="" value i=0
-    for value in "${@:3}"; do
-        if [ "$i" -gt 0 ] && [[ "$previous" == --* && "$value" != --* ]]; then
-            named+=("$previous's value" "$value")
-        else
-            named+=("argument $i" "$value")
-        fi
-        previous="$value"
-        i=$((i + 1))
-    done
-    named+=("the runner's directory" "$2")
-    IFS=: read -ra entries <<<"$1"
-    for i in "${!entries[@]}"; do
-        if [[ "${entries[i]}" != \~/* || -z "${HOME+set}" ]]; then
-            named+=("MICROPYPATH entry $((i + 1))" "${entries[i]}")
-        fi
-    done
-    for ((i = 0; i < ${#named[@]}; i += 2)); do
-        if [ "${#named[i + 1]}" -gt "$qstr_max_bytes" ]; then
-            printf '%s (%s bytes)\n' "${named[i]}" "${#named[i + 1]}"
-        fi
-    done
-}
 _usage_error() {
     local devices
     devices="$(derived_devices)" || devices=""
@@ -95,8 +66,7 @@ done
 [ "$device_given" = "1" ] || _usage_error "error: --device is required"
 require_device "$device"
 
-# The one Unix-port probe (scripts/_unix_port.sh), sourced for the twin layout: the launch is refused before the lock, a
-# build or setcap if it hands the interpreter a string it cannot intern ("FATAL: uncaught NLR", exit 1, at start).
+# The one Unix-port probe (scripts/_unix_port.sh), sourced for the twin layout.
 # shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
 source scripts/_unix_port.sh
 module="sensortask_${device}"
@@ -105,12 +75,6 @@ twin_path="$(micropypath twin)"
 # The device's own built site in place of frozen_modules/, so scripts/test.sh's frozen_modules/ is never touched.
 twin_path="${twin_path/frozen_modules/$site}"
 launch=("$runner" --module "$module" --wiring-plan "build/generated_src/${module}_wiring_plan.json" --device "$device" "${forward_args[@]}")
-runner_path="$(realpath -m -- "$runner")"
-uninternable="$(_uninternable "$twin_path" "${runner_path%/*}" "${launch[@]}")"
-if [ -n "$uninternable" ]; then
-    echo "error: the twin was not started: ${uninternable//$'\n'/, } - the Unix port interns each as a qstr of at most $qstr_max_bytes bytes and dies before the runner starts" >&2
-    exit 1
-fi
 
 # The twin's captive DNS server binds the product's port 53: one suite holds it at a time, and a second
 # exits 1 here, before anything is built (CLAUDE.md). The one EXIT trap releases it.
@@ -134,11 +98,11 @@ else
     sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
 fi
 
-echo "== Building the real $device website into $site/frozen_html.py"
-scripts/build_website.sh "$device" "$site/frozen_html.py"
-
 echo "== Generating buildgen device modules + wiring plans into build/generated_src/"
 uv run --no-sync scripts/_generate_sensortask_modules.py
+
+echo "== Building the real $device website into $site/frozen_html.py"
+scripts/build_website.sh "$device" "$site/frozen_html.py"
 
 echo "== Running $runner (device: $device)"
 MICROPYPATH="$twin_path" "$micropython_bin" "${launch[@]}"

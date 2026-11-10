@@ -23,8 +23,8 @@ JSONObject: TypeAlias = dict[str, JSONValue]
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RUNNER = "digital_twin/run_generic_integration.py"
 LAYOUT_FILE = REPO_ROOT / "scripts" / "micropypath.toml"
-# The twin gate's copy of the four-gate marker set (CLAUDE.md), kept equal by test_memory_error_gate_agreement.py.
-MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+# The marker pair every memory gate matches (CLAUDE.md), from its one definition, which test.sh and tests_js read too.
+MEMORY_ERROR_MARKERS: "tuple[str, ...]" = tuple(str(marker) for marker in json.loads((REPO_ROOT / "scripts" / "memory_markers.json").read_text(encoding="utf-8")))
 
 # The runner's own exit codes (digital_twin/run_generic_integration.py), pinned equal by an L0 test.
 EXIT_SIMULATED_RESET = 3
@@ -40,12 +40,8 @@ FEED_GAP_SHARE_MAX = 0.75
 _SERVING_POLL_S = 0.25
 _SERVING_PROBE_TIMEOUT_S = 1.0
 _LOG_TAIL_LINES = 20
-# Past this many bytes the Unix port cannot intern an argument (from the script on), the script's directory or a
-# MICROPYPATH entry as a qstr, and dies before the runner starts: "FATAL: uncaught NLR", exit 1 (ports/unix/main.c:412,
-# :560, :688, :768; py/qstr.c:319-321; MICROPY_QSTR_BYTES_IN_LEN 1, py/mpconfig.h:369; v1.29.0).
-_QSTR_MAX_BYTES = 255
 # scripts/test.sh's own address for each of its file jobs (the UDP shim's twin_host). A caller's would bind a host-run
-# twin's servers there, off the 127.0.0.1 every host-side talker queries: no launch passes it on (agent, 2026-10-28; owner-reviewed, 2026-11-06).
+# twin's servers there, off the 127.0.0.1 every host-side talker queries: no launch passes it on (agent, 2026-10-28).
 _TWIN_HOST_ENV = "TEST_TWIN_HOST"
 
 
@@ -203,15 +199,6 @@ def _uart_counts(tokens: list[str]) -> dict[str, UartCounts]:
             raise ValueError(f"the shutdown line names uart instance {key} twice")
         found[key] = UartCounts(int(match.group(2)), int(match.group(3)), int(match.group(4)))
     return found
-
-
-def _uninternable(argv: "list[str]", env: "dict[str, str]") -> "list[str]":
-    # Each string the interpreter would intern before the runner argv[0] (absolute, or from the checkout) starts and cannot,
-    # named with its size in bytes; a ~/ MICROPYPATH entry it builds from $HOME instead, never interning it, is not one.
-    named = [(f"{argv[i - 1]}'s value" if i and argv[i - 1].startswith("--") and not value.startswith("--") else f"argument {i}", value) for i, value in enumerate(argv)]
-    named.append(("the runner's directory", str((REPO_ROOT / argv[0]).resolve().parent)))
-    named += [(f"MICROPYPATH entry {n}", entry) for n, entry in enumerate(env["MICROPYPATH"].split(":"), 1) if not (entry.startswith("~/") and "HOME" in env)]
-    return [f"{name} ({size} bytes)" for name, value in named if (size := len(os.fsencode(value))) > _QSTR_MAX_BYTES]
 
 
 def errcount_entry(status: int, body: JSONValue, name: str) -> JSONObject:
@@ -400,9 +387,6 @@ def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[s
         "--mem-backup-state-path", str(paths.mem_backup), "--config-dir", str(paths.config_dir) + "/", "--gc-threshold", str(launch.gc_threshold),
         "--stop-file", str(state_dir / _STOP_FILE), *args,
     ]
-    refused = _uninternable(cmd[1:], env)
-    if refused:
-        raise ValueError(f"the twin was not started: {', '.join(refused)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")
     paths.config_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / _STOP_FILE).unlink(missing_ok=True)  # a previous launch's on the same state would end this one at once
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")

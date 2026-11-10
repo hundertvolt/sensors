@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the bench board's tick-offset test image (ticks wrap about 15 minutes after boot; owner, 2026-10-01) and runs
 # only @pytest.mark.multi_day_rollover tests on it for about two hours, on top of a clean bench run. Never a soak,
-# never bundled with a suite runner (owner, 2026-09-26); one flash cycle.
+# never bundled with a suite runner (owner's direction, 2026-09-04); one flash cycle.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

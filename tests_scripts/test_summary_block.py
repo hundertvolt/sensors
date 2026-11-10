@@ -1,6 +1,6 @@
-"""The runner summary block (SPECIFICATION.md E.10) has three emitters - scripts/_summary_block.sh,
-scripts/_summary_block.py and tests_js/_summary_layout.js - and one layout: each renders the same
-canned input byte for byte, and the block's rules hold in every one."""
+"""The runner summary block (SPECIFICATION.md E.10) has one emitter, scripts/_summary_block.py: the shell accumulator
+(scripts/_summary_block.sh) and the JS one (tests_js/_summary_layout.js) hand it their records, so the same canned
+input prints byte for byte the block it prints in process, and the block's rules hold through every route."""
 
 import json
 import os
@@ -173,35 +173,29 @@ def test_bash_and_python_render_the_same_input_byte_for_byte(emitter: ModuleType
     assert bash_out.encode() == py_out.encode()
 
 
-def _js_input(runner: str, exit_code: int, items: list[tuple[str, str, str]], commit: str, kwargs: Opts) -> str:
-    # The canned-input contract of `node tests_js/_summary_layout.js <json>`: one JSON argument, the
-    # block on stdout. `commit` is passed in because the layout is pure (no git, no Node built-ins).
-    extra = kwargs.get("extra") or []
-    return json.dumps(
-        {
-            "runner": runner,
-            "unit": kwargs.get("unit", "tests"),
-            "levels": kwargs.get("levels"),
-            "gc_stage": kwargs.get("gc_stage"),
-            "not_clean_reason": kwargs.get("reason"),
-            "commit": commit,
-            "items": [list(item) for item in items],
-            "extra_counts": [[u, list(v)] for u, v in extra],  # type: ignore[attr-defined]
-            "notes": [list(note) for note in kwargs.get("notes") or []],  # type: ignore[attr-defined]
-            "exit_code": exit_code,
-        },
-    )
+# The JS accumulator in a fresh Node, filled from one JSON argument, its records piped to the one emitter.
+_JS_RECORDS = """
+const { createSummary, summaryRecords } = await import(process.argv[1]);
+const input = JSON.parse(process.argv[2]);
+const summary = createSummary(input.runner, input.unit);
+Object.assign(summary, { levels: input.levels, gcStage: input.gc_stage, notCleanReason: input.reason, extraCounts: input.extra });
+for (const [kind, name, detail] of input.items) summary.add(kind, name, detail);
+for (const [name, text] of input.notes) summary.note(name, text);
+process.stdout.write(summaryRecords(summary));
+"""
 
 
 @pytest.mark.parametrize(("exit_code", "items", "kwargs"), _CASES)
-def test_the_js_layout_renders_the_same_input_byte_for_byte(emitter: ModuleType, tmp_path: Path, exit_code: int, items: list[tuple[str, str, str]], kwargs: Opts) -> None:
+def test_the_js_records_print_the_same_block_byte_for_byte(emitter: ModuleType, tmp_path: Path, exit_code: int, items: list[tuple[str, str, str]], kwargs: Opts) -> None:
     node = shutil.which("node")
     assert node is not None, "node is a hard prerequisite of the host tier (scripts/test.sh runs npm's toolchain)"
-    assert _JS.is_file(), f"{_JS} is missing"
     py_out = _py_render(emitter, tmp_path, "runner", exit_code, items, kwargs)
-    result = subprocess.run([node, str(_JS), _js_input("runner", exit_code, items, "unknown", kwargs)], capture_output=True, text=True, check=False)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.encode() == py_out.encode()
+    extra = [[u, list(v)] for u, v in kwargs.get("extra") or []]  # type: ignore[attr-defined]
+    notes = [list(note) for note in kwargs.get("notes") or []]  # type: ignore[attr-defined]
+    argument = json.dumps({"runner": "runner", "unit": kwargs.get("unit", "tests"), "levels": kwargs.get("levels"), "gc_stage": kwargs.get("gc_stage"), "reason": kwargs.get("reason"), "extra": extra, "items": [list(item) for item in items], "notes": notes})
+    records = subprocess.run([node, "--input-type=module", "-e", _JS_RECORDS, _JS.as_uri(), argument], capture_output=True, check=True)
+    printed = subprocess.run([sys.executable, str(_PY), "--print", "runner", str(exit_code)], input=records.stdout, cwd=tmp_path, env=_env(tmp_path), capture_output=True, check=False)
+    assert printed.stdout == py_out.encode()
 
 
 def test_a_missing_verdict_counts_as_failed(emitter: ModuleType, tmp_path: Path) -> None:
@@ -285,9 +279,9 @@ def test_the_bash_emitter_refuses_to_run_as_a_command(tmp_path: Path) -> None:
     assert "error: source scripts/_summary_block.sh, do not run it" in result.stderr
 
 
-@pytest.mark.parametrize("argv", [[], ["--bogus"], ["--from-run-record"], ["--from-run-record", "x.json"], ["--from-run-record", "x.json", "--list", "nope"]])
+@pytest.mark.parametrize("argv", [[], ["--bogus"], ["--print", "r"], ["--print", "r", "x"], ["--from-run-record"], ["--from-run-record", "x.json"], ["--from-run-record", "x.json", "--list", "nope"]])
 def test_the_python_cli_exits_2_on_a_usage_error(tmp_path: Path, argv: list[str]) -> None:
-    result = subprocess.run([sys.executable, str(_PY), *argv], cwd=tmp_path, capture_output=True, text=True, check=False)
+    result = subprocess.run([sys.executable, str(_PY), *argv], cwd=tmp_path, input="", capture_output=True, text=True, check=False)
     assert result.returncode == 2, result.stdout + result.stderr
 
 

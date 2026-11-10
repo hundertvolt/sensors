@@ -18,7 +18,7 @@ from _script_loader import load_script_module
 from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, with_uart_pair, write_doc, write_text
 
 import buildgen.validate as validate_mod
-from buildgen.buildspec import ALLOWED_INSTANCE_FIELDS, UART_CRC_MODES
+from buildgen.buildspec import ALLOWED_INSTANCE_FIELDS, MANDATORY_FILES, UART_CRC_MODES
 from buildgen.definitions import definitions_for_toml
 from buildgen.driver_registry import resolve_driver
 from buildgen.errors import BuildError, BuildInternalError
@@ -1330,7 +1330,8 @@ def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_di
     import buildgen.validate as validate_mod
     from buildgen.model import DeviceModel
 
-    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", (("asy_notification_service.py", "signal_sink"),))
+    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", ("signal_sink",))
+    monkeypatch.setitem(MANDATORY_FILES, "signal_sink", "asy_notification_service.py")
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {"device": {"wiring": {}}})
     with pytest.raises(BuildError, match="missing required field 'signal_sink'"):
         validate_mod._check_device_wiring(model, src_dir)

@@ -95,8 +95,6 @@ NETWORK_ENV_EXTRA = (
 _REMOTE_QUERY_TIMEOUT_S = 120
 # @tunable tool.network_step_timeout_s = 1800
 _NETWORK_STEP_TIMEOUT_S = 1800
-# @tunable tool.build_step_timeout_s = 3600
-_BUILD_STEP_TIMEOUT_S = 3600
 _STOP_GRACE_S = 5.0  # a stopped command's time to exit on SIGTERM before SIGKILL
 
 
@@ -267,7 +265,7 @@ def _armed_recovery(uplink_iface: str, restore_profile: str | None, window_s: in
     # disarmed once it succeeded, left armed when it fails - then it is the host's own way back.
     unit = f"sensors-bench-recovery-{os.getpid()}"
     env = build_env()
-    run(["sudo", "systemd-run", f"--unit={unit}", f"--on-active={window_s}", "/bin/bash", "-c", _recovery_script(restore_profile)], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    run(["sudo", "systemd-run", f"--unit={unit}", f"--on-active={window_s}", "/bin/bash", "-c", _recovery_script(restore_profile)], env=env)
     if _timer_state(unit) != "active":
         raise SetupError(f"the bench recovery timer {unit} did not arm - no bridge change was made")
     fires_at = time.strftime("%H:%M:%S", time.localtime(time.time() + window_s))
@@ -277,14 +275,15 @@ def _armed_recovery(uplink_iface: str, restore_profile: str | None, window_s: in
     except BaseException:
         log(f"bridge change failed - the recovery timer {unit} {restores} at {fires_at}; do not disarm it until the host is reachable")
         raise
-    run(["sudo", "systemctl", "stop", f"{unit}.timer", f"{unit}.service"], check=False, env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    run(["sudo", "systemctl", "stop", f"{unit}.timer", f"{unit}.service"], check=False, env=env)
     if _timer_state(unit) == "active":
         raise SetupError(f"the bench recovery timer {unit} is still armed after the change succeeded - stop it: sudo systemctl stop {unit}.timer")
 
 
 def _build_unix_variant(micropython_dir: Path, jobs: int, *, make_vars: dict[str, str], build_dir_name: str, label: str, frozen_manifest: Path | None = None) -> Path:
     # The build body every Unix-port build flavour shares: a clean build dir, the build and its
-    # diagnostics, then the proofs that the safe SIGINT path (B.14.1) and the mark stack (B.14.6) were compiled in.
+    # diagnostics, then the proofs that the safe SIGINT path (B.14.1), the mark stack (B.14.6) and the qstr length
+    # width (F.7 row 32) were compiled in.
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
     build_dir = unix_dir / build_dir_name
@@ -293,7 +292,7 @@ def _build_unix_variant(micropython_dir: Path, jobs: int, *, make_vars: dict[str
     make_cmd = ["make", f"-j{jobs}", *(f"{key}={value}" for key, value in make_vars.items())]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
-    out = run(make_cmd, cwd=unix_dir, env=build_env(), timeout_s=_BUILD_STEP_TIMEOUT_S)
+    out = run(make_cmd, cwd=unix_dir, env=build_env())
     _fail_on_build_diagnostics(out, "Unix port build")
 
     binary = build_dir / "micropython"
@@ -301,7 +300,8 @@ def _build_unix_variant(micropython_dir: Path, jobs: int, *, make_vars: dict[str
         raise SetupError(f"Unix port build did not produce {binary}")
     micropython_overrides.verify_unix_kbd_intr_in_build(unix_dir, make_vars, build_dir_name, env=build_env())
     micropython_overrides.verify_unix_gc_stack_in_build(unix_dir, make_vars, build_dir_name, env=build_env())
-    version_out = run([str(binary), "-c", "import sys; print(sys.implementation)"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    # The 300-byte name is the qstr width's readback: one length byte raises "name too long" (F.7 row 32).
+    version_out = run([str(binary), "-c", "import sys; getattr(sys, 'q' * 300, None); print(sys.implementation)"], env=build_env())
     print(f"Built: {version_out.strip()}")
     return binary
 
@@ -390,7 +390,7 @@ def _outdated_leftovers(toolchain_dir: Path) -> list[tuple[Path, str]]:
 
 
 def _picotool_version(binary: Path) -> str:
-    return run([str(binary), "version"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    return run([str(binary), "version"], env=build_env())
 
 
 def _raise_terminated(signum: int, _frame: object) -> NoReturn:
@@ -507,14 +507,14 @@ def _sudo_prefix(env: dict[str, str]) -> list[str]:
 
 
 def _timer_state(unit: str) -> str:
-    return run(["systemctl", "is-active", f"{unit}.timer"], check=False, env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S).strip()
+    return run(["systemctl", "is-active", f"{unit}.timer"], check=False, env=build_env()).strip()
 
 
 def _toolchain_record(micropython_dir: Path, versions: Versions, versions_path: Path, *, built_ref: str | None) -> ToolchainRecord:
     # The record as a verification left the directory; what only `setup` derives (pico-sdk, picotool)
     # starts as None for the caller to fill. built_ref None means the checkout's own `git describe`.
     def probe(cmd: list[str], cwd: Path | None = None) -> str:
-        return _first_line(run(cmd, cwd=cwd, env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S))
+        return _first_line(run(cmd, cwd=cwd, env=build_env()))
 
     return {
         "pinned_ref": versions["micropython"]["ref"],
@@ -539,7 +539,7 @@ def _toolchain_record(micropython_dir: Path, versions: Versions, versions_path: 
 
 def _uplink_profile(uplink_iface: str) -> str | None:
     # The NetworkManager profile active on the uplink before anything changes: what the recovery restores.
-    out = run(["nmcli", "--escape", "no", "-g", "GENERAL.CONNECTION", "device", "show", uplink_iface], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    out = run(["nmcli", "--escape", "no", "-g", "GENERAL.CONNECTION", "device", "show", uplink_iface], env=build_env())
     return out.strip() or None
 
 
@@ -561,8 +561,8 @@ def _wait_for_bridge_route() -> None:
     # once br0 holds an address and carries the default route; polled, never a fixed sleep.
     deadline = time.monotonic() + _BRIDGE_UP_POLL_S
     while True:
-        address = run(["ip", "-o", "-4", "addr", "show", BENCH_BRIDGE_CONN], check=False, env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
-        route = run(["ip", "-o", "route", "get", "1.1.1.1"], check=False, env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+        address = run(["ip", "-o", "-4", "addr", "show", BENCH_BRIDGE_CONN], check=False, env=build_env())
+        route = run(["ip", "-o", "route", "get", "1.1.1.1"], check=False, env=build_env())
         if re.search(r"\binet\s", address) and re.search(rf"\bdev {BENCH_BRIDGE_CONN}\b", route):
             return
         if time.monotonic() >= deadline:
@@ -582,7 +582,7 @@ def get_interface_mac(iface: str) -> str:
     # The real, permanent hardware MAC of an interface, straight from the kernel - never a
     # NetworkManager-synthesized or bridge-inherited one. Why pinning `bridge.mac-address` to it
     # matters: ensure_bench_bridge()'s own note, and CLAUDE.md's "Hard rules".
-    out = run(["ip", "-o", "link", "show", iface], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    out = run(["ip", "-o", "link", "show", iface], env=build_env())
     match = re.search(r"link/ether\s+(\S+)", out)
     if not match:
         raise SetupError(f"could not determine the hardware MAC address of interface {iface!r}")
@@ -604,7 +604,7 @@ def apt_options() -> list[str]:
 
 
 def bench_ap_exists() -> bool:
-    out = run(["nmcli", "-t", "-f", "NAME", "connection", "show"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    out = run(["nmcli", "-t", "-f", "NAME", "connection", "show"], env=build_env())
     return BENCH_AP_CONN in out.splitlines()
 
 
@@ -629,10 +629,9 @@ def build_and_install_picotool(picotool_dir: Path, pico_sdk_dir: Path, jobs: int
         ["cmake", "..", f"-DPICO_SDK_PATH={pico_sdk_dir}", f"-DCMAKE_INSTALL_PREFIX={PICOTOOL_INSTALL_PREFIX}"],
         cwd=build_dir,
         env=env,
-        timeout_s=_BUILD_STEP_TIMEOUT_S,
     )
-    run(["make", f"-j{jobs}"], cwd=build_dir, env=env, timeout_s=_BUILD_STEP_TIMEOUT_S)
-    run(["sudo", "make", "install"], cwd=build_dir, env=env, timeout_s=_BUILD_STEP_TIMEOUT_S)
+    run(["make", f"-j{jobs}"], cwd=build_dir, env=env)
+    run(["sudo", "make", "install"], cwd=build_dir, env=env)
     if not picotool_binary.exists():
         raise SetupError(f"picotool install did not produce {picotool_binary}")
     # Invoked by absolute path, not a bare "picotool" PATH lookup — a stray picotool
@@ -681,7 +680,7 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
     make_cmd = ["make", f"-j{jobs}", *(f"{key}={value}" for key, value in make_vars.items())]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
-    out = run(make_cmd, cwd=rp2_dir, env=build_env(), timeout_s=_BUILD_STEP_TIMEOUT_S)
+    out = run(make_cmd, cwd=rp2_dir, env=build_env())
     _fail_on_build_diagnostics(out, "firmware build")
 
     uf2 = build_dir / "firmware.uf2"
@@ -699,12 +698,12 @@ def build_mpy_cross(micropython_dir: Path, jobs: int) -> Path:
     log("Building mpy-cross")
     mpy_cross_dir = micropython_dir / "mpy-cross"
     env = build_env()
-    out = run(["make", f"-j{jobs}"], cwd=mpy_cross_dir, env=env, timeout_s=_BUILD_STEP_TIMEOUT_S)
+    out = run(["make", f"-j{jobs}"], cwd=mpy_cross_dir, env=env)
     _fail_on_build_diagnostics(out, "mpy-cross build")
     binary = mpy_cross_dir / "build" / "mpy-cross"
     if not binary.exists():
         raise SetupError("mpy-cross build did not produce build/mpy-cross")
-    version_out = run([str(binary), "--version"], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    version_out = run([str(binary), "--version"], env=env)
     print(f"Built: {version_out.strip()}")
     return binary
 
@@ -746,7 +745,7 @@ def check_passwordless_sudo(commands: tuple[str, ...]) -> None:
         try:
             if path is None:
                 raise SetupError(f"{name} not found")
-            run(["sudo", "-k", "-n", path, _SUDO_PROBE_ARGUMENT.get(name, "--version")], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+            run(["sudo", "-k", "-n", path, _SUDO_PROBE_ARGUMENT.get(name, "--version")], env=build_env())
         except SetupError:
             refused.append(name)
     if refused:
@@ -763,7 +762,7 @@ def check_spoof_sudo() -> None:
         return
     command = [str(REPO_ROOT / ".venv" / "bin" / "python"), str(REPO_ROOT / "tests_hardware" / "spoof_udp.py")]
     try:
-        run(["sudo", "-k", "-n", *command, "--help"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+        run(["sudo", "-k", "-n", *command, "--help"], env=build_env())
     except SetupError:
         raise SetupError(f"passwordless sudo missing for the off-subnet spoof: sudo -n {' '.join(command)} - the bench tier runs it unattended; see tests_hardware/README.md Prerequisites for its sudoers rule") from None
 
@@ -773,7 +772,7 @@ def checkout_ref(repo: Path, ref: str) -> None:
     run_retried(["git", "fetch", "--quiet", "--tags", "--force", "origin"], cwd=repo, env=env, timeout_s=_NETWORK_STEP_TIMEOUT_S)
     if is_sha(ref):
         try:
-            run(["git", "checkout", "--quiet", ref], cwd=repo, env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+            run(["git", "checkout", "--quiet", ref], cwd=repo, env=env)
         except SetupError:
             # The commit wasn't already present locally (e.g. a pico-sdk pin from a
             # MicroPython ref we haven't built before) — fetch it directly by hash.
@@ -781,9 +780,9 @@ def checkout_ref(repo: Path, ref: str) -> None:
         else:
             return
         run_retried(["git", "fetch", "--quiet", "origin", ref], cwd=repo, env=env, timeout_s=_NETWORK_STEP_TIMEOUT_S)
-        run(["git", "checkout", "--quiet", "FETCH_HEAD"], cwd=repo, env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+        run(["git", "checkout", "--quiet", "FETCH_HEAD"], cwd=repo, env=env)
     else:
-        run(["git", "checkout", "--quiet", ref], cwd=repo, env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+        run(["git", "checkout", "--quiet", ref], cwd=repo, env=env)
 
 
 def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
@@ -845,7 +844,7 @@ def cross_compile_frozen_verify_test(mpy_cross_binary: Path, test_file: Path) ->
     # manifest's freeze()) to prove mpy-cross itself works, independently of the freeze/build
     # pipeline exercised by steps 4 and 6.
     log("Cross-compiling the verification test file to prove mpy-cross works standalone")
-    run([str(mpy_cross_binary), str(test_file)], env=build_env(), timeout_s=_BUILD_STEP_TIMEOUT_S)
+    run([str(mpy_cross_binary), str(test_file)], env=build_env())
     compiled = test_file.with_suffix(".mpy")
     if not compiled.exists() or compiled.stat().st_size == 0:
         raise SetupError(f"mpy-cross did not produce a non-empty {compiled.name}")
@@ -861,7 +860,7 @@ def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
     # Never chosen independently - read straight out of MicroPython's own submodule pin at
     # lib/pico-sdk, which is the commit the firmware actually compiles against. This is what makes
     # "only pin MicroPython" (versions.toml) possible instead of two hand-tracked versions.
-    out = run(["git", "ls-tree", mpy_ref, "lib/pico-sdk"], cwd=micropython_dir, env=network_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    out = run(["git", "ls-tree", mpy_ref, "lib/pico-sdk"], cwd=micropython_dir, env=network_env())
     # git ls-tree prints one line shaped "160000 commit <sha>\tlib/pico-sdk"
     fields = out.split()
     if len(fields) < LS_TREE_FIELDS_BEFORE_PATH:
@@ -873,7 +872,7 @@ def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> tuple[str, 
     # pico-sdk accepts a picotool of its own major and at least picotool_VERSION_REQUIRED (pico-sdk tools/CMakeLists.txt;
     # picotool's SameMajorVersion config file); an older same-major or another major fails the build. The newest tag sharing
     # pico-sdk's major.minor is this installer's own narrower choice (agent, 2026-09-22), always inside that range.
-    described = run(["git", "describe", "--tags", pico_sdk_commit], cwd=pico_sdk_dir, env=network_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S).strip()
+    described = run(["git", "describe", "--tags", pico_sdk_commit], cwd=pico_sdk_dir, env=network_env()).strip()
     match = re.match(r"^(\d+)\.(\d+)\.", described)
     if not match:
         raise SetupError(f"could not parse major.minor from pico-sdk tag {described!r}")
@@ -894,7 +893,7 @@ def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> tuple[str, 
 def detect_free_wifi_interface(exclude: str) -> str:
     # A WiFi adapter not already acting as the uplink - requires exactly one candidate for the
     # same reason resolve_pico_device() does: an ambiguous pick is a hard error, not a guess.
-    out = run(["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    out = run(["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"], env=build_env())
     candidates = []
     for line in out.strip().splitlines():
         fields = line.split(":")
@@ -931,7 +930,7 @@ def detect_uplink_interface() -> str:
     # The network interface currently carrying the default route - i.e. "has internet" -
     # parsed from `ip route get`, which reports the real interface the kernel would actually
     # route a packet through rather than just reading static config.
-    out = run(["ip", "-o", "route", "get", "1.1.1.1"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    out = run(["ip", "-o", "route", "get", "1.1.1.1"], env=build_env())
     match = re.search(r"\bdev\s+(\S+)", out)
     if not match:
         raise SetupError("could not determine the default-route (uplink) network interface - pass --uplink-iface explicitly")
@@ -956,7 +955,7 @@ def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
     install = ["install", "-y", "--no-install-recommends", *packages]
     try:
         run_retried([*apt_get, "install", "--download-only", *install[1:]], env=env, timeout_s=_APT_STEP_TIMEOUT_S)
-        run([*apt_get, *install], env=env, timeout_s=_BUILD_STEP_TIMEOUT_S)
+        run([*apt_get, *install], env=env)
     except SetupError as exc:
         raise SetupError(f"{exc} - {_APT_SUDO_HINT}") from exc
 
@@ -970,16 +969,16 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
     if bench_ap_exists():
         current_ssid = existing_bench_ap_ssid()
         log(f"Bench WiFi bridge already configured ({BENCH_AP_CONN!r}, SSID {current_ssid!r}) - reusing, not recreating")
-        eth_iface = run(["nmcli", "-g", "connection.interface-name", "connection", "show", BENCH_ETH_CONN], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S).strip()
+        eth_iface = run(["nmcli", "-g", "connection.interface-name", "connection", "show", BENCH_ETH_CONN], env=build_env()).strip()
         # Self-heal a bridge created before the channel-pinning fix above (e.g. auto-selected
         # channel 13) - a genuinely idempotent re-run must actually converge on the fixed
         # configuration, not just skip past it because a bridge of some kind already exists.
-        current_channel = run(["nmcli", "-g", "802-11-wireless.channel", "connection", "show", BENCH_AP_CONN], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S).strip()
+        current_channel = run(["nmcli", "-g", "802-11-wireless.channel", "connection", "show", BENCH_AP_CONN], env=build_env()).strip()
         if current_channel != "6":
             log(f"Bench AP channel is {current_channel!r}, not the fixed 6 - repairing under an armed recovery timer")
             with _armed_recovery(eth_iface, None, _BRIDGE_RECOVERY_ARM_S):
-                run(["sudo", "nmcli", "connection", "modify", BENCH_AP_CONN, "802-11-wireless.channel", "6"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
-                run(["sudo", "nmcli", "connection", "up", BENCH_AP_CONN], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+                run(["sudo", "nmcli", "connection", "modify", BENCH_AP_CONN, "802-11-wireless.channel", "6"], env=build_env())
+                run(["sudo", "nmcli", "connection", "up", BENCH_AP_CONN], env=build_env())
                 _wait_for_bridge_route()
         # A synthesized (unpinned) bridge MAC can drift, silently orphaning the router's static
         # DHCP reservation (SPECIFICATION.md Part B.13). Flag-only: repairing a live bridge's MAC
@@ -991,7 +990,7 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
         # `--escape no` is load-bearing: `nmcli -g` escapes every ':' as '\:', so a MAC never
         # compares equal to the plain one `ip -o link show` gives. Without it this warns on a
         # correctly-pinned bridge, and the remedy it prints cycles a live one (Part B.13).
-        bridge_mac = run(["nmcli", "--escape", "no", "-g", "bridge.mac-address", "connection", "show", BENCH_BRIDGE_CONN], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S).strip()
+        bridge_mac = run(["nmcli", "--escape", "no", "-g", "bridge.mac-address", "connection", "show", BENCH_BRIDGE_CONN], env=build_env()).strip()
         if real_mac and bridge_mac.lower() != real_mac.lower():
             log(
                 f"WARNING: bridge {BENCH_BRIDGE_CONN!r}'s MAC ({bridge_mac or 'unset/synthesized'}) does not "
@@ -1022,17 +1021,16 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
     env = build_env()
     restore_profile = _uplink_profile(uplink_iface)
     with _armed_recovery(uplink_iface, restore_profile, _BRIDGE_RECOVERY_ARM_S):
-        run(["sudo", "nmcli", "connection", "add", "type", "bridge", "ifname", BENCH_BRIDGE_CONN, "con-name", BENCH_BRIDGE_CONN], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+        run(["sudo", "nmcli", "connection", "add", "type", "bridge", "ifname", BENCH_BRIDGE_CONN, "con-name", BENCH_BRIDGE_CONN], env=env)
         # Pinned to the uplink's real hardware MAC before the bridge ever comes up, never a synthesized
         # one: a synthesized MAC can drift across the bridge's lifetime and silently orphan the router's
         # static DHCP reservation (2026-09-04 bench Pi4 lockout incident, CLAUDE.md's "Hard rules").
         uplink_mac = get_interface_mac(uplink_iface)
-        run(["sudo", "nmcli", "connection", "modify", BENCH_BRIDGE_CONN, "bridge.mac-address", uplink_mac], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+        run(["sudo", "nmcli", "connection", "modify", BENCH_BRIDGE_CONN, "bridge.mac-address", uplink_mac], env=env)
         run(
             ["sudo", "nmcli", "connection", "add", "type", "ethernet", "ifname", uplink_iface,
              "master", BENCH_BRIDGE_CONN, "con-name", BENCH_ETH_CONN, "slave-type", "bridge"],
             env=env,
-            timeout_s=_REMOTE_QUERY_TIMEOUT_S,
         )
         # Real finding: left on auto, NetworkManager picked channel 13, which the Pico W's cyw43439 did
         # not associate with reliably - repeated "WLAN access point not found" failures, clean STA
@@ -1042,7 +1040,6 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
              "ssid", ssid, "802-11-wireless.mode", "ap", "802-11-wireless.band", "bg", "802-11-wireless.channel", "6",
              "master", BENCH_BRIDGE_CONN, "slave-type", "bridge"],
             env=env,
-            timeout_s=_REMOTE_QUERY_TIMEOUT_S,
         )
         run(
             ["sudo", "nmcli", "connection", "modify", BENCH_AP_CONN,
@@ -1050,11 +1047,10 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
              "wifi-sec.proto", "rsn", "wifi-sec.pairwise", "ccmp", "wifi-sec.group", "ccmp",
              "wifi-sec.pmf", "disable"],
             env=env,
-            timeout_s=_REMOTE_QUERY_TIMEOUT_S,
             secrets=(password,),
         )
-        run(["sudo", "nmcli", "connection", "up", BENCH_ETH_CONN], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
-        run(["sudo", "nmcli", "connection", "up", BENCH_AP_CONN], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+        run(["sudo", "nmcli", "connection", "up", BENCH_ETH_CONN], env=env)
+        run(["sudo", "nmcli", "connection", "up", BENCH_AP_CONN], env=env)
         _wait_for_bridge_route()
     if show_password:
         print(f"Bench AP created - SSID: {ssid}  password: {password}")
@@ -1069,16 +1065,16 @@ def ensure_br_netfilter() -> None:
     # traffic bypasses iptables and bench_control.py's fault injection silently does nothing. Host-kernel
     # state, so it runs whether or not the bridge profile exists.
     env = build_env()
-    run(["sudo", "modprobe", "br_netfilter"], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
-    run(["sudo", "sysctl", "-w", "net.bridge.bridge-nf-call-iptables=1"], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    run(["sudo", "modprobe", "br_netfilter"], env=env)
+    run(["sudo", "sysctl", "-w", "net.bridge.bridge-nf-call-iptables=1"], env=env)
     persisted = {
         Path("/etc/modules-load.d/sensors-bench-br-netfilter.conf"): "br_netfilter\n",
         Path("/etc/sysctl.d/99-sensors-bench-br-netfilter.conf"): "net.bridge.bridge-nf-call-iptables=1\n",
     }
     for path, line in persisted.items():
         # Straight from stdin, so no temporary file exists to be left behind; tee echoes the line back.
-        run(["sudo", "tee", str(path)], stdin_text=line, env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
-        run(["sudo", "chmod", "644", str(path)], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+        run(["sudo", "tee", str(path)], stdin_text=line, env=env)
+        run(["sudo", "chmod", "644", str(path)], env=env)
     log(f"br_netfilter loaded and net.bridge.bridge-nf-call-iptables=1 set, persisted via {', '.join(map(str, persisted))}")
 
 
@@ -1118,7 +1114,7 @@ def ensure_dialout_group(*, skip: bool) -> None:
         log(f"{user} is already in the dialout group")
         return
     log(f"Adding {user} to the dialout group (needed for non-root USB serial access)")
-    run(["sudo", "usermod", "-aG", "dialout", user], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    run(["sudo", "usermod", "-aG", "dialout", user], env=build_env())
     print("NOTE: group membership only takes effect after logging out and back in (or `newgrp dialout`).")
 
 
@@ -1161,7 +1157,7 @@ def ensure_node(toolchain_dir: Path, repo_root: Path, *, skip_apt: bool) -> Path
         actual = _sha256(archive)
         if actual != expected:
             raise SetupError(f"Node tarball checksum mismatch: expected {expected}, got {actual} - nothing was unpacked; retry, or install Node {major} by hand")
-        run(["tar", "-xJf", str(archive), "-C", str(staging)], env=env, timeout_s=_BUILD_STEP_TIMEOUT_S)
+        run(["tar", "-xJf", str(archive), "-C", str(staging)], env=env)
     unpacked = staging / target.name
     if not (unpacked / "bin" / "node").exists():
         raise SetupError(f"Node install did not produce {target.name}/bin/node (unpacked in {staging})")
@@ -1205,7 +1201,7 @@ def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
         if not (dest / ".git").exists():
             raise incomplete
         try:
-            run(["git", "rev-parse", "--verify", "HEAD"], cwd=dest, env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+            run(["git", "rev-parse", "--verify", "HEAD"], cwd=dest, env=build_env())
         except SetupError:
             raise incomplete from None
         log(f"Updating existing clone at {dest}")
@@ -1213,7 +1209,7 @@ def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
 
 
 def existing_bench_ap_ssid() -> str:
-    out = run(["nmcli", "-g", "802-11-wireless.ssid", "connection", "show", BENCH_AP_CONN], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    out = run(["nmcli", "-g", "802-11-wireless.ssid", "connection", "show", BENCH_AP_CONN], env=build_env())
     return out.strip()
 
 
@@ -1405,8 +1401,8 @@ def node_on_path_matches(major: str) -> bool:
         return False
     try:  # the resolved absolute path, not "node" - a partial executable path here would resolve
         # against whatever PATH happens to hold when this runs.
-        version = subprocess.run([node, "--version"], capture_output=True, text=True, check=True, timeout=_REMOTE_QUERY_TIMEOUT_S).stdout
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        version = subprocess.run([node, "--version"], capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
         return False
     return version.strip().lstrip("v").split(".")[0] == major
 
@@ -1491,9 +1487,9 @@ def resolve_pico_device(explicit: str | None) -> Path:
     raise SetupError(f"multiple MicroPython boards found ({names}) - pass --device or set MPREMOTE_DEVICE to pick one")
 
 
-def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dict[str, str] | None = None, timeout_s: float, stdin_text: str | None = None, secrets: tuple[str, ...] = (), terminal: bool = False) -> str:
-    # Runs cmd with its output streamed, never showing a secret, and returns that output. timeout_s is
-    # required, so no step waits forever on a stalled third party; the command's own session lets a
+def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dict[str, str] | None = None, timeout_s: float | None = None, stdin_text: str | None = None, secrets: tuple[str, ...] = (), terminal: bool = False) -> str:
+    # Runs cmd with its output streamed, never showing a secret, and returns that output. A step that waits on a third
+    # party passes timeout_s; a local one runs unbounded under CI's job timeout. The command's own session lets a
     # timeout or an interrupted installer stop everything it started (_keeps_terminal() says when not).
     shown = _redact(" ".join(cmd), secrets)
     print(f"$ {shown}" + (f"   (cwd={cwd})" if cwd else ""), flush=True)
@@ -1510,7 +1506,7 @@ def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dic
             )
         reader = threading.Thread(target=_stream_output, args=(cast("IO[str]", proc.stdout), lines, secrets), daemon=True)
         reader.start()
-        deadline = time.monotonic() + timeout_s
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
         if stdin_text is not None and proc.stdin is not None:
             # A short text into an empty pipe is taken whole without blocking; a command that exits
             # unread breaks the pipe, and its exit status says why.
@@ -1519,7 +1515,7 @@ def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dic
                 proc.stdin.close()
         with contextlib.suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=timeout_s)
-            reader.join(max(0.0, deadline - time.monotonic()))
+            reader.join(None if deadline is None else max(0.0, deadline - time.monotonic()))
             finished = not reader.is_alive()  # else something it started still holds its output open
     finally:
         if proc is not None and not finished:
@@ -1527,7 +1523,7 @@ def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dic
             if reader is not None:
                 reader.join(_STOP_GRACE_S)
     if not finished:
-        raise SetupError(f"timed out after {timeout_s:g} s: {shown} - a stalled download, mirror or build; check connectivity and any proxy, then re-run (limits: SPECIFICATION.md Part N)")
+        raise SetupError(f"timed out after {timeout_s:g} s: {shown} - a stalled download or mirror; check connectivity and any proxy, then re-run (limits: SPECIFICATION.md Part N)")
     if check and proc.returncode != 0:
         raise SetupError(f"command failed (exit {proc.returncode}): {shown}")
     return "".join(lines)
@@ -1568,7 +1564,6 @@ def run_frozen_verify_on_unix(unix_binary: Path) -> None:
     out = run(
         [str(unix_binary), "-c", f"import {FROZEN_VERIFY_MODULE}; print({FROZEN_VERIFY_MODULE}.RESULT)"],
         env=build_env(),
-        timeout_s=_REMOTE_QUERY_TIMEOUT_S,
     )
     if "FROZEN_VERIFY_OK" not in out:
         raise SetupError("frozen verification module did not produce the expected result (see log above)")
@@ -1600,7 +1595,7 @@ def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip
         return
     node = str(node_bin / "node") if node_bin is not None else shutil.which("node")
     if node is not None:
-        log(f"Node in use: {node} {_first_line(run([node, '--version'], env=env, timeout_s=_REMOTE_QUERY_TIMEOUT_S))}")
+        log(f"Node in use: {node} {_first_line(run([node, '--version'], env=env))}")
     log("Installing website tooling dependencies (npm ci)")
     run(["npm", "ci"], cwd=repo_root, env=env, timeout_s=_NETWORK_STEP_TIMEOUT_S)
     ensure_playwright_browser(repo_root, env, skip_apt=skip_apt)

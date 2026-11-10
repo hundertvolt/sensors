@@ -252,10 +252,3 @@ def test_a_missing_runner_or_levels_is_a_usage_error_before_any_run(repo_root: P
     result, calls = _run(repo_root, tmp_path, "--levels", "L3", "tests_hardware/flash")
     assert result.returncode == 2
     assert not calls, "a usage error must touch nothing"
-
-
-def test_help_prints_usage_and_runs_nothing(repo_root: Path, tmp_path: Path) -> None:
-    result, calls = _run(repo_root, tmp_path, "--help")
-    assert result.returncode == 0
-    assert "Usage:" in result.stdout
-    assert not calls

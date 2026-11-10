@@ -451,14 +451,13 @@ def _emit_main(lines: "list[str]") -> None:
 
 
 def _emit_trigger_collector(lines: "list[str]", sensor_specs: "list[InstanceSpec]", ctx: _Ctx) -> None:
-    readers = [(ctx.instance_var(spec.key), _text(spec.fields["bus"])) for spec in sensor_specs if spec.driver_info is not None and class_has_read_triggers(spec.driver_info)]
-    order = trigger_spread(readers)
+    order = [ctx.instance_var(spec.key) for spec in sensor_specs if spec.driver_info is not None and class_has_read_triggers(spec.driver_info)]
     lines.append('def _collect_trigger_starters() -> "list[TimerStarter]":')
     if not order:
         lines.append("    return []")
         lines.append("")
         return
-    lines.append("    # In stagger-slot order: readers sharing a bus sit furthest apart (SPECIFICATION.md Part C.9.1).")
+    lines.append("    # In construction order, one stagger slot each (SPECIFICATION.md Part C.9.1).")
     lines.append("    starters: list[TimerStarter] = []")
     lines.append(f"    for module in {_tuple(order)}:")
     lines.append("        starters.extend(module.get_trigger_starters())")
@@ -891,13 +890,3 @@ def generate_module_source(model: DeviceModel, construction_order: "list[str | t
     _emit_main(lines)
     return "\n".join(lines) + "\n"
 
-
-def trigger_spread(readers: "list[tuple[str, str]]") -> "list[str]":
-    # (instance var, bus) pairs in construction order -> stagger-slot order: one reader from each bus
-    # group in turn, the largest group first and ties by construction order, so readers sharing a bus
-    # sit furthest apart in the one-second plan (SPECIFICATION.md Part C.9.1).
-    groups: dict[str, list[str]] = {}
-    for var, bus in readers:
-        groups.setdefault(bus, []).append(var)
-    ordered = sorted(groups.values(), key=len, reverse=True)
-    return [group[i] for i in range(max(map(len, ordered), default=0)) for group in ordered if i < len(group)]

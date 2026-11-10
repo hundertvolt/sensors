@@ -406,7 +406,7 @@ def test_the_derived_classes_still_hold_every_known_action_and_chip_field(repo_r
         assert persisting not in dispatch_only, f"{persisting} is a real persisted config field and must never be treated as dispatch-only"
     # Every pinned persisting-command word is still a real _SYSTEM_CMDS entry; resetconfig is one.
     assert set(_PERSISTING_COMMAND_WORDS) <= _system_cmds(repo_root), f"a pinned persisting command is not in _SYSTEM_CMDS: {set(_PERSISTING_COMMAND_WORDS) - _system_cmds(repo_root)}"
-    assert "resetconfig" in _PERSISTING_COMMAND_WORDS, "resetconfig deletes every config file - it must count as a persisting write (owner, 2026-09-30)"
+    assert "resetconfig" in _PERSISTING_COMMAND_WORDS, "resetconfig deletes every config file - it must count as a persisting write (agent, 2026-09-30)"
 
 
 def test_a_synthetic_unmarked_writer_is_actually_caught(tmp_path: Path, repo_root: Path) -> None:

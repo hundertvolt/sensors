@@ -2,7 +2,7 @@
 name: Setup MicroPython toolchain
 description: >
   Runs the retried uv sync, restores the Unix-port toolchain cache under ~/pico-toolchain and, with `build-unix-port: 'true'`,
-  builds it when missing. Used by web-unit-tests, web-put-matrix, web-coverage, web-cross-browser-smoke, unit-tests,
+  builds it when missing. Used by web-unit-tests, web-put-matrix, web-cross-browser-smoke, unit-tests,
   unit-tests-gc-threshold, unit-tests-coverage, digital-twin-e2e and firmware-build-verify.
 
 inputs:
