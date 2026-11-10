@@ -43034,3 +43034,13 @@ reading (a): i2c1 at 50 kHz, timeout 200000: in every one of the 38 recorded SCD
 reading (b): i2c0 at 50 kHz: BMP3XX setup (ID, coefficients, soft reset: RAM registers) then x32/x32 read back 32 32; 10 reads, 10 valid (100,225.79 Pa, 20.75 C first), 0 faults; each read exactly 5 machine calls w r w w r (OSR read, control write, the burst read from STATUS) with one gap of 158.5-160.7 ms between control write and burst, so one wait and no STATUS poll; read 164.6-181.3 ms whole.
 status: confirmed as measured.
 errcount (all three runs): 22 sources unchanged against each run's own start read; ResetReason after each: 21, SysUptime 16 s, STA; flash cycles today: 0; logs/day5_20261110/ (fc_*, fb_*, ib_*)
+
+FC +1 2026-11-10T11:07:25Z 881562cf
+
+11:09:46 UTC 2026-11-10 lead 10:58 (11-10): snapshot 58 built from 881562cf (dirty false, BuildDate 2026-11-10T11:02:16Z, imageFreeBytes 69,732; logs/images/snap58_20261110T110216Z.{uf2,json}); owner OK'd the reflash in this session; pre-reflash /status saved (22 sources unchanged since 05:54); enter_bootloader + picotool load 11:07:06-11:07:25, the first boot's console tailed 75 s unkicked (11:07:26-11:08:41), then restore_board_to_serving() 11:08:55; BuildDate on the board 2026-11-10T11:02:16Z
+first boot, FRAM lines up to "SYSTEM All timers running" (counts): CRC error in _read_chunk 33; Invalid data in block 0, reading block 1: 16; Invalid data in block 1: 17; Uninitialized data in block 0, reading block 1: 1; Writing both blocks, one not IDLE first: 17. So 17 chunks did not match and were set up afresh (16 failing CRC on both blocks, 1 blank block 0 with block 1 invalid); no other FRAM line in setup.
+first boot after setup (74 s, no reset, no banner): FRAM verification set to 60 write cycles 1; write timestamp not valid 9 (no NTP: the unkicked boot sat in its STA failures, then the hotspot); Writing both blocks 7; Uninitialized block 0 / block 1 once each (one chunk read blank, inferred: the SGP40 backup's new place); SGP40 "No backup found!".
+errcount at 11:09:11 (second boot, after restore: RR 21, SysUptime 29 s, STA): 21 sources (NEOPIXEL gone with its chunk); SGP40 counter 2 history W65 (SGP_NO_BACKUP); WIFI counter 6 history W38,W79 (the unkicked first boot's hotspot round); the other 19 empty. Every history from before the reflash is gone with the moved layout, as expected; the record before it is errcount_20261110/.
+no entry outside those chunks and those two expected sources; no reset in the first boot.
+flash cycles today: 1; logs/day5_20261110/ (20261110T110726Z_first_boot_console.txt, *_pre_reflash_status.json, *_post_reflash_status.json, reflash_out.txt, build_snap58.log)
+status: confirmed as read; which chunk read blank after setup inferred.
