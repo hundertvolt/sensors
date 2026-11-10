@@ -95,7 +95,6 @@ _PAYLOAD = 5  # pins src/asy_uart_comm.py _MSG_PAYLOAD
 _FRAME = 5 + PAYLOAD_SIZE
 
 _SHORT_REPLY_TIMEOUT_MS = 30
-_STEP_BOUND_S = 10
 _LOOP_SURVIVAL_WAIT_MS = 20
 _FLOOD_STEP_MS = 1
 _LISTENER_PARK_MS = 10
@@ -2694,10 +2693,7 @@ def test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat() -> None:
             refused += 0 if ok else 1
         else:
             intact += 1 if ok else 0
-        try:
-            await asyncio.wait_for(listener, _STEP_BOUND_S)
-        except asyncio.TimeoutError:
-            listener.cancel()
+        await listener
         _scrub(pair)
 
     async def rounds(start: int, stop: int) -> None:
