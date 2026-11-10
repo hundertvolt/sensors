@@ -20,9 +20,9 @@ from micropython import const
 import math_helpers
 from asy_base_classes import DeviceSession, SensorReaderConfig, utc_now
 from asy_config_manager import FAILED, INVALID, VALID, compare_before_write, make_dict, name_cfg, schema_names, type_or_range_error
-from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C, I2CDevice
 from asy_print_log import DEFAULT_LOG, LogConfig
+from crc_checks import CRC8
 
 try:
     from typing import TYPE_CHECKING
@@ -278,7 +278,7 @@ class SCD30_Reader(SensorReaderConfig):
         write, results = outcome  # type: ignore[misc]  # rest is a dict: compare_before_write() answers None only for a non-dict
         for key, result in results.items():
             if result == INVALID:
-                self.pr.err_q("Invalid value for", key, errno=_ERR_BAD_ARG)
+                self.pr.err_s("Invalid value for", key, errno=_ERR_BAD_ARG)
         setters = (
             self.set_temperature_offset,
             self.set_measurement_interval,
@@ -305,7 +305,7 @@ class SCD30_Reader(SensorReaderConfig):
             is_error, flag = type_or_range_error(cont_meas, _CONT_MEAS_FIELD)
             if is_error:
                 results["ContMeas"] = INVALID
-                self.pr.err_q("Invalid value for ContMeas", errno=_ERR_BAD_ARG)
+                self.pr.err_s("Invalid value for ContMeas", errno=_ERR_BAD_ARG)
             elif flag:
                 results["ContMeas"] = VALID
             elif await self.stop_continuous_measurement(value=False):
@@ -334,7 +334,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             return await read
         except Exception as e:
-            await self.pr.err_s(message, e, errno=_ERR_CHIP_GET)
+            self.pr.err_s(message, e, errno=_ERR_CHIP_GET)
             return None
 
     async def _chip_set(self, write: "Awaitable[None]", message: str) -> bool:
@@ -342,7 +342,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await write
         except Exception as e:
-            self.pr.err_q(message, e, errno=_ERR_CHIP_SET)
+            self.pr.err_s(message, e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -352,7 +352,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             snap = await self._scd.get_config_snapshot()
         except Exception as e:
-            self.pr.err_q("Error reading the config snapshot:", e, errno=_ERR_CHIP_GET)
+            self.pr.err_s("Error reading the config snapshot:", e, errno=_ERR_CHIP_GET)
             return None
         return _snapshot_dict(snap)
 
@@ -442,7 +442,7 @@ class SCD30_Reader(SensorReaderConfig):
             await self._scd.setup()
             interval = await self._scd.get_measurement_interval()
         except Exception as e:
-            await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
+            self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             return False
         # The chip's word, held to the datasheet range so the readiness arithmetic never divides by zero.
         self._frc_interval_s = min(max(interval, _MEAS_INTERVAL_MIN), _MEAS_INTERVAL_MAX)
@@ -496,11 +496,11 @@ class SCD30_Reader(SensorReaderConfig):
             # The range gate's rejected value, kept apart from a bus fault in the log; it still counts as a failed read.
             co2 = temperature = humidity = None
             new_data = False
-            await self.pr.err_s("Reading rejected:", e, errno=_ERR_READ_RANGE)
+            self.pr.err_s("Reading rejected:", e, errno=_ERR_READ_RANGE)
         except Exception as e:
             co2 = temperature = humidity = None
             new_data = False
-            await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
+            self.pr.err_s("Read failed:", e, errno=_ERR_READ)
         return (co2, temperature, humidity, timestamp), new_data
 
     async def _recover_device(self) -> bool:
@@ -510,7 +510,7 @@ class SCD30_Reader(SensorReaderConfig):
             try:
                 await self._scd.reset()
             except Exception as e:
-                self.pr.err_q("Soft reset failed:", e, errno=_ERR_CHIP_SET)
+                self.pr.err_s("Soft reset failed:", e, errno=_ERR_CHIP_SET)
                 return False
         self._frc_reset()  # the soft reset restarted the measurement, as at _init_scd()
         return True
@@ -622,7 +622,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.stop_continuous_measurement()
         except Exception as e:
-            self.pr.err_q("Error stopping continuous measurement:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_s("Error stopping continuous measurement:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -650,7 +650,7 @@ class SCD30_I2C:
         await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)
         async with scd30.i2c_device as i2c:
             await i2c.readinto(self._buffer, end=3)
-        if await self.crc.check_from(self._buffer, 3) != _WORD_BYTES:
+        if self.crc.check_from(self._buffer, 3) != _WORD_BYTES:
             raise RuntimeError("CRC check failed while reading data")
         value: int = unpack_from(">H", self._buffer)[0]
         return value
@@ -671,7 +671,7 @@ class SCD30_I2C:
         if arguments is not None:
             self._buffer[2] = arguments >> 8
             self._buffer[3] = arguments & 0xFF
-            if await self.crc.add_into(self._buffer, 2, start=2) != _WORD_CRC_BYTES:
+            if self.crc.add_into(self._buffer, 2, start=2) != _WORD_CRC_BYTES:
                 raise RuntimeError("CRC generation failed")
             end_byte = 5
         async with scd30.i2c_device as i2c:
@@ -784,7 +784,7 @@ class SCD30_I2C:
 
             crcs_good = True
             for i in range(0, 18, 3):
-                if await self.crc.check_from(self._buffer, 3, start=i) == _WORD_BYTES:
+                if self.crc.check_from(self._buffer, 3, start=i) == _WORD_BYTES:
                     continue
                 crcs_good = False
             if not crcs_good:

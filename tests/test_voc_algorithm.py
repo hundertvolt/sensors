@@ -9,7 +9,7 @@ from _fram_builders import make_fram_manager
 from voc_reference_vectors import DIV, EXP, INDEX_CRC32, INDEX_EVERY_500, MUL, SQRT, SRAW_COUNT, sraw_sequence
 
 import voc_algorithm
-from asy_crc_checks import CRC32
+from crc_checks import CRC32
 from voc_algorithm import VOCAlgorithm
 
 try:
@@ -520,7 +520,7 @@ def test_fix16_helpers_match_the_c_reference_vectors() -> None:
 def test_the_index_sequence_matches_the_c_reference() -> None:
     indices, checkpoints = reference_trajectory()
     assert tuple(voc_index for _i, voc_index, _packed, _state in checkpoints) == INDEX_EVERY_500
-    framed = run(CRC32().add(indices))
+    framed = CRC32().add(indices)
     assert framed is not None
     assert int.from_bytes(framed[-4:], "big") == INDEX_CRC32
 
@@ -548,7 +548,7 @@ def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_rebo
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         assert algo.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
 
@@ -561,7 +561,7 @@ def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_rebo
 
     async def read() -> bytearray:
         buf = chunk2.get_buffer()
-        assert await chunk2.read_into(buf) is True
+        assert chunk2.read_into(buf) is True
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         return bytearray(dbuf)
@@ -600,7 +600,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
         for i in range(20):
             writer.vocalgorithm_process(30000 + i * 13)
         assert writer.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
     addr0, addr1 = chunk._block_addr
@@ -613,7 +613,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
 
     async def read() -> "bool | None":
         buf = chunk.get_buffer()
-        ok = await chunk.read_into(buf)
+        ok = chunk.read_into(buf)
         if ok:
             dbuf = buf.get_data_buf()
             assert dbuf is not None
@@ -643,7 +643,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
         dbuf = buf.get_data_buf()
         assert dbuf is not None
         assert algo.params.pack_into(dbuf) is True
-        assert await chunk.write_into(buf) is True
+        assert chunk.write_into(buf) is True
 
     run(write())
     addr0, _addr1 = chunk._block_addr
@@ -653,7 +653,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
 
     async def read() -> "bool | None":
         buf = chunk.get_buffer()
-        ok = await chunk.read_into(buf)
+        ok = chunk.read_into(buf)
         if ok:
             dbuf = buf.get_data_buf()
             assert dbuf is not None

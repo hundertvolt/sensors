@@ -90,7 +90,7 @@ def test_the_service_history_survives_a_simulated_reboot() -> None:
 
     async def before_reboot() -> None:
         await notify1.setup()
-        await notify1.pr.err_s("notify before reboot", errno=_PLANTED)
+        notify1.pr.err_s("notify before reboot", errno=_PLANTED)
 
     run(before_reboot())
 
@@ -101,7 +101,7 @@ def test_the_service_history_survives_a_simulated_reboot() -> None:
 
     async def after_reboot() -> "ErrorLog":
         await notify2.setup()
-        return await notify2.pr.get_log("NOTIFY")
+        return await notify2.pr.get_log()
 
     assert run(after_reboot())["NOTIFY"]["ErrNum"][-1] == _PLANTED
 

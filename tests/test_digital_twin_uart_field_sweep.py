@@ -13,7 +13,7 @@ from _async_harness import run
 from _src_const import src_const
 from _uart_comm_harness import ERROR_LEVEL, Pair, PollRoundClock, accept_set, copied_out, echo_get
 
-from asy_crc_checks import CRC16
+from crc_checks import CRC16
 
 try:
     from typing import TYPE_CHECKING
@@ -69,7 +69,7 @@ async def _first_chunk(offset: int, value: int, crc: "CrcMaker") -> bytes:
     frame[offset] = value
     if crc is None:
         return bytes(frame)
-    framed = await crc().add(frame)
+    framed = crc().add(frame)
     assert framed is not None
     return bytes(framed)
 

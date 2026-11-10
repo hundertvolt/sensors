@@ -185,7 +185,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         # False when the config is unreadable or a chip write failed, each having logged its own entry.
         cfg_values = await self.cfgmgr.get_int_values(_VAL_SAMPLE_INTERVAL + _VAL_PRES_OVERS + _VAL_TEMP_OVERS + _VAL_FILT_COEFF)
         if cfg_values is None or len(cfg_values) != _N_INT_CFG:
-            self.pr.err_q("Error reading config data!", errno=_ERR_CFG_READ)
+            self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
             return False
 
         # set_trigger_s() never raises (logs BAD_ARG, keeps the previous value) - a bad stored
@@ -196,7 +196,7 @@ class BMP3XX_Reader(SensorReaderConfig):
             await self._bmp.set_temperature_oversampling(cfg_values[2])  # BMPTempOvers
             await self._bmp.set_filter_coefficient(cfg_values[3])  # BMPFiltCoeff
         except Exception as e:
-            self.pr.err_q("Error setting config data:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_s("Error setting config data:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -205,7 +205,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             await self._bmp.setup()
         except Exception as e:
-            await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
+            self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             return False  # error
 
         self.pr.one("Setting sensor config at startup.")
@@ -233,7 +233,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         values = await self.cfgmgr.get_float_values(_VAL_PRES_OFFSET + _VAL_TEMP_OFFSET + _VAL_SEA_LEVEL_OFFSET + _VAL_MEAN_ATM_TEMP)
         if values is None or len(values) != _N_FLOAT_CFG:
             values = None
-            await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
+            self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
         for i in range(_N_FLOAT_CFG):
             self._cycle_comp[i] = _COMP_FALLBACK[i] if values is None else values[i]
         pressure: float | None = None
@@ -243,7 +243,7 @@ class BMP3XX_Reader(SensorReaderConfig):
             self.pr.all("read")
         except Exception as e:
             pressure = temperature = None
-            await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
+            self.pr.err_s("Read failed:", e, errno=_ERR_READ)
         return pressure, temperature, timestamp
 
     async def _read_loop(self) -> None:
@@ -265,7 +265,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             pressure_oversampling, temperature_oversampling, filter_coefficient = await self._bmp.get_config_snapshot()
         except Exception as e:
-            self.pr.err_q("Error reading oversampling/filter config from sensor:", e, errno=_ERR_CHIP_GET)
+            self.pr.err_s("Error reading oversampling/filter config from sensor:", e, errno=_ERR_CHIP_GET)
             return None
         return {
             name_cfg(_VAL_PRES_OVERS): pressure_oversampling,
@@ -280,7 +280,7 @@ class BMP3XX_Reader(SensorReaderConfig):
             try:
                 await self._bmp.reset()
             except Exception as e:
-                self.pr.err_q("Soft reset failed:", e, errno=_ERR_CHIP_SET)
+                self.pr.err_s("Soft reset failed:", e, errno=_ERR_CHIP_SET)
                 return False
             return await self._apply_stored_config()
 
@@ -294,7 +294,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         t_comp = results[1] - comp[1]  # temperature - TempOffset
         if not _OP_PRESS_MIN_HPA <= p_comp <= _OP_PRESS_MAX_HPA:
             slp = None
-            await self.pr.wrn_s("PresOffset moves the pressure outside 300-1250 hPa; sea-level pressure not computed:", p_comp, wrnno=_WRN_DERIVED_DOMAIN)
+            self.pr.wrn_s("PresOffset moves the pressure outside 300-1250 hPa; sea-level pressure not computed:", p_comp, wrnno=_WRN_DERIVED_DOMAIN)
         else:
             slp = math_helpers.pressure_at_height(p_comp, -comp[2], comp[3])  # local pressure, -SeaLevelOffset, MeanAtmTemp
         await self._set_meas_data(BMP3XX(p_comp, t_comp, slp, results[2]))
@@ -346,28 +346,28 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             return await self._bmp.get_filter_coefficient()
         except Exception as e:
-            self.pr.err_q("Error reading filter coefficient:", e, errno=_ERR_CHIP_GET)
+            self.pr.err_s("Error reading filter coefficient:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_pressure_oversampling(self) -> int | None:
         try:
             return await self._bmp.get_pressure_oversampling()
         except Exception as e:
-            self.pr.err_q("Error reading pressure oversampling:", e, errno=_ERR_CHIP_GET)
+            self.pr.err_s("Error reading pressure oversampling:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_temperature_oversampling(self) -> int | None:
         try:
             return await self._bmp.get_temperature_oversampling()
         except Exception as e:
-            self.pr.err_q("Error reading temperature oversampling:", e, errno=_ERR_CHIP_GET)
+            self.pr.err_s("Error reading temperature oversampling:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def set_filter_coefficient(self, coef: int) -> bool:
         try:
             await self._bmp.set_filter_coefficient(coef)
         except Exception as e:
-            self.pr.err_q("Error setting filter coefficient:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_s("Error setting filter coefficient:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -375,7 +375,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             await self._bmp.set_pressure_oversampling(oversample)
         except Exception as e:
-            self.pr.err_q("Error setting pressure oversampling:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_s("Error setting pressure oversampling:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -383,14 +383,14 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             await self._bmp.set_temperature_oversampling(oversample)
         except Exception as e:
-            self.pr.err_q("Error setting temperature oversampling:", e, errno=_ERR_CHIP_SET)
+            self.pr.err_s("Error setting temperature oversampling:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
     async def set_trigger_s(self, value: float) -> bool:
         secs = checked_int(value, _VAL_SAMPLE_INTERVAL[0])  # a whole number of seconds in range; bool, NaN, +-inf refused
         if secs is None:
-            self.pr.err_q("Error setting trigger interval:", value, errno=_ERR_BAD_ARG)
+            self.pr.err_s("Error setting trigger interval:", value, errno=_ERR_BAD_ARG)
             return False
         self._trigger_period = secs
         return True

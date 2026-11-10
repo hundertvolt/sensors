@@ -173,7 +173,7 @@ def test_history_stores_answer_before_and_after_a_failed_setup() -> None:
         assert history.initialized is expected
         assert _answers(history, calls) == []
         assert history.level == 0  # the clamp kept it off
-        run(history.err_s("still counted", errno=1))
+        history.err_s("still counted", errno=1)
         assert history._err_count == 1  # a failed setup write records nothing itself
 
 
@@ -230,13 +230,10 @@ def test_fram_driver_answers_its_sentinels_before_and_after_a_setup_that_finds_n
         "get_size": ((), lambda r: r == 0x2000),
         "get_values": ((bytearray(4),), _is(False)),
         "set_values": ((b"ab", 0), _is(False)),
-        "get_values_sync": ((bytearray(4),), lambda r: type(r) is int and r != 0),  # a refusal status, never OK
-        "set_values_sync": ((b"ab", 0), lambda r: type(r) is int and r != 0),
         "get_write_protected": ((), _is(False)),
-        "verify_present": ((), _is(False)),
     }
     assert _answers(fram, calls) == []
-    assert run(fram.set_write_protected(value=True)) is False
+    assert fram.set_write_protected(value=True) is False
     chip = fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     chip.rdid_response = _WRONG_CHIP_ID

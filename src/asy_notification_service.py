@@ -189,13 +189,13 @@ class NotificationService(SensorReaderConfig):
             data = await source.get_data()
             value = getattr(data, notif.value.field, None)
         except Exception as e:
-            await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
+            self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
             return False
         if value is None:
             return False
         thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
         if thresholds is None:
-            await self.pr.err_s(notif.name, "Threshold config read failed!", errno=_ERR_CFG_READ)
+            self.pr.err_s(notif.name, "Threshold config read failed!", errno=_ERR_CFG_READ)
             return False
         threshold = thresholds[0]  # exactly one field - the constructor refuses any other shape
         # float(value): getattr()'s own return is untyped even after the None-check above (the field name is
@@ -220,7 +220,7 @@ class NotificationService(SensorReaderConfig):
             ):
                 interv: float = _CFG_FAIL_INTERVAL_S  # an int here, FlashInterval's float on a good read
                 # Persisted every failing cycle; a repeat spends no slot (the newest-entry rule).
-                await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
+                self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
             else:
                 on_h, on_m, off_h, off_m, flash_bri = cfg_int
                 interv, flash_dur = cfg_float
@@ -247,7 +247,7 @@ class NotificationService(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             return await self._local_time_callback()
         except Exception as e:
-            await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
+            self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
             return None
 
     async def _trigger_signal(self, notif: NotificationSignal, flash_bri: int, flash_dur: float) -> None:
@@ -255,7 +255,7 @@ class NotificationService(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
         except Exception as e:
-            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
+            self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
 
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_monitor]

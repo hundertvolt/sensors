@@ -223,8 +223,8 @@ def test_real_device_hands_every_setup_to_one_list_in_the_fixed_order(device: st
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_module_neither_feeds_nor_collects_and_constructs_without_awaiting(device: str) -> None:
-    # Every feed and every boot placement collect sits in SystemService (run_setups(), start_tasks());
-    # the module keeps gc for MemFree's gc.mem_free().
+    # Every boot feed sits in SystemService (run_setups(), start_tasks()), and nothing collects; the module keeps gc
+    # for MemFree's gc.mem_free().
     source = _real(device).module_source
     assert "gc.collect(" not in source
     assert "feed_watchdog(" not in source
@@ -644,7 +644,7 @@ def test_a_link_naming_a_crc_mode_gets_that_check_on_its_uart_bus_and_its_import
     calls = _uart_bus_calls(source)
     assert calls[str(links[0].fields["bus"])].endswith(", crc=CRC16())")
     assert "crc=" not in calls[str(links[1].fields["bus"])]
-    assert [ast.unparse(n) for n in ast.parse(source).body if isinstance(n, ast.ImportFrom) and n.module == "asy_crc_checks"] == ["from asy_crc_checks import CRC16"]
+    assert [ast.unparse(n) for n in ast.parse(source).body if isinstance(n, ast.ImportFrom) and n.module == "crc_checks"] == ["from crc_checks import CRC16"]
 
 
 def test_a_crc_mode_the_validator_never_checked_is_an_internal_error(src_dir: Path) -> None:
@@ -659,7 +659,7 @@ def test_real_device_without_a_crc_key_imports_no_crc_and_passes_none(device: st
     # Guard: no shipped link names a CRC (the UART wire format is untouched), so no bus gets one.
     source = _real(device).module_source
     assert "crc=" not in source
-    assert "asy_crc_checks" not in source
+    assert "crc_checks" not in source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -746,7 +746,7 @@ def test_a_crc_mode_named_on_both_ends_of_the_bench_link_reaches_both_uart_buses
     calls = _uart_bus_calls(source)
     assert len(calls) == 2
     assert all(call.endswith(", crc=CRC16())") for call in calls.values()), calls
-    assert "from asy_crc_checks import CRC16" in source
+    assert "from crc_checks import CRC16" in source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

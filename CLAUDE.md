@@ -370,11 +370,10 @@ Three standing practices:
   allocation failed`** — `src/` logs `str(e)`, so a caught allocation failure never names the class;
   no gate narrows back to the class name or to failing files only (a degrade-and-pass is the case the
   bar is about), and an injection a test makes on purpose is worded clear of both markers.
-  **One structural exception (owner, 2026-09-18): the boot-confined placement reset** —
-  `gc.collect()` between the units of `SystemService`'s two one-time lists (`run_setups()` and
-  `start_tasks()`'s starter loop) and nowhere else in the firmware: placement discipline for the
-  survivors those lists create, not a threshold and not a fix for a failing allocation. **Outside
-  the firmware** — tests, the twin, device scripts and tools — `gc.collect()` sets a baseline for a
+  **The firmware calls no `gc.collect()`**: the survivors of `SystemService`'s two one-time lists
+  (`run_setups()` and `start_tasks()`'s starter loop) land low without one since the FRAM path
+  became synchronous (SPECIFICATION.md I.4(f.1)); the bench re-checks that placement on silicon.
+  **Outside the firmware** — tests, the twin, device scripts and tools — `gc.collect()` sets a baseline for a
   memory measurement or keeps an automatic collection out of a timing window about to be measured,
   nothing else: never inside a timed window or a watchdog-sensitive stretch, never as a recovery
   step, never to keep a test green (owner, 2026-09-26 and 2026-09-29, the rule a paraphrase; asked,
@@ -390,7 +389,7 @@ Three standing practices:
   `scripts/_check_gc_collect_sites.py` (run by `scripts/lint.sh`) names every allowed site, a
   `gc.threshold()` set, `gc.disable()` and `gc.enable()` included. The gates and their agreement
   check, the measured placement gain and the allocation-site catalog: SPECIFICATION.md Part I (I.4
-  the standing scheme, I.4(e) the markers, I.4(f.1) the reset).
+  the standing scheme, I.4(e) the markers, I.4(f.1) boot placement).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
   per-module error logs (`GET /status`'s `errcount`, its FRAM-backed subset)
   BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (owner,

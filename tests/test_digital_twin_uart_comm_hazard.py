@@ -67,7 +67,7 @@ async def _get_frame(crc: "CrcMaker") -> bytes:
     frame[_CUR] = 1
     if crc is None:
         return bytes(frame)
-    framed = await crc().add(frame)
+    framed = crc().add(frame)
     assert framed is not None
     return bytes(framed)
 

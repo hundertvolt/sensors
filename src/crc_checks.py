@@ -3,10 +3,10 @@ documented CRC-8), CRC16 (CRC-16/CCITT-FALSE), CRC32 (CRC-32/MPEG-2), plus CRCPa
 """
 # CRC8 poly 0x31/init 0xFF; CRC16 0x1021/0xFFFF; CRC32 0x04C11DB7/0xFFFFFFFF. Every public method
 # returns None/False on invalid input rather than raising, except add()/check(), which allocate and
-# let MemoryError propagate. run_inc()/check_inc() hold per-instance state - never share one.
+# let MemoryError propagate. An instance keeps no state between calls.
 
 # Zero-padding limitation inherent to this CRC class (CRC linearity; agent, 2026-07-15): a register at 0 stays 0 through
-# further 0x00 bytes, so check()/check_from()/check_inc() can't detect trailing zero-padding past the buffer's true end
+# further 0x00 bytes, so check()/check_from() can't detect trailing zero-padding past the buffer's true end
 # - callers must supply an accurate length.
 
 from struct import pack_into
@@ -39,8 +39,6 @@ class CRCBase:
         self._crc_shift = 0 if self._num_bytes <= 0 else 8 * (self._num_bytes - 1)
         self._poly = None if poly is None or self._num_bytes == 0 or not (0 <= poly <= self._all_set) else poly
         self._fmt = fmt
-        self._inc_crc: int | None = None
-        self._inc_count = 0
 
     def _validate_init(self, init: int | None) -> int | None:
         # Defaults to all-bits-1 (the standard "no data seen yet" CRC register state) if unset;
@@ -48,7 +46,7 @@ class CRCBase:
         init = self._all_set if init is None else init
         return init if 0 <= init <= self._all_set else None
 
-    async def add(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
+    def add(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
         # Appends this buffer's CRC to a new copy of it, ready to send/store.
         if self._poly is None:  # uninitialized or "pass" mode
             return bytearr
@@ -60,7 +58,7 @@ class CRCBase:
         pack_into(self._fmt, crc_b, 0, crc)
         return bytearr + crc_b
 
-    async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: int | None = None) -> int | None:
+    def add_into(self, buffer: bytearray, size: int, start: int = 0, init: int | None = None) -> int | None:
         # Like add(), but writes the CRC directly into a slice of an existing buffer instead of
         # allocating a new one; returns the total size written (payload + CRC).
         if size <= 0 or start < 0 or start + size + self._num_bytes > len(buffer):
@@ -73,7 +71,7 @@ class CRCBase:
         pack_into(self._fmt, buffer, start + size, _crc(buffer, start, start + size, init, self._poly, self._crc_shift))
         return size + self._num_bytes
 
-    async def check(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
+    def check(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
         # Verifies a buffer's trailing CRC; returns the payload with the CRC stripped on success.
         if self._poly is None:  # uninitialized or "pass" mode
             return bytearr
@@ -86,7 +84,7 @@ class CRCBase:
             return bytearr[0 : len(bytearr) - self._num_bytes]
         return None
 
-    async def check_from(
+    def check_from(
         self, buffer: bytearray, size: int | None = None, start: int = 0, init: int | None = None,
     ) -> int | None:
         # Like check(), but verifies in place within a shared buffer; returns just the payload
@@ -103,34 +101,10 @@ class CRCBase:
             return size - self._num_bytes
         return None
 
-    async def check_inc(self) -> int | None:
-        # Finalizes a run_inc() sequence: returns the payload length (excluding the CRC) on
-        # success, None otherwise. Always resets state, so a later sequence starts clean.
-        if self._inc_crc is None:
-            return None
-        valid = self._poly is None or (self._inc_crc == 0 and self._inc_count > self._num_bytes)
-        self._inc_crc = None
-        return self._inc_count - self._num_bytes if valid else None
-
     def length(self) -> int:
         # CRC width in bytes; 0 in pass-through mode (CRCPass, or any width constructed with
         # poly=None).
         return self._num_bytes
-
-    # Feeds one chunk of data into an in-progress incremental CRC computation. Call once per
-    # chunk until all chunks are fed in, then call check_inc() once to verify.
-    async def run_inc(self, bytearr: bytearray | memoryview, init: int | None = None) -> bool:
-        if self._inc_crc is None:  # First call, initialize
-            self._inc_count = 0
-            self._inc_crc = 0 if self._poly is None else self._validate_init(init)
-            if self._inc_crc is None:  # Invalid init value
-                return False
-
-        if self._poly is not None:  # Only process CRC if enabled
-            self._inc_crc = _crc(bytearr, 0, len(bytearr), self._inc_crc, self._poly, self._crc_shift)
-
-        self._inc_count += len(bytearr)
-        return True
 
 
 class CRCPass(CRCBase):

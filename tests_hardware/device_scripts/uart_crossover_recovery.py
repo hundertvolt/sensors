@@ -8,8 +8,8 @@ import asyncio
 import time
 
 import asy_uart_driver
-from asy_crc_checks import CRC16
 from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
+from crc_checks import CRC16
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py

@@ -142,8 +142,8 @@ def src_findings(src: Path) -> list[str]:
 
 
 def _own_feed_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, ref: ast.Attribute) -> bool:
-    # A pinned use of self._own_feed inside fn: the sequence's statement call or a step_done handed to its flush, quiesce
-    # or erase; _reboot()'s one call under `if fed:`, directly followed by the arm.
+    # A pinned use of self._own_feed inside fn: the sequence's statement call or a step_done handed to its flush or
+    # erase; _reboot()'s one call under `if fed:`, directly followed by the arm.
     parents = {child: node for node in ast.walk(fn) for child in ast.iter_child_nodes(node)}
     parent = parents.get(ref)
     if fn.name == _SEQUENCE:
@@ -155,7 +155,7 @@ def _own_feed_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, ref: ast.Attribute
         callee = ast.unparse(holder.func)
         if isinstance(parent, ast.keyword):
             return parent.arg == "step_done" and callee == "self._flush_config_stores" and "close=True" in ast.unparse(holder)
-        return callee in ("self._storage.quiesce", "self._storage.erase_chip")
+        return callee == "self._storage.erase_chip"
     if fn.name == "_reboot" and isinstance(parent, ast.Call) and parent.func is ref:
         statement = parents.get(parent)
         guard = parents.get(statement) if statement is not None else None
@@ -169,8 +169,8 @@ def _own_feed_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, ref: ast.Attribute
 
 
 def own_feed_findings(tree: ast.Module) -> list[str]:
-    # _own_feed() is referenced only by the shutdown sequence and once by _reboot(); the sequence hands it to its flush,
-    # quiesce and erase as each step's feed (a hung step is never fed).
+    # _own_feed() is referenced only by the shutdown sequence and once by _reboot(); the sequence hands it to its flush
+    # and erase as each step's feed (a hung step is never fed).
     service = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == _SERVICE[1]), None)
     findings: list[str] = []
     reboot_calls = 0

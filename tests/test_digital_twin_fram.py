@@ -27,17 +27,17 @@ from _error_codes import code  # noqa: E402 - imported after the prewarm and the
 from _fast_sleep import FastAsyncSleep  # noqa: E402 - imported after the prewarm and the UDP shim
 from _fram_chip import _PAGE_SIZE, FRAMChip  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import boot_generated  # noqa: E402 - imported after the prewarm and the UDP shim
-from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
 from _task_names import task_name  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import distinct_wirings, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_fram_driver  # noqa: E402 - imported after the prewarm and the UDP shim
-from asy_crc_checks import CRC8  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_fram_manager import FRAMManager  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_print_log import LogConfig, PrintLogHistoryStore  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_spi_driver import SPI  # noqa: E402 - imported after the prewarm and the UDP shim
+from crc_checks import CRC8  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
     from typing import TYPE_CHECKING
@@ -154,11 +154,11 @@ def _silent_fram_on(device: str) -> None:
             chip.silent = True
             before = chip.write_count
             for n in range(2):
-                await sysfunct.pr.err_s("planted while silent", n, errno=code("E", "UNEXPECTED"))
+                sysfunct.pr.err_s("planted while silent", n, errno=code("E", "UNEXPECTED"))
             fram_log = (await module.fram.get_error_counter())["FRAM"]["ErrNum"]
             refused = (chip.write_count, code("W", "FRAM_WEL_NOT_SET") in fram_log)
             chip.silent = False
-            await sysfunct.pr.err_s("planted", errno=code("E", "UNEXPECTED"))
+            sysfunct.pr.err_s("planted", errno=code("E", "UNEXPECTED"))
             landed = chip.write_count > before
             for _ in range(_UNTIL_YIELDS):  # the supervisor's polls: an ended watch task would be restarted here
                 await asyncio.sleep(0)
@@ -660,10 +660,10 @@ def test_a_chunk_on_the_twin_chip_reads_true_with_the_bytes_it_wrote() -> None:
     # True: valid data, in the caller's buffer. A read marks each copy busy and back idle, so it leaves the chip as it was.
     manager, _bus, chip = _twin_manager()
     chunk, _ts_chunk = _chunks(manager)
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.write(_PAYLOAD) is True
     stored = bytes(chip.memory)
     buf = chunk.get_buffer()
-    assert run(chunk.read_into(buf)) is True
+    assert chunk.read_into(buf) is True
     assert bytes(buf.get_data_buf() or b"") == _PAYLOAD
     assert bytes(chip.memory) == stored
     assert _status_bytes(chip, chunk) == [_STATUS_IDLE] * 4
@@ -674,7 +674,7 @@ def test_a_blank_chunk_reads_false_and_takes_no_busy_marker() -> None:
     manager, _bus, chip = _twin_manager()
     chunk, ts_chunk = _chunks(manager)
     for _ in range(2):  # a second read of a never-written chunk still finds it uninitialised
-        assert run(chunk.read_into(chunk.get_buffer())) is False
+        assert chunk.read_into(chunk.get_buffer()) is False
         assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (False, None, None)
     assert bytes(chip.memory) == bytes(len(chip.memory)), "a blank read wrote to the chip"
     assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0
@@ -685,18 +685,18 @@ def test_a_persistent_chip_read_fault_reads_none_then_the_leftover_busy_markers_
     # marker landed - the same outcome as the bus overrun below, the payload kept and False until the next write.
     manager, _bus, chip = _twin_manager()
     chunk, _ts_chunk = _chunks(manager)
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.write(_PAYLOAD) is True
     chip.fault.inject_fault("readinto", OSError, errno.EIO, "chip read fault", times=_FAULT_TIMES)
-    assert run(chunk.read_into(chunk.get_buffer())) is None
+    assert chunk.read_into(chunk.get_buffer()) is None
     chip.fault.clear()
     assert _status_bytes(chip, chunk) == [_STATUS_BUSY] * 4
     for addr in chunk._block_addr:
         assert bytes(chip.memory[addr : addr + len(_PAYLOAD)]) == _PAYLOAD
     assert code("E", "UNEXPECTED") in _errnums(manager)
-    assert run(chunk.read_into(chunk.get_buffer())) is False
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.read_into(chunk.get_buffer()) is False
+    assert chunk.write(_PAYLOAD) is True
     buf = chunk.get_buffer()
-    assert run(chunk.read_into(buf)) is True
+    assert chunk.read_into(buf) is True
     assert bytes(buf.get_data_buf() or b"") == _PAYLOAD
 
 
@@ -705,20 +705,20 @@ def test_a_persistent_overrun_reads_none_then_the_leftover_busy_markers_read_fal
     # recovers, both copies still carry the marker, so nothing valid is stored: False, writing nothing, until a write.
     manager, bus, chip = _twin_manager()
     chunk, _ts_chunk = _chunks(manager)
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.write(_PAYLOAD) is True
     bus.rx_overrun = True
-    assert run(chunk.read_into(chunk.get_buffer())) is None
+    assert chunk.read_into(chunk.get_buffer()) is None
     bus.rx_overrun = False
     assert _status_bytes(chip, chunk) == [_STATUS_BUSY] * 4
     for addr in chunk._block_addr:
         assert bytes(chip.memory[addr : addr + len(_PAYLOAD)]) == _PAYLOAD
     left = bytes(chip.memory)
-    assert run(chunk.read_into(chunk.get_buffer())) is False
+    assert chunk.read_into(chunk.get_buffer()) is False
     assert bytes(chip.memory) == left, "reading a leftover busy marker changed the chip"
     assert code("E", "FRAM_STATUS_BYTE") in _errnums(manager)
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.write(_PAYLOAD) is True
     buf = chunk.get_buffer()
-    assert run(chunk.read_into(buf)) is True
+    assert chunk.read_into(buf) is True
     assert bytes(buf.get_data_buf() or b"") == _PAYLOAD
 
 
@@ -879,10 +879,10 @@ def test_a_chunk_write_survives_one_dropped_wren() -> None:
     manager, _bus, chip = _twin_manager()
     chunk, _ts_chunk = _chunks(manager)
     chip.drop_next_wren = 1
-    assert run(chunk.write(_PAYLOAD)) is True  # the driver's one WREN retry sets the latch
+    assert chunk.write(_PAYLOAD) is True  # the driver's one WREN retry sets the latch
     assert chip.drop_next_wren == 0
     buf = chunk.get_buffer()
-    assert run(chunk.read_into(buf)) is True
+    assert chunk.read_into(buf) is True
     assert bytes(buf.get_data_buf() or b"") == _PAYLOAD
 
 
@@ -894,7 +894,7 @@ def test_a_logger_over_its_written_chunk_on_a_protected_chip_stays_uninitialised
     first = PrintLogHistoryStore(manager, name="T3")
     run(first.setup())
     assert first.initialized is True
-    run(first.err_s("planted", errno=code("E", "UNEXPECTED")))
+    first.err_s("planted", errno=code("E", "UNEXPECTED"))
     chip.state_path = path
     chip.save_state()
     machine.reset_test_state()
@@ -916,50 +916,6 @@ def test_a_booted_device_whose_fram_goes_silent_fails_its_writes_and_resumes_whe
         _silent_fram_on(device)
 
 
-def test_a_blank_read_beside_a_held_session_stays_blank_makes_no_rdid_and_logs_nothing() -> None:
-    # A never-written chunk reads blank; a sibling session takes the FRAM right after the chunk's block reads and holds
-    # it past the driver's 1000 ms lock bound: the read still answers blank (False), with no RDID and no entry.
-    manager, _bus, chip = _twin_manager()
-    chunk, _ts_chunk = _chunks(manager)
-    fram = manager.fram
-    real, real_write, rdids = chunk._read_into, chip.write, [0]
-    hold_ms = src_int("src/asy_fram_driver.py", "_VERIFY_PRESENT_LOCK_TIMEOUT_MS") + 200
-    held: list[asyncio.Task[None]] = []
-
-    async def sibling() -> None:
-        async with fram.session_lock:
-            await asyncio.sleep_ms(hold_ms)
-
-    async def read_then_a_sibling(buf: bytearray, addr: int) -> "tuple[bool, bool, bool]":
-        result = await real(buf, addr)
-        if addr == chunk._block_addr[1]:  # the second block read: the sibling takes the session from here
-            held.append(asyncio.get_event_loop().create_task(sibling()))
-            await _until("the sibling never took the session", fram.session_lock.locked)
-        return result
-
-    def counting_write(buf: bytes) -> None:
-        rdids[0] += bytes(buf) == bytes([_OPCODE_RDID])
-        real_write(buf)
-
-    chunk._read_into = read_then_a_sibling  # type: ignore[method-assign]
-    chip.write = counting_write  # type: ignore[method-assign]
-    before = bytes(chip.memory)
-
-    async def scenario() -> "bool | None":
-        try:
-            return await chunk.read_into(chunk.get_buffer())
-        finally:
-            for task in held:
-                await cancel(task)
-
-    assert run(scenario()) is False, "the blank read did not stay blank"
-    assert len(held) == 1, f"the sibling started {len(held)} time(s), expected once"
-    assert rdids == [0], f"the blank read clocked {rdids[0]} RDID(s)"
-    assert fram.initialized, "a busy session cleared the driver's readiness"
-    assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0, f"the blank read logged {_errnums(manager)}"
-    assert bytes(chip.memory) == before, "the blank read wrote the chip"
-
-
 def test_two_valid_but_differing_copies_fail_each_read_with_one_slot_and_the_next_write_heals_them() -> None:
     # A write torn between the copies: block 1 put back to the previous write, both blocks valid. Each read fails
     # (no copy is picked, owner rule), the repeats share one E FRAM_COPIES_DIFFER slot, and the next write heals both.
@@ -967,16 +923,16 @@ def test_two_valid_but_differing_copies_fail_each_read_with_one_slot_and_the_nex
     chunk, _ts_chunk = _chunks(manager)
     span = len(_PAYLOAD) + 1 + 2  # the payload, its CRC8 byte and the two status bytes
     addr1 = chunk._block_addr[1]
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.write(_PAYLOAD) is True
     block1 = _read_mem(chip, addr1, span)
-    assert run(chunk.write(bytes(reversed(_PAYLOAD)))) is True
+    assert chunk.write(bytes(reversed(_PAYLOAD))) is True
     _wren(chip)
     _write_mem(chip, addr1, block1)
-    reads = [run(chunk.read_into(chunk.get_buffer())) for _ in range(2)]
+    reads = [chunk.read_into(chunk.get_buffer()) for _ in range(2)]
     errnums = _errnums(manager)
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.write(_PAYLOAD) is True
     buf = chunk.get_buffer()
-    healed = run(chunk.read_into(buf))
+    healed = chunk.read_into(buf)
     assert reads == [False, False], f"the differing copies read {reads}"
     assert errnums.count(code("E", "FRAM_COPIES_DIFFER")) == 1, f"two failed reads logged {errnums}"
     assert healed is True and bytes(buf.get_data_buf() or b"") == _PAYLOAD, "the next write did not heal the copies"
@@ -987,15 +943,15 @@ def test_a_paused_twin_fram_refuses_every_chunk_operation_with_one_slot_and_resu
     # one W FRAM_PAUSED slot, and once resumed the chunk reads what it held.
     manager, _bus, chip = _twin_manager()
     chunk, _ts_chunk = _chunks(manager)
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.write(_PAYLOAD) is True
     before = bytes(chip.memory)
     manager.set_pause(value=True)
-    refused = (run(chunk.write(bytes(len(_PAYLOAD)))), run(chunk.read_into(chunk.get_buffer())), run(chunk.clear()))
+    refused = (chunk.write(bytes(len(_PAYLOAD))), chunk.read_into(chunk.get_buffer()), chunk.clear())
     untouched = bytes(chip.memory) == before
     errnums = _errnums(manager)
     manager.set_pause(value=False)
     buf = chunk.get_buffer()
-    resumed = run(chunk.read_into(buf))
+    resumed = chunk.read_into(buf)
     assert refused == (False, None, False), f"the paused operations answered {refused}"
     assert untouched, "a paused operation reached the chip"
     assert errnums.count(code("W", "FRAM_PAUSED")) == 1, f"the refusals logged {errnums}"
@@ -1009,15 +965,15 @@ def test_a_latch_one_wrdi_leaves_set_clears_on_the_retry_and_a_stuck_one_warns_o
     manager, _bus, chip = _twin_manager()
     chunk, _ts_chunk = _chunks(manager)
     chip.stick_next_wrdi = 1
-    retried = (run(chunk.write(_PAYLOAD)), chip.stick_next_wrdi, _slots(manager))
+    retried = (chunk.write(_PAYLOAD), chip.stick_next_wrdi, _slots(manager))
     chip.stick_next_wrdi = 2
-    stuck = (run(chunk.write(bytes(reversed(_PAYLOAD)))), _slots(manager))
+    stuck = (chunk.write(bytes(reversed(_PAYLOAD))), _slots(manager))
     chip.stick_next_wrdi = 64  # more WRDIs than one chunk write sends
-    held = run(chunk.write(_PAYLOAD))
+    held = chunk.write(_PAYLOAD)
     chip.stick_next_wrdi = 0
     count, slots = _slots(manager)
     buf = chunk.get_buffer()
-    landed = run(chunk.read_into(buf))
+    landed = chunk.read_into(buf)
     assert retried == (True, 0, (0, [])), f"one WRDI left set: write, knob left, log = {retried}"
     assert stuck == (True, (1, [("W", code("W", "FRAM_WEL_STUCK"))])), f"two WRDIs left set: write and log = {stuck}"
     assert held is True and count > 2 and slots == [("W", code("W", "FRAM_WEL_STUCK"))], f"a stuck write: {held}, {count}, {slots}"
@@ -1031,15 +987,15 @@ def test_a_verified_write_the_chip_stored_wrong_fails_once_rewrites_nothing_and_
     manager, _bus, chip = _twin_manager()
     chunk = manager.get_chunk(len(_PAYLOAD), crc=CRC8(), verify=1, owner="T1")
     assert chunk is not None
-    assert run(chunk.write(_PAYLOAD)) is True
+    assert chunk.write(_PAYLOAD) is True
     writes = chip.write_count
     chip.corrupt_next_write = 1
-    failed = run(chunk.write(bytes(reversed(_PAYLOAD))))
+    failed = chunk.write(bytes(reversed(_PAYLOAD)))
     spent = chip.write_count - writes
     log = _slots(manager)
-    healed = run(chunk.write(bytes(reversed(_PAYLOAD))))
+    healed = chunk.write(bytes(reversed(_PAYLOAD)))
     buf = chunk.get_buffer()
-    read = run(chunk.read_into(buf))
+    read = chunk.read_into(buf)
     assert (failed, spent) == (False, 2), f"the mismatched write answered {failed} after {spent} payload writes"
     assert log == (2, [("E", code("E", "FRAM_DATA_CRC")), ("E", code("E", "FRAM_VERIFY"))]), f"one mismatch logged {log}"
     assert healed is True and _slots(manager) == log, "the next write did not verify clean"

@@ -67,5 +67,5 @@ ADDRESS_CAPABLE_DRIVERS = frozenset({"bmp3xx"})
 # reason - a UART is point-to-point and has no address concept at all.
 FIXED_ADDRESS_DRIVERS = BUS_ATTACHED_DRIVERS - ADDRESS_CAPABLE_DRIVERS - {"fram"}
 
-# CRC mode of a uart_link end -> (asy_crc_checks class, width in bytes); held equal to src/asy_crc_checks.py by a test
+# CRC mode of a uart_link end -> (crc_checks class, width in bytes); held equal to src/crc_checks.py by a test
 UART_CRC_MODES: dict[str, tuple[str, int]] = {"none": ("CRCPass", 0), "crc16": ("CRC16", 2)}

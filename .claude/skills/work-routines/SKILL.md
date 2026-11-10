@@ -108,7 +108,7 @@ Each is enforced by the named gate unless it says none; the full text is in CLAU
 - Types: `X | Y`, never `Union` (ruff UP007). No `type: ignore[method-assign]` in `src/` (lint.sh). `# noqa: E402`
   only after a statement other than `sys.path` setup (RUF100).
 - Memory: zero `MemoryError` and zero `memory allocation failed`, caught-and-logged included, at gc -1 first and
-  then at 32768 (test.sh, the twin CI, the hardware gates). `gc.collect()` only at the boot placement reset (lint.sh).
+  then at 32768 (test.sh, the twin CI, the hardware gates). No `gc.collect()` in the firmware (lint.sh).
 - asyncio: a test helper that calls `asyncio.run()` is called from the synchronous test body, never from a coroutine.
 - Hardware: only with the owner's go-ahead given in this session's own conversation. Without it: `collect` and
   `pytest tests_hardware/flash --twin` only; no `mpremote`, `picotool`, `nmcli`, `iw` or `iptables`.

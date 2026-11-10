@@ -25,7 +25,6 @@ from _async_harness import cancel, run, run_timed, track_starts
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
-from _held_log import held_logger, until
 from _recording_print import record_prints
 from _shared_rest_roundtrip import drain_json_response_body
 from _src_const import src_int
@@ -222,7 +221,7 @@ class _FakeLogger:
             },
         }
 
-    async def err_s(self, *_args: object, errno: int = 0, **_kwargs: object) -> None:
+    def err_s(self, *_args: object, errno: int = 0, **_kwargs: object) -> None:
         self.err_count += 1
         if errno:
             self.history.append((errno, "E"))
@@ -233,7 +232,7 @@ class _FakeLogger:
         self.history = []
         return True
 
-    async def wrn_s(self, *_args: object, wrnno: int = 0, **_kwargs: object) -> None:
+    def wrn_s(self, *_args: object, wrnno: int = 0, **_kwargs: object) -> None:
         self.err_count += 1
         if wrnno:
             self.history.append((wrnno, "W"))
@@ -1199,7 +1198,7 @@ def test_status_get_sensors_subkey_empty_when_no_maintenance_sensors_registered(
 def test_status_put_empty_and_false_reset_errors_are_both_noops() -> None:
     # Only {"ResetErrors": true} resets (SPEC A.8); any other value of the key answers Invalid.
     mod = _FakeModule("SGP40")
-    run(mod.pr.err_s("boom", errno=1))
+    mod.pr.err_s("boom", errno=1)
     _service, app = _make_service(error_sources=[mod])
     for body_in, result in (({}, {}), ({"ResetErrors": False}, {"ResetErrors": "Invalid"})):
         res = run(app.dispatch_request(_make_request(app, "PUT", "/status", body_in)))
@@ -1221,7 +1220,7 @@ def test_status_put_answers_unknown_keys() -> None:
 
 def test_status_put_reset_errors_true_resets_every_module_counter_and_history() -> None:
     mod = _FakeModule("SGP40")
-    run(mod.pr.err_s("boom", errno=1))
+    mod.pr.err_s("boom", errno=1)
     _service, app = _make_service(error_sources=[mod])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert res.status_code == 200
@@ -1242,7 +1241,7 @@ def test_a_failing_source_reset_answers_failed_and_the_others_still_reset() -> N
     good_a, bad, good_b = _FakeModule("A"), _FakeModule("B"), _FakeModule("C")
     bad.pr = _RefusingLogger("B")
     for m in (good_a, bad, good_b):
-        run(m.pr.err_s("x", errno=1))
+        m.pr.err_s("x", errno=1)
     _service, app = _make_service(error_sources=[good_a, bad, good_b])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert _at(_json(res.body), "result") == {"ResetErrors": "Failed"}
@@ -1353,17 +1352,22 @@ def test_reset_errors_is_refused_and_clears_nothing_once_a_command_owns_the_rese
     assert seen == dict.fromkeys(seen, (refused, (1, 1, 1))), seen
 
 
-def test_reset_errors_is_refused_while_the_supervisors_escalation_writes_its_entry() -> None:
-    # A ResetErrors landing inside the task-budget escalation's own entry write is refused and clears nothing: the
+def test_reset_errors_is_refused_once_the_supervisors_escalation_logs_its_entry() -> None:
+    # A ResetErrors landing right after the task-budget escalation's own entry is refused and clears nothing: the
     # logs that explain the supervisor's reboot survive it (owner, 2026-10-13: "2 b").
     bench = _seeded_bench()
     answers: list[dict[str, object]] = []
     real_err_s = bench.svc.pr.err_s
 
-    async def err_s_meeting_a_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
+    spawned: list[asyncio.Task[None]] = []
+
+    async def reset() -> None:
+        answers.append(await bench.put("/status", {"ResetErrors": True}))
+
+    def err_s_meeting_a_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
         if errno == code("E", "TASK_BUDGET_REBOOT"):
-            answers.append(await bench.put("/status", {"ResetErrors": True}))
-        await real_err_s(*args, errno=errno, sep=sep, end=end)
+            spawned.append(asyncio.create_task(reset()))  # it runs at the escalation's next await
+        real_err_s(*args, errno=errno, sep=sep, end=end)
 
     bench.svc.pr.err_s = err_s_meeting_a_reset  # type: ignore[method-assign]
 
@@ -1424,7 +1428,7 @@ def test_reset_errors_follows_the_reset_decision_and_the_storage_pause() -> None
         assert mod.pr.reset_calls == calls + 1, result
     for flags in ((True, False), (False, True)):
         decided[0], paused[0] = flags
-        run(mod.pr.err_s("x", errno=1))
+        mod.pr.err_s("x", errno=1)
         assert _put_result(app, "/status", {"ResetErrors": True}) == {"ResetErrors": "Failed"}, flags
     assert (mod.pr.reset_calls, mod.pr.err_count) == (3, 2)
 
@@ -1863,7 +1867,7 @@ def test_d_status_errcount_includes_one_entry_per_module_and_per_configmanager()
 
 def test_d_counter_always_present_history_present_for_both_populated_and_zero_cases() -> None:
     quiet = _FakeModule("QUIET")
-    run(quiet.pr.err_s("boom", errno=3))
+    quiet.pr.err_s("boom", errno=3)
     noisy_free = _FakeModule("FREE")
     _service, app = _make_service(error_sources=[quiet, noisy_free])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
@@ -1897,7 +1901,7 @@ def test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller() -
     sources = service.get_error_sources()
     assert len(sources) == 1 and sources[0] is service
     # The entry it offers answers as every other error source does: its name and its own log.
-    run(service.pr.err_s("x", errno=1))
+    service.pr.err_s("x", errno=1)
     source = sources[0]
     assert source.name == "WEBSERVER", source.name
     assert run(source.get_error_counter()) == run(service.pr.get_log())
@@ -1906,7 +1910,7 @@ def test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller() -
 def test_d_reset_errors_calls_reset_error_counter_on_every_registered_module() -> None:
     mods = [_FakeModule(n) for n in ("SGP40", "BMP3XX", "NEOPIXEL", "DNS", "CFGMGR_SGP40")]
     for m in mods:
-        run(m.pr.err_s("x", errno=1))
+        m.pr.err_s("x", errno=1)
     _service, app = _make_service(error_sources=mods)
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     for m in mods:
@@ -1933,8 +1937,8 @@ def test_d_own_errcount_entry_reflects_real_logged_warnings_and_resets_with_the_
 def test_d_reset_on_one_module_never_affects_another() -> None:
     a = _FakeModule("A")
     b = _FakeModule("B")
-    run(a.pr.err_s("x", errno=1))
-    run(b.pr.err_s("y", errno=2))
+    a.pr.err_s("x", errno=1)
+    b.pr.err_s("y", errno=2)
     _service, app = _make_service(error_sources=[a, b])
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     # Both reset together by this global action (owner, 2026-09-26: global only, permanently) -
@@ -2608,7 +2612,7 @@ def test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot() -> No
     # itself raise MemoryError; the slot must be freed anyway, or every later connection is refused.
     service, _app = _make_service(max_connections=1)
 
-    async def out_of_heap(*_args: object, **_kwargs: object) -> None:
+    def out_of_heap(*_args: object, **_kwargs: object) -> None:
         raise MemoryError("simulated exhausted heap")
 
     service.pr.wrn_s = out_of_heap  # type: ignore[method-assign]  # deliberate monkeypatch
@@ -3553,23 +3557,6 @@ def test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_str
     assert log["WEBSERVER"]["ErrType"][log["WEBSERVER"]["ErrNum"].index(code("E", "CALLBACK"))] == "E"
 
 
-def test_a_failing_status_source_and_error_log_never_hold_the_status_lock_across_their_entries() -> None:
-    # Their entries' chunk writes held: each build ends with its entries in RAM, the lock free for the next
-    # /status reader within rounds (SPECIFICATION.md C.8).
-    service, app = _make_service(status_sources={"networking": _raising_source}, error_sources=[_RaisingErrorCounterModule("BMP3XX")])
-    service.pr, gate = held_logger("WEBSERVER")
-
-    async def scenario() -> "tuple[bool, int]":
-        build = asyncio.create_task(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-        ended = await until(build.done)
-        count = service.pr._err_count
-        gate.set()
-        await build
-        return ended and not service._status_lock.locked(), count
-
-    assert run(scenario()) == (True, 2)
-
-
 def test_h2_stream_both_marker_sites_send_the_one_spelling() -> None:
     # Guard: a failed status source and a failed error log send the same compact text, built from asy_base_classes.UNAVAILABLE.
     _service, app = _make_service(status_sources={"networking": _raising_source}, error_sources=[_RaisingErrorCounterModule("BMP3XX")], history_length=0)
@@ -3611,7 +3598,7 @@ def test_h2_stream_own_webserver_errcount_source_failure_yields_an_error_marker(
     async def _raise() -> "ErrorLog":
         raise RuntimeError("simulated own-log read failure")
 
-    service.pr.get_log = _raise  # type: ignore[assignment]
+    service.pr.get_log = _raise  # type: ignore[method-assign]
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = _obj(_at(_json(status_body(res)), "errcount"))
     assert errcount["WEBSERVER"] == {"error": "unavailable"}
@@ -4077,7 +4064,7 @@ def _seeded_bench() -> "_CommandBench":
     # A set-up bench whose reader log holds one entry and whose webserver holds one entry and one dropped connection.
     bench = _CommandBench()
     run(bench.setup())
-    run(bench.reader.pr.err_s("x", errno=code("E", "CALLBACK")))
+    bench.reader.pr.err_s("x", errno=code("E", "CALLBACK"))
     run(bench.service._note_drop(code("W", "HTTP_REFUSED"), "seeded"))
     return bench
 

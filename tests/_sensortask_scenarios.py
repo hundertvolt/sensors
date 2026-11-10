@@ -431,7 +431,7 @@ def _scenario_dead_fram_chip_escalates(device: str) -> None:
         assert logger.initialized is False, logger.name
         assert _ram_only_entries(logger) == 1, logger.name
         assert _error_count(logger) == 1, logger.name
-    run(module.sysfunct.pr.err_s("boom", errno=code("E", "INIT")))  # never raises despite the dead chip
+    module.sysfunct.pr.err_s("boom", errno=code("E", "INIT"))  # never raises despite the dead chip
     assert run(module.sysfunct.get_error_counter())["SYSTEM"]["ErrCount"] == 2
     if _has(module, "sgp40"):  # its backup chunk is allocated but unusable; the reader itself keeps running
         assert module.sgp40._ts_storage is not None
@@ -989,38 +989,27 @@ def _count_chunk_writes(logger: "PrintLogHistoryStore", counts: "dict[str, int]"
     assert chunk is not None
     real = chunk.write_into
 
-    async def write_into(buf: "RegionBuffer") -> bool:
+    def write_into(buf: "RegionBuffer") -> bool:
         counts[logger.name] += 1
-        return await real(buf)
+        return real(buf)
 
     chunk.write_into = write_into  # type: ignore[method-assign]
 
 
 def _record_codes(logger: "PrintLogHistory", got: "list[tuple[str, int]]") -> None:
-    # Each persisting call's kind and code appended to got in call order, awaited or written behind; the stand-ins go
-    # with the build.
-    real_err, real_wrn, real_err_q, real_wrn_q = logger.err_s, logger.wrn_s, logger.err_q, logger.wrn_q
+    # Each persisting call's kind and code appended to got in call order; the stand-ins go with the build.
+    real_err, real_wrn = logger.err_s, logger.wrn_s
 
-    async def err_s(*args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
+    def err_s(*args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         got.append(("E", errno))
-        await real_err(*args, errno=errno, sep=sep, end=end)
+        real_err(*args, errno=errno, sep=sep, end=end)
 
-    async def wrn_s(*args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
+    def wrn_s(*args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         got.append(("W", wrnno))
-        await real_wrn(*args, wrnno=wrnno, sep=sep, end=end)
-
-    def err_q(*args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
-        got.append(("E", errno))
-        real_err_q(*args, errno=errno, sep=sep, end=end)
-
-    def wrn_q(*args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
-        got.append(("W", wrnno))
-        real_wrn_q(*args, wrnno=wrnno, sep=sep, end=end)
+        real_wrn(*args, wrnno=wrnno, sep=sep, end=end)
 
     logger.err_s = err_s  # type: ignore[method-assign]
     logger.wrn_s = wrn_s  # type: ignore[method-assign]
-    logger.err_q = err_q  # type: ignore[method-assign]
-    logger.wrn_q = wrn_q  # type: ignore[method-assign]
 
 
 def _device_of(module: "ModuleType") -> str:
@@ -1203,21 +1192,18 @@ def _has_uart_link(module: "ModuleType") -> bool:
 
 
 def _hold_each_step(module: "ModuleType", gate: "_StepGate") -> None:
-    # Gates in front of each later step of the sequence: S2 the stores' flush, S3 storage quiesced, S4 the tasks
-    # stopped (right after S3), S5 the file deletions or the chip erase, S6 the reset armed.
+    # Gates in front of each later step of the sequence: S2 the stores' flush, S3 the storage pause with the tasks
+    # stopped right after it (no await between the two), S5 the file deletions or the chip erase, S6 the reset armed.
     sysfunct, fram = module.sysfunct, module.fram
-    flush, quiesce, erase, reboot = sysfunct._flush_config_stores, fram.quiesce, fram.erase_chip, sysfunct._reboot
+    flush, erase, reboot = sysfunct._flush_config_stores, fram.erase_chip, sysfunct._reboot
 
     async def flush_held(*, close: bool = False, step_done: "Callable[[], None] | None" = None) -> bool:
         if step_done is not None:  # the sequence's own flush; the reset's last one passes no step_done
             await gate.hold("S2")
         ok: bool = await flush(close=close, step_done=step_done)
+        if step_done is not None:
+            await gate.hold("S3")
         return ok
-
-    async def quiesce_held(step_done: "Callable[[], None] | None") -> None:
-        await gate.hold("S3")
-        await quiesce(step_done)
-        await gate.hold("S4")
 
     async def erase_held(step_done: "Callable[[], None] | None") -> bool:
         await gate.hold("S5")
@@ -1237,7 +1223,6 @@ def _hold_each_step(module: "ModuleType", gate: "_StepGate") -> None:
         return ok
 
     sysfunct._flush_config_stores = flush_held
-    fram.quiesce = quiesce_held
     fram.erase_chip = erase_held
     sysfunct._reboot = reboot_held
     stores[0].delete_file = first_delete_held
@@ -1277,7 +1262,7 @@ def _log_chunk_bytes(module: "ModuleType") -> "list[bytes]":
 
 def _log_one_entry_everywhere(module: "ModuleType", text: str) -> None:
     for logger in _fram_stores(module):
-        run(logger.err_s(text, errno=code("E", "INIT")))
+        logger.err_s(text, errno=code("E", "INIT"))
 
 
 async def _main_until_supervised(module: "ModuleType", device: str, recorder: "BootRecorder") -> None:
@@ -1857,7 +1842,7 @@ def _scenario_supervisor_scan_budget(device: str) -> None:
     k = len(module._collect_task_starters())
     chip = module.fram.fram._spidev.spi._spi
     before = chip.write_transactions
-    run(sysfunct.pr.err_s("probe: one entry's chip cost", errno=_system_const("_ERR_TASK_RETURNED")))
+    sysfunct.pr.err_s("probe: one entry's chip cost", errno=_system_const("_ERR_TASK_RETURNED"))
     entry_cost = chip.write_transactions - before
     assert entry_cost > 0, "SYSTEM's logger is not FRAM-backed"
 
@@ -2214,7 +2199,7 @@ def _scenario_log_ring_saturation(device: str) -> None:
         slots = len(logger.history)
         logger._err_count = top - 1
         for errno in range(1, slots + 3):
-            run(logger.err_s("months of faults", errno=errno))
+            logger.err_s("months of faults", errno=errno)
         expected[logger.name] = list(range(3, slots + 3))
         log = run(logger.get_log())[logger.name]
         assert (log["ErrCount"], log["ErrNum"]) == (top, expected[logger.name]), (logger.name, log)
@@ -2309,15 +2294,15 @@ def _scenario_fault_storm_log_rate(device: str) -> None:
         _count_chunk_writes(logger, chunk_writes)
     probe = stores[0]
     before = chip.write_transactions
-    run(probe.err_s("storm probe", errno=repeat))
+    probe.err_s("storm probe", errno=repeat)
     per_chunk_write = (chip.write_transactions - before) // max(1, chunk_writes[probe.name])
     logs = {logger.name: run(logger.get_log())[logger.name] for logger in stores}
     writes, counted = chip.write_transactions, dict(chunk_writes)
 
     async def one(logger: "PrintLogHistoryStore") -> None:
         for _ in range(burst):
-            await logger.err_s("storm: the same fault again", errno=repeat)
-        await logger.err_s("storm: another fault", errno=other)
+            logger.err_s("storm: the same fault again", errno=repeat)
+        logger.err_s("storm: another fault", errno=other)
 
     async def storm() -> None:
         await asyncio.gather(*[one(logger) for logger in stores])
@@ -2575,8 +2560,8 @@ def _scenario_ntp_no_reply_storm(device: str) -> None:
         ntp._ntp_sync_trigger_event.set()
         for _ in range(_NTP_ATTEMPT_POLLS):
             await asyncio.sleep_ms(_NTP_ATTEMPT_POLL_MS)
-            if len(peer.peers) > opened and peer.closed == len(peer.peers) and not ntp.wifi_mode_lock.locked() and getattr(ntp.pr, "_writer", None) is None:
-                return  # torn down, the lock released and its entry's write-behind landed: the counts are final
+            if len(peer.peers) > opened and peer.closed == len(peer.peers) and not ntp.wifi_mode_lock.locked():
+                return  # torn down and the lock released: nothing yields before the loop waits again
         raise AssertionError(f"{device}: an NTP attempt never ended: {peer.peers}, {got}")
 
     async def scenario() -> None:
@@ -3137,7 +3122,7 @@ def _scenario_writes_refused_during_the_shutdown(device: str) -> None:
     # Each of the four words, its sequence held at every step by a gate: each SCD30 key, a networking setting,
     # ResetErrors and another command answer "Failed", the same command "Valid" with nothing new started, and no
     # SCD30 NVM write happens from the acceptance to the reset (owner, 2026-10-02: no SCD30 write while it runs).
-    for word, steps in (("reboot", "S1 S2 S3 S4 S6"), ("bootloader", "S1 S2 S3 S4 S6"), ("resetconfig", "S1 S2 S3 S4 S5 S6"), ("erasefram", "S1 S2 S3 S4 S5 S6")):
+    for word, steps in (("reboot", "S1 S2 S3 S6"), ("bootloader", "S1 S2 S3 S6"), ("resetconfig", "S1 S2 S3 S5 S6"), ("erasefram", "S1 S2 S3 S5 S6")):
         gate = _StepGate()
         wrong: list[object] = []
         nvm: list[list[dict[int, int]]] = []
@@ -3147,12 +3132,12 @@ def _scenario_writes_refused_during_the_shutdown(device: str) -> None:
             _hold_each_step(module, gate)
             sequences = track_starts(module.sysfunct, "_shutdown_sequence")
             for logger in _fram_stores(module):  # a log in every store, so a ResetErrors that cleared one shows
-                await logger.err_s("written before the command", errno=code("E", "INIT"))
+                logger.err_s("written before the command", errno=code("E", "INIT"))
 
             async def at_step(step: str) -> None:
                 if not nvm:  # the first step runs right after the acceptance
                     nvm.append([scd30_nvm_writes(_scd30_bus(reader)) for reader in _scd30_readers(module)])
-                if module.fram.get_pause() != (step >= "S4"):  # FRAM pauses inside S3's quiesce, before the tasks stop
+                if module.fram.get_pause() != (step > "S3"):  # FRAM pauses at S3, right before the tasks stop
                     wrong.append((step, "FRAM paused" if module.fram.get_pause() else "FRAM not paused"))
                 wrong.extend((step, w) for w in await _every_write_refused(module, word, sequences))
 
@@ -3577,7 +3562,7 @@ def _scenario_system_get_unreadable_store(device: str) -> None:
 def _scenario_status_put_reset_errors(device: str) -> None:
     module = build(device)
     assert module.conn is not None
-    run(module.conn.pr.err_s("simulated", errno=99))
+    module.conn.pr.err_s("simulated", errno=99)
     assert (run(module.conn.get_error_counter()))["WIFI"]["ErrCount"] == 1
     res = _dispatch(module, "PUT", "/status", {"ResetErrors": True})
     assert _strict(res.body)["res"] == "OK"
@@ -3594,7 +3579,7 @@ def _scenario_status_reset_errors_not_undone(device: str) -> None:
     sgp = module.sgp40
     assert sgp is not None
     run(sgp.pr.setup())
-    run(sgp.pr.err_s("simulated", errno=99))
+    sgp.pr.err_s("simulated", errno=99)
     sgp.pr.initialized = False  # what the boot window looks like: bytes on the chip, RAM side not yet set up
 
     res = _dispatch(module, "PUT", "/status", {"ResetErrors": True})
@@ -3659,7 +3644,7 @@ def _scenario_reset_errors_while_storage_is_paused(device: str) -> None:
 
     async def scenario() -> "tuple[list[object], bool, tuple[list[object], list[bytes], list[int]]]":
         for logger in _all_loggers(module):
-            await logger.err_s("seeded", errno=code("E", "INIT"))
+            logger.err_s("seeded", errno=code("E", "INIT"))
         await module.webserver._note_drop(code("W", "HTTP_REFUSED"), "seeded")
         for reader in readers:
             reader._err_cnt_internal = 1

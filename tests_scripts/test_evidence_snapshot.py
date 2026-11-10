@@ -63,6 +63,6 @@ def test_evidence_honours_its_environment_directory_and_never_overwrites(evidenc
 def test_the_raw_fram_dump_script_reads_only() -> None:
     tree = ast.parse((TESTS_HARDWARE / "device_scripts" / "fram_raw_dump.py").read_text(encoding="utf-8"))
     called = {node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
-    forbidden = sorted(called & {"set_values", "set_values_sync", "get_chunk", "write", "set_write_protected", "reset"})
+    forbidden = sorted(called & {"set_values", "get_chunk", "write", "set_write_protected", "reset"})
     assert not forbidden, f"fram_raw_dump.py calls {forbidden} - the evidence read must never write or allocate a chunk"
-    assert "get_values_sync" in called, "the dump no longer reads through the driver's raw read"
+    assert "get_values" in called, "the dump no longer reads through the driver's raw read"

@@ -6,7 +6,6 @@ HEAP_FRAGMENTATION_MEASUREMENTS.md	tests_hardware/combined_load_sweep.py
 SPECIFICATION.md	devices/zz_test_*.toml
 SPECIFICATION.md	devices/zz_test_*.toml
 SPECIFICATION.md	improved-quality/
-SPECIFICATION.md	measure B
 SPECIFICATION.md	src/sensortask_*.py
 SPECIFICATION.md	src/sensortask_*.py
 UART_C_PORT_CHANGELOG.md	WP3

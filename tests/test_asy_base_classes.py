@@ -16,7 +16,6 @@ from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime
 from _fram_builders import make_fram_manager
-from _held_log import held_logger, until, written
 from _recording_print import record_prints
 from _stack_overflow import stack_overflow
 from _ticks30 import TICKS_PERIOD
@@ -57,7 +56,7 @@ if TYPE_CHECKING:
 
     import asy_config_manager as cm
     from asy_base_classes import JsonMapping
-    from asy_crc_checks import CRCBase
+    from crc_checks import CRCBase
 
 
 class _RaisingFramChunk:
@@ -73,12 +72,12 @@ class _RaisingFramChunk:
     def get_buffer(self) -> RegionBuffer:
         return RegionBuffer(6, data_start=0, data_length=6)
 
-    async def read_into(self, buf: RegionBuffer) -> bool:
+    def read_into(self, buf: RegionBuffer) -> bool:
         if self.raise_on_read:
             raise MemoryError("simulated allocation failure")
         return True
 
-    async def write_into(self, buf: RegionBuffer) -> bool:
+    def write_into(self, buf: RegionBuffer) -> bool:
         if self.raise_on_write:
             raise MemoryError("simulated allocation failure")
         return True
@@ -971,7 +970,7 @@ def test_sensorreader_uses_in_memory_logging_when_fram_is_none() -> None:
     assert isinstance(reader.pr, PrintLogHistory)
     assert getattr(reader.pr, "fram", None) is None
     run(reader.setup())
-    run(reader.pr.err_s("e", errno=7))
+    reader.pr.err_s("e", errno=7)
     log = run(reader.pr.get_log())["MEM"]
     assert [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "E"] == [7], log
 
@@ -1054,7 +1053,7 @@ def test_a_failing_cycle_keeps_the_drivers_and_the_streaks_entries() -> None:
     reader = SensorReader(Meas(None, 50), "", max_module_error=1)
     run(reader.setup())
     for _ in range(2):
-        run(reader.pr.err_s("read failed", errno=code("E", "READ")))  # the driver's own entry
+        reader.pr.err_s("read failed", errno=code("E", "READ"))  # the driver's own entry
         run(reader._error_check(Meas(None, 50)))
     log = run(reader.pr.get_log())[reader.pr.name]
     used = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
@@ -1084,7 +1083,7 @@ def test_sensorreader_meas_data_roundtrip() -> None:
 def test_sensorreader_reset_error_counter_clears_history() -> None:
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
     run(reader.setup())
-    run(reader.pr.err_s("boom", errno=code("E", "STREAK")))
+    reader.pr.err_s("boom", errno=code("E", "STREAK"))
     assert reader.pr._err_count == 1
     assert run(reader.reset_error_counter()) is True
     assert reader.pr._err_count == 0
@@ -1164,7 +1163,7 @@ class _LadderReader(SensorReader):
         if isinstance(self._outcome, Exception):
             raise self._outcome
         if self._outcome is False:
-            await self.pr.err_s("participant recovery failed", errno=code("E", "CHIP_SET"))
+            self.pr.err_s("participant recovery failed", errno=code("E", "CHIP_SET"))
         return self._outcome
 
 
@@ -1549,7 +1548,7 @@ class _FailingReadReader(SensorReader):
         if self._store == "raise":
             raise OSError(errno.EIO, "store read failed")
         if self._store == "none":
-            await self.pr.err_s("store read failed", errno=code("E", "CHIP_GET"))
+            self.pr.err_s("store read failed", errno=code("E", "CHIP_GET"))
             return None
         return {"SampleInterval": 7}
 
@@ -1565,7 +1564,7 @@ def test_a_failed_config_read_sends_the_unavailable_marker_in_place_of_the_map()
             if outcome == "raise":
                 raise OSError(errno.EIO, "chip read failed")
             if outcome == "none":
-                await reader.pr.err_s("chip read failed", errno=code("E", "CHIP_GET"))
+                reader.pr.err_s("chip read failed", errno=code("E", "CHIP_GET"))
                 return None
             return {"SampleInterval": 9}
 
@@ -2050,9 +2049,7 @@ def test_sensorreaderconfig_cfgmgr_write_failure_errno_persists_across_a_simulat
         baseline_err_count = reader.cfgmgr.pr._err_count
         assert baseline_err_count == 1
         async def refused() -> "tuple[bool, cm.WriteValidity]":
-            result = await reader.cfgmgr.write_config({"NotARealKey": 1})
-            assert await written(reader.cfgmgr.pr)  # written behind (C.7.1), before the reboot below
-            return result
+            return await reader.cfgmgr.write_config({"NotARealKey": 1})
 
         ok, results = run(refused())
         # An unrecognized key alone never sets changed=True, so write_config's own "nothing to
@@ -3256,26 +3253,6 @@ def _logged_by_a_put(raise_at: str, *, push: str = "ok", getter: bool = False) -
     run(reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
     log = run(reader.pr.get_log())[reader.pr.name]
     return [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "E"]
-
-
-def test_a_put_or_get_that_logs_never_holds_the_set_lock_across_its_entry() -> None:
-    # Each entry's chunk write held: every PUT and GET path that logs ends within rounds with its entries in RAM, so the
-    # module's next config caller never waits on FRAM (SPECIFICATION.md C.8).
-    cases = (("snapshot", "ok", False, True), ("snapshot", "ok", False, False), ("write", "ok", False, False), ("", "raises", False, False), ("", "fails", True, False), ("recovery_write", "fails", False, False))
-    for raise_at, push, getter, is_get in cases:
-        reader = _put_reader(raise_at, push, getter)
-        reader.pr, gate = held_logger(reader.name)
-
-        async def scenario(reader: _RaisingStoreReader = reader, gate: asyncio.Event = gate, is_get: bool = is_get) -> "tuple[bool, int]":
-            call = asyncio.create_task(reader._get_dict_cfg(reader.name, _TEST_SCHEMA_SI) if is_get else reader._set_dict_cfg({"SampleInterval": 42}, _TEST_SCHEMA_SI))
-            ended = await until(call.done) and not reader._set_lock.locked()
-            count = reader.pr._err_count
-            gate.set()
-            await call
-            return ended, count
-
-        ended, count = run(scenario())
-        assert ended and count >= 1, (raise_at, push, getter, is_get, ended, count)
 
 
 def test_a_raising_pre_write_read_is_logged_as_cfg_snapshot_raised() -> None:

@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 
     from typing_extensions import Unpack
 
-    from asy_crc_checks import CRCBase
     from asy_uart_driver import PieceBuffer
+    from crc_checks import CRCBase
 
     T = TypeVar("T")
 

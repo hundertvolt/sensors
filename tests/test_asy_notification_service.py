@@ -27,8 +27,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from asy_config_manager import WriteValidity
-    from asy_crc_checks import CRCBase
     from asy_print_log import ErrorLog
+    from crc_checks import CRCBase
 
 
 _CFG_FAIL_INTERVAL_MS: int = src_int("src/asy_notification_service.py", "_CFG_FAIL_INTERVAL_S") * 1000
@@ -465,14 +465,14 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
         def get_buffer(self) -> RegionBuffer:
             return self._buffer
 
-        async def write_into(self, buf: RegionBuffer) -> bool:
+        def write_into(self, buf: RegionBuffer) -> bool:
             data = buf.get_data_buf()
             if data is None:
                 return False
             self.buf[:] = data
             return True
 
-        async def read_into(self, buf: RegionBuffer) -> bool:
+        def read_into(self, buf: RegionBuffer) -> bool:
             data = buf.get_data_buf()
             if data is None:
                 return False
@@ -499,7 +499,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
     run(service1.setup())
 
     async def scenario1() -> None:
-        await service1.pr.err_s("boom", errno=1)
+        service1.pr.err_s("boom", errno=1)
 
     run(scenario1())
 

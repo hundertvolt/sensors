@@ -24,11 +24,11 @@ from machine import I2C as FakeI2C
 import asy_neopixel_driver
 import asy_notification_service
 from asy_base_classes import ValueRef
-from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService, NotificationSignal
 from asy_scd30_driver import SCD30_Reader
+from crc_checks import CRC8
 
 try:
     from typing import TYPE_CHECKING
@@ -116,7 +116,7 @@ def _tmp_cfg_dir() -> str:
 
 
 def crc8_byte(data: bytes) -> int:
-    added = run(CRC8().add(bytearray(data)))
+    added = CRC8().add(bytearray(data))
     assert added is not None
     return added[-1]
 

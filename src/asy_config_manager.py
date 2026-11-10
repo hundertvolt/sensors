@@ -351,21 +351,21 @@ class ConfigManager:
         for i, value in enumerate(values):
             checked = coerce(value)
             if checked is None:
-                self.pr.err_q(self._config_file, "- stored value has the wrong type:", names[i], errno=_ERR_CONTRACT)
+                self.pr.err_s(self._config_file, "- stored value has the wrong type:", names[i], errno=_ERR_CONTRACT)
                 return None
             typed.append(checked)
         return typed
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[CfgValue] | None":
         if not self.valid:
-            self.pr.err_q(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
+            self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
             return None
         self.pr.all(self._config_file, "- Reading config data into list.")
         try:
             current = self._current()
             return [current[key] for key in schema_names(keys)]
         except KeyError as e:  # unknown key
-            self.pr.err_q(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
+            self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
             return None
 
     def _closed_for_reset(self) -> bool:
@@ -409,10 +409,10 @@ class ConfigManager:
                         if self._staged is staged:  # nothing newer staged while this flush was running
                             self._staged = None
                 if failure is not None:  # logged once the lock is free, so the next write never waits on FRAM
-                    await self.pr.err_s(self._config_file, "- Error writing config data, running unpersisted:", failure, errno=_ERR_CFG_FILE_WRITE)
+                    self.pr.err_s(self._config_file, "- Error writing config data, running unpersisted:", failure, errno=_ERR_CFG_FILE_WRITE)
             except Exception as e:  # an unsupervised task's top: its end is persisted, never left unretrieved
                 self.unpersisted = True  # the finally above already made the unwritten snapshot the cache
-                await self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)
+                self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)
         finally:
             if self._pending_flush is asyncio.current_task():
                 self._pending_flush = None
@@ -432,14 +432,14 @@ class ConfigManager:
         # (read-your-write). No lock needed: neither write_config() nor _flush_staged() awaits
         # mid-mutation of the field this reads, so no partial state is observable.
         if not self.valid:
-            self.pr.err_q(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
+            self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
             return None
         self.pr.all(self._config_file, "- Reading config data into dict.")
         try:
             current = self._current()
             return {key: current[key] for key in keys}
         except KeyError as e:  # unknown key
-            self.pr.err_q(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
+            self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
             return None
 
     async def get_error_counter(self) -> "ErrorLog":
@@ -510,24 +510,24 @@ class ConfigManager:
                         if not isinstance(data, dict):  # generally valid json but not a dict
                             data = None
                             damaged = True
-                            await self.pr.wrn_s("Data in config file", self._config_file, "has wrong format.", wrnno=_WRN_CFG_FILE_NOT_OBJECT)
+                            self.pr.wrn_s("Data in config file", self._config_file, "has wrong format.", wrnno=_WRN_CFG_FILE_NOT_OBJECT)
                     except ValueError as e:  # malformed json
                         damaged = True
-                        await self.pr.wrn_s("JSON Data in config file", self._config_file, "is invalid:", e, wrnno=_WRN_CFG_FILE_JSON)
+                        self.pr.wrn_s("JSON Data in config file", self._config_file, "is invalid:", e, wrnno=_WRN_CFG_FILE_JSON)
             else:  # filename exists but is a directory and cannot be used: a file fault
                 self.faulted = True
-                await self.pr.err_s(self._config_file, "exists but is not a file, cannot write!", errno=_ERR_CFG_PATH_IS_DIR)
+                self.pr.err_s(self._config_file, "exists but is not a file, cannot write!", errno=_ERR_CFG_PATH_IS_DIR)
                 return
         except (MemoryError, OSError) as e:  # absent, or unreadable (an I/O error, json.load() exhausting the heap)
             absent = e if isinstance(e, OSError) and e.errno == errno.ENOENT else None
             if absent is None:
                 self.writable = False
                 self.faulted = True
-                await self.pr.wrn_s("Config file", self._config_file, "could not be read:", e, wrnno=_WRN_CFG_FILE_UNREADABLE)
+                self.pr.wrn_s("Config file", self._config_file, "could not be read:", e, wrnno=_WRN_CFG_FILE_UNREADABLE)
 
         defaults = schema_dict(self._cfg_vals)
         if len(defaults) == 0:  # default config contains no values
-            await self.pr.err_s(self._config_file, "- Defaults are empty, config is not valid!", errno=_ERR_CFG_NO_DEFAULTS)
+            self.pr.err_s(self._config_file, "- Defaults are empty, config is not valid!", errno=_ERR_CFG_NO_DEFAULTS)
             return
 
         rewrite = absent is not None or damaged  # an absent file is written once, an unparseable or non-object one repaired
@@ -535,7 +535,7 @@ class ConfigManager:
         for key, field in defaults.items():  # iterate through default config
             use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
             if default_val is None:  # invalid config, no default or special-alone value
-                await self.pr.err_s(self._config_file, "- Default Key", key, "Error or None, config is not valid!", errno=_ERR_CFG_BAD_DEFAULT)
+                self.pr.err_s(self._config_file, "- Default Key", key, "Error or None, config is not valid!", errno=_ERR_CFG_BAD_DEFAULT)
                 return
             if not use_value:  # special-alone value
                 continue  # not used for storage, skip loop iteration
@@ -550,7 +550,7 @@ class ConfigManager:
                     rewrite = True
                     damaged = damaged or stored
                     new_cfg = default_val
-                    await self.pr.wrn_s(self._config_file, "- Key", key, "has error or is missing, using default!", wrnno=_WRN_STORED_DEFAULT)
+                    self.pr.wrn_s(self._config_file, "- Key", key, "has error or is missing, using default!", wrnno=_WRN_STORED_DEFAULT)
                 else:
                     if type(coerced_cfg) is not type(new_cfg):  # e.g. a hand-edited file's "5" for a
                         rewrite = True  # float field - persist the coerced shape back to disk too.
@@ -560,14 +560,14 @@ class ConfigManager:
             valid_cfg[key] = new_cfg
         if data:  # unexpected keys remaining from a readable file: schema drift, repaired, not a fault
             rewrite = True
-            await self.pr.wrn_s(self._config_file, "- Removed invalid keys from config file!", wrnno=_WRN_CFG_KEYS_REMOVED)
+            self.pr.wrn_s(self._config_file, "- Removed invalid keys from config file!", wrnno=_WRN_CFG_KEYS_REMOVED)
         self.faulted = self.faulted or damaged
 
         if not (valid_cfg and self.writable and rewrite):  # a command-only schema (no values) creates no file
             self.pr.one(self._config_file, "- config is ready, nothing to write" if valid_cfg else "- schema stores no values, no file")
         else:  # this boot's one write: the defaults of an absent file, or the repair of a readable one
             if absent is not None:  # persisted where its defaults are written; a command-only schema's absence only prints
-                await self.pr.wrn_s("Config file", self._config_file, "not found:", absent, wrnno=_WRN_CFG_FILE_UNREADABLE)
+                self.pr.wrn_s("Config file", self._config_file, "not found:", absent, wrnno=_WRN_CFG_FILE_UNREADABLE)
             self.pr.one(self._config_file, "- Writing configuration file!")
             try:
                 text = json.dumps(valid_cfg)  # serialised before the open: a failure leaves the file intact
@@ -576,7 +576,7 @@ class ConfigManager:
                 self.pr.one("Default data was written in", self._config_file, "- config is ready.")
             except (MemoryError, OSError) as e:  # One attempt per setup(), never retried (C.7.3).
                 self.unpersisted = True
-                await self.pr.err_s("Error writing config", self._config_file, "- running unpersisted:", e, errno=_ERR_CFG_FILE_WRITE)
+                self.pr.err_s("Error writing config", self._config_file, "- running unpersisted:", e, errno=_ERR_CFG_FILE_WRITE)
         # valid_cfg is validated either way: a failed write costs persistence, never the config -
         # refusing it ended every reader's task and looped the device through reboots (C.7.3).
         self._cache = valid_cfg
@@ -589,7 +589,7 @@ class ConfigManager:
         if self._closed_for_reset():
             return False, {}
         if not self.valid:
-            self.pr.err_q(self._config_file, "- Config is not valid, cannot write!", errno=_ERR_CFG_NOT_VALID)
+            self.pr.err_s(self._config_file, "- Config is not valid, cannot write!", errno=_ERR_CFG_NOT_VALID)
             return False, {}
         if not self.writable:
             self.pr.evt(self._config_file, "- unreadable at boot, writes refused until the next boot")
@@ -604,10 +604,10 @@ class ConfigManager:
                 resolution: dict[str, Callable[[CfgValue], CfgValue]] = {key: _stored_float for key, field in fields.items() if field[1] == "float"}
                 outcome = compare_before_write(data, self._cfg_vals, self._current(), always=always, resolution=resolution)
             except MemoryError as e:  # the compare exhausting the heap - no file I/O happens in this method
-                self.pr.err_q(self._config_file, "- Error validating config data:", e, errno=_ERR_ALLOC)
+                self.pr.err_s(self._config_file, "- Error validating config data:", e, errno=_ERR_ALLOC)
                 return False, {}
             if outcome is None:
-                self.pr.err_q(self._config_file, "- write data is not an object", errno=_ERR_BAD_ARG)
+                self.pr.err_s(self._config_file, "- write data is not an object", errno=_ERR_BAD_ARG)
                 return False, {}
             write, dict_results = outcome
             # No bad-default check: the manager's own schema passed setup()'s self-check, and a malformed
@@ -615,11 +615,11 @@ class ConfigManager:
             for key, result in dict_results.items():
                 if result == INVALID:
                     if key not in fields:
-                        self.pr.err_q(self._config_file, "- Key", key, "not found, skipping!", errno=_ERR_BAD_ARG)
+                        self.pr.err_s(self._config_file, "- Key", key, "not found, skipping!", errno=_ERR_BAD_ARG)
                     else:
-                        self.pr.err_q(self._config_file, "- Type / range error in", key, "- skipping!", errno=_ERR_BAD_ARG)
+                        self.pr.err_s(self._config_file, "- Type / range error in", key, "- skipping!", errno=_ERR_BAD_ARG)
                 elif result == FAILED:
-                    self.pr.err_q(self._config_file, "- Key", key, "not found in config file, ignoring!", errno=_ERR_CONTRACT)
+                    self.pr.err_s(self._config_file, "- Key", key, "not found in config file, ignoring!", errno=_ERR_CONTRACT)
                 elif key in always:
                     del write[key]  # "Valid", nothing staged: the push stage dispatches it
                     self.pr.evt(self._config_file, "- Key", key, "is valid but not in storage, skipping.")
@@ -635,7 +635,7 @@ class ConfigManager:
                     new_cache[key] = _stored_float(value) if type(value) is float else value
                 task = asyncio.create_task(self._flush_staged(new_cache))
             except MemoryError as e:  # nothing staged: the answer matches what is served
-                self.pr.err_q(self._config_file, "- Error staging config data:", e, errno=_ERR_ALLOC)
+                self.pr.err_s(self._config_file, "- Error staging config data:", e, errno=_ERR_ALLOC)
                 return False, {}
             # No await from here to the return: the task cannot run before it is staged, and a deferred one
             # then waits for commit(); _cache stays "what the file holds" until _flush_staged() commits it.

@@ -20,11 +20,11 @@ from rp2 import DMA
 import asy_base_classes
 import asy_uart_driver
 from asy_base_classes import COUNTER_CAP
-from asy_crc_checks import CRC16, CRCBase, CRCPass
 from asy_framing_codecs import COBS_DELIMITER, FramingBase, FramingCOBS, FramingPass
 from asy_print_log import PrintLog, PrintLogHistory
 from asy_uart_comm import UARTComm
 from asy_uart_driver import UART
+from crc_checks import CRC16, CRCBase, CRCPass
 
 try:
     from typing import TYPE_CHECKING
@@ -1042,7 +1042,7 @@ def test_cancelling_a_session_at_each_await_releases_the_lock() -> None:
 
     async def build() -> UART:
         uart = _make_uart(crc=CRC16())
-        framed = await uart.crc.add(frame)
+        framed = uart.crc.add(frame)
         assert framed is not None
         fake(uart).feed_rx(bytes(framed))
         fake(uart).tx_pending_rounds = 2  # the write waits out two rounds of a busy TX ring
@@ -1235,7 +1235,7 @@ def test_read_until_complete_default_crc_is_pass_through() -> None:
 
 def test_read_until_complete_strips_and_verifies_real_crc() -> None:
     uart = _make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"hello"))
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
 
@@ -1248,7 +1248,7 @@ def test_read_until_complete_strips_and_verifies_real_crc() -> None:
 
 def test_read_until_complete_bad_crc_returns_none() -> None:
     uart = _make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"hello"))
     assert framed is not None
     framed[-1] ^= 0xFF  # corrupt the trailing CRC byte
     fake(uart).feed_rx(bytes(framed))
@@ -1273,7 +1273,7 @@ def test_readinto_until_complete_nbytes_too_large_for_buffer_returns_none() -> N
 
 def test_readinto_until_complete_fills_buffer_and_strips_crc() -> None:
     uart = _make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"world")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"world"))
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
     buf = bytearray(16)
@@ -1469,7 +1469,7 @@ def test_write_frames_with_configured_crc() -> None:
     assert op == "write"
     assert framed[:5] == b"hello"
     assert len(framed) == 5 + CRC16().length()
-    assert run(CRC16().check(bytearray(framed)), _RUN_BOUND_S) == bytearray(b"hello")
+    assert CRC16().check(bytearray(framed)) == bytearray(b"hello")
 
 
 def test_write_can_be_cancelled_while_waiting_for_tx_ready() -> None:
@@ -1720,7 +1720,7 @@ def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
 
 
 # ---------------------------------------------------------------------------
-# asy_crc_checks.py integration - real CRCBase subclasses (not mocked), plus
+# crc_checks.py integration - real CRCBase subclasses (not mocked), plus
 # MemoryError fault injection at the guarded call sites (module docstring's
 # "MemoryError guarding" section)
 # ---------------------------------------------------------------------------
@@ -1737,10 +1737,10 @@ class _MemoryErrorCRC:
     def length(self) -> int:
         return self._real.length()
 
-    async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # both called positionally
+    def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # both called positionally
         raise self._err
 
-    async def check(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:
+    def check(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:
         raise self._err
 
 
@@ -1766,7 +1766,7 @@ class _NoneCRC:
     def length(self) -> int:
         return 0
 
-    async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # called positionally
+    def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # called positionally
         return None
 
 
@@ -1784,7 +1784,7 @@ def test_write_returns_false_when_crc_add_returns_none() -> None:
 
 def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
     uart = _logged(_make_uart(crc=CRC16()))
-    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"hello"))
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
     err = MemoryError("injected for the CRC check")  # worded clear of the memory gates' markers
@@ -2805,7 +2805,7 @@ def test_a_start_timeout_counts_nothing() -> None:
 
 
 def test_a_crc_failure_counts_the_whole_frame() -> None:
-    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"hello"))
     assert framed is not None
     framed[-1] ^= 0xFF
     for read in _counted_reads(5):
@@ -2829,7 +2829,7 @@ def test_a_cobs_decode_failure_counts_the_consumed_bytes() -> None:
 def test_a_good_frame_counts_nothing() -> None:
     for read in (locked_read_until_complete, locked_readinto_until_complete):
         uart = _make_uart(crc=CRC16())
-        framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+        framed = CRC16().add(bytearray(b"hello"))
         assert framed is not None
         fake(uart).feed_rx(bytes(framed))
         if read is locked_read_until_complete:

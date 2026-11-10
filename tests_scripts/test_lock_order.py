@@ -306,7 +306,7 @@ def test_every_acquisition_in_src_resolves_to_a_row() -> None:
             for fn in cls.body if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
             for node in ast.walk(fn) if isinstance(node, ast.AsyncWith)
             for item in node.items if (row := resolver.resolve(item.context_expr, cls.name, {})) is not None}
-    assert {"_FRAMBaseChunk._op_lock", "Lockable.session_lock", "I2C.bus_lock, SPI.bus_lock", "FRAM_SPI._bus_lock"} <= seen, seen
+    assert {"Lockable.session_lock", "I2C.bus_lock, SPI.bus_lock"} <= seen, seen
 
 
 def test_a_lower_level_taken_before_a_higher_one_fails(src_copy: Path) -> None:
@@ -341,13 +341,12 @@ def test_an_unlevelled_row_nested_with_another_fails(src_copy: Path) -> None:
 
 
 def test_an_acquire_call_holds_until_its_release(src_copy: Path) -> None:
-    planted = "\n\nasync def _planted(f):\n    await f._bus_lock.acquire()\n    f._bus_lock.release()\n    await f.session_lock.acquire()\n    async with f._bus_lock:\n        await f._op_lock.acquire()\n"
-    _append(src_copy, "asy_fram_driver.py", planted)
+    planted = "\n\nasync def _planted(f):\n    await f.bus_lock.acquire()\n    f.bus_lock.release()\n    async with f.session_lock:\n        pass\n    await f.bus_lock.acquire()\n    async with f.session_lock:\n        pass\n"
+    _append(src_copy, "asy_spi_driver.py", planted)
     findings = all_findings(src_copy, _spec())
-    # The released bus lock is not held at the session acquire; both locks held at the _op_lock acquire are.
-    assert sorted(f.split(": ", 1)[1] for f in findings) == [
-        "_FRAMBaseChunk._op_lock level 3 taken while holding level 1 (FRAM_SPI._bus_lock): a higher level comes first",
-        "_FRAMBaseChunk._op_lock level 3 taken while holding level 2 (Lockable.session_lock): a higher level comes first",
+    # The released bus lock is not held at the first session acquire; the one acquired again is at the second.
+    assert [f.split(": ", 1)[1] for f in findings] == [
+        "Lockable.session_lock level 2 taken while holding level 1 (I2C.bus_lock, SPI.bus_lock): a higher level comes first",
     ], findings
 
 

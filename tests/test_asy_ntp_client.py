@@ -18,7 +18,6 @@ from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
 from _fake_time import DrivenTime, ManualTick, tick
 from _fram_builders import make_fram_manager
-from _held_log import held_logger, until
 from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _ntp_responder import NtpResponder
 from _port_bands import PortAllocator
@@ -502,31 +501,6 @@ def _twice_one_slot(client: NTPClient, make_call: "Callable[[], Coroutine[object
 # ---------------------------------------------------------------------------
 
 
-def test_a_sync_attempt_that_logs_never_holds_wifi_mode_lock_across_its_entries() -> None:
-    # A raising network check, and an unreadable config store: each entry's chunk write held, the attempt ends within
-    # rounds with its entries in RAM, so the radio's other users never wait on FRAM behind it (SPECIFICATION.md C.8).
-    def raising() -> bool:
-        raise RuntimeError("injected network check")
-
-    for client in (_make_client(network_available_locked=raising), _make_invalid_cfg_client()):
-        client.pr, gate = held_logger(client.name)
-        client.cfgmgr.pr, store_gate = held_logger(client.cfgmgr.pr.name)
-        finished = _counted(client)
-
-        async def scenario(client: NTPClient = client, finished: asyncio.Event = finished) -> "tuple[bool, int]":
-            loop = asyncio.create_task(client._sync_loop())
-            client._ntp_sync_trigger_event.set()
-            ended = await until(finished.is_set) and not client.wifi_mode_lock.locked()
-            count = client.pr._err_count + client.cfgmgr.pr._err_count
-            await cancel(loop)
-            return ended, count
-
-        ended, count = run(scenario())
-        gate.set()
-        store_gate.set()
-        assert ended and count >= 1, (client.name, ended, count)
-
-
 def test_init_never_synced_before_first_task_run() -> None:
     client = _make_client()
     assert run(client.ntp_issynced()) is False
@@ -621,7 +595,7 @@ def test_fram_given_logs_into_the_fram_chunk() -> None:
     assert manager.initialized is True
     client = _make_client(log=LogConfig(manager, 10, None))
     assert isinstance(client.pr, PrintLogHistoryStore)
-    run(client.pr.err_s("probe", errno=code("E", "CALLBACK")))
+    client.pr.err_s("probe", errno=code("E", "CALLBACK"))
     rebooted, _ = make_fram_manager(chip=chip)
     run(rebooted.setup())
     assert rebooted.initialized is True
@@ -723,7 +697,7 @@ def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
     client = _make_client()
     counter = run(client.get_error_counter())
     assert counter["NTP"]["ErrCount"] == 0
-    run(client.pr.err_s("boom", errno=1))
+    client.pr.err_s("boom", errno=1)
     counter = run(client.get_error_counter())
     assert counter["NTP"]["ErrCount"] == 1
 
@@ -733,15 +707,15 @@ def test_get_error_counter_counts_a_warning_too() -> None:
     # test_asy_print_log.py's own get_log() tests use; history_length defaults to 10 (_make_client()
     # doesn't override it), so 9 untouched "N"/0 slots precede the one real warning.
     client = _make_client()
-    run(client.pr.wrn_s("careful", wrnno=1))
+    client.pr.wrn_s("careful", wrnno=1)
     counter = run(client.get_error_counter())
     assert counter == {"NTP": {"ErrCount": 1, "ErrNum": [0] * 9 + [1], "ErrType": ["N"] * 9 + ["W"]}}
 
 
 def test_get_error_counter_records_multiple_entries_in_order() -> None:
     client = _make_client()
-    run(client.pr.err_s("first error", errno=1))
-    run(client.pr.wrn_s("first warning", wrnno=2))
+    client.pr.err_s("first error", errno=1)
+    client.pr.wrn_s("first warning", wrnno=2)
     counter = run(client.get_error_counter())
     assert counter == {"NTP": {"ErrCount": 2, "ErrNum": [0] * 8 + [1, 2], "ErrType": ["N"] * 8 + ["E", "W"]}}
 
@@ -2496,7 +2470,7 @@ def test_asy_ntp_time_alternating_failure_codes_spend_a_slot_each_and_count_ever
     expected = list(codes)
 
     async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
-        await client.pr.err_s("failed", errno=codes.pop(0))
+        client.pr.err_s("failed", errno=codes.pop(0))
         return None, True
 
     client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
@@ -2509,12 +2483,12 @@ def test_a_recurring_code_after_a_success_keeps_one_slot() -> None:
     no_reply, unsync = code("E", "NTP_NO_REPLY"), code("W", "NTP_UNSYNC_REPLY")
 
     async def scenario() -> None:
-        await client.pr.err_s("no reply", errno=no_reply)
-        await client.pr.err_s("no reply", errno=no_reply)
+        client.pr.err_s("no reply", errno=no_reply)
+        client.pr.err_s("no reply", errno=no_reply)
         await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
-        await client.pr.err_s("no reply", errno=no_reply)
-        await client.pr.wrn_s("kiss of death", wrnno=unsync)
-        await client.pr.wrn_s("kiss of death", wrnno=unsync)
+        client.pr.err_s("no reply", errno=no_reply)
+        client.pr.wrn_s("kiss of death", wrnno=unsync)
+        client.pr.wrn_s("kiss of death", wrnno=unsync)
 
     run(scenario())
     log = run(client.get_error_counter())["NTP"]
@@ -2860,8 +2834,8 @@ def test_an_error_and_a_warning_with_the_same_number_are_different_codes() -> No
     n = code("W", "NTP_UNSYNC_REPLY")
 
     async def scenario() -> "list[str]":
-        await client.pr.err_s("an error numbered n", errno=n)
-        await client.pr.wrn_s("a warning numbered n", wrnno=n)
+        client.pr.err_s("an error numbered n", errno=n)
+        client.pr.wrn_s("a warning numbered n", wrnno=n)
         types = (await client.get_error_counter())["NTP"]["ErrType"]
         assert isinstance(types, list)
         return types[-2:]
@@ -2877,8 +2851,8 @@ def test_distinct_codes_each_keep_a_slot() -> None:
 
     async def scenario() -> None:
         for num in errors:
-            await client.pr.err_s("failed", errno=num)
-        await client.pr.wrn_s("rejected", wrnno=warning)
+            client.pr.err_s("failed", errno=num)
+        client.pr.wrn_s("rejected", wrnno=warning)
 
     run(scenario())
     assert _slots(client) == (7, errors + [warning])

@@ -55,8 +55,7 @@ async def _main() -> None:
         return
     seeded = []
     for addr, pattern in ((_GUARD_BEFORE_ADDR, _GUARD_BEFORE_PATTERN), (_TARGET_ADDR, _ORIGINAL_TARGET_PATTERN), (_GUARD_AFTER_ADDR, _GUARD_AFTER_PATTERN)):
-        async with fram:
-            seeded.append(await fram.set_values(pattern, addr_start=addr))
+        seeded.append(fram.set_values(pattern, addr_start=addr))
     fact("seeded", seeded)
     fact("system_task_exceptions", raised_in_tasks)
     wdt.feed()
@@ -74,8 +73,7 @@ async def _main() -> None:
         original_write_sync(buf)
 
     async def victim_writer() -> None:
-        async with fram:
-            await fram.set_values(_NEW_TARGET_PATTERN, addr_start=_TARGET_ADDR)
+        fram.set_values(_NEW_TARGET_PATTERN, addr_start=_TARGET_ADDR)
 
     print(_BANNER)
     spidev.write_sync = resetting_write_sync  # type: ignore[method-assign]

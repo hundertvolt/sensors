@@ -76,7 +76,7 @@ async def _loads(sysfunct: "SystemService", counts: "list[int]", stop: "list[boo
     bus: I2C = getattr(device, target["bus"])
     buf = bytearray(1)
     while not stop[0]:  # set once the reset is armed: the paused chunk layer refuses every write after it
-        await sysfunct.pr.err_s("load", errno=_SEED[counts[0] % 2])
+        sysfunct.pr.err_s("load", errno=_SEED[counts[0] % 2])
         counts[0] += 1
         try:
             async with bus.bus_lock:
@@ -161,14 +161,14 @@ async def _refusals(webserver: "WebserverService", fram: "FRAMManager") -> None:
     for word in _NEAR_MISSES:  # one at a time: MicroPython has no await inside a comprehension
         answers.append([repr(word), await webserver._dispatch_system_cmd(word)])
     fact("near_misses", answers)
-    fact("protect", await fram.fram.set_write_protected(value=True))
+    fact("protect", fram.fram.set_write_protected(value=True))
     try:
         fact("protected_answer", await webserver._dispatch_system_cmd("erasefram"))
         for _ in range(_REFUSAL_WAIT_MS // _WAIT_STEP_MS):  # unfed by the script: the supervisor's feed carries it
             await asyncio.sleep_ms(_WAIT_STEP_MS)
         fact("survived_unfed_ms", _REFUSAL_WAIT_MS)
     finally:
-        fact("unprotect", await fram.fram.set_write_protected(value=False))
+        fact("unprotect", fram.fram.set_write_protected(value=False))
 
 
 async def _seed(sysfunct: "SystemService", wdt: machine.WDT) -> None:
@@ -177,9 +177,9 @@ async def _seed(sysfunct: "SystemService", wdt: machine.WDT) -> None:
     loggers = [logger for label in BENCH["fram_wired"] for logger in getattr(device, label).get_loggers() if getattr(logger, "fram", None) is not None]
     for logger in loggers:
         wdt.feed()
-        await logger.err_s("seed", errno=E_TEST_SEED_A)
-        await logger.err_s("seed", errno=E_TEST_SEED_B)
-        await logger.err_s("seed", errno=E_TEST_SEED_C)
+        logger.err_s("seed", errno=E_TEST_SEED_A)
+        logger.err_s("seed", errno=E_TEST_SEED_B)
+        logger.err_s("seed", errno=E_TEST_SEED_C)
     fact("seeded", sorted(logger.name for logger in loggers))
     fact("seeded_system", (await sysfunct.get_error_counter())["SYSTEM"])
 

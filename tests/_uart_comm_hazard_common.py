@@ -4,7 +4,7 @@ in both, imported by test_uart_comm_hazard.py and test_uart_comm_cancel_sweep.py
 from _async_harness import run
 from _uart_comm_harness import RUN_LIMIT_S, Pair, PollRoundClock, accept_set, echo_get
 
-from asy_crc_checks import CRC16
+from crc_checks import CRC16
 
 try:
     from typing import TYPE_CHECKING
@@ -14,7 +14,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from asy_crc_checks import CRCBase
+    from crc_checks import CRCBase
 
     # None means "no CRC on the bus"; otherwise a zero-argument factory, called once per end. A factory, not
     # an instance, CRCBase carrying state the two ends must not share. Not type[CRCBase], which would
