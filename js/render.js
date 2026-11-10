@@ -676,9 +676,9 @@ export function renderSection(defs, section, mainEl, context = {}) {
             if ("kind" in group && group.kind === "errcount") {
                 const errcount = isRecord(statusBody) && isRecord(statusBody.errcount) ? statusBody.errcount : null;
                 if (existing instanceof HTMLElement) {
-                    updateErrcountGroup(existing, group, errcount);
+                    updateErrcountGroup(existing, group, errcount, defs.errcountCodes);
                 } else {
-                    grid.appendChild(buildErrcountGroup(group, errcount));
+                    grid.appendChild(buildErrcountGroup(group, errcount, defs.errcountCodes));
                 }
                 continue;
             }

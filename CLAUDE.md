@@ -361,7 +361,8 @@ Three standing practices:
   caught-and-logged included, and no `gc.collect()` or other nonstandard `gc` setting propping it up,
   *before* it runs again at the project's `gc.threshold(32768)` (set once by the boot entry, checked),
   which it must also pass: `scripts/test.sh` is the (e) stage, `GC_THRESHOLD=32768 scripts/test.sh`
-  the (f) stage, plus CI's `unit-tests` and `unit-tests-gc-threshold`. The threshold is defence in
+  the (f) stage over every MicroPython file (the host `tests_scripts/` tier, which reads no threshold,
+  runs once, in the (e) stage), plus CI's `unit-tests` and `unit-tests-gc-threshold`. The threshold is defence in
   depth on an already-safe design, kept because on silicon it carries the boot placement gain into
   the run phase, and never the fix for a memory-pressure issue: that is relieved at the design level
   (chunking, reused buffers, streaming — a REST GET whose answer grows with configuration streams
@@ -369,11 +370,10 @@ Three standing practices:
   allocation failed`** — `src/` logs `str(e)`, so a caught allocation failure never names the class;
   no gate narrows back to the class name or to failing files only (a degrade-and-pass is the case the
   bar is about), and an injection a test makes on purpose is worded clear of both markers.
-  **One structural exception (owner, 2026-09-18): the boot-confined placement reset** —
-  `gc.collect()` between the units of `SystemService`'s two one-time lists (`run_setups()` and
-  `start_tasks()`'s starter loop) and nowhere else in the firmware: placement discipline for the
-  survivors those lists create, not a threshold and not a fix for a failing allocation. **Outside
-  the firmware** — tests, the twin, device scripts and tools — `gc.collect()` sets a baseline for a
+  **The firmware calls no `gc.collect()`**: the survivors of `SystemService`'s two one-time lists
+  (`run_setups()` and `start_tasks()`'s starter loop) land low without one since the FRAM path
+  became synchronous (SPECIFICATION.md I.4(f.1)); the bench re-checks that placement on silicon.
+  **Outside the firmware** — tests, the twin, device scripts and tools — `gc.collect()` sets a baseline for a
   memory measurement or keeps an automatic collection out of a timing window about to be measured,
   nothing else: never inside a timed window or a watchdog-sensitive stretch, never as a recovery
   step, never to keep a test green (owner, 2026-09-26 and 2026-09-29, the rule a paraphrase; asked,
@@ -389,7 +389,7 @@ Three standing practices:
   `scripts/_check_gc_collect_sites.py` (run by `scripts/lint.sh`) names every allowed site, a
   `gc.threshold()` set, `gc.disable()` and `gc.enable()` included. The gates and their agreement
   check, the measured placement gain and the allocation-site catalog: SPECIFICATION.md Part I (I.4
-  the standing scheme, I.4(e) the markers, I.4(f.1) the reset).
+  the standing scheme, I.4(e) the markers, I.4(f.1) boot placement).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
   per-module error logs (`GET /status`'s `errcount`, its FRAM-backed subset)
   BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (owner,
@@ -452,6 +452,17 @@ Three standing practices:
   missing files, headings or numbered decisions (existing text allow-listed until rewritten; the
   list only shrinks). No owner trace never means the owner did not decide; the most recent owner
   decision wins (owner, 2026-09-26: 'in case of changes by myself take my most recent decision').
+  A decision also names the facts it rests on; when one is shown false, the decision goes back to
+  its maker with the new facts, neither kept nor overridden silently. A measurement names its
+  condition (idle or loaded, which case, silicon or Unix port), and a budget row names its real
+  consumers, read from the code (agent, 2026-11-07).
+- **An owner question comes after the principles are checked at every level; what they leave
+  genuinely open is flagged to the owner, never guessed** (owner, 2026-11-07:
+  "check the whole situation against our pillars, which you should already have done before even
+  asking me"): its subject is checked against SPECIFICATION.md Parts 0 and D at each level 0.1
+  names, and what that check answers is not asked; a cost in it carries its context — the lock or
+  bus it holds, under which load, who waits meanwhile (D.8) — never an isolated figure
+  (agent, 2026-11-07).
 - **Every file opens with exactly one header comment block, and every comment block — header or
   inline — keeps to three prose lines, prefer fewer** (owner, 2026-09-14, re-confirmed 2026-09-18;
   every file of every language, owner, 2026-09-26): a concise header and a few short, genuinely
@@ -621,8 +632,8 @@ Three standing practices:
   `setup`, cached under `$PICO_TOOLCHAIN_DIR`, and runs each `tests/test_*.py` file in its own
   process with `tests/microtest.py` as the runner (E.3). The host-side build chain (`scripts/`,
   `toolchain/`, `buildgen/`) and `tests_hardware/`'s host code are CPython, tested by
-  `tests_scripts/` under pytest, which `scripts/test.sh` launches first and backgrounds (E.1), and
-  linted and type-checked like everything else (owner, 2026-09-10, `fc6afbe`: 'add all build
+  `tests_scripts/` under pytest, which `scripts/test.sh` launches first and backgrounds at the reactive
+  default (E.1), and linted and type-checked like everything else (owner, 2026-09-10, `fc6afbe`: 'add all build
   scripts to the full CI'), through `host_typecheck.ini`'s pass. `pyproject.toml`'s per-file block
   lists every ruff exemption with its reason, MicroPython-run and host code each in their own group
   (SPECIFICATION.md Part D.6); `tests_scripts/test_ruff_exemptions_live.py` fails on an entry that no
@@ -663,7 +674,7 @@ Three standing practices:
   implies success-gating, which was never chosen here (that job's own comment says the sequencing
   "isn't required" for the hang) and would let a red `lint-and-typecheck` silently skip every Python
   test lane, hiding that the tests never ran. Keep the sequencing; never restore the gating.
-  `digital-twin-e2e`, `unit-tests-coverage`, `web-put-matrix`, `web-coverage` and
+  `digital-twin-e2e`, `unit-tests-coverage`, `web-put-matrix` and
   `web-cross-browser-smoke` stay success-gated, each job's comment stating why;
   `tests_scripts/test_ci_workflow.py` fails on an edge that has neither.
 - **Known hang cause: any test double for `uart.poller`, or an equivalent fake-stream object, is a
@@ -723,7 +734,7 @@ Three standing practices:
   it as either. A per-port lock enforces it (`scripts/_port_lock.sh`, `tests_js/_port_lock.js`): an
   unrelated second suite fails at once with `port <port> is held by <runner> (pid <pid>) - run the
   suites one after the other (CLAUDE.md)`. Which runner holds which port, the owner chain and the
-  lock directory: SPECIFICATION.md Part E.1. `scripts/test.sh`'s own backgrounded `tests_scripts/`
+  lock file: SPECIFICATION.md Part E.1. `scripts/test.sh`'s own backgrounded `tests_scripts/`
   tier overlaps it safely: its HTTP ports are ephemeral, and a booted twin's captive DNS on 53
   degrades to "not connected" rather than failing the boot.
 - **Tuned values carry `@tunable` and a Part N row, both changed in the same change** (owner,

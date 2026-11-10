@@ -14,9 +14,9 @@ from _uart_comm_hazard_common import _EXCHANGE_LIMIT_S, _PAYLOAD, _STEP_BOUND_S,
 
 import asy_uart_comm
 import asy_uart_driver
-from asy_crc_checks import CRC16
 from asy_print_log import DEFAULT_LOG, LogConfig
 from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UARTComm
+from crc_checks import CRC16
 
 try:
     from typing import TYPE_CHECKING
@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     from _uart_comm_hazard_common import CrcMaker
     from machine import _LinkDirection as Direction  # one direction of the crossover link
 
-    from asy_base_classes import PieceBuffer
     from asy_uart_comm import ListenResult
+    from asy_uart_driver import PieceBuffer
 
 _FRAME = 5 + _PAYLOAD
 
@@ -914,7 +914,7 @@ def _check_the_crc_appears_on_the_wire_big_endian_after_the_payload(crc: "CrcMak
     assert len(wire) >= wire_frame(crc)
     first = wire[:wire_frame(crc)]
     body, tail = first[:-width], first[-width:]
-    expected = run(crc().add(bytearray(body)), RUN_LIMIT_S)
+    expected = crc().add(bytearray(body))
     assert expected is not None
     assert bytes(tail) == bytes(expected[-width:]), (
         f"the CRC on the wire is not what this CRC produces for that body: {bytes(tail)!r}"
@@ -1321,8 +1321,8 @@ async def _yield_like_one_transaction(pair: Pair) -> None:
         return
     scratch = bytearray(_FRAME + width)
     for _ in range(8):
-        await crc.add_into(scratch, _FRAME)
-        await crc.check_from(scratch, size=_FRAME + width)
+        crc.add_into(scratch, _FRAME)
+        crc.check_from(scratch, size=_FRAME + width)
 
 
 def errnos(comm: UARTComm) -> "list[int]":
@@ -1369,7 +1369,7 @@ def raw_frame(
     frame[_POS : _POS + len(payload)] = payload
     if crc is None:
         return bytes(frame)
-    framed = run(crc().add(frame), RUN_LIMIT_S)
+    framed = crc().add(frame)
     assert framed is not None
     return bytes(framed)
 

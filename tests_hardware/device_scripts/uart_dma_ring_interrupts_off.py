@@ -14,8 +14,8 @@ from machine import UART, Pin
 
 import asy_config_manager as cm
 import asy_uart_driver
-from asy_crc_checks import CRC16
 from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
+from crc_checks import CRC16
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -144,12 +144,12 @@ class _Sender:
             frame[0] = i & 0xFF
             for j in range(1, FRAME):
                 frame[j] = (i + j) & 0xFF
-            framed = frame if crc is None else await crc.add(frame)
+            framed = frame if crc is None else crc.add(frame)
             if framed is not None:
                 self.buf[i * self.frame_bytes : (i + 1) * self.frame_bytes] = framed
             if i == 0 and crc is not None:  # the receiver's per-frame check, the driver's own call, timed for paced()
                 t0 = time.ticks_us()
-                await crc.check_from(self.buf, self.frame_bytes)
+                crc.check_from(self.buf, self.frame_bytes)
                 self.gap_ms += time.ticks_diff(time.ticks_us(), t0) // 1000 + 1
 
     async def finished(self, wdt: "machine.WDT") -> bool:

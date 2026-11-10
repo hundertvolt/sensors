@@ -1,11 +1,10 @@
 """Shared base classes and primitives: the session lock (Lockable, DeviceSession), region buffers (RegionBuffer),
-received bytes in pieces (PieceBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue, HourlyWindowCounter: no
-method awaits, so no lock), elapsed seconds (TickSeconds) and the UTC timestamp.
+an hourly window counter (HourlyWindowCounter: no
+method awaits, so no lock), elapsed seconds (TickSeconds), a periodic deadline wait (TickGrid) and the UTC timestamp.
 
 The sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
 
-Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise MemoryError, after
-its caller's checks bounded size and piece_bytes, and each caller catches it into its own failure result.
+Every method returns a well-defined value, never raises.
 """
 # __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then the
 # store's (SensorReaderConfig) - both inside the one-time boot batch, never lazily in a task (Part A.7).
@@ -25,10 +24,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterator, Mapping
+    from collections.abc import Awaitable, Callable, Mapping
     from typing import Literal, NamedTuple, Protocol, TypeVar
 
-    from machine import Timer
+    from _mpy_shed.time_mp import _TicksMs
     from typing_extensions import Self
 
     from asy_config_manager import CfgValue, ConfigSchema, FieldSchema, WriteValidity
@@ -170,130 +169,6 @@ class RegionBuffer:
         return memoryview(self._buf)[self.data_start : self.data_end]
 
 
-class PieceBuffer:
-    # Bytes too many for one allocation, held as pieces of at most piece_bytes: no allocation is larger
-    # than one piece (owner, 2026-10-05). Read through its length, its pieces and copy-out, never joined.
-    def __init__(self, size: int, piece_bytes: int) -> None:
-        self._size = size
-        self._piece_bytes = piece_bytes
-        # Every piece allocated here, after the caller's cap admitted size; a MemoryError goes to the caller, which catches it.
-        self._pieces = [bytearray(min(piece_bytes, size - start)) for start in range(0, size, piece_bytes)]
-
-    def __len__(self) -> int:
-        return self._size
-
-    def copy_into(self, dest: bytearray | memoryview) -> bool:
-        # The whole buffer into the front of dest; a short dest gets nothing, never a partial copy.
-        return len(dest) >= self._size and self.read_at(0, memoryview(dest)[0 : self._size])
-
-    def pieces(self) -> "Iterator[bytearray]":
-        return iter(self._pieces)
-
-    def read_at(self, offset: int, dest: bytearray | memoryview) -> bool:
-        # write_at()'s mirror: exactly len(dest) bytes from offset into dest; out of range copies nothing.
-        if offset < 0 or offset + len(dest) > self._size:
-            return False
-        index, at = divmod(offset, self._piece_bytes)
-        done = 0
-        while done < len(dest):
-            piece = self._pieces[index]
-            n = min(len(piece) - at, len(dest) - done)
-            dest[done : done + n] = memoryview(piece)[at : at + n]
-            done += n
-            index += 1
-            at = 0
-        return True
-
-    def trim(self, length: int) -> bool:
-        # A short train's length: trailing pieces dropped and the last one shortened in place, nothing allocated.
-        if length < 0 or length > self._size:
-            return False
-        keep = (length + self._piece_bytes - 1) // self._piece_bytes
-        while len(self._pieces) > keep:
-            self._pieces.pop()
-        if keep:
-            self._pieces[-1][length - (keep - 1) * self._piece_bytes :] = b""
-        self._size = length
-        return True
-
-    def write_at(self, offset: int, src: bytes | bytearray | memoryview) -> bool:
-        if offset < 0 or offset + len(src) > self._size:
-            return False
-        view = memoryview(src)
-        index, at = divmod(offset, self._piece_bytes)
-        done = 0
-        while done < len(view):
-            piece = self._pieces[index]
-            n = min(len(piece) - at, len(view) - done)
-            piece[at : at + n] = view[done : done + n]
-            done += n
-            index += 1
-            at = 0
-        return True
-
-
-class LockedCounter:
-    # No method awaits, so no lock is needed; kept async for a uniform call shape.
-    def __init__(self, *, init_value: int | None = 0, max_val: int = COUNTER_CAP) -> None:
-        # A negative max_val is a dev-time-typo risk, never a real call-site input - clamped to 0, and
-        # anything above COUNTER_CAP to it, so _max_val keeps the counter's own [0, _max_val] invariant
-        # for every value rather than letting _clamp collapse every value to a negative _max_val.
-        self._max_val = min(max(max_val, 0), COUNTER_CAP)
-        self.value = self._clamp(init_value)
-
-    def _clamp(self, value: int | None) -> int | None:  # None = "never happened" sentinel; real values clamp into [0, max_val]
-        if value is None:
-            return None
-        return min(max(value, 0), self._max_val)
-
-    async def get_value(self) -> int | None:
-        return self.value
-
-    async def set_value(self, value: int | None) -> None:
-        self.value = self._clamp(value)
-
-    async def decrement(self) -> int:
-        current = 0 if self.value is None else self.value
-        if current > 0:
-            current -= 1
-        self.value = current
-        return current
-
-    async def increment(self) -> int:  # None counts as 0 - first increment turns "never happened" into a real count
-        current = 0 if self.value is None else self.value
-        if current < self._max_val:  # checked before the step: no intermediate above the cap
-            current += 1
-        self.value = current
-        return current
-
-
-class LockedFlag:
-    # No method awaits, so no lock is needed; kept async for a uniform call shape.
-    def __init__(self, *, init_value: bool = False) -> None:
-        self.value = init_value
-
-    async def get_value(self) -> bool:
-        return self.value
-
-    async def set_false(self) -> None:
-        self.value = False
-
-    async def set_true(self) -> None:
-        self.value = True
-
-
-class LockedValue:
-    # No method awaits, so no lock is needed; kept async for a uniform call shape.
-    def __init__(self, *, init_value: int | float | None) -> None:
-        self.value = init_value
-
-    async def get_value(self) -> int | float | None:
-        return self.value
-
-    async def set_value(self, value: int | float | None) -> None:
-        self.value = value
-
-
 class HourlyWindowCounter:
     # Events in the last 24 hours at hourly resolution: 24 fixed bins advanced lazily from the uptime
     # seconds (monotonic, untouched by NTP steps), so no event, read or hour change allocates; an event
@@ -375,18 +250,21 @@ def set_utc_valid() -> None:
     _utc_valid = True
 
 
-def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHistory", what: str) -> bool:
-    # The one starter shape of the 1 s tick timers (system uptime, WiFi uptime, NTP sync age): False when
-    # the alarm pool refuses the arm (Part F.1), reported here in one wording; the caller degrades.
-    try:
-        timer.init(period=1000, mode=timer.PERIODIC, callback=lambda _b: flag.set())
-    except MemoryError as e:
-        pr.err("Could not arm a 1 s tick timer:", e)
-        return False
-    except OSError as e:
-        pr.err("Could not arm", what, "timer:", e)
-        return False
-    return True
+class TickGrid:
+    # Wakes at start + k * period_ms on ticks_ms(), start the first wait(): a late wake shortens the next wait, and one
+    # later than a whole period runs once and resumes on the grid, so nothing accumulates or drifts.
+    def __init__(self, period_ms: int) -> None:
+        self._period = period_ms
+        self._next: _TicksMs | None = None
+
+    async def wait(self) -> None:
+        now = time.ticks_ms()
+        due = time.ticks_add(now if self._next is None else self._next, self._period)
+        late = time.ticks_diff(now, due)
+        if late > 0:
+            due = time.ticks_add(due, late - late % self._period)
+        self._next = due
+        await asyncio.sleep_ms(-late if late < 0 else 0)
 
 
 class SensorReader:
@@ -394,7 +272,7 @@ class SensorReader:
     _base_trigger_event: asyncio.ThreadSafeFlag
     _read_event: asyncio.ThreadSafeFlag
     _trigger_counter: int
-    _trigger_period: LockedValue
+    _trigger_period: int
     start_timer: "TimerStarter"
 
     def __init__(
@@ -413,8 +291,7 @@ class SensorReader:
         self.pr = logger if logger is not None else make_logger(log, resolved_name)  # reach-through: reuse a directly-bound sibling object's own logger
         self.name = resolved_name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (sensors=/error_sources=/settings=).
-        self._datastruct = init_data
-        self._data_lock = asyncio.Lock()  # guards the last sample across a reader's read and a GET
+        self._datastruct = init_data  # the last sample: read and replaced whole with no await, so it needs no lock
         self._max_module_error = max_module_error
         self._err_cnt_internal = 0
         self._set_lock = asyncio.Lock()  # serialises one module's config PUT and GET (Part C.5.2)
@@ -445,10 +322,10 @@ class SensorReader:
                 sensor_conf = await self._get_mgr_cfg(cfg)
                 if sensor_conf is not None:
                     if not all(k in values for k in sensor_conf):
-                        await self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=_WRN_CFG_KEYS)
+                        self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=_WRN_CFG_KEYS)
                     values.update(sensor_conf)
             except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
-                await self.pr.err_s("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
+                self.pr.err_s("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
                 return {name: {"error": UNAVAILABLE}}
             if sensor_conf is None:
                 return {name: {"error": UNAVAILABLE}}  # the store persisted its own entry; the callback is not read
@@ -459,24 +336,23 @@ class SensorReader:
                     if sensor_callback is None:
                         return {name: {"error": UNAVAILABLE}}  # the driver persisted its own entry
                     if not all(k in values for k in sensor_callback):
-                        await self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
+                        self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
                     values.update(sensor_callback)
                 except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
-                    await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
+                    self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
                     return {name: {"error": UNAVAILABLE}}
 
             return {name: values}
 
     async def _get_meas_data(self) -> "NamedTuple":
-        async with self._data_lock:
-            return self._datastruct
+        return self._datastruct
 
     async def _get_mgr_cfg(self, _cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return {}
 
     async def _set_dict_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "WriteValidity":
-        # Setter mirror of _get_dict_cfg (Part C.5.2): stage first, push only the changed fields, then commit the
-        # staged write, so the flash write follows the pushes. One PUT per module at a time: a failed push's
+        # Setter mirror of _get_dict_cfg (Part C.5.2): stage first, push only the changed fields; the staged flush
+        # waits for this lock, so the flash write follows the pushes. One PUT per module at a time: a failed push's
         # recovery can never overwrite a value a later PUT stored meanwhile.
         async with self._set_lock:
             if self._writes_closed():
@@ -492,7 +368,7 @@ class SensorReader:
             try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
                 old_values = await self._get_mgr_cfg(persisted_keys) if persisted_keys else {}
             except Exception as e:
-                await self.pr.err_s("Error reading previous config for fallback:", e, errno=_ERR_CFG_SNAPSHOT_RAISED)
+                self.pr.err_s("Error reading previous config for fallback:", e, errno=_ERR_CFG_SNAPSHOT_RAISED)
                 old_values = None
             if old_values is None:
                 old_values = {}
@@ -501,7 +377,7 @@ class SensorReader:
                 # override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); its return shape is mypy's (D.2).
                 persisted, results = await self._set_mgr_cfg(data, cfg_vals)
             except Exception as e:
-                await self.pr.err_s("Error writing config dict:", e, errno=_ERR_CFG_SET_RAISED)
+                self.pr.err_s("Error writing config dict:", e, errno=_ERR_CFG_SET_RAISED)
                 persisted, results = False, {}
 
             if not persisted:
@@ -510,36 +386,32 @@ class SensorReader:
                 # suggest the values themselves were the problem) and nothing is pushed live either.
                 return dict.fromkeys(data, FAILED)
 
-            try:
-                for key in data:
-                    # Defense-in-depth: a misbehaving _set_mgr_cfg override could report persisted=True but
-                    # omit a key from results (the real ConfigManager-backed path never does).
-                    results.setdefault(key, FAILED)
-                for key, value in data.items():
-                    if results.get(key) != VALID:
-                        continue  # only an actual, successfully-persisted change gets pushed live
-                    callback = self._push_callbacks.get(key)
-                    field = fields.get(key)
-                    if callback is None or field is None:
-                        continue  # persist-only field, nothing to push
-                    # Push the coerced value that was actually persisted, not the caller's raw
-                    # pre-coercion one - see SPECIFICATION.md Part C.5.2's push-callback contract.
-                    _is_error, push_value = type_or_range_error(value, field)
-                    try:
-                        pushed = await callback(push_value)
-                    except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
-                        await self.pr.err_s("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
-                        pushed = False
-                    if not pushed:
-                        results[key] = FAILED
-                        await self._recover_failed_push(key, old_values, cfg_vals, fields=fields)
-            finally:  # a cancelled PUT still releases its staged write
-                self._commit_mgr_cfg()
+            for key in data:
+                # Defense-in-depth: a misbehaving _set_mgr_cfg override could report persisted=True but
+                # omit a key from results (the real ConfigManager-backed path never does).
+                results.setdefault(key, FAILED)
+            for key, value in data.items():
+                if results.get(key) != VALID:
+                    continue  # only an actual, successfully-persisted change gets pushed live
+                callback = self._push_callbacks.get(key)
+                field = fields.get(key)
+                if callback is None or field is None:
+                    continue  # persist-only field, nothing to push
+                # Push the coerced value that was actually persisted, not the caller's raw
+                # pre-coercion one - see SPECIFICATION.md Part C.5.2's push-callback contract.
+                _is_error, push_value = type_or_range_error(value, field)
+                try:
+                    pushed = await callback(push_value)
+                except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
+                    self.pr.err_s("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
+                    pushed = False
+                if not pushed:
+                    results[key] = FAILED
+                    await self._recover_failed_push(key, old_values, cfg_vals, fields=fields)
             return results
 
     async def _set_meas_data(self, data: "NamedTuple") -> None:
-        async with self._data_lock:
-            self._datastruct = data
+        self._datastruct = data
 
     async def _set_mgr_cfg(self, _data: "JsonMapping", _cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
         # No store: nothing persists, so _set_dict_cfg() answers every requested key "Failed".
@@ -553,18 +425,14 @@ class SensorReader:
             try:
                 ok = await self._recover_device()
             except Exception as e:  # an overridable extension point, guarded like this file's others
-                await self.pr.err_s("Device recovery raised:", e, errno=_ERR_CALLBACK)
+                self.pr.err_s("Device recovery raised:", e, errno=_ERR_CALLBACK)
                 return  # a failed rung: its one entry is this error
             if ok is True:  # a failed hook has logged its own error; None means no participant rung
-                await self.pr.wrn_s("Device recovery after", n, "failed cycles: done", wrnno=_WRN_DEVICE_RECOVERY)
+                self.pr.wrn_s("Device recovery after", n, "failed cycles: done", wrnno=_WRN_DEVICE_RECOVERY)
         elif n >= _RECOVER_BUS_AT and not self._rungs & _RUNG_BUS:
             await self._recover_bus(_RUNG_BUS)
         elif n >= _RECOVER_CONTROLLER_AT:
             await self._recover_bus(_RUNG_CONTROLLER)
-
-    def _commit_mgr_cfg(self) -> None:
-        # Releases a store's deferred write once the pushes ended; no store, nothing deferred.
-        return
 
     async def _error_check(self, results: "MeasDataType", *, condition: bool = True) -> bool:
         # Shared consecutive-failure-streak counter and recovery ladder - see SPECIFICATION.md Part
@@ -574,9 +442,9 @@ class SensorReader:
                 self._bus_mark = self._recovery_bus.recoveries  # a new episode: no reader has recovered the bus yet
                 self._rebuild_mark = self._recovery_bus.rebuilds
             self._err_cnt_internal += 1
-            await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
+            self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
             if self._err_cnt_internal > self._max_module_error:
-                await self.pr.err_s("Maximum error count reached!", errno=_ERR_GIVE_UP)
+                self.pr.err_s("Maximum error count reached!", errno=_ERR_GIVE_UP)
                 return False  # breaking the loop triggers a task reset
             await self._climb_ladder()
             return True
@@ -596,7 +464,7 @@ class SensorReader:
             return
         status = bus.take_boot_clear_status()
         if status:
-            await self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
+            self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
 
     async def _recover_bus(self, rung: int) -> None:
         # One bus rung per bus per episode: since its episode began, a reader skips the clear if any rung was entered on
@@ -609,12 +477,12 @@ class SensorReader:
             if bus.recoveries != self._bus_mark:
                 return
             status = await bus.clear()
-            await self.pr.wrn_s("I2C bus cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
+            self.pr.wrn_s("I2C bus cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
         else:
             if bus.rebuilds != self._rebuild_mark:
                 return
             status = await bus.recover()
-            await self.pr.wrn_s("I2C controller re-initialised, status", status, wrnno=_WRN_BUS_RECOVERY)
+            self.pr.wrn_s("I2C controller re-initialised, status", status, wrnno=_WRN_BUS_RECOVERY)
 
     async def _recover_device(self) -> bool | None:
         # The participant rung a driver overrides: True done, False failed (it has persisted its own error),
@@ -646,7 +514,7 @@ class SensorReader:
             try:
                 recovered = await getter()
             except Exception as e:  # getter is caller-supplied; its runtime behavior isn't statically known
-                await self.pr.err_s("Error reading", key, "back from sensor:", e, errno=_ERR_RECOVERY_READ_RAISED)
+                self.pr.err_s("Error reading", key, "back from sensor:", e, errno=_ERR_RECOVERY_READ_RAISED)
                 recovered = None
             # A getter reads live, possibly-adversarial hardware state - a value outside this
             # field's own schema is treated the same as a raised exception (fall through), so
@@ -660,19 +528,18 @@ class SensorReader:
         try:
             persisted, res = await self._set_mgr_cfg({key: recovered}, cfg_vals)
         except Exception as e:
-            await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)
+            self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)
             return
         if not persisted or res.get(key) not in (VALID, UNCHANGED):
             # Console only: the store that refused the recovery persisted its own entry.
             self.pr.err("Recovery of", key, "after a failed push was not stored:", res.get(key))
 
     async def _republish(self, names: tuple[str, ...], **changes: object) -> None:
-        # The last sample again with the named fields changed, in one hold with no await inside, so a
+        # The last sample again with the named fields changed, with no await between the read and the store, so a
         # concurrent store is never overwritten by a stale copy; names are the namedtuple's fields in order.
-        async with self._data_lock:
-            old = self._datastruct
-            values = (changes[n] if n in changes else getattr(old, n) for n in names)
-            self._datastruct = type(old)(*values)  # type: ignore[arg-type]  # the sample's own namedtuple class, not NamedTuple's factory
+        old = self._datastruct
+        values = (changes[n] if n in changes else getattr(old, n) for n in names)
+        self._datastruct = type(old)(*values)  # type: ignore[arg-type]  # the sample's own namedtuple class, not NamedTuple's factory
 
     async def _trigger_loop(self) -> None:
         # The shared divider (Part C.9): every n-th base tick sets the read event, n the trigger period.
@@ -680,13 +547,16 @@ class SensorReader:
         while True:
             await self._base_trigger_event.wait()
             self._trigger_counter += 1
-            if self._trigger_counter >= await self._trigger_period.get_value():  # type: ignore[operator]  # set at construction, never None
+            if self._trigger_counter >= self._trigger_period:
                 self._read_event.set()
                 self._trigger_counter = 0
 
     def _writes_closed(self) -> bool:
         # No store: nothing to close, so a PUT is never refused here.
         return False
+
+    def get_timer_starters(self) -> "list[TimerStarter]":
+        return []  # none here: a subclass with a machine.Timer lists its starter (SPECIFICATION.md C.9)
 
     def get_trigger_starters(self) -> "list[TimerStarter]":
         # Read-trigger timer starters the system service staggers (SPECIFICATION.md Part C.9.1); none here.
@@ -756,12 +626,9 @@ class SensorReaderConfig(SensorReader):
 
     async def _set_mgr_cfg(self, data: "JsonMapping", _cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
         # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different persistence backend
-        # can override just this and still reuse _set_dict_cfg's orchestration. Deferred: _commit_mgr_cfg() releases it.
+        # can override just this and still reuse _set_dict_cfg's orchestration.
         self.pr.evt("Writing config via cfgmgr.")
-        return await self.cfgmgr.write_config(data, defer=True)
-
-    def _commit_mgr_cfg(self) -> None:
-        self.cfgmgr.commit()
+        return await self.cfgmgr.write_config(data)
 
     def _writes_closed(self) -> bool:
         # A store closed for a commanded reset refuses this module's PUTs.

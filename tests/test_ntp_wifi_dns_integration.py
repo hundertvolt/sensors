@@ -13,7 +13,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP shim's director
 import network
 from _async_harness import cancel, run
 from _error_codes import code
-from _fake_time import DrivenTime, tick
+from _fake_time import DrivenTime, ManualTick, tick
 from _fast_sleep import FastAsyncSleep
 from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _port_bands import PortAllocator
@@ -111,7 +111,7 @@ def _make_ntp(
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTPHost": "{ntp_host}", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0, "DNSFallback": ""}}')
-    timing = NtpTiming(500, 1, ntp_fetch_timeout_ms)
+    timing = NtpTiming(1000, ntp_fetch_timeout_ms)
     ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, timing, cfg_path=cfg_path)
     run(ntp.setup())
     return ntp
@@ -152,11 +152,11 @@ def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "in
 
 class _RecordingResolver:
     def __init__(self, return_value: "str | None") -> None:
-        self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
+        self.calls: list[tuple[str, tuple[str, ...], int]] = []
         self.return_value = return_value
 
-    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
-        self.calls.append((host, dns_servers, timeout_ms, tries))
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
+        self.calls.append((host, dns_servers, timeout_ms))
         return self.return_value
 
 
@@ -179,7 +179,7 @@ def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv
         ntpmod.resolve_ipv4 = original
     # The real conn-derived DNS server IP - not None, not a stand-in lambda's value - reached the
     # resolver call. This is the exact value that used to always arrive as None before the fix.
-    assert recorder.calls == [("pool.ntp.org", ("203.0.113.9",), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", ("203.0.113.9",), 1000)]
 
 
 def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service() -> None:
@@ -202,7 +202,7 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
         run(scenario())
     finally:
         ntpmod.resolve_ipv4 = original
-    assert recorder.calls == [("pool.ntp.org", ("0.0.0.0",), 500, 1)]
+    assert recorder.calls == [("pool.ntp.org", ("0.0.0.0",), 1000)]
 
 
 def test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated() -> None:
@@ -272,7 +272,7 @@ class _GatedResolver:
         self.servers: tuple[str, ...] | None = None
         self._gate = asyncio.Event()
 
-    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, *, logger: "PrintLog | None" = None) -> "str | None":
         self.entered = True
         self.servers = dns_servers
         await self._gate.wait()
@@ -314,16 +314,17 @@ def test_a_held_lock_serves_the_snapshot_and_uptime_keeps_counting() -> None:
         resolver = _GatedResolver()
 
         async def scenario() -> "tuple[WIFI, WIFI, int, int, str | None, tuple[str, ...] | None]":
+            conn._tick = ManualTick()  # the uptime pass, stepped by hand
             uptime_task = asyncio.create_task(conn._uptime_loop())
             await asyncio.sleep(0)  # the loop starts its uptime at the driven clock's zero
             clock.advance(1000)
-            await tick(conn._time_counter_trigger_event)  # one 1 Hz step before the hold
+            await tick(conn._tick)  # one 1 Hz step before the hold
             before = await conn.get_data()
             uptime_before = await conn.get_wifi_uptime()
             sync_task = await _ntp_holding_the_lock(ntp, resolver)
             for _ in range(3):  # three seconds pass while the NTP attempt holds the lock
                 clock.advance(1000)
-                await tick(conn._time_counter_trigger_event)
+                await tick(conn._tick)
             assert conn.wifi_mode_lock.locked() is True  # still held: the uptime loop's own step waits on it
             held = await asyncio.wait_for(conn.get_data(), _LOCK_BLOCKED_WAIT_S)  # served at once, never waiting
             uptime_held = await conn.get_wifi_uptime()
@@ -511,7 +512,7 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
                         break
                     await asyncio.sleep_ms(_STATE_POLL_MS)
                 synced = await ntp.ntp_issynced()
-                last_sync = await ntp.get_last_ntp_sync()
+                last_sync = (await ntp.get_data()).LastSyncAge
                 await cancel(task)
                 return synced, last_sync
         finally:

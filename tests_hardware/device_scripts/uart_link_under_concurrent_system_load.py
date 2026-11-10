@@ -10,11 +10,11 @@ import time
 import asy_i2c_driver
 import asy_spi_driver
 import asy_uart_driver
-from asy_crc_checks import CRC16
 from asy_fram_manager import FRAMManager
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
+from crc_checks import CRC16
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from _shared.watchdog import arm
     from bench_facts import BenchFacts, BusFacts
 
-    from asy_base_classes import PieceBuffer
+    from asy_uart_driver import PieceBuffer
 
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
@@ -68,7 +68,7 @@ class Load:
         self.sgp_reads = 0
         self.i2c_errors = 0  # counted and reported, never silently dropped
         self.spi_reads = 0
-        self.fram_absent = 0  # a verify_present() that found no FRAM: counted, the host fails on any
+        self.fram_absent = 0  # an identification that found no FRAM: counted, the host fails on any
         self.churn_blocks = 0
         self.alloc_failures = 0
         self.stop = False
@@ -104,7 +104,7 @@ def _driver(bus: "BusFacts") -> "asy_uart_driver.UART":
 
 async def _fram_read_loop(fram: FRAMManager, load: Load) -> None:
     while not load.stop:
-        if await fram.fram.verify_present():
+        if fram.fram._check_device_id():  # one RDID cycle: the chip's identification
             load.spi_reads += 1
         else:
             load.fram_absent += 1

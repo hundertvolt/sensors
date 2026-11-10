@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _devices import distinct_devices
 from _script_loader import load_script_module
 
 _COPIED = (
@@ -102,7 +103,8 @@ def _calls_written(tree: Path) -> "list[tuple[str, list[str], str]]":
 
 
 def _devices(tree: Path) -> "list[str]":
-    return sorted(p.stem for p in (tree / "devices").glob("*.toml") if not p.stem.startswith("zz_test_"))
+    # The twin legs' devices: one per hardware_family (owner, 2026-10-23), the leaked zz_test_ fixture never one.
+    return distinct_devices(tree / "devices")
 
 
 def _lower(calls: "list[tuple[str, list[str], str]]") -> "list[str]":
@@ -416,11 +418,3 @@ def test_every_uv_run_line_in_the_script_carries_no_sync(repo_root: Path, script
     lines = [line.strip() for line in (repo_root / "scripts" / script).read_text(encoding="utf-8").splitlines() if "uv run" in line and not line.lstrip().startswith("#")]
     assert lines, f"{script} has no uv run line - the scan has stopped seeing them"
     assert all("uv run --no-sync " in line for line in lines), lines
-
-
-@pytest.mark.parametrize("script", ["run_flash_hardware_suite.sh", "run_bench_hardware_suite.sh", "run_bench_soak_tests.sh", "run_bench_rollover_test.sh", "run_manual_hardware_tests.sh", "_run_lower_levels.sh"])
-def test_help_prints_usage_and_runs_nothing(tree: Path, script: str) -> None:
-    result, calls = _run(tree, script, "--help")
-    assert result.returncode == 0, result.stderr
-    assert "Usage:" in result.stdout
-    assert not calls, f"--help must have no side effect, saw {calls}"

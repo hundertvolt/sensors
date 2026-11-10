@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs tests/ under the real MicroPython Unix port (one process per test file, per derived device for PER_DEVICE files),
-# the lwIP host files, the host-side twin scenario harness per derived device, and the backgrounded tests_scripts/
-# pytest tier; ends with the SPECIFICATION.md E.10 summary block.
+# Runs tests/ under the real MicroPython Unix port (one process per test file, per distinct device for PER_DEVICE
+# files), the lwIP host files, the host-side twin scenario harness per distinct device, and the backgrounded
+# tests_scripts/ pytest tier; ends with the SPECIFICATION.md E.10 summary block.
 #
 # --coverage runs the same files under build-settrace, the only build flavour compiled with MICROPY_PY_SYS_SETTRACE,
 # and renders src/, digital_twin/, the generated modules and the host build chain (E.5, E.5.2).
@@ -82,6 +82,7 @@ if [ -n "${GC_THRESHOLD:-}" ]; then
         # Said out loud rather than silently dropped: --coverage has its own runner, and a run that
         # ignores an explicitly set threshold must not look like one that honored it.
         echo "== note: --coverage uses its own runner, so GC_THRESHOLD=$GC_THRESHOLD is ignored for this run" >&2
+        unset GC_THRESHOLD
     fi
 fi
 
@@ -178,9 +179,9 @@ _cleanup() {
 }
 trap _cleanup EXIT
 
-# The derived devices (scripts/_devices.sh), read once, before the tests_scripts/ tier can plant its zz_test_ fixtures:
-# the intern check, the PER_DEVICE jobs, the scenario harness jobs and the site build all take this one list.
-devices_text="$(derived_devices)"
+# The devices, one per hardware_family (scripts/_devices.sh), read once, before the tests_scripts/ tier can plant its
+# zz_test_ fixtures: the intern check, the PER_DEVICE jobs, the scenario harness jobs and the site build take this list.
+devices_text="$(distinct_devices)"
 mapfile -t devices <<<"$devices_text"
 site_device="${devices[0]}"
 unit_micropypath="$(micropypath unit)"
@@ -188,83 +189,6 @@ unit_micropypath="$(micropypath unit)"
 # (bash replaces an EXIT handler rather than stacking, so every cleanup has to live in that one trap).
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
-fi
-
-# Past this many bytes the Unix port cannot intern a string as a qstr: scripts/_twin_process.py's _QSTR_MAX_BYTES, read
-# against the interpreter there and pinned to this copy by tests_scripts/test_test_sh.py.
-qstr_max_bytes=255
-# _uninternable: each string run_test_file's launches hand the interpreter to intern before a file starts and that it
-# cannot, "<what> <string> (<bytes> bytes)" per line, once each: the script's real directory, every MICROPYPATH entry
-# but a ~/ one it builds from $HOME, every argument from the script on (ports/unix/main.c:412, :560, :688).
-_uninternable() {
-    local LC_ALL=C file tag device value i files=() scripts=() resolved=() entries=() strings=()
-    local -A per_device=() seen=()
-    for file in tests/test_*.py tests/lwip_host/test_*.py; do
-        if [ -f "$file" ] && { [ "$coverage" = "0" ] || [[ "$file" != tests/lwip_host/* ]]; }; then
-            files+=("$file")
-        fi
-    done
-    if [ "$coverage" = "1" ]; then
-        scripts=(tests/_coverage_runner.py)
-    elif [ -n "${GC_THRESHOLD:-}" ]; then
-        scripts=(tests/_threshold_runner.py)
-    else
-        scripts=("${files[@]}")
-    fi
-    if [ "${#scripts[@]}" -gt 0 ]; then
-        mapfile -t resolved < <(realpath -m -- "${scripts[@]}")
-    fi
-    for value in "${resolved[@]}"; do
-        strings+=("the script's directory" "${value%/*}")
-    done
-    IFS=: read -ra entries <<<"$unit_micropypath"
-    for i in "${!entries[@]}"; do
-        if [[ "${entries[i]}" != \~/* || -z "${HOME+set}" ]]; then
-            strings+=("MICROPYPATH entry $((i + 1))" "${entries[i]}")
-        fi
-    done
-    # The PER_DEVICE files, whose --coverage data files carry the device; an unreadable one stops the job list, before any job.
-    if [ "$coverage" = "1" ] && [ "${#files[@]}" -gt 0 ]; then
-        while IFS= read -r file; do
-            per_device[$file]=1
-        done < <(grep -lx 'PER_DEVICE = True' -- "${files[@]}" 2>/dev/null || true)
-    fi
-    for file in "${files[@]}"; do
-        if [ "$coverage" = "1" ]; then
-            tag="${file##*/}"
-            tag="${tag%.py}"
-            strings+=("argument 0" "${scripts[0]}" "argument 1" "$file")
-            if [ -n "${per_device[$file]:-}" ]; then
-                for device in "${devices[@]}"; do
-                    strings+=("argument 2" "$raw_dir/${tag}[$device].json")
-                done
-            else
-                strings+=("argument 2" "$raw_dir/$tag.json")
-            fi
-        elif [ -n "${GC_THRESHOLD:-}" ]; then
-            strings+=("argument 0" "${scripts[0]}" "argument 1" "$file" "argument 2" "$GC_THRESHOLD")
-        else
-            strings+=("argument 0" "$file")
-        fi
-    done
-    for ((i = 0; i < ${#strings[@]}; i += 2)); do
-        value="${strings[i + 1]}"
-        if [ "${#value}" -gt "$qstr_max_bytes" ] && [ -z "${seen[$value]:-}" ]; then
-            seen[$value]=1
-            printf '%s %s (%s bytes)\n' "${strings[i]}" "$value" "${#value}"
-        fi
-    done
-}
-# Refused once, before the lock, a sweep or a build: each such string kills every file at start ("FATAL: uncaught NLR",
-# exit 1), which reads as a broken suite. The first five are named, the rest counted.
-uninternable="$(_uninternable)"
-if [ -n "$uninternable" ]; then
-    mapfile -t refused <<<"$uninternable"
-    shown="$(printf '%s, ' "${refused[@]:0:5}")"
-    shown="${shown%, }"
-    [ "${#refused[@]}" -le 5 ] || shown+=", +$((${#refused[@]} - 5)) more"
-    echo "error: no test file was started: $shown - the Unix port interns each as a qstr of at most $qstr_max_bytes bytes and dies before a file starts" >&2
-    exit 2
 fi
 
 # Port 53 is the product's, bound by the twin tests: one suite holds it at a time and a second exits 1
@@ -362,8 +286,8 @@ for i in range($probe_iterations):
     # @tunable runner.band_mid_ms = 900
     elif [ "$probe_ms" -le 900 ]; then
         # @tunable runner.mult_mid = 2
-        multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription
-    else                        # that starved a twin test's real-time budget at 4x
+        multiplier=2            # mid host (none measured; the bench Pi4 probes 120-139 ms, a fast host)
+    else
         multiplier=1
     fi
     echo "$(( cores * multiplier )) $cores $multiplier $probe_ms"
@@ -482,6 +406,8 @@ results_dir="$(mktemp -d)"
 tests_scripts_status_file="$results_dir/tests_scripts.status"
 tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"
 (
+    # Not at a set GC_THRESHOLD: no tests_scripts/ test reads it, so the plain run's verdict is this stage's too (E.1).
+    [ -z "${GC_THRESHOLD:-}" ] || { echo "SKIPPED" >"$tests_scripts_status_file"; exit 0; }
     # _run_with_retries' attempts without its memory gate: this tier is CPython, and a failing check whose own text names
     # a marker, as test_summary_block.py's do, prints it in its traceback. Each attempt's timeout pid is the one the EXIT
     # trap kills; the record is removed first, so the summary reads the last attempt's.
@@ -538,23 +464,25 @@ declare -A per_file_timeout_overrides_s=()
 # @tunable runner.scenarios_timeout_s = 2555
 per_file_timeout_overrides_s[scenarios]=2555
 
-# SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged included - a caught
-# allocation failure is a design defect, not a passing result. The twin tier already asserts this
-# on its own logs (_digital_twin_ci_suite.py); this is the same check for the tier (e)/(f) run in.
+# SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged ones included; the twin tier checks its logs alike.
+# Both markers, from their one definition: src/'s degrade handlers log str(e), so a caught allocation failure prints
+# "memory allocation failed, ..." (py/runtime.c:1692/1696); the class name appears only in an uncaught one.
+memory_markers=()
+while IFS= read -r marker; do
+    memory_markers+=(-e "$marker")
+done < <(grep -o '"[^"]*"' scripts/memory_markers.json | tr -d '"')
+# Fails closed: with no marker the grep below would read its log path as the pattern.
+[ "${#memory_markers[@]}" -gt 0 ] || { echo "error: scripts/memory_markers.json names no marker - restore it" >&2; exit 2; }
 _flag_memory_errors() {
     local tag="$1" log_file="$2" rc=0
-    # Both spellings, because src/'s degrade handlers log str(e) and not the class: a real caught
-    # allocation failure prints "memory allocation failed, ..." (py/runtime.c:1692/1696) with no
-    # "MemoryError" in it, so the class name alone only ever sees an UNCAUGHT traceback.
-    local pattern="MemoryError|memory allocation failed"
     # Fails closed: a log it cannot read, or a grep error (exit 2+), is no verdict - never "clean".
     if [ ! -r "$log_file" ]; then
         echo "memory gate: per-file log $log_file missing or unreadable - no verdict" >"$results_dir/$tag.noverdict"
         return 0
     fi
-    grep -qE "$pattern" "$log_file" || rc=$?
+    grep -qF "${memory_markers[@]}" "$log_file" || rc=$?
     if [ "$rc" -eq 0 ]; then
-        grep -m5 -E "$pattern" "$log_file" >"$results_dir/$tag.memerr" || echo "memory gate: a marker matched in $log_file but its lines could not be copied" >"$results_dir/$tag.memerr"
+        grep -m5 -F "${memory_markers[@]}" "$log_file" >"$results_dir/$tag.memerr" || echo "memory gate: a marker matched in $log_file but its lines could not be copied" >"$results_dir/$tag.memerr"
     elif [ "$rc" -ge 2 ]; then
         echo "memory gate: grep exited $rc reading $log_file - no verdict" >"$results_dir/$tag.noverdict"
     fi
@@ -736,8 +664,8 @@ done
 if [ "$coverage" = "0" ]; then
     test_files+=("${lwip_host_files[@]}")
 fi
-# One scenario harness job per derived device, dispatched first (each is the longest job of the run); --coverage runs
-# none and lists them as skipped. A file whose own line reads `PER_DEVICE = True` runs once per derived device.
+# One scenario harness job per distinct device, dispatched first (each is the longest job of the run); --coverage runs
+# none and lists them as skipped. A file whose own line reads `PER_DEVICE = True` runs once per distinct device.
 job_list=()
 if [ "$coverage" = "0" ]; then
     for device in "${devices[@]}"; do
@@ -1006,13 +934,20 @@ fi
 tests_scripts_record="$results_dir/tests_scripts.json"
 tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null || true)"
 l0_reasons=()
+l0_verdict=""
 case "$tests_scripts_result" in
     PASS | "RETRIED-PASS "*) ;;
+    SKIPPED)
+        l0_verdict="skipped"
+        summary_add skipped "tests_scripts/ (pytest)" "not run at a set GC_THRESHOLD - no host test reads it, the plain run's verdict stands"
+        ;;
     *) l0_reasons+=("pytest exited nonzero or timed out") ;;
 esac
 # One helper start reads the record for every listing below (a uv start costs about 0.3 s of environment lookup),
-# each listing opened by a "<RS><name>" line; an unreadable record leaves them all empty, which is no verdict.
-l0_listings="$(uv run python - "$tests_scripts_record" 2>/dev/null <<'PYEOF'
+# each listing opened by a "<RS><name>" line; an unreadable record leaves them all empty, which is no verdict, and a
+# skipped tier has no record to read.
+l0_listings=""
+[ -n "$l0_verdict" ] || l0_listings="$(uv run python - "$tests_scripts_record" 2>/dev/null <<'PYEOF'
 import sys
 sys.path.insert(0, "scripts")
 import _summary_block
@@ -1041,7 +976,7 @@ if [[ "$l0_counts" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)$ ]]; then
     if [ "${BASH_REMATCH[2]}" -ne 0 ]; then
         l0_reasons+=("${BASH_REMATCH[2]} failed (listed above)")
     fi
-else
+elif [ -z "$l0_verdict" ]; then
     l0_reasons+=("no verdict (run record missing or unreadable)")
 fi
 # Its result and session notes go into the block's Notes: list.
@@ -1056,7 +991,7 @@ if [ "${#l0_reasons[@]}" -gt 0 ]; then
     failed=1
     evidence_files+=("$tests_scripts_record")
     summary_add failed "tests_scripts/ (pytest)" "$(_join_reasons "${l0_reasons[@]}")"
-elif [ "$tests_scripts_result" != "PASS" ]; then
+elif [[ "$tests_scripts_result" == "RETRIED-PASS "* ]]; then
     l0_retried=1
     evidence_files+=("$tests_scripts_record")
     summary_add retried "tests_scripts/ (pytest)" "${tests_scripts_result#RETRIED-PASS }"
@@ -1084,7 +1019,7 @@ fi
 summary_counts_line tests "$tests_passed" "$tests_failed" "$tests_skipped" "$tests_deselected" 0 0 0
 l2_scope="tests/test_digital_twin_*.py and the scenario harness"
 [ "$coverage" = "0" ] || l2_scope="tests/test_digital_twin_*.py only"
-summary_levels "L0 $(_level_verdict "$([ "$tests_scripts_result" = "FAIL" ] && printf 1 || printf 0)" "$l0_retried") · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") ($l2_scope; run_digital_twin_ci.sh not run)"
+summary_levels "L0 ${l0_verdict:-$(_level_verdict "$([ "$tests_scripts_result" = "FAIL" ] && printf 1 || printf 0)" "$l0_retried")} · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") ($l2_scope; run_digital_twin_ci.sh not run)"
 if [ "$coverage" = "1" ]; then
     summary_gc_stage "coverage run (settrace)"
 elif [ -n "${GC_THRESHOLD:-}" ]; then

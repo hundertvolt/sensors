@@ -165,11 +165,13 @@ def test_the_flagged_classes_are_the_fram_spi_uart_and_logging_ones() -> None:
 
 
 def test_an_unread_flag_on_a_class_that_carries_none_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_neopixel_driver.py", "        self._overlay_bri = led_overl_bri\n", "        self._overlay_bri = led_overl_bri\n        self.initialized = False\n")
-    _edit(src_copy, "asy_neopixel_driver.py", "        await self.pr.setup()\n", "        self.initialized = True\n        await self.pr.setup()\n")
+    lock = "        self._status_lock = asyncio.Lock()  # one /status build at a time (Part I.3)\n"
+    _edit(src_copy, "asy_webserver_service.py", lock, lock + "        self.initialized = False\n")
+    logger = "        await self.pr.setup()  # the logger is set up in the boot batch, never by the serve task\n"
+    _edit(src_copy, "asy_webserver_service.py", logger, logger + "        self.initialized = True\n")
     assert all_findings(src_copy) == [
-        "asy_neopixel_driver.py NeopixelDriver: self.initialized is never read in src/ - a flag only a test reads is not product state",
-        "asy_neopixel_driver.py NeopixelDriver: carries self.initialized, but product code never gates on this class",
+        "asy_webserver_service.py WebserverService: self.initialized is never read in src/ - a flag only a test reads is not product state",
+        "asy_webserver_service.py WebserverService: carries self.initialized, but product code never gates on this class",
     ]
 
 

@@ -18,7 +18,7 @@ from _script_loader import load_script_module
 from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, with_uart_pair, write_doc, write_text
 
 import buildgen.validate as validate_mod
-from buildgen.buildspec import ALLOWED_INSTANCE_FIELDS, UART_CRC_MODES
+from buildgen.buildspec import ALLOWED_INSTANCE_FIELDS, MANDATORY_FILES, UART_CRC_MODES
 from buildgen.definitions import definitions_for_toml
 from buildgen.driver_registry import resolve_driver
 from buildgen.errors import BuildError, BuildInternalError
@@ -1306,7 +1306,6 @@ def test_partial_instance_level_fram_wiring_is_fine(tmp_path: Path, src_dir: Pat
     # while testing something else; this asserts the partial case on its own terms.
     doc = base_doc()
     del table_at(doc, "instance", 0, "wiring")["fram_target"]  # scd30 - unwired
-    del table_at(doc, "instance", 3, "wiring")["fram_target"]  # neopixel - unwired
     # sgp40 (index 1) and notification (index 4) keep their fram_target wiring - genuinely partial.
     _model, source = _generated(tmp_path, src_dir, doc)
     logs = {var: _construction(source, var).rsplit("log=", 1)[1] for var in ("scd30", "neopixel", "sgp40", "notification")}
@@ -1331,7 +1330,8 @@ def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_di
     import buildgen.validate as validate_mod
     from buildgen.model import DeviceModel
 
-    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", (("asy_notification_service.py", "signal_sink"),))
+    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", ("signal_sink",))
+    monkeypatch.setitem(MANDATORY_FILES, "signal_sink", "asy_notification_service.py")
     model = DeviceModel("fixture", tmp_path / "fixture.toml", {"device": {"wiring": {}}})
     with pytest.raises(BuildError, match="missing required field 'signal_sink'"):
         validate_mod._check_device_wiring(model, src_dir)
@@ -1576,7 +1576,7 @@ def test_device_wiring_value_must_be_a_string_reference(tmp_path: Path, src_dir:
 def test_driver_declaring_requires_tags_but_sitting_on_no_bus(tmp_path: Path, src_dir: Path) -> None:
     # A bus requirement on a driver with no bus field is a contradiction the build must name, not
     # silently skip. neopixel is the only driver with no bus at all, so the tag is staged onto it.
-    staged = _staged_src(tmp_path, src_dir, "asy_neopixel_driver.py", "# @wiring fram_target", "# @requires bus.frequency<=100000\n# @wiring fram_target")
+    staged = _staged_src(tmp_path, src_dir, "asy_neopixel_driver.py", '_NAME = const("NEOPIXEL")', '# @requires bus.frequency<=100000\n_NAME = const("NEOPIXEL")')
     path = write_doc(tmp_path, "fixture", base_doc())
     with pytest.raises(BuildError, match="declares @requires bus tags but has no 'bus' field"):
         build_model(path, staged)
@@ -1631,9 +1631,11 @@ def test_a_uart_rxbuf_below_one_polls_arrivals_is_rejected(tmp_path: Path, src_d
 
 
 def test_a_uart_rxbuf_below_one_frame_is_rejected_at_a_slow_baudrate(tmp_path: Path, src_dir: Path) -> None:
-    # At 9600 baud a poll brings 6 bytes, so the 5-byte header + 48-byte payload frame is the floor.
+    # At 9600 baud a poll brings 6 bytes, so the 5-byte header + 48-byte payload frame is the floor; the idle poll is
+    # at least that frame's 56 ms on the wire.
     doc = with_uart_pair(base_doc())
-    table_at(doc, "bus", "uart0")["baudrate"] = table_at(doc, "bus", "uart1")["baudrate"] = 9600  # both ends agree (Part J.6)
+    for bus in ("uart0", "uart1"):
+        table_at(doc, "bus", bus).update(baudrate=9600, poll_idle_ms=60)  # both ends agree (Part J.6)
     table_at(doc, "bus", "uart0")["rxbuf"] = 53
     _build(tmp_path, src_dir, doc)
     table_at(doc, "bus", "uart0")["rxbuf"] = 52
@@ -1643,12 +1645,13 @@ def test_a_uart_rxbuf_below_one_frame_is_rejected_at_a_slow_baudrate(tmp_path: P
 
 def test_uart_link_bus_check_falls_back_to_the_driver_defaults(tmp_path: Path, src_dir: Path) -> None:
     # No knobs stated: UART's own defaults (rxbuf 256, poll_wait_ms 2, poll_idle_ms 50) are what boots,
-    # so they are what gets checked - they fit at 115200 baud; an rxbuf of 52 is below one 53-byte frame.
+    # so they are what gets checked - they fit at 115200 baud; at 9600 an rxbuf of 52 is below one 53-byte frame.
     doc = with_uart_pair(base_doc())
     for bus in ("uart0", "uart1"):
         table_at(doc, "bus")[bus] = {"tx_pin": table_at(doc, "bus", bus)["tx_pin"], "rx_pin": table_at(doc, "bus", bus)["rx_pin"], "baudrate": 115200}
     _build(tmp_path, src_dir, doc)
-    table_at(doc, "bus", "uart0")["baudrate"] = table_at(doc, "bus", "uart1")["baudrate"] = 9600  # a poll brings 6 bytes, so one frame is the floor
+    for bus in ("uart0", "uart1"):
+        table_at(doc, "bus", bus).update(baudrate=9600, poll_idle_ms=60)  # a poll brings 6 bytes, so one frame is the floor
     table_at(doc, "bus", "uart0")["rxbuf"] = 52
     with pytest.raises(BuildError, match=r"rxbuf 52 is below the 53 bytes .*one 53-byte frame"):
         _build(tmp_path, src_dir, doc)
@@ -1691,17 +1694,17 @@ def test_a_uart_link_timeout_above_the_ticks_horizon_is_rejected(tmp_path: Path,
     assert (info.value.rule, info.value.instance) == ("instance.uart-timeout-max", "uart_link_init")
 
 
-@pytest.mark.parametrize("poll_idle_ms", [1, 536870912])
+@pytest.mark.parametrize("poll_idle_ms", [1, 4, 536870912])
 def test_a_uart_idle_poll_outside_its_range_is_rejected(tmp_path: Path, src_dir: Path, poll_idle_ms: int) -> None:
-    # The idle poll is the slower rate (Part F.5.9), so never below the transaction poll, and a delay
-    # ticks_add() takes, so never past 2**29 - 1 ms; both checked at the value that boots.
+    # The idle poll is the slower rate (Part F.5.9): never faster than one frame takes on the wire (53 bytes at
+    # 115200 baud, 10 bits a byte: 5 ms) nor than the transaction poll, and a delay ticks_add() takes.
     doc = with_uart_pair(base_doc())
     table_at(doc, "bus", "uart1")["poll_idle_ms"] = poll_idle_ms
-    with pytest.raises(BuildError, match=rf"bus\.uart1: poll_idle_ms {poll_idle_ms} is outside 2 … 536870911") as info:
+    with pytest.raises(BuildError, match=rf"bus\.uart1: poll_idle_ms {poll_idle_ms} is outside 5 … 536870911") as info:
         _build(tmp_path, src_dir, doc)
     assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-poll-idle-range", "poll_idle_ms", "uart_link_resp")
-    table_at(doc, "bus", "uart1")["poll_idle_ms"] = 2
-    assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "uart1", "poll_idle_ms") == 2
+    table_at(doc, "bus", "uart1")["poll_idle_ms"] = 5
+    assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "uart1", "poll_idle_ms") == 5
 
 
 @pytest.mark.parametrize("field", ["rxbuf", "txbuf"])
@@ -1841,7 +1844,7 @@ def test_the_crc_trailer_counts_in_the_rxbuf_floor(tmp_path: Path, src_dir: Path
     # At 9600 baud and a 1 ms poll a poll brings 5 bytes, so the frame decides: 5 + 48 + 2 = 55 with crc16, 53 without.
     doc = with_uart_pair(base_doc())
     for bus in ("uart0", "uart1"):
-        table_at(doc, "bus", bus).update(baudrate=9600, poll_wait_ms=1, rxbuf=53)
+        table_at(doc, "bus", bus).update(baudrate=9600, poll_wait_ms=1, poll_idle_ms=60, rxbuf=53)
     assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "uart0", "rxbuf") == 53
     table_at(doc, "instance", -2)["crc"] = table_at(doc, "instance", -1)["crc"] = "crc16"
     table_at(doc, "bus", "uart0")["rxbuf"] = table_at(doc, "bus", "uart1")["rxbuf"] = 54
@@ -1863,10 +1866,10 @@ def _crc_widths(crc_source: str) -> "dict[str, int]":
 
 
 def test_uart_crc_modes_match_crc_checks(tmp_path: Path, src_dir: Path) -> None:
-    # Guard: buildspec's hand-kept CRC table names real asy_crc_checks classes with their real widths.
-    widths = _crc_widths((src_dir / "asy_crc_checks.py").read_text(encoding="utf-8"))
+    # Guard: buildspec's hand-kept CRC table names real crc_checks classes with their real widths.
+    widths = _crc_widths((src_dir / "crc_checks.py").read_text(encoding="utf-8"))
     assert {mode: (cls, widths.get(cls)) for mode, (cls, _width) in UART_CRC_MODES.items()} == UART_CRC_MODES
-    renamed = (src_dir / "asy_crc_checks.py").read_text(encoding="utf-8").replace("class CRC16(", "class CRC16Renamed(")
+    renamed = (src_dir / "crc_checks.py").read_text(encoding="utf-8").replace("class CRC16(", "class CRC16Renamed(")
     assert "CRC16" not in _crc_widths(renamed), "the bite: a table naming a class the module lacks must not match"
 
 

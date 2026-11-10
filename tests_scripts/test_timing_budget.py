@@ -117,16 +117,14 @@ def expected_rows(src: Path) -> "dict[str, list[int]]":
     system = "asy_system_service.py"
     task_check_s, reset_s = (module_int_const(src, system, n) for n in ("_TASK_CHECK_TIME", "_RESET_DELAY"))
     gc_ms = module_int_const(src, "asy_uart_comm.py", "_GC_PAUSE_WORST_MS")
-    cmd_ms = module_int_const(src, "asy_scd30_driver.py", "_CMD_RESPONSE_WAIT_MS")
     probe_ms = module_int_const(src, "asy_i2c_driver.py", "_PROBE_SETTLE_MS")
-    reads = _calls_in(src / "asy_scd30_driver.py", "get_config_snapshot", "_read_dev_register")
     settles = _calls_in(src / "asy_i2c_driver.py", "_probe_for_device", "sleep_ms", "_PROBE_SETTLE_MS")
     timeout_us, slacks, bauds = _device_terms(src)
     wifi = "asy_wifi_service.py"
     disconnect_ms = module_int_const(src, wifi, "_STA_DISCONNECT_WAIT_ITERS") * module_int_const(src, wifi, "_STA_DISCONNECT_POLL_MS")
     connect_ms = module_int_const(src, wifi, "_STA_CONNECT_POLL_ITERS") * module_int_const(src, wifi, "_STA_CONNECT_POLL_MS")
     switch_s = sum(module_int_const(src, wifi, f"_WLAN_{n}_SETTLE_S") for n in ("DOWN", "DEINIT", "MODE"))
-    clear_us, cs_us = module_int_const(src, "asy_i2c_driver.py", "_CLEAR_HALF_PERIOD_US"), module_int_const(src, "asy_spi_driver.py", "_CS_SETTLE_US")
+    clear_us, cs_us = module_int_const(src, "asy_i2c_driver.py", "_CLEAR_HALF_PERIOD_US"), module_int_const(src, "asy_spi_driver.py", "CS_SETTLE_US")
     per_call_s, outer_s = (module_float_const(src, "asy_webserver_service.py", n) for n in ("_DEFAULT_PER_CALL_TIMEOUT_S", "_DEFAULT_OUTER_CAP_S"))
     rows = {
         "con.watchdog": [(_WDT_TIMEOUT_MS - task_check_s * 1000) * 1000],
@@ -134,8 +132,6 @@ def expected_rows(src: Path) -> "dict[str, list[int]]":
         "con.routine_stall": [gc_ms * 1000],
         "stall.gc": [gc_ms * 1000],
         "stall.i2c_transfer": [2 * timeout_us, timeout_us, module_int_const(src, "asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")],
-        "hold.scd30_command": [cmd_ms * 1000],
-        "hold.scd30_snapshot": [reads * cmd_ms * 1000, cmd_ms * 1000],
         "hold.i2c_probe": [settles * probe_ms * 1000, probe_ms * 1000],
         "feed.supervisor": [task_check_s * 1_000_000],
         "feed.reset_path": [reset_s * 1_000_000],

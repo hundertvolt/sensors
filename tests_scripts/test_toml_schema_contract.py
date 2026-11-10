@@ -9,7 +9,7 @@ import pytest
 from _devices import DEVICE_NAMES
 
 import buildgen.validate as validate_mod
-from buildgen.buildspec import OPTIONAL_TOML_FIELDS, REQUIRED_TOML_FIELDS
+from buildgen.buildspec import MANDATORY_FILES, OPTIONAL_TOML_FIELDS, REQUIRED_TOML_FIELDS
 from buildgen.driver_registry import resolve_driver
 from buildgen.signals import WARN_SIGNALS
 from buildgen.value_wiring import parse_value_wiring
@@ -42,7 +42,7 @@ def _build_rows(src_dir: Path) -> "set[_Row]":
     # The same rows read from the build: the validator's own tables, buildspec's, and every driver's tags.
     rows: set[_Row] = {("[device]", key, key in validate_mod._REQUIRED_DEVICE_FIELDS) for key in validate_mod._ALLOWED_DEVICE_FIELDS - {"wiring"}}
     for key, consumers in validate_mod._DEVICE_WIRING_CONSUMERS.items():
-        tags = [wf for f, label in consumers for wf in parse_wiring(src_dir / f, "schema", label) if wf.toml_field == key]
+        tags = [wf for label in consumers for wf in parse_wiring(src_dir / MANDATORY_FILES[label], "schema", label) if wf.toml_field == key]
         rows.add(("[device.wiring]", key, any(wf.required for wf in tags)))
     for kind, table in _BUS_TABLES.items():
         required = frozenset(validate_mod._BUS_WIRE_FIELDS[kind]) | _BUS_REQUIRED_EXTRA[kind]

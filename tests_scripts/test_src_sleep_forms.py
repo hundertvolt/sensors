@@ -12,13 +12,16 @@ import pytest
 SRC = Path(__file__).resolve().parent.parent / "src"
 _MODULE_KINDS = {"asyncio": "asyncio", "uasyncio": "asyncio", "time": "time", "utime": "time"}
 _SLEEPS = {"asyncio": frozenset({"sleep", "sleep_ms", "wait_for", "wait_for_ms"}), "time": frozenset({"sleep", "sleep_ms", "sleep_us"})}
-# The named synchronous waits as (file, enclosing function, delay): the SPI chip-select settle and the I2C bus clear's
-# 5 us half periods, at boot and in its awaited runtime twin, whose SCL waits yield (C.3).
+# The named synchronous waits as (file, enclosing function, delay): the SPI chip-select settle, also in each FRAM
+# command's CS cycle, and the I2C bus clear's 5 us half periods, at boot and in its awaited twin (SCL waits yield, C.3).
 _SYNC_WAITS = frozenset(
     {
         ("asy_i2c_driver.py", "_clear_bus", "_CLEAR_HALF_PERIOD_US"),
-        ("asy_spi_driver.py", "session_begin", "_CS_SETTLE_US"),
-        ("asy_spi_driver.py", "session_end", "_CS_SETTLE_US"),
+        ("asy_spi_driver.py", "_begin", "CS_SETTLE_US"),
+        ("asy_spi_driver.py", "session_end", "CS_SETTLE_US"),
+        ("asy_fram_driver.py", "_send_and_read", "CS_SETTLE_US"),
+        ("asy_fram_driver.py", "_send_and_write", "CS_SETTLE_US"),
+        ("asy_fram_driver.py", "_send_command", "CS_SETTLE_US"),
     },
 )
 
@@ -161,8 +164,8 @@ def test_every_named_synchronous_wait_is_still_in_place() -> None:
 
 
 def test_a_removed_named_wait_is_a_stale_waiver(tmp_path: Path) -> None:
-    src = _src_copy(tmp_path, "asy_spi_driver.py", "self._cs_pin.value(not self._cs_active_value)\n        time.sleep_us(_CS_SETTLE_US)\n", "self._cs_pin.value(not self._cs_active_value)\n")
-    assert named_wait_problems(src) == ["stale waiver: no asy_spi_driver.py:session_end() time.sleep*(_CS_SETTLE_US) left"]
+    src = _src_copy(tmp_path, "asy_spi_driver.py", "self._cs_pin.value(not self._cs_active_value)\n        time.sleep_us(CS_SETTLE_US)\n", "self._cs_pin.value(not self._cs_active_value)\n")
+    assert named_wait_problems(src) == ["stale waiver: no asy_spi_driver.py:session_end() time.sleep*(CS_SETTLE_US) left"]
 
 
 @pytest.mark.parametrize(
@@ -179,7 +182,7 @@ def test_a_removed_named_wait_is_a_stale_waiver(tmp_path: Path) -> None:
         ("mod.py", "import asyncio\n\n_F = 0.5\n\n\nasync def f():\n    await asyncio.sleep_ms(_F)\n"),
         ("mod.py", "import asyncio\nfrom micropython import const\n\n_HALF = const(0.5)\n\n\nasync def f():\n    await asyncio.sleep(_HALF)\n"),
         ("mod.py", "import asyncio\n\n_N = 2\n\n\nasync def f():\n    await asyncio.sleep(_N)\n"),
-        ("asy_spi_driver.py", "import time\n\n\ndef session_begin():\n    time.sleep_us(3)\n"),
+        ("asy_spi_driver.py", "import time\n\n\ndef _begin():\n    time.sleep_us(3)\n"),
     ],
 )
 def test_a_refused_form_is_named(tmp_path: Path, name: str, source: str) -> None:
@@ -197,7 +200,7 @@ def test_a_refused_form_is_named(tmp_path: Path, name: str, source: str) -> None
         ("mod.py", "import asyncio\n\n\nasync def f(t):\n    await asyncio.sleep_ms(t // 2)\n"),
         ("mod.py", "import asyncio\n\n\nasync def f(aw):\n    await asyncio.wait_for_ms(aw, 500)\n"),
         ("mod.py", "import asyncio\n\n\nclass C:\n    async def f(self):\n        await asyncio.sleep_ms(self._period_ms)\n"),
-        ("asy_spi_driver.py", "import time\n\n\ndef session_begin():\n    time.sleep_us(_CS_SETTLE_US)\n"),
+        ("asy_spi_driver.py", "import time\n\n\ndef _begin():\n    time.sleep_us(CS_SETTLE_US)\n"),
     ],
 )
 def test_an_accepted_form_passes(tmp_path: Path, name: str, source: str) -> None:

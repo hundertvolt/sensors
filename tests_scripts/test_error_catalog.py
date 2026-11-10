@@ -29,7 +29,7 @@ _CATALOG_PATH = _REPO / "buildgen" / "error_catalog.json"
 _MOCK_SAMPLES = "mockdata/samples.json"
 _TEST_SCOPES = ("tests", "tests_hardware", "tests_scripts", "digital_twin", "scripts")
 
-_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}
+_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}  # each persisting entry point
 _KEYWORD = {"E": "errno", "W": "wrnno"}
 _PREFIX = {"E": "_ERR_", "W": "_WRN_"}
 _CODE_PARAMS = frozenset(_KEYWORD.values())
@@ -724,7 +724,7 @@ def test_the_reset_reason_table_has_one_row_per_recorded_code() -> None:
 
 # ---- (12) the status tables: text, and a tone only where the page colours the code ------------------
 
-# The one table the page colours (agent, 2026-09-30; owner-reviewed, 2026-11-06): its text is the cue, the tone repeats it in colour.
+# The one table the page colours (agent, 2026-09-30): its text is the cue, the tone repeats it in colour.
 _TONED_TABLES = frozenset({"CalLight"})
 _TONES = frozenset({"good", "neutral", "warn"})
 
@@ -785,8 +785,8 @@ _ERR_NET_NO_ACK = const(20)
 _WRN_NET_SLOW = const(20)
 class Net:
     async def run(self):
-        await self.pr.err_s("x", errno=_ERR_NET_NO_ACK)
-        await self.pr.wrn_s("y", wrnno=_WRN_NET_SLOW)
+        self.pr.err_s("x", errno=_ERR_NET_NO_ACK)
+        self.pr.wrn_s("y", wrnno=_WRN_NET_SLOW)
 """
 
 
@@ -803,7 +803,7 @@ def test_the_plants_start_clean() -> None:
 
 
 def test_the_expression_check_follows_helpers_and_feeders() -> None:
-    clean = "class N:\n    def _check(self, b):\n        return _ERR_NET_NO_ACK if b else 0\n    async def _err(self, errno):\n        await self.pr.err_s('x', errno=errno)\n    async def f(self, b):\n        err = self._check(b)\n        await self._err(err)\n"
+    clean = "class N:\n    def _check(self, b):\n        return _ERR_NET_NO_ACK if b else 0\n    async def _err(self, errno):\n        self.pr.err_s('x', errno=errno)\n    async def f(self, b):\n        err = self._check(b)\n        await self._err(err)\n"
     assert not _expression_problems(_planted(clean))
     assert _expression_problems(_planted(clean.replace("else 0", "else 3")))  # a feeder returning a literal
     assert _expression_problems(_planted(clean.replace("self._err(err)", "self._err(4)")))  # a helper's errno argument

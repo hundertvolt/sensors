@@ -1,6 +1,6 @@
 """Isolated-driver device script: the bench build's whole graph over its scratch config, its tasks and timers started
-with the RP2040's alarm pool emptied: each failed arm is handled in place and none resets, the tick timers re-arm once
-the pool frees, and mempause still answers. Facts first; no flash write but the scratch build's own."""
+with the RP2040's alarm pool emptied: each failed arm is handled in place and none resets, the uptime ticks on, and
+mempause still answers. Facts first; no flash write but the scratch build's own."""
 
 import asyncio
 import errno
@@ -76,13 +76,11 @@ async def _main() -> None:
         fact("pool_free", len(hogs))
         await sysfunct.start_tasks(device._collect_task_starters(), task_names=device._collect_task_names())
         await sysfunct.start_timers(device._collect_trigger_starters(), device._collect_timer_starters())
-        fact("timers_started", True)  # start_timers() returned: every starter ran, a failed stagger arm slept instead
+        fact("timers_started", True)  # start_timers() returned: every starter ran
         running.append(asyncio.create_task(sysfunct.supervise_tasks()))
         counter = sysfunct._uptime
         uptime = counter.read()
         await _until(lambda: counter.read() > uptime, "uptime_rose")
-        conn = getattr(device, "conn", None)
-        fact("wifi_tick_armed_empty", None if conn is None else conn._tick_armed)
         fact("mempause", await device._system_cmd_callback("mempause"))
         fram = device.fram
         fact("paused", None if fram is None else fram.get_pause())
@@ -92,10 +90,8 @@ async def _main() -> None:
         for t in hogs:
             t.deinit()
         hogs = []
-        if conn is not None:
-            await _until(lambda: conn._tick_armed is True, "wifi_tick_rearmed")
         fact("tasks_alive", all(task is not None and not task.done() for task in sysfunct._tasks))
-        fact("reset_armed", sysfunct._reset_armed)
+        fact("reset_armed", sysfunct._phase >= 3)  # _PHASE_ARMED
     except Exception as e:  # a failure before the verdict: reported, then the cleanup below
         fact("failure", repr(e))
     finally:

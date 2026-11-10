@@ -37,10 +37,10 @@ _RESET_WAIT_MS = 2 * _WDT_TIMEOUT_MS  # unfed: past the watchdog, which must end
 
 def _fail_unit(driver: "FRAM_SPI") -> None:
     # From outside: the erase's per-unit write raises as a dying SPI transfer would, at the second unit only.
-    original = driver.set_values_sync
+    original = driver.set_values
     units = [0]
 
-    def write(buf: "bytes | bytearray | memoryview", addr_start: int) -> int:
+    def write(buf: "bytes | bytearray | memoryview", addr_start: int) -> bool:
         if len(buf) == _ERASE_UNIT and not any(buf):
             units[0] += 1
             if units[0] == _FAILING_UNIT:
@@ -48,7 +48,7 @@ def _fail_unit(driver: "FRAM_SPI") -> None:
                 raise OSError(errno.EIO)
         return original(buf, addr_start)
 
-    driver.set_values_sync = write  # type: ignore[method-assign]
+    driver.set_values = write  # type: ignore[method-assign]
 
 
 async def _main() -> None:

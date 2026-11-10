@@ -31,7 +31,7 @@ def _parks(final: "list[ast.stmt]", name: str) -> bool:
 
 def _unparked(source: str) -> "list[int]":
     # Lines of each construction that is neither the first statement of a parking try nor the statement right before one
-    # (agent, 2026-10-14: the second form keeps a failed construction from reaching the finally unbound; owner-reviewed, 2026-11-06).
+    # (agent, 2026-10-14: the second form keeps a failed construction from reaching the finally unbound).
     found: list[int] = []
     for node in ast.walk(ast.parse(source)):
         for field in ("body", "orelse", "finalbody"):

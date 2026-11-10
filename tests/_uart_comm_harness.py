@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 
     from typing_extensions import Unpack
 
-    from asy_base_classes import PieceBuffer
-    from asy_crc_checks import CRCBase
+    from asy_uart_driver import PieceBuffer
+    from crc_checks import CRCBase
 
     T = TypeVar("T")
 
@@ -142,7 +142,7 @@ class PollRoundClock:
         class _Asyncio:
             # Only what the two modules use at run time: a new attribute there fails here until it is added.
             Lock = asyncio.Lock
-            get_event_loop = staticmethod(asyncio.get_event_loop)
+            create_task = staticmethod(asyncio.create_task)
 
             @staticmethod
             async def sleep_ms(ms: int) -> None:

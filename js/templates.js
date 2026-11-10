@@ -12,6 +12,7 @@ import { formatFieldValue } from "./field-format.js";
 /** @typedef {import("./definitions.js").FieldDef} FieldDef */
 /** @typedef {import("./definitions.js").FieldGroup} FieldGroup */
 /** @typedef {import("./definitions.js").ErrcountGroup} ErrcountGroup */
+/** @typedef {import("./definitions.js").ErrcountCodes} ErrcountCodes */
 /** @typedef {import("./definitions.js").Section} Section */
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
 /**
@@ -214,11 +215,11 @@ function buildFieldLabel(field, fieldId, forControl) {
 /**
  * An error or warning number is a button showing its code's description; a no-error one stays text.
  * @param {HTMLElement} list
- * @param {ErrcountGroup} group
+ * @param {ErrcountCodes | undefined} codes
  * @param {HistoryItem} item
  * @returns {HTMLElement}
  */
-function buildHistoryEntry(list, group, item) {
+function buildHistoryEntry(list, codes, item) {
     const li = document.createElement("li");
     li.className = "history-entry";
     li.dataset.errType = item.type;
@@ -228,9 +229,9 @@ function buildHistoryEntry(list, group, item) {
     if (num instanceof HTMLButtonElement) {
         num.type = "button";
         num.setAttribute("aria-expanded", "false");
-        const codes = item.type === "N" ? undefined : group.codes?.[item.type];
+        const texts = item.type === "N" ? undefined : codes?.[item.type];
         num.addEventListener("click", () => {
-            toggleHistoryDescription(list, num, describeCode(codes, String(item.num)));
+            toggleHistoryDescription(list, num, describeCode(texts, String(item.num)));
         });
     }
     li.appendChild(num);
@@ -531,8 +532,9 @@ function paintCodeButton(button, field, value, display) {
  * @param {HTMLElement} card
  * @param {ErrcountGroup} group
  * @param {Record<string, unknown> | null} errcount
+ * @param {ErrcountCodes | undefined} codes
  */
-function paintErrcountGroup(card, group, errcount) {
+function paintErrcountGroup(card, group, errcount, codes) {
     const moduleList = card.querySelector(".errcount-module-list");
     if (!(moduleList instanceof HTMLElement)) {
         return;
@@ -545,7 +547,7 @@ function paintErrcountGroup(card, group, errcount) {
         tally[state.worst] += 1;
         const rowWrapper = rowWrappers[index];
         if (rowWrapper !== undefined) {
-            paintErrcountRow(rowWrapper, group, state);
+            paintErrcountRow(rowWrapper, codes, state);
         }
     }
     paintRollupText(card, "errors", modulesText(tally.E, "with errors"));
@@ -557,10 +559,10 @@ function paintErrcountGroup(card, group, errcount) {
 
 /**
  * @param {HTMLElement} rowWrapper
- * @param {ErrcountGroup} group
+ * @param {ErrcountCodes | undefined} codes
  * @param {ErrcountRowState} state
  */
-function paintErrcountRow(rowWrapper, group, state) {
+function paintErrcountRow(rowWrapper, codes, state) {
     rowWrapper.dataset.worst = state.worst;
     const count = rowWrapper.querySelector(".errcount-row-count");
     const list = rowWrapper.querySelector(".history-list");
@@ -582,7 +584,7 @@ function paintErrcountRow(rowWrapper, group, state) {
     } else {
         // No pagination or truncation (owner, 2026-08-21, paraphrase: a history stays well under 20
         // entries); each logger holds 10 (asy_print_log.py's DEFAULT_LOG), so the whole array renders.
-        list.replaceChildren(...state.history.map((item) => buildHistoryEntry(list, group, item)));
+        list.replaceChildren(...state.history.map((item) => buildHistoryEntry(list, codes, item)));
     }
 }
 
@@ -722,9 +724,10 @@ function worstErrcountType(history) {
  * and "History entry shape" for the full rationale.
  * @param {ErrcountGroup} group
  * @param {Record<string, unknown> | null} errcount the `/status` body's errcount object; null when it carried none
+ * @param {ErrcountCodes} [codes] the page's code descriptions (`SiteDefinitions.errcountCodes`)
  * @returns {HTMLElement}
  */
-export function buildErrcountGroup(group, errcount) {
+export function buildErrcountGroup(group, errcount, codes) {
     const card = document.createElement("div");
     card.className = "card";
     card.dataset.groupKey = group.key;
@@ -769,7 +772,7 @@ export function buildErrcountGroup(group, errcount) {
     }
     card.appendChild(moduleList);
 
-    paintErrcountGroup(card, group, errcount);
+    paintErrcountGroup(card, group, errcount, codes);
     return card;
 }
 
@@ -910,9 +913,10 @@ export function resetControl(wrapper, field, value) {
  * @param {HTMLElement} card
  * @param {ErrcountGroup} group
  * @param {Record<string, unknown> | null} errcount the `/status` body's errcount object; null when it carried none
+ * @param {ErrcountCodes} [codes] the page's code descriptions (`SiteDefinitions.errcountCodes`)
  */
-export function updateErrcountGroup(card, group, errcount) {
-    paintErrcountGroup(card, group, errcount);
+export function updateErrcountGroup(card, group, errcount, codes) {
+    paintErrcountGroup(card, group, errcount, codes);
 }
 
 /**

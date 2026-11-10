@@ -37,7 +37,7 @@ import unix_port_unretrieved_report  # noqa: E402 - imported after the prewarm a
 from _async_harness import cancel, release_finished, run  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _fake_time import DrivenTime  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _fake_time import DrivenTime, ManualTick  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _fast_sleep import check_sleep_ms  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -384,7 +384,7 @@ async def _hotspot_boot(clock: DrivenTime) -> "tuple[WifiService, NeopixelDriver
     asy_wifi_service.asyncio = _SteppedAsyncio(_STREAK_STEP_MS, clock=clock)  # type: ignore[assignment, attr-defined]  # the streak's waits stepped
     join_s, network._CONNECT_DELAY_S = network._CONNECT_DELAY_S, _STREAK_JOIN_S
     try:
-        tasks = [pixel.start_asy_overlay(), conn.start_asy_connect()]
+        tasks = [conn.start_asy_connect()]
         started = await _wait_until(lambda: conn._dns_server_task is not None, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S, clock=clock)
         assert started, "real hotspot activation never started the real DNSServer task"
         bound = await _wait_until(lambda: conn._dns_server._udps.connected, timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S, clock=clock)
@@ -449,7 +449,7 @@ def _radio_rung_bound_s(conn: "WifiService") -> float:
     poll_budget = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS") * _WIFI_STEP_MS
     iteration = stepped("_WIFI_REFRESH_S") + poll_budget + stepped("_STA_RETRY_AFTER_LOSS_S")
     settles = stepped("_WLAN_DOWN_SETTLE_S") + stepped("_WLAN_DEINIT_SETTLE_S") + stepped("_WLAN_MODE_SETTLE_S")
-    return ((_RUNG_AT + 1) * iteration + settles + conn._counter_timer.period) / 1000  # the uptime tick, armed in ms
+    return ((_RUNG_AT + 1) * iteration + settles + conn._tick._period) / 1000  # the uptime tick's period, in ms
 
 
 def _red_frames(frames: "list[list[tuple[int, ...]]]") -> "list[list[tuple[int, ...]]]":
@@ -472,7 +472,7 @@ async def _ring_in_fram(clock: DrivenTime, conn: "WifiService") -> None:
     # WIFI's ring as its FRAM chunk holds it, read back through the store's own chunk read as the next boot's setup()
     # restores it: a write that never landed leaves the chip's older image, a RAM-only logger holds no chunk at all.
     ring = tuple(conn.pr.history)
-    stored = await _driven(clock, "the WIFI chunk's read", conn.pr._read())
+    stored = conn.pr._read()
     assert isinstance(stored, tuple) and stored[1] == ring, f"WIFI's FRAM copy {stored} is not its RAM ring {ring}"
 
 
@@ -729,6 +729,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
         fast = _FastSupervisorAsyncio()
         asy_system_service.asyncio = fast  # type: ignore[assignment, attr-defined]
         supervisor: asyncio.Task[None] | None = None
+        sysfunct._tick = ManualTick()  # the status pass, stepped by hand: each death lands where the test puts it
         try:
             await sysfunct.start_tasks(task_starters, task_names=module._collect_task_names())
             assert await _yield_until(lambda: all(starts)), starts
@@ -746,7 +747,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
                     fast.hold = True
                     assert await _yield_until(lambda: fast.parked), "the supervisor never reached its sleep"
                     restarts, reported = starts[status_idx], tap.reported
-                    sysfunct._uptime_event.set()
+                    sysfunct._tick.set()
                     assert await _yield_until_above(lambda: tap.reported, reported), f"the death never reached the PC report: {tap.wrong}"
                     fast.release()
                     assert await _yield_until_above(lambda: starts[status_idx], restarts), "the dead status task was never restarted"
@@ -888,18 +889,16 @@ def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
         conn = module.conn
         persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
-        conn.start_uptime_timer()
         tasks = [conn.start_asy_connect(), conn.start_asy_uptime()]
         try:
             assert await _wait_until(lambda: conn._wifi_connected, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S), "the station never linked before the fault"
             station = network.WLAN(network.STA_IF)  # the service's own interface object: one per interface, as on rp2
             built = network.constructions[network.STA_IF]
             counted = (await conn.get_error_counter())["WIFI"]["ErrCount"]
+            conn._tick = ManualTick()  # linked on its own 1 s grid; from here each uptime pass is stepped by hand
             station.raise_on["status"] = (OSError, (5,), 2)  # EIO, twice
-            timer = conn._counter_timer
-
-            def ticked_and_read() -> bool:  # one uptime tick per poll, fired as the twin Timer fires it: its period is not under test
-                timer.callback(timer)
+            def ticked_and_read() -> bool:  # one uptime tick per poll: its period is not under test
+                conn._tick.set()
                 return "status" not in station.raise_on
 
             assert await _wait_until(ticked_and_read, timeout_s=_WAIT_TIMEOUT_S), "the service never read the station's status"
@@ -929,7 +928,6 @@ def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> 
         conn: WifiService = module.conn
         persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
-        conn.start_uptime_timer()
         held = asy_wifi_service.asyncio  # type: ignore[attr-defined]
         asy_wifi_service.asyncio = _SteppedAsyncio(clock=clock)  # type: ignore[assignment, attr-defined]
         tasks = [conn.start_asy_connect(), conn.start_asy_uptime()]

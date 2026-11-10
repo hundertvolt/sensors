@@ -26,7 +26,6 @@ import asy_api_response as ar
 import asy_wifi_service
 from asy_base_classes import ValueRef
 from asy_bmp3xx_driver import BMP3XX_Reader
-from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_scd30_driver import SCD30_Reader
@@ -34,6 +33,7 @@ from asy_sgp40_driver import SGP40_Reader
 from asy_system_service import SystemService
 from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, WebserverService
 from asy_wifi_service import WifiConfig, WifiService
+from crc_checks import CRC8
 
 try:
     from typing import TYPE_CHECKING
@@ -183,7 +183,7 @@ def _make_service(bmp_cls: "type[BMP3XX_Reader]" = BMP3XX_Reader) -> _Product:
     bus0 = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
     bus1 = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
     wifi = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=cfg_path)
-    ntp = NTPClient(asyncio.Lock(), _network_available, _no_dns_server, NtpTiming(500, 1, 5000), cfg_path=cfg_path)
+    ntp = NTPClient(asyncio.Lock(), _network_available, _no_dns_server, NtpTiming(1000, 5000), cfg_path=cfg_path)
     system = SystemService(ntp.ntp_issynced, cfg_path=cfg_path)
     comp = _FakeCompSource()
     readers = (
@@ -220,7 +220,7 @@ def _queue_scd_snapshot(reader: SCD30_Reader) -> None:
     assert real_i2c is not None
     for value in (0, 2, 0, 0, 400, 0):
         payload = struct.pack(">H", value)
-        crc = run(CRC8().add(bytearray(payload)))
+        crc = CRC8().add(bytearray(payload))
         assert crc is not None
         real_i2c.read_queue.append(payload + bytes([crc[-1]]))
 

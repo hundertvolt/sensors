@@ -68,7 +68,7 @@ async def handle_set_cmd(
             if post_asy_fct is not None:
                 await post_asy_fct()
         except Exception as e:
-            await reader.pr.err_s("Post-write hook failed:", e, errno=_ERR_CALLBACK)
+            reader.pr.err_s("Post-write hook failed:", e, errno=_ERR_CALLBACK)
             results = dict.fromkeys(results, FAILED)
     return results
 

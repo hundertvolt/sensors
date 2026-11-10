@@ -17,6 +17,7 @@ from buildgen.buildspec import (
     BUS_ATTACHED_DRIVERS,
     BUS_KIND_BY_DRIVER,
     FIXED_ADDRESS_DRIVERS,
+    MANDATORY_FILES,
     REQUIRED_TOML_FIELDS,
     UART_CRC_MODES,
 )
@@ -91,18 +92,10 @@ _I2C_TIMEOUT_MAX_US = 200000
 # @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000  # codegen's generated WDT(timeout=...), the one the boot clear runs under
 
-# [device.wiring] fields and the mandatory-infra consumers whose @wiring tags they resolve against, as
-# (module file, the consumer's generated name) pairs fixed ahead of time (Part L.3). fram_target has
-# several consumers, and each one's own tag is checked so a missing declaration is caught here.
-_DEVICE_WIRING_CONSUMERS: "dict[str, tuple[tuple[str, str], ...]]" = {
-    "led_target": (("asy_wifi_service.py", "conn"),),
-    "fram_target": (
-        ("asy_system_service.py", "sysfunct"),
-        ("asy_wifi_service.py", "conn"),
-        ("asy_ntp_client.py", "ntp"),
-        ("asy_webserver_service.py", "webserver"),
-    ),
-}
+# [device.wiring] fields and the mandatory-infra consumers whose @wiring tags they resolve against, each by its
+# generated name (its file is buildspec's MANDATORY_FILES row; Part L.3). fram_target has several consumers, and
+# each one's own tag is checked so a missing declaration is caught here.
+_DEVICE_WIRING_CONSUMERS: "dict[str, tuple[str, ...]]" = {"led_target": ("conn",), "fram_target": ("sysfunct", "conn", "ntp", "webserver")}
 
 # The settings groups the generated webserver serves, in order: (section, module variable, fields, hook), the hook
 # written as SettingsGroup's own keyword and callable, or None. Codegen renders the rows; notification's group comes
@@ -462,15 +455,16 @@ def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
     wiring = _device_table(model).get("wiring", {})
     if not isinstance(wiring, dict):
         raise BuildInternalError(f"internal: {model.device}'s [device].wiring reached the wiring check unchecked")
-    schemas = {(f, label): parse_wiring(src_dir / f, model.device, label) for consumers in _DEVICE_WIRING_CONSUMERS.values() for f, label in consumers}
+    schemas = {label: parse_wiring(src_dir / MANDATORY_FILES[label], model.device, label) for consumers in _DEVICE_WIRING_CONSUMERS.values() for label in consumers}
     for toml_field, value in wiring.items():
         consumers = _DEVICE_WIRING_CONSUMERS.get(toml_field)
         if consumers is None:
             raise BuildError(model.device, f"[device.wiring] declares unknown field {toml_field!r}", rule="device.wiring-field-unknown", fix=f"use one of {sorted(_DEVICE_WIRING_CONSUMERS)}", field=toml_field)
         if not isinstance(value, str):
             raise BuildError(model.device, f"[device.wiring].{toml_field} must be a string instance reference, got {value!r}", rule="wiring.target-type", fix="write it as a quoted instance name", field=toml_field)
-        for module_file, consumer_label in consumers:
-            wf = _resolve_wiring_field(schemas[(module_file, consumer_label)], toml_field)
+        for consumer_label in consumers:
+            module_file = MANDATORY_FILES[consumer_label]
+            wf = _resolve_wiring_field(schemas[consumer_label], toml_field)
             if wf is None:
                 raise BuildError(
                     model.device,
@@ -487,8 +481,8 @@ def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
     for toml_field, consumers in _DEVICE_WIRING_CONSUMERS.items():
         if toml_field in wiring:
             continue
-        for module_file, consumer_label in consumers:
-            wf = _resolve_wiring_field(schemas[(module_file, consumer_label)], toml_field)
+        for consumer_label in consumers:
+            wf = _resolve_wiring_field(schemas[consumer_label], toml_field)
             if wf is not None and wf.required:
                 raise BuildError(model.device, f"[device.wiring] is missing required field {toml_field!r}", rule="device.wiring-field-missing", fix=f"add {toml_field} to [device.wiring]", field=toml_field)
 
@@ -840,7 +834,7 @@ def _check_uart_bus(model: DeviceModel, bus_name: str, table: "TomlDoc") -> None
 
 def _check_uart_link_buses(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
     # Refuses the timeout, rxbuf and poll-rate values the protocol would refuse at boot - a config mismatch out of runtime
-    # scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24; owner-reviewed, 2026-11-06).
+    # scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24).
     # Generated code wires no framing (adds 0); the CRC adds the width of the link's crc mode.
     for spec in _uart_links(model):
         bus_name = _checked_str(spec.fields["bus"])
@@ -952,7 +946,7 @@ def _check_uart_link_roles(model: DeviceModel, src_dir: Path) -> None:
 def _check_uart_link_timing(model: DeviceModel, spec: InstanceSpec, bus_name: str, table: "TomlDoc", src_dir: Path) -> None:
     # The poll rates and the reply timeout against each other, at the values that boot (UARTComm's own bounds).
     comm = "asy_uart_comm.py"
-    gc_pause, timeout, poll_max, horizon = (module_int_const(src_dir, comm, n) for n in ("_GC_PAUSE_WORST_MS", "_DEFAULT_TIMEOUT_MS", "_POLL_WAIT_MAX_MS", "_TICKS_HORIZON_MS"))
+    gc_pause, timeout, poll_max, horizon, header, payload = (module_int_const(src_dir, comm, n) for n in ("_GC_PAUSE_WORST_MS", "_DEFAULT_TIMEOUT_MS", "_POLL_WAIT_MAX_MS", "_TICKS_HORIZON_MS", "_HEADER_LEN", "_DEFAULT_PAYLOAD_SIZE"))
     num, den, mult = (module_int_const(src_dir, comm, n) for n in ("_RESYNC_NUM", "_RESYNC_DEN", "_DRAIN_BOUND_MULT"))
     poll_wait, poll_idle = (_uart_bus_value(src_dir, table, n) for n in ("poll_wait_ms", "poll_idle_ms"))
     if not 1 <= poll_wait <= poll_max:
@@ -964,13 +958,16 @@ def _check_uart_link_timing(model: DeviceModel, spec: InstanceSpec, bus_name: st
             field="poll_wait_ms",
             instance=spec.label,
         )
-    if not poll_wait <= poll_idle <= horizon:
-        # The idle poll is the slower rate (Part F.5.9), and a delay ticks_add() takes (extmod/modtime.c:178-196).
+    # The idle poll is the slower rate (Part F.5.9): no faster than one frame's wire time at 10 bits a byte, rounded up,
+    # nor than the transaction poll; and a delay ticks_add() takes (extmod/modtime.c:178-196).
+    wire_ms = -(-(header + payload + _uart_crc_width(spec)) * 1000 // max(_checked_int(table["baudrate"]) // 10, 1))
+    floor = max(poll_wait, wire_ms)
+    if not floor <= poll_idle <= horizon:
         raise BuildError(
             model.device,
-            f"bus.{bus_name}: poll_idle_ms {poll_idle} is outside {poll_wait} … {horizon} - the idle poll is never faster than the transaction poll and stays a valid ticks delay",
+            f"bus.{bus_name}: poll_idle_ms {poll_idle} is outside {floor} … {horizon} - the idle poll is never faster than one frame's {wire_ms} ms on the wire or the transaction poll, and stays a valid ticks delay",
             rule="bus.uart-poll-idle-range",
-            fix=f"set poll_idle_ms within {poll_wait}..{horizon}",
+            fix=f"set poll_idle_ms within {floor}..{horizon}",
             field="poll_idle_ms",
             instance=spec.label,
         )
@@ -1022,6 +1019,8 @@ def _check_value_wiring(model: DeviceModel) -> None:
 def _check_warn_signals(model: DeviceModel, spec: InstanceSpec) -> None:
     # The notification's per-signal getters (Part C.14.3), named from the generator's one catalog, each one
     # optional; codegen reads the notification's alone, so one on another instance wires nothing.
+    if spec.driver == "notification" and spec.driver_info is not None:
+        _check_warn_catalog(model, spec, spec.driver_info.source_path)
     for toml_field, value in spec.wiring.items():
         if not toml_field.startswith("warn_"):
             continue
@@ -1035,6 +1034,21 @@ def _check_warn_signals(model: DeviceModel, spec: InstanceSpec) -> None:
                 field=toml_field,
             )
         _check_source_field_reference(model, value, spec.label, toml_field)
+
+
+def _check_warn_catalog(model: DeviceModel, spec: InstanceSpec, source_path: Path) -> None:
+    # Each catalog signal adds one field (codegen renders one record per signal): its name must be unique and clear of
+    # the service's own schema, checked here once per build instead of at every boot.
+    names = [signal.name for signal in WARN_SIGNALS.values()]
+    clashes = sorted({name for name in names if names.count(name) > 1} | (set(names) & set(extract_field_schemas(source_path, device=model.device, instance_label=spec.label))))
+    if clashes:
+        raise BuildError(
+            model.device,
+            f"warn signal field(s) {clashes} collide with another signal or with {source_path.name}'s own schema",
+            rule="wiring.warn-collision",
+            fix="give the signal a unique name in buildgen/signals.py's WARN_SIGNALS",
+            instance=spec.label,
+        )
 
 
 def _check_wiring_reference(model: DeviceModel, wf: WiringField, target_key_str: str, consumer_label: str, toml_field: str) -> None:
@@ -1318,7 +1332,7 @@ def module_str_const(src_dir: Path, filename: str, name: str) -> str:
 def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> HardConsumer:
     # The device's smallest hard consumer of loop time (Part F.3), read by the twin's loop-lag scenario and the bench lag
     # test: the watchdog's room beside one supervisor sleep, and each uart_link's reply timeout less its two polls, its idle
-    # poll and one GC pause; the first smallest wins (agent, 2026-10-21; owner-reviewed, 2026-11-06).
+    # poll and one GC pause; the first smallest wins (agent, 2026-10-21).
     task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
     consumers = [HardConsumer(_WDT_TIMEOUT_MS - task_check_s * 1000)]
     reply_ms, gc_pause = (module_int_const(src_dir, "asy_uart_comm.py", n) for n in ("_DEFAULT_TIMEOUT_MS", "_GC_PAUSE_WORST_MS"))

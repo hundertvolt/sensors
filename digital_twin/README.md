@@ -106,7 +106,7 @@ the UDP shim or the NTP responder (see "Running the twin's own tests" below).
   timeout, while rp2 builds without `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` and polls once and
   returns (:400-412). asyncio polls with a zero timeout before every task step, so each step cost the
   twin about 1 ms while a flag waited: 1.4 s of each 2 s re-plug ladder in
-  `tests/test_digital_twin_hot_replug.py`, whose FRAM log writes yield once per CRC byte (measured;
+  `tests/test_digital_twin_hot_replug.py` (measured;
   agent, 2026-10-27). Only a zero-timeout round in which every registered stream is a clear
   `ThreadSafeFlag` is skipped, the one round whose poll can report nothing; every other round takes
   the real poll; `tests/test_digital_twin_unix_port_idle_poll.py` pins which rounds those are.
@@ -480,12 +480,12 @@ host-side harness reads:
 | `--test-stall-loop-ms N` | `STALL` | a `STALL_TRIGGER` line on stdin stops the whole loop for N ms |
 | `--test-conn-status-interval-ms N` | `CONN_SLOTS open=<n> backlog=<n>` | the connection gauge every N ms |
 | `--test-fault-status-interval-ms N` | `FAULT_PENDING ...` | each chip's queued faults every N ms |
-| `--test-shutdown-hang STEP` | `HANG <step>`; for S1 also `HUNG S1` | the controlled shutdown's step S1, S2, S3, S4, S5reset, S5erase or S6 never completes, so only the watchdog ends it; `HUNG S1` comes when the rebound dead-task report is first entered |
+| `--test-shutdown-hang STEP` | `HANG <step>`; for S1 also `HUNG S1` | the controlled shutdown's step S1, S2, S4, S5reset, S5erase or S6 never completes, so only the watchdog ends it; `HUNG S1` comes when the rebound dead-task report is first entered |
 | `--test-flash-stall-max` | — | every flash stall at its datasheet maximum |
 | `--test-uart-over-cap` | `UART_OVER_CAP <key> sent\|refused` | per initiating `uart_link`, right after its next transfer, one stream of the link's cap plus one byte, which the protocol refuses before its first frame and logs |
-| `--test-hold-system-entry ERRNO[:cut]` | `ENTRY_HELD`, `ENTRY_RELEASED` | SystemService's logger holds its entry with that errno (the supervisor's escalation entry) until an `ENTRY_RELEASE` line arrives on stdin; the service's bounded wait on that entry starts at the release, so the hold never counts against its bound. With `:cut` the entry's real write starts and is held inside its first FRAM block, after that block's busy mark, never released: the bound counts the hold and its cancel cuts the block, as a write that never finishes would (no `ENTRY_RELEASED`) |
+| `--test-hold-system-entry ERRNO[:cut]` | `ENTRY_HELD`, `ENTRY_RELEASED` | SystemService's entry with that errno (the supervisor's escalation entry) lands in its call, then the escalation holds before its reboot until an `ENTRY_RELEASE` line arrives on stdin. With `:cut` the entry's real write stops inside its first FRAM block, after that block's busy mark, and freezes the loop for good, crediting the watchdog once its timeout has passed, as a write that never finishes would on silicon (no `ENTRY_RELEASED`); the stop file then ends the run as SIGINT would, since the frozen loop cannot poll it |
 | `--test-loop-lag-ms N` | `LOOP_LAG max_us=<n> p99_us=<n> samples=<n> <link key>=<transfers> ...` | a task sleeping N ms at a time records each wake's overshoot; one line per 5 s window, that window's figures alone (SPECIFICATION.md Part F.3's `lag.loop`), ending with each wired `uart_link`'s transfers so far, one `<link key>=<transfers>` per link |
-| `--test-drop-timer-fire reset\|sequencer` | `DROP_ARMED <site>`, `FIRE_DROPPED <site> callbacks=<n>` | the twin's soft-callback drop is set before that one-shot's arm and cleared once its fire was dropped, as rp2's full scheduler queue loses it (SPECIFICATION.md Part F.1) |
+| `--test-drop-timer-fire reset` | `DROP_ARMED <site>`, `FIRE_DROPPED <site> callbacks=<n>` | the twin's soft-callback drop is set before that one-shot's arm and cleared once its fire was dropped, as rp2's full scheduler queue loses it (SPECIFICATION.md Part F.1) |
 | `--test-watchdog-fault supervisor-raise\|main-exit\|block` | `WDT_AT_FAULT <feed_count>` | after the supervisor's first feed, one fault that ends the feeding: the dead-task report raises as a task ends, the product's `main()` is cancelled, or the whole loop blocks past the watchdog timeout |
 | `--test-defer-faults` | `FAULTS_ARMED` | every `--fault` is held back until a `FAULT_ARM` line arrives on stdin, then queued at once, so the boot meets none of them and a fault matching a read the boot shares reaches only what runs after it; a later `FAULT_ARM` queues nothing more |
 | `--test-pin-send-buffer` | `SNDBUF_PINNED bytes=<n> accepted_bytes=<n>` | each socket the server accepts has its send buffer set to the kernel's floor (socket(7): a request is doubled, then clamped) before it is served, as rp2's lwIP one is small and fixed (`TCP_SND_BUF` 6,400 B); both sizes are read back through libc's `getsockopt()`. Unpinned, a loopback socket starts with megabytes, so a whole page fits the kernel at once and a client's reset meets a finished write; pinned, a body larger than both ends' buffers is still being written when the client resets, on any host |
@@ -1234,17 +1234,13 @@ each bare `machine`/`network`/`neopixel` resolves to one file per run (SPECIFICA
   `os.environ` is missing, so read `os.getenv()`; and `micropython.mem_info()` with any argument
   prints the full block map. Every Unix-port-vs-rp2 difference worked around in test code is listed
   in SPECIFICATION.md F.7.
-- **A launch string over 255 bytes kills the Unix port before its script runs**: every argument
-  from the script on, the script's real directory and every `MICROPYPATH` entry but a `~/` one built
-  from `$HOME` is interned as a qstr, and a longer one raises outside any handler (`FATAL: uncaught
-  NLR`, exit 1), which reads as a twin that exited before ever serving. A deep logs directory or a
-  long scenario name reaches it through the state paths, so `scripts/_twin_process.py`'s `spawn()`,
-  `scripts/test.sh`, `tests_js/_twin_process.js`'s `spawnTwin()`, `tests_hardware/twin_board.py` and
-  `scripts/run_unix_port_integration.sh` refuse such a launch first, naming each string and its size
-  (SPECIFICATION.md F.7 row 32). A module path over 255 bytes, a directory those checks pass plus the
-  imported file's name, is not refused: it fails at that import with a plain
-  `RuntimeError: name too long` traceback naming the import (`py/builtinimport.c:242`), so its cause
-  reads plainly.
+- **The rig interns every launch string**: every argument from the script on, the script's real
+  directory and every `MICROPYPATH` entry but a `~/` one built from `$HOME` becomes a qstr, and one
+  longer than a qstr's length bytes hold raises outside any handler (`FATAL: uncaught NLR`, exit 1),
+  which reads as a twin that exited before ever serving. The rig's build gives qstrs two length
+  bytes (65,535, past `PATH_MAX`; the firmware keeps one), so a deep logs directory or a long
+  scenario name no longer reaches the limit and no launcher checks for it (SPECIFICATION.md F.7 row
+  32).
 
 ## Known gaps / follow-ups for later sessions
 

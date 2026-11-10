@@ -230,7 +230,7 @@ def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
     [
         ("asy_bmp3xx_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         ("asy_isl29125_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
-        ("asy_neopixel_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_neopixel_driver.py", ()),  # nothing to log, so no FRAM store to wire
         ("asy_scd30_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         ("asy_sgp40_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         (
@@ -263,7 +263,6 @@ def test_no_other_src_module_declares_an_unnoticed_wiring_tag(src_dir: Path) -> 
     assert tagged == {
         "asy_bmp3xx_driver.py",
         "asy_isl29125_driver.py",
-        "asy_neopixel_driver.py",
         "asy_notification_service.py",
         "asy_ntp_client.py",
         "asy_scd30_driver.py",

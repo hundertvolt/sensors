@@ -33,14 +33,14 @@ import asy_uart_comm
 import asy_uart_driver
 import asy_uart_link_driver
 import asy_webserver_service
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_config_manager import FAILED, INVALID, VALID
-from asy_crc_checks import CRC16
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
 from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER
-from asy_uart_driver import UART
+from asy_uart_driver import UART, PieceBuffer
 from asy_uart_link_driver import UARTLinkDriver
 from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
+from crc_checks import CRC16
 
 try:
     from typing import TYPE_CHECKING
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from _uart_comm_hazard_common import CrcMaker
 
     from asy_base_classes import JsonDict
-    from asy_crc_checks import CRCBase
+    from crc_checks import CRCBase
 
     T = TypeVar("T")
 
@@ -214,7 +214,7 @@ def test_reset_error_counter_leaves_the_link_counters() -> None:
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     initiator._transfers = 5
     initiator._failures = 2
-    run(initiator.pr.err_s("bench-side fault", errno=7), RUN_LIMIT_S)
+    initiator.pr.err_s("bench-side fault", errno=7)
     assert 7 in run(initiator.get_error_counter(), RUN_LIMIT_S)[initiator.name]["ErrNum"]
     assert run(initiator.reset_error_counter(), RUN_LIMIT_S) is True
     assert (initiator._transfers, initiator._failures) == (5, 2)
@@ -542,7 +542,7 @@ def _check_get_error_counter_delegates_to_the_inner_comms_own_log(crc: "CrcMaker
     # of its own, so its counter has to be the inner UARTComm's or a /status read reports zero.
     async def go() -> None:
         pair = await build_pair(crc=crc)
-        await pair.initiator._comm.pr.err_s("bench-side fault", errno=7)
+        pair.initiator._comm.pr.err_s("bench-side fault", errno=7)
         assert await pair.initiator.get_error_counter() == await pair.initiator._comm.get_error_counter()
         assert 7 in (await pair.initiator.get_error_counter())[pair.initiator.name]["ErrNum"]
 
@@ -861,14 +861,14 @@ class _FakeFramChunk:
     def get_buffer(self) -> RegionBuffer:
         return self._buffer
 
-    async def read_into(self, buf: RegionBuffer) -> bool:
+    def read_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
         data[:] = self.buf
         return True
 
-    async def write_into(self, buf: RegionBuffer) -> bool:
+    def write_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
@@ -881,7 +881,7 @@ class _FakeFramManager:
         self._chunk = chunk if chunk is not None else _FakeFramChunk()
         self._fail = fail
 
-    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "_FakeFramChunk | None":
+    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, *, owner: str) -> "_FakeFramChunk | None":
         if self._fail:
             return None  # the real allocator's refusal: no room left on the chip
         return self._chunk
@@ -898,7 +898,7 @@ def test_a_fram_log_config_lands_entries_in_the_managers_chunk() -> None:
         assert isinstance(initiator.pr, PrintLogHistoryStore)
         assert initiator.pr.fram is fram._chunk
         await initiator.setup()
-        await initiator.pr.err_s("boom", errno=7)
+        initiator.pr.err_s("boom", errno=7)
         second = make_logger(LogConfig(fram, 10, None), "UART")
         await second.setup()
         assert list(second.history)[-1] == 7
@@ -939,7 +939,7 @@ def test_fram_backed_error_history_survives_a_simulated_reboot() -> None:
         driver1 = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
         before = UARTLinkDriver(driver1, ROLE_INITIATOR, log=LogConfig(fram, 10, None))
         await before.setup()
-        await before.pr.err_s("boom", errno=1)
+        before.pr.err_s("boom", errno=1)
 
         driver2 = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
         after = UARTLinkDriver(driver2, ROLE_INITIATOR, log=LogConfig(fram, 10, None))
@@ -978,9 +978,9 @@ def test_a_hazard_run_sends_every_raw_frame_without_a_copy() -> None:
     added: list[int] = []
     real_add = CRC16.add
 
-    async def counted(self: "CRCBase", bytearr: bytearray, init: "int | None" = None) -> "bytearray | None":
+    def counted(self: "CRCBase", bytearr: bytearray, init: "int | None" = None) -> "bytearray | None":
         added.append(len(bytearr))
-        return await real_add(self, bytearr, init)
+        return real_add(self, bytearr, init)
 
     CRC16.add = counted  # type: ignore[method-assign]  # the class, so every bus's CRC counts
     try:

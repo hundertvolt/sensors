@@ -131,7 +131,7 @@ _LEFT_OUT = {
 }
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
 # The attempts the unsynced NTP retry (at once, then every 60 s) makes inside that bound, failing at about 4 and 64 s
-# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03; owner-reviewed, 2026-11-06).
+# of serving, the next at ~124 s: Run 9's watch ends once that many failed (agent, 2026-11-03).
 _NTP_UNREACHABLE_FAILURES = 2
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
@@ -1315,7 +1315,7 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> JSONObject:
 
 def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: JSONObject) -> None:
     # ---- Run 5b: reboot onto Run 5's state, fault-free. Run 5 stops two read cycles after the logger's last entry,
-    # whose chunk write err_s() awaits, so no stop cuts it: the restore is Run 5's exact ring. A write cut at every SPI
+    # whose chunk write err_s() makes, so no stop cuts it: the restore is Run 5's exact ring. A write cut at every SPI
     # transaction restores all or nothing (owner, 2026-09-26): tests/test_digital_twin_fram_crash_points.py. ----
     if not written:
         return  # Run 5 recorded its skip, or failed before it read an entry

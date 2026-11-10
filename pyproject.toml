@@ -55,6 +55,7 @@ target-version = "py310"
 # ruff format is never used - line breaks are hand-chosen (CLAUDE.md); 320 is ruff's own ceiling, so
 # an accidental format run cannot rewrap.
 line-length = 320
+builtins = ["ptr8", "uint"]  # the native emitter's names (@micropython.viper, SPECIFICATION.md F.1)
 [tool.ruff.lint]
 # ALL: an unconsidered rule defaults to enforced and a ruff bump surfaces new checks as findings, so
 # every exclusion below is a justified decision. Preview rules stay off. This is why ruff is pinned.
@@ -236,7 +237,7 @@ max-returns = 10
 "src/asy_scd30_driver.py" = ["FBT001", "N801", "N802", "PLR0124"]
 "src/asy_sgp40_driver.py" = ["FBT001", "N801"]
 "src/asy_fram_driver.py" = ["N801"]
-"src/voc_algorithm.py" = ["N801"]
+"src/voc_algorithm.py" = ["N801", "PLR2004"]  # PLR2004: each C F16() constant folded in place, its expression beside it
 # PLR0913: ISL29125_I2C.configure() takes one keyword per CONFIG1-3 field (FN8424 p10-11).
 "src/asy_isl29125_driver.py" = ["FBT001", "N801", "PLR0124", "PLR0913"]
 # PLR0913/PLR0917: UART.__init__/init() take machine.UART's twelve parameters plus the wrapper's own four.
@@ -314,13 +315,9 @@ max-returns = 10
 # CLI; the overrides' post-build proofs run the preprocessor, make and the built binary with the build's own flags.
 "toolchain/setup_toolchain.py" = ["S603"]
 "toolchain/micropython_overrides.py" = ["S603"]
-# A seeded case generator, no secret (S311); the base class's log_message(format, ...) signature (A002); coreutils
-# sleep stands in for a lock holder's process (S607).
+# A seeded case generator, no secret (S311); the base class's log_message(format, ...) signature (A002).
 "tests_scripts/test_buildgen_fuzz.py" = ["S311"]
 "tests_scripts/test_digital_twin_ci_suite_ceiling.py" = ["A002"]
-"tests_scripts/test_digital_twin_ci_suite_soak.py" = ["S607"]
-"tests_scripts/test_digital_twin_scenarios.py" = ["S607"]
-"tests_scripts/test_run_digital_twin_ci_sh.py" = ["S607"]
 # S603/S607: shelling out to mpremote/picotool/nmcli/iw/iptables/tc/sudo IS this tier's job, argv from repo constants
 # and the serial path; tools resolve from PATH, where setup_toolchain.py puts them.
 "tests_hardware/harness.py" = ["S603", "S607"]

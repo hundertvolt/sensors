@@ -202,7 +202,7 @@ _IMPORT = "from asy_print_log import report_if_fatal\n\n\n"
         ("    try:\n        f()\n    except Exception as e:\n        report_if_fatal(e)\n        log(e)\n", 0),
         ("    try:\n        f()\n    except Exception as e:\n        log(e)\n", 1),
         ("    try:\n        f()\n    except Exception as e:\n        x = 1\n        self.pr.err('failed:', e)\n", 0),
-        ("    try:\n        f()\n    except Exception as e:\n        await self.pr.err_s('failed:', e, errno=3)\n", 0),
+        ("    try:\n        f()\n    except Exception as e:\n        self.pr.err_s('failed:', e, errno=3)\n", 0),
         ("    try:\n        f()\n    except Exception as e:\n        await self._err(3, 'failed:', e)\n", 0),
         ("    try:\n        f()\n    except Exception as e:\n        await self._trace(self.pr.err_s('failed:', e, errno=3))\n", 0),
         ("    try:\n        f()\n    except Exception as e:\n        self.pr.err('failed')\n", 1),
@@ -241,7 +241,7 @@ def test_the_registered_exception_handler_must_record_its_parameter() -> None:
     head = _IMPORT + "class W:\n    def __init__(self, app):\n        app.errorhandler(Exception)(self.on_error)\n\n"
     assert len(findings("src/x.py", head + "    async def on_error(self, request, exc):\n        log(exc)\n")) == 1
     assert findings("src/x.py", head + "    async def on_error(self, request, exc):\n        report_if_fatal(exc)\n        log(exc)\n") == []
-    assert findings("src/x.py", head + "    async def on_error(self, request, exc):\n        await self.pr.err_s('failed:', exc, errno=3)\n") == []
+    assert findings("src/x.py", head + "    async def on_error(self, request, exc):\n        self.pr.err_s('failed:', exc, errno=3)\n") == []
 
 
 def test_the_rebound_exception_printer_must_record_its_parameter() -> None:
@@ -263,5 +263,5 @@ def test_the_shutdown_exemption_covers_only_its_unbound_pass_handler() -> None:
     head = "class SystemService:\n    async def _shutdown_sequence(self):\n        try:\n            f()\n"
     assert findings("src/asy_system_service.py", head + "        except Exception:\n            pass\n") == []
     assert len(findings("src/asy_system_service.py", head + "        except Exception as e:\n            pass\n")) == 1
-    assert len(findings("src/asy_system_service.py", head + "        except Exception as e:\n            await self.pr.err_s('failed:')\n")) == 1
+    assert len(findings("src/asy_system_service.py", head + "        except Exception as e:\n            self.pr.err_s('failed:')\n")) == 1
     assert len(findings("src/other.py", head + "        except Exception:\n            pass\n")) == 1

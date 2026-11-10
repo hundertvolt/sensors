@@ -492,11 +492,13 @@ def _served(responder: NtpResponder, request: bytes = _REQUEST) -> "bytes | None
 
 
 async def _ticks_to_attempt(module: "ModuleType", responder: NtpResponder, clock: "DrivenTime") -> int:
-    # Fires the client's check tick, as its 10 s timer does, until the responder takes a request; how many it took.
+    # Each of at most _TICKS_TO_RETRY check periods passes as two stalls, each under the watchdog and each sleeper woken
+    # once, then a few polls for the request; how many periods it took. Polled through, two waits outran the run bound.
     before = responder.requests
     for ticks in range(1, _TICKS_TO_RETRY + 1):
-        module.ntp._ntp_timer_trigger_event.set()
-        await clock.elapse(_SYNC_POLL_MS)
+        await clock.jump(_CHECK_S * 500)
+        await clock.jump(_CHECK_S * 500)
+        await clock.elapse(4 * _SYNC_POLL_MS)
         if responder.requests > before:
             return ticks
     raise AssertionError(f"no attempt within {_TICKS_TO_RETRY} check ticks")

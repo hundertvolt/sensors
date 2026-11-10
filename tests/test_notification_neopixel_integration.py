@@ -7,7 +7,6 @@ all run for real end to end.
 """
 
 import asyncio
-import time
 
 from _async_harness import cancel_all, run
 from _fake_time import DrivenTime, FakeTime, Rp2Gmtime
@@ -59,14 +58,14 @@ def _co2_signal(value: int = 2000) -> NotificationSignal:
     return NotificationSignal("WarnCO2", ValueRef(_FakeSource("WarnCO2", value), "WarnCO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
 
 
-async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
-    # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
-    # end the loop has not parked on its next cycle yet; then it parks there, FlashInterval after its start.
+async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int, ramp_ms: int | None = None) -> None:
+    # The monitor's first cycle by the service's own rule: each flash's ramp (FlashDur on a real LED), then FlashDur
+    # dark, so 1 ms before that end the loop has not parked on its next cycle yet; then it parks FlashInterval after.
     cfg = (await notify.get_dict_cfg())["NOTIFY"]
     flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
     assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
     start = clock.now
-    end = start + flashes * round(flash_dur * 2000)
+    end = start + flashes * ((round(flash_dur * 1000) if ramp_ms is None else ramp_ms) + round(flash_dur * 1000))
     if end > start:
         await clock.elapse(end - 1 - start)
         assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
@@ -93,7 +92,6 @@ def _make_pair(
 ) -> "tuple[NeopixelDriver, NotificationService]":
     pixel = NeopixelDriver(0)  # at the shipped frame rate: FlashDur's 0.5 s floor still plays several frames a direction
     notify = NotificationService(pixel.request_signal, local_time, signals, cfg_path=_tmp_cfg_dir())
-    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
     return pixel, notify
 
@@ -107,7 +105,7 @@ def _ramp_ms(pixel: NeopixelDriver, flash_dur: float) -> int:
 def _ramp_over(pixel: NeopixelDriver) -> bool:
     # A ramp has played and ended: a lit frame, black last, and no signal queued or running.
     writes = pixel._pixel.writes
-    return bool(_lit_frames(pixel)) and writes[-1][0] == (0, 0, 0) and not pixel._start_signal_event.is_set()
+    return bool(_lit_frames(pixel)) and writes[-1][0] == (0, 0, 0) and not pixel._pending
 
 
 async def _start_all(pixel: NeopixelDriver, notify: NotificationService) -> "list[asyncio.Task[None]]":
@@ -185,50 +183,28 @@ def test_led_signal_during_a_notification_ramp_is_refused_at_once() -> None:
     assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0  # the notification's own request went through
 
 
-class _LateTicks:
-    # Stands in for the driver's `time`: every ticks_ms() read after the first lies 2**28 ms later, past
-    # any deadline ticks_diff() can express (2**29 ms). The values never near a wrap: plain arithmetic.
-    def __init__(self) -> None:
-        self._reads = 0
-
-    def ticks_add(self, ticks: int, delta: int) -> int:
-        time.ticks_add(time.ticks_ms(), delta)  # the real one's delta check: a float raises as on rp2 (mp_obj_get_int)
-        return ticks + delta
-
-    def ticks_diff(self, end: int, start: int) -> int:
-        return end - start
-
-    def ticks_ms(self) -> int:
-        self._reads += 1
-        return 0 if self._reads == 1 else 1 << 28
-
-
-def test_a_notification_behind_a_busy_led_queues_at_its_deadline_with_no_entry() -> None:
-    # The LED stays busy: a REST command is queued and no signal task ever plays it.
+def test_a_notification_behind_a_busy_led_waits_its_turn_and_plays_with_no_entry() -> None:
+    # A REST command's 1 s ramp holds the LED: the flash waits on the lock, plays in full after it, and logs nothing.
     pixel, notify = _make_pair((_co2_signal(),))
     assert pixel.led_signal(0, 0, 50, 1.0) is True
-    original = asy_neopixel_driver.time
-    asy_neopixel_driver.time = _LateTicks()  # type: ignore[assignment]  # a stand-in for the module's time, not a caller mismatch
 
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
-        task = notify.start_asy_monitor()
-        await _cycle(clock, notify, 1)  # the request queued at its deadline settles its 2 x FlashDur
-        await cancel_all([task])
+        tasks = await _start_all(pixel, notify)
+        await _cycle(clock, notify, 1, _ramp_ms(pixel, 1.0) + _ramp_ms(pixel, 0.5))  # behind the busy ramp
+        await cancel_all(tasks, settle_yields=1)
 
-    try:
-        with DrivenTime(asy_notification_service, sleeps=True) as clock:  # the driver keeps the late ticks
-            run(scenario(clock))
-    finally:
-        asy_neopixel_driver.time = original
+    with _driven() as clock:
+        run(scenario(clock))
     assert run(notify.get_error_counter())["NOTIFY"]["ErrCount"] == 0
-    assert pixel._rgbt == [200, 0, 0, 0.5]  # the flash replaced the queued command (last wins): FlashBri x red, FlashDur
-    assert pixel._pixel.writes == []  # nothing played: no signal task runs
+    lit = _lit_frames(pixel)
+    assert (0, 0, 50) in lit and (200, 0, 0) in lit  # both played, the busy one first
+    assert lit.index((0, 0, 50)) < lit.index((200, 0, 0)), lit
 
 
 def test_the_window_check_reads_a_real_ntp_clock() -> None:
     # The production local-time callback: a real NTP client's cettime(), marked synced by the test.
-    ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(500, 1, 5000), cfg_path=_tmp_cfg_dir())
+    ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(1000, 5000), cfg_path=_tmp_cfg_dir())
     run(ntp.cfgmgr.setup())
     run(ntp._set_synced(value=True))
 
@@ -268,7 +244,7 @@ def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         task = notify.start_asy_monitor()
-        await _cycle(clock, notify, 1)  # the default sink's request still settles its 2 x FlashDur
+        await _cycle(clock, notify, 1, 0)  # the default sink returns at once: FlashDur dark, no ramp
         await cancel_all([task])
 
     with _driven() as clock:

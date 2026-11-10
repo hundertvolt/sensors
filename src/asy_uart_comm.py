@@ -11,8 +11,9 @@ from collections import namedtuple
 
 from micropython import const
 
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
+from asy_uart_driver import PieceBuffer
 
 try:
     from typing import TYPE_CHECKING
@@ -87,17 +88,15 @@ _RESYNC_DEN = const(2)
 # The drain's own hard bound (changelog A5). A multiple of the quiet window, so it can never be
 # shorter than the peer's own drain - which is what would let this side transmit into it.
 _DRAIN_BOUND_MULT = const(4)
-# @tunable uart.gate_step_ms = 20
-_GATE_STEP_MS = const(20)  # longest single sleep inside the write gate, so a cancel lands promptly
 # @tunable uart.gc_pause_worst_ms = 21
 _GC_PAUSE_WORST_MS = const(21)  # measured worst-case collection pause, SPECIFICATION.md Part I
 # The longest one synchronous flash operation holds the loop: a config flush, whose sector erases and page
 # programs littlefs runs without yielding, at the W25Q16JV maxima (tSE 400 ms, tPP 3 ms).
 _FLASH_HOLD_MAX_MS = const(2129)  # 5 erases x 400 + 43 page programs x 3, traced at v1.29.0 (J.6)
 # @tunable uart.poll_jitter_ms = 5
-_POLL_JITTER_MS = const(5)  # scheduling slack added to poll_wait_ms when sizing rxbuf
+_POLL_JITTER_MS = const(5)  # one 53-byte frame's wire time at the links' 115,200 baud (4.6 ms), rounded up
 _BACKOFF_MULT = const(2)
-_BACKOFF_MAX_MULT = const(5)  # cap = 5 x timeout, matching asy_captive_dns.py's own 0.5s -> 5s shape
+_BACKOFF_MAX_MULT = const(5)  # the listen backoff's cap, 5 x timeout (changelog A15)
 # @tunable uart.diag_resync_streak = 2
 _DIAG_RESYNC_STREAK = const(2)  # resyncs with bytes seen but no frame ever valid before the diagnostic fires
 _MIN_CHUNKS = const(2)  # even a payload-less command carries one data chunk, so it can be confirmed
@@ -140,7 +139,6 @@ _ERR_UART_CODEC_SIZE = const(92)
 _ERR_UART_TRANSFER_CAP = const(93)
 
 _WRN_UART_DRAIN_BOUND = const(54)
-_WRN_UART_CANCEL_UNACKED = const(55)
 _WRN_UART_CMD_DECLINED = const(56)
 
 # A responder's get/set callbacks (both required) and its optional message callback, passed as one object.
@@ -228,7 +226,6 @@ class UARTComm:
         self._valid_frames = 0
         self._blind_resyncs = 0  # resyncs that saw bytes but never a valid frame
         self._drain_bound_hit = False  # set by _drain(), read by the resync that called it
-        self._cancel_unacked_seen = 0  # the driver's counter is cumulative; only a rise is news
         self._discarded_seen = 0  # the driver's discarded_bytes at the last resync, read by _take_discarded()
         self._init_errno = self._validate_config()
         # Re-checked locally, never the caller's raw values: `5 + "48"` raises, and __init__ is the
@@ -295,7 +292,6 @@ class UARTComm:
         if not await self._send_ack(device, uid):
             await self._fault(device, _ERR_UART_WRITE_FAILED, "ACK for SET failed")
             return _LISTEN_FAILED
-        self.pr.wrn("TRACE acked", time.ticks_ms(), cmd_id, uid, chunks)
         pair = self._pair(await self._call(set_cb, cmd_id))
         if pair is None:
             await self._fault(device, _ERR_CALLBACK, "set_callback returned an unusable result for", cmd_id)
@@ -382,16 +378,15 @@ class UARTComm:
     async def _await_write_gate(self) -> None:
         # A deadline, never a one-shot Timer: MicroPython's scheduler queue can silently drop a soft
         # callback, and the flag it would have set is then never set - the legacy module's permanent
-        # hang. A deadline cannot be dropped, and needs no alarm-pool slot.
-        while self._holdoff_active:
+        # hang. A deadline cannot be dropped, and needs no alarm-pool slot; one sleep waits it out.
+        if self._holdoff_active:
             remaining = time.ticks_diff(self._holdoff_deadline, time.ticks_ms())
             # The deadline is set one window ahead, so more than a window remaining means the stored tick aged past
             # ticks_diff()'s 2**29 ms horizon (idle > 6.2 days): expired. The one aliased band left costs at most one
             # window, a normal hold-off.
-            if remaining <= 0 or remaining > self._resync_window_ms():
-                self._holdoff_active = False
-                return
-            await asyncio.sleep_ms(min(remaining, _GATE_STEP_MS))
+            if 0 < remaining <= self._resync_window_ms():
+                await asyncio.sleep_ms(remaining)
+            self._holdoff_active = False
 
     def _buffers_ready(self, payload: int) -> bool:
         # Every buffer, not only the TX frame: _allocate() guards its three scratch buffers as one
@@ -499,15 +494,14 @@ class UARTComm:
         return total
 
     async def _err(self, errno: int, *args: object) -> None:
-        # Every fault persists its errno; a repeat of the newest code is collapsed by the central rule (C.7.1).
-        await self.pr.err_s("UART error:", *args, errno=errno)
+        # Every fault persists its errno, a repeat of the newest code collapsed by the central rule; its FRAM write is a
+        # bounded synchronous one, RX landing by DMA and TX draining by IRQ meanwhile (C.7.1, F.5.8).
+        self.pr.err_s("UART error:", *args, errno=errno)
 
     async def _fault(self, device: "UART", errno: int, *args: object) -> None:
         # Every fault this module reports also resyncs, without exception - one helper so that is a
         # single enforced shape rather than a convention repeated at every call site.
-        t0 = time.ticks_ms()
         await self._err(errno, *args)
-        self.pr.wrn("TRACE fault persisted", errno, time.ticks_diff(time.ticks_ms(), t0), "ms")
         await self._resync(device)
 
     async def _gate(self, role: str) -> bool:
@@ -547,7 +541,6 @@ class UARTComm:
                     continue
             except Exception as e:  # uart_listen() is contracted never to raise; a contract is not an enforcement
                 await self._err(_ERR_UNEXPECTED, "listen loop caught:", e)
-            self.pr.wrn("TRACE backoff", time.ticks_ms(), backoff)
             await asyncio.sleep_ms(backoff)  # cancellable, and never a zero-delay retry
             backoff = min(backoff * _BACKOFF_MULT, self._backoff_max_ms)
 
@@ -555,13 +548,10 @@ class UARTComm:
         if not await self._read_frame(device, -1):  # the one legitimate unbounded wait
             await self._fault(device, _ERR_TIMEOUT, "listen read failed or was cancelled")
             return _LISTEN_FAILED
-        rx = self._rx.get_buf()
-        if rx is None:  # Unreachable: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
-            return _LISTEN_FAILED
+        rx: bytearray = self._rx.get_buf()  # type: ignore[assignment]  # set: _read_frame() already failed on a missing RX buffer
         cmd = rx[_MSG_CMD]
         exp = _CMD_GET if cmd == _CMD_GET else CMD_SET
         err = self._validate(rx, exp, 1, None, None)
-        self.pr.wrn("TRACE rx", time.ticks_ms(), bytes(rx[:_HEADER_LEN + 1]), "err", err)
         if err:
             await self._fault(device, err, "unexpected frame while listening")
             return _LISTEN_FAILED
@@ -682,9 +672,9 @@ class UARTComm:
         if not await self._read_frame(device, self._timeout):
             await self._fault(device, _ERR_TIMEOUT, "no answer to GET", get_id)
             return None
-        rx = self._rx.get_buf()
+        rx: bytearray = self._rx.get_buf()  # type: ignore[assignment]  # set: _read_frame() already failed on a missing RX buffer
         err = self._validate(rx, CMD_SET, 1, None, None)
-        if err or rx is None:  # Unreachable in its rx half: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
+        if err:
             await self._fault(device, err or _ERR_UART_FRAME_INVALID, "invalid answer to GET", get_id)
             return None
         if rx[_MSG_PAYLOAD] != get_id:
@@ -710,7 +700,7 @@ class UARTComm:
     async def _ready(self) -> bool:
         if self.initialized:
             return True
-        await self.pr.err_s("Not initialized", errno=self._init_errno or _ERR_NOT_INIT)
+        self.pr.err_s("Not initialized", errno=self._init_errno or _ERR_NOT_INIT)
         return False
 
     async def _recv_train(
@@ -723,9 +713,9 @@ class UARTComm:
             if not await self._read_frame(device, self._timeout):
                 await self._fault(device, _ERR_TIMEOUT, "train stalled at chunk", cur)
                 return None
-            rx = self._rx.get_buf()
+            rx: bytearray = self._rx.get_buf()  # type: ignore[assignment]  # set: _read_frame() already failed on a missing RX buffer
             err = self._validate(rx, CMD_SET, cur, chunks, _next_uid(prev_uid))
-            if err or rx is None:  # Unreachable in its rx half: _read_frame() already failed on a missing RX buffer - kept to narrow the Optional for the type checker
+            if err:
                 await self._fault(device, err or _ERR_UART_FRAME_INVALID, "invalid frame at chunk", cur)
                 return None
             prev_uid = rx[_MSG_UID]
@@ -771,9 +761,7 @@ class UARTComm:
     async def _reject_wrn(self, device: "UART", cmd_id: int) -> None:
         # A declined command persists W56 every time (a run of identical codes spends one slot under the
         # central rule) and, like every refusal, resyncs.
-        t0 = time.ticks_ms()
-        await self.pr.wrn_s("callback rejected command", cmd_id, wrnno=_WRN_UART_CMD_DECLINED)
-        self.pr.wrn("TRACE W56 persisted", time.ticks_diff(time.ticks_ms(), t0), "ms")
+        self.pr.wrn_s("callback rejected command", cmd_id, wrnno=_WRN_UART_CMD_DECLINED)
         await self._resync(device)
 
     async def _resync(self, device: "UART") -> None:
@@ -781,15 +769,13 @@ class UARTComm:
             return
         self._in_resync = True
         try:
-            self.pr.wrn("TRACE drain start", time.ticks_ms())
             drained = await self._drain(device) + self._take_discarded()
-            self.pr.wrn("TRACE drain end", time.ticks_ms(), drained)
             # A resync is routine and prints; only a drain that hit its bound (a babbling or misconfigured
             # peer) persists W54. Logged after the drain, which decides which one this is.
             if self._drain_bound_hit:
-                await self.pr.wrn_s("Resynced the link - drain bound reached, the peer never stopped sending", wrnno=_WRN_UART_DRAIN_BOUND)
+                self.pr.wrn_s("Resynced the link - drain bound reached, the peer never stopped sending", wrnno=_WRN_UART_DRAIN_BOUND)
             else:
-                self.pr.wrn("Resyncing the link")
+                self.pr.wrn("Resyncing the link, drained", drained, "bytes")
             self._hold_off_writes()
             if self._uart is not None:
                 self._uart.resync_framing()  # inert unless a delimited codec is selected (Part G.2)
@@ -976,10 +962,7 @@ class UARTComm:
             await self._err(_ERR_UART_FRAME_INVALID, "could not build frame", cur_chunk, "of", chunks)
             return False
         self._uid = uid  # only advanced once the frame is genuinely going out
-        buf = self._tx.get_buf()
-        if buf is None:  # Unreachable: _prepare_tx() returned False if the TX buffer were missing - kept to narrow the Optional for the type checker
-            await self._err(_ERR_ALLOC, "no TX buffer")
-            return False
+        buf: bytearray = self._tx.get_buf()  # type: ignore[assignment]  # set: _prepare_tx() returned False if the TX buffer were missing
         if not await device.writefrom(buf, self._frame_size):
             await self._fault(device, _ERR_UART_WRITE_FAILED, "frame write failed")
             return False
@@ -1011,8 +994,7 @@ class UARTComm:
         return []  # no machine.Timer anywhere in this module, deliberately
 
     def start_asy_listen(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._listen_loop())
+        return asyncio.create_task(self._listen_loop())
 
     # -- getters -----------------------------------------------------------
 
@@ -1030,11 +1012,6 @@ class UARTComm:
         if not await self._uart.cancel_read_timeout():
             async with self._uart as device:
                 await self._resync(device)
-        elif self._uart.cancel_unacknowledged != self._cancel_unacked_seen:
-            # The driver's counter is cumulative, so reading it as a flag reported every later
-            # cancel - healthy ones included - as un-acknowledged, persisting a warning each time.
-            self._cancel_unacked_seen = self._uart.cancel_unacknowledged
-            await self.pr.wrn_s("Driver cancel was not acknowledged", wrnno=_WRN_UART_CANCEL_UNACKED)
 
     async def reset_error_counter(self) -> bool:
         # Clears the history and the blind-resync streak; the valid-frame count is link evidence, not error
@@ -1045,14 +1022,14 @@ class UARTComm:
     async def setup(self) -> bool:
         await self.pr.setup()  # without this the FRAM history silently never persists
         if self._init_errno:
-            await self.pr.err_s("Construction failed, not starting", errno=self._init_errno)
+            self.pr.err_s("Construction failed, not starting", errno=self._init_errno)
             return False
         bus = self._uart
         if bus is None:
-            await self.pr.err_s("No bus handle, not starting", errno=_ERR_UART_NO_BUS)
+            self.pr.err_s("No bus handle, not starting", errno=_ERR_UART_NO_BUS)
             return False
         if not bus.setup_rx_ring():  # before the drain: bytes held since boot reach the ring, and the drain drops them
-            await self.pr.err_s("No receive ring, not starting:", bus.rx_ring_refusal, errno=_ERR_UART_NO_BUS)
+            self.pr.err_s("No receive ring, not starting:", bus.rx_ring_refusal, errno=_ERR_UART_NO_BUS)
             return False
         async with bus as device:
             # A peer that outlived this side's reset leaves partial-frame bytes in the receive ring.
@@ -1077,10 +1054,8 @@ class UARTComm:
         result = await self._run_get(get_id, exp_size)
         if result is None:
             return None
-        written, own = result
-        if own is None:  # Unreachable: _run_get() returns a buffer whenever neither dest nor push was given - kept to narrow the Optional for the type checker
-            return PieceBuffer(0, self._chunk_bytes)
-        return own if own.trim(written) else None
+        own: PieceBuffer = result[1]  # type: ignore[assignment]  # set: _run_get() returns a buffer whenever neither dest nor push was given
+        return own if own.trim(result[0]) else None
 
     async def uart_get_into(self, get_id: int, buf: "Writable | None", exp_size: int | None = None) -> int | None:
         if not await self._gate(ROLE_INITIATOR) or not await self._check_cmd_id(get_id):

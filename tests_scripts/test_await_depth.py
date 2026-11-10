@@ -60,7 +60,7 @@ def test_the_walk_reaches_every_kind_of_task_top(chains: "list[Chain]") -> None:
         assert f"{reader}._read_loop" in tops, (reader, sorted(tops))
     for device in DEVICE_NAMES:
         assert f"sensortask_{device}.main" in tops, (device, sorted(tops))
-    assert any(level.startswith("WebserverService._get_") for chain in chains for level in chain.path), "no route handler reached"
+    assert any(level.startswith(("WebserverService._get_", "WebserverService._put_")) for chain in chains for level in chain.path), "no route handler reached"
     assert chains[0].depth == max(chain.depth for chain in chains)
 
 

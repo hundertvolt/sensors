@@ -9,9 +9,9 @@ import gc
 import time
 
 import asy_uart_driver
-from asy_crc_checks import CRC16
 from asy_framing_codecs import FramingCOBS
 from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
+from crc_checks import CRC16
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from _shared.watchdog import arm
     from bench_facts import BenchFacts, BusFacts
 
-    from asy_base_classes import PieceBuffer
+    from asy_uart_driver import PieceBuffer
 
     T = TypeVar("T")
 

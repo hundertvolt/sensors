@@ -41,11 +41,8 @@ if TYPE_CHECKING:
     from _mpy_shed.time_mp import _TicksMs
 
 
-# The suite's waits, bounds and backoff-gap bands, one constant each.
+# The suite's waits and bounds, one constant each.
 _ERROR_RETRY_WAIT_S: int = src_int("src/asy_captive_dns.py", "_ERROR_RETRY_WAIT_S")
-_RECV_FAIL_BACKOFF_INITIAL_MS: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_INITIAL_MS")
-_RECV_FAIL_BACKOFF_MAX_MS: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_MAX_MS")
-_RECV_FAIL_BACKOFF_MULTIPLIER: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_MULTIPLIER")
 _WAIT_UNTIL_TIMEOUT_MS = 1000
 _WAIT_UNTIL_POLL_MS = 10
 _STRAY_REPLY_WAIT_MS = 20
@@ -55,17 +52,6 @@ _CYCLE_WAIT_MS = 100
 _CLEANUP_TICK_MS = 10
 _CLEANUP_TICK_COUNT = 10
 _BACKOFF_WAIT_TIMEOUT_MS = 5000
-_BACKOFF_SERIES_TIMEOUT_MS = 15000
-_GAP_INITIAL_MIN_MS = 400
-_GAP_INITIAL_MAX_MS = 800
-_GAP_DOUBLED_MIN_MS = 900
-_GAP_DOUBLED_MAX_MS = 1400
-_GAP_QUAD_MIN_MS = 1900
-_GAP_QUAD_MAX_MS = 2600
-_GAP_NO_BACKOFF_MAX_MS = 300
-_BACKOFF_CAP_TIMEOUT_MS = 20000
-_GAP_CAP_MIN_MS = 4700
-_GAP_CAP_MAX_MS = 5400
 
 
 async def _used_slots(server: CaptiveDNS) -> "list[tuple[int, str]]":  # DNSSRV's used (ErrNum, ErrType) slots, oldest first
@@ -304,7 +290,7 @@ def test_captive_dns_logs_in_memory_without_fram() -> None:
     # No FRAM given: an error lands in the logger's own RAM history as the newest entry, with no store behind it.
     server = CaptiveDNS()
     assert not isinstance(server.pr, PrintLogHistoryStore)
-    run(server.pr.err_s("probe", errno=code("E", "UNEXPECTED")))
+    server.pr.err_s("probe", errno=code("E", "UNEXPECTED"))
     entry = run(server.pr.get_log())["DNSSRV"]
     assert entry["ErrCount"] == 1
     assert run(_used_slots(server)) == [(code("E", "UNEXPECTED"), "E")]
@@ -342,14 +328,14 @@ def test_dns_server_get_error_counter_forwards_to_the_real_print_log() -> None:
 
 def test_dns_server_get_error_counter_reflects_a_real_logged_error() -> None:
     server = CaptiveDNS()
-    run(server.pr.err_s("boom", errno=code("E", "UNEXPECTED")))
+    server.pr.err_s("boom", errno=code("E", "UNEXPECTED"))
     log = run(server.get_error_counter())
     assert log["DNSSRV"]["ErrCount"] == 1
 
 
 def test_reset_error_counter_returns_true_and_clears() -> None:
     server = CaptiveDNS()
-    run(server.pr.err_s("boom", errno=code("E", "UNEXPECTED")))
+    server.pr.err_s("boom", errno=code("E", "UNEXPECTED"))
     assert run(server.reset_error_counter()) is True
     assert run(server.get_error_counter())["DNSSRV"]["ErrCount"] == 0
 
@@ -678,6 +664,7 @@ def test_run_sendto_failure_logs_a_persisted_warning() -> None:
 def test_run_failed_receive_logs_one_warning_per_code() -> None:
     # Two failed receives on a bound socket: both counted, one slot (the central newest-entry rule, C.7.1).
     fake = _FakeUDPS([(None, None), (None, None)])
+    instant = _InstantSleepAsyncio(asy_captive_dns.asyncio)  # the pause between them costs one yield
 
     async def scenario() -> None:
         server = CaptiveDNS(log=LogConfig(None, 10, 2))
@@ -690,7 +677,11 @@ def test_run_failed_receive_logs_one_warning_per_code() -> None:
         finally:
             await cancel(task)
 
-    run(scenario())
+    asy_captive_dns.asyncio = instant  # type: ignore[assignment]
+    try:
+        run(scenario())
+    finally:
+        asy_captive_dns.asyncio = instant._real
 
 
 def test_run_reads_with_the_rfc_1035_udp_limit() -> None:
@@ -843,11 +834,12 @@ class _TimedUDPSocket(UDPSocket):
 
 def test_run_bind_failure_logs_one_warning_and_backs_off() -> None:
     # A socket that never bound returns no datagram, as a failed receive does: DNS_RECV_FAILED, one slot for every
-    # repeat, and the receive-failure backoff between attempts.
+    # repeat, and the error retry pause between attempts.
     port = _make_port()
     blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     blocker.bind(_resolved("127.0.0.1", port))  # no SO_REUSEADDR, so UDPSocket's own bind() gets EADDRINUSE
     udps = _TimedUDPSocket(("127.0.0.1", port))
+    instant = _InstantSleepAsyncio(asy_captive_dns.asyncio)
 
     async def scenario() -> None:
         server = CaptiveDNS(log=LogConfig(None, 10, 1))
@@ -860,14 +852,14 @@ def test_run_bind_failure_logs_one_warning_and_backs_off() -> None:
         finally:
             await cancel(task)
 
+    asy_captive_dns.asyncio = instant  # type: ignore[assignment]
     try:
         run(scenario())
     finally:
+        asy_captive_dns.asyncio = instant._real
         blocker.close()
     assert udps.connected is False
-    gaps = [udps.entered_ms[i + 1] - udps.returned_ms[i] for i in range(2)]
-    assert _GAP_INITIAL_MIN_MS <= gaps[0] < _GAP_INITIAL_MAX_MS  # ~0.5 s after the first failure
-    assert _GAP_DOUBLED_MIN_MS <= gaps[1] < _GAP_DOUBLED_MAX_MS  # ~1.0 s (doubled) after the second
+    assert instant.sleep_calls[:2] == [_ERROR_RETRY_WAIT_S] * 2, instant.sleep_calls  # the pause between attempts
 
 
 # ---------------------------------------------------------------------------
@@ -1277,103 +1269,25 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
 
 
 # ---------------------------------------------------------------------------
-# run()'s receive-failure backoff: a receive that keeps returning (None, None) on a bound socket logs
-# DNS_RECV_FAILED and backs off 0.5, 1, 2 ... 5 s (SPECIFICATION.md Part C.9). A socket that never bound takes
-# the same backoff with its own code: test_run_bind_failure_logs_init_once_and_backs_off.
+# run()'s receive-failure pause: a receive that keeps returning (None, None) on a bound socket logs DNS_RECV_FAILED
+# and pauses _ERROR_RETRY_WAIT_S, legacy's fixed 3 s, before the next (SPECIFICATION.md Part C.9). A socket that
+# never bound takes the same pause: test_run_bind_failure_logs_one_warning_and_backs_off.
 # ---------------------------------------------------------------------------
 
 
-def test_run_backs_off_with_increasing_delay_on_repeated_empty_recvfrom() -> None:
-    query = _make_query(["a", "io"])
-    fake = _FakeUDPS([(None, None), (None, None), (None, None), (query, ("127.0.0.5", 5000))])
-
-    async def scenario() -> "list[_TicksMs]":
-        server = CaptiveDNS()
-        server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        try:
-            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=_BACKOFF_SERIES_TIMEOUT_MS)
-            return fake.recv_call_times_ms
-        finally:
-            await cancel(task)
-
-    call_times = run(scenario())
-    # >= 4: 3 empty results + the one that finally returns real data - possibly a 5th call too
-    # (run() loops straight back into recvfrom() again after replying, racing this test's own
-    # _wait_until poll), which is fine - only the first 3 backoff gaps are this test's concern.
-    assert len(call_times) >= 4
-    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(3)]
-    # gaps[i] is the pause *after* recvfrom() call i's (None, None) result, before call i+1 fires -
-    # must grow across consecutive failures, not stay at the previous zero-delay spin.
-    assert _GAP_INITIAL_MIN_MS <= gaps[0] < _GAP_INITIAL_MAX_MS  # ~0.5s initial backoff
-    assert _GAP_DOUBLED_MIN_MS <= gaps[1] < _GAP_DOUBLED_MAX_MS  # ~1.0s (doubled)
-    assert _GAP_QUAD_MIN_MS <= gaps[2] < _GAP_QUAD_MAX_MS  # ~2.0s (doubled again)
-
-
-def test_run_recv_backoff_resets_after_a_successful_receive() -> None:
-    query = _make_query(["a", "io"])
-    fake = _FakeUDPS(
-        [
-            (None, None),
-            (None, None),  # ramps the backoff up
-            (query, ("127.0.0.5", 5000)),  # real data received - must reset the backoff
-            (None, None),
-            (None, None),
-        ],
-    )
-
-    async def scenario() -> "list[_TicksMs]":
-        server = CaptiveDNS()
-        server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        try:
-            assert await _wait_until(lambda: len(fake.recv_call_times_ms) >= 5, timeout_ms=_BACKOFF_SERIES_TIMEOUT_MS)
-            return fake.recv_call_times_ms
-        finally:
-            await cancel(task)
-
-    call_times = run(scenario())
-    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(4)]
-    assert _GAP_INITIAL_MIN_MS <= gaps[0] < _GAP_INITIAL_MAX_MS  # first empty result -> ~0.5s
-    assert _GAP_DOUBLED_MIN_MS <= gaps[1] < _GAP_DOUBLED_MAX_MS  # second empty result -> ~1.0s (doubled)
-    assert gaps[2] < _GAP_NO_BACKOFF_MAX_MS  # real data received - no backoff sleep before the next recvfrom()
-    assert _GAP_INITIAL_MIN_MS <= gaps[3] < _GAP_INITIAL_MAX_MS  # backoff restarted from the initial value, not continuing from ~2.0s
-
-
-def test_run_recv_backoff_caps_at_the_ceiling() -> None:
-    # Many consecutive failures must never grow the pause past the configured ceiling - a real,
-    # bounded worst case, not just "slower than before." Uncapped doubling would reach 8.0s on the
-    # 5th failure; the fix's ceiling is 5.0s.
-    query = _make_query(["a", "io"])
-    fake = _FakeUDPS([(None, None)] * 5 + [(query, ("127.0.0.5", 5000))])
-
-    async def scenario() -> "list[_TicksMs]":
-        server = CaptiveDNS()
-        server._udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        try:
-            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=_BACKOFF_CAP_TIMEOUT_MS)
-            return fake.recv_call_times_ms
-        finally:
-            await cancel(task)
-
-    call_times = run(scenario())
-    assert len(call_times) >= 6  # 5 empty results + the one that finally returns real data
-    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(5)]
-    assert _GAP_CAP_MIN_MS <= gaps[4] < _GAP_CAP_MAX_MS  # 5th failure's pause is capped at ~5.0s, not the uncapped ~8.0s
-
-
 class _InstantSleepAsyncio:
-    # Stands in for asy_captive_dns's module-level asyncio: each sleep_ms() is kept as the int it was given and, like
-    # sleep(), costs one yield; every other name is the real module's, so a wait asked in seconds never shows here.
+    # Stands in for asy_captive_dns's module-level asyncio: each sleep() and sleep_ms() is kept as the value it was given
+    # and costs one yield; every other name is the real module's.
     def __init__(self, real: "ModuleType") -> None:
         self._real = real
+        self.sleep_calls: list[float] = []
         self.sleep_ms_calls: list[int] = []
 
     def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
 
-    async def sleep(self, _seconds: float) -> None:
+    async def sleep(self, seconds: float) -> None:
+        self.sleep_calls.append(seconds)
         await self._real.sleep_ms(0)
 
     async def sleep_ms(self, ms: int) -> None:
@@ -1382,11 +1296,10 @@ class _InstantSleepAsyncio:
         await self._real.sleep_ms(0)
 
 
-def test_run_recv_backoff_is_asked_in_milliseconds() -> None:
-    # Each pause is one sleep_ms() of a small int, never a float per pause: it doubles from the initial value to the
-    # ceiling and restarts at the initial value once a datagram arrives.
+def test_run_pauses_the_error_retry_wait_after_each_failed_receive() -> None:
+    # Every failed receive pauses the same _ERROR_RETRY_WAIT_S, never a zero-delay spin; a datagram costs one yield only.
     query = _make_query(["a", "io"])
-    failures = 6
+    failures = 3
     fake = _FakeUDPS([(None, None)] * failures + [(query, ("127.0.0.5", 5000)), (None, None)])
     instant = _InstantSleepAsyncio(asy_captive_dns.asyncio)
 
@@ -1404,14 +1317,8 @@ def test_run_recv_backoff_is_asked_in_milliseconds() -> None:
         run(scenario())
     finally:
         asy_captive_dns.asyncio = instant._real
-    expected: list[int] = []
-    backoff_ms = _RECV_FAIL_BACKOFF_INITIAL_MS
-    for _ in range(failures):
-        expected.append(backoff_ms)
-        backoff_ms = min(backoff_ms * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_MS)
-    assert expected[-1] == _RECV_FAIL_BACKOFF_MAX_MS  # the series reaches the ceiling
-    expected.append(_RECV_FAIL_BACKOFF_INITIAL_MS)  # the received datagram restarted the series
-    assert instant.sleep_ms_calls == expected, instant.sleep_ms_calls
+    assert instant.sleep_calls == [_ERROR_RETRY_WAIT_S] * failures + [0, _ERROR_RETRY_WAIT_S], instant.sleep_calls
+    assert instant.sleep_ms_calls == [], instant.sleep_ms_calls
 
 
 def test_run_disconnect_reporting_a_second_cancellation_propagates_without_logging() -> None:

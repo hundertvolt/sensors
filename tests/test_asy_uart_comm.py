@@ -40,8 +40,7 @@ from rp2 import DMA
 import asy_base_classes
 import asy_print_log
 import asy_uart_comm
-from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
-from asy_crc_checks import CRC16
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_framing_codecs import FramingCOBS
 from asy_print_log import LogConfig, PrintLogHistoryStore, fatal_reported, make_logger
 from asy_uart_comm import (
@@ -53,7 +52,8 @@ from asy_uart_comm import (
     TransferLimits,
     UARTComm,
 )
-from asy_uart_driver import UART
+from asy_uart_driver import UART, PieceBuffer
+from crc_checks import CRC16
 
 try:
     from typing import TYPE_CHECKING
@@ -110,7 +110,6 @@ _LOOP_SURVIVAL_WAIT_MS = 20
 _SILENT_BOUND_S = 15
 _LISTENER_RUN_BOUND_S = 25
 _SHORT_BOUND_S = 5
-_PAST_DEADLINE_BOUND_S = 2
 _FLOOD_STEP_MS = 1
 _RUN_BOUND_S = 20
 _LISTENER_PARK_MS = 10
@@ -118,15 +117,12 @@ _INSIDE_LOCK_LIMIT_MS = 1000  # the bound on the wait for a task to hold the bus
 _LISTENER_SHORT_BOUND_S = 8
 _ASYNC_CALLBACK_YIELD_MS = 1
 _BSEC_RUN_BOUND_S = 60
-_PROMPT_HOLD_MS = 5
 _RECORDER_POLL_MS = 1  # the test's own real look at the sleep recorder's delays
-_GATE_LOOK_MS = 5  # a real sleep in which the write gate takes its looks, its clock held
-_PAST_CANCEL_ACK_HOLD_MS = 1300
+_WRITE_GATE_HOLD_MS = 1500  # the write gate's longest hold-off under the bus lock: 1.5 x the 1,000 ms timeout
 _REFUSALS = 50
 _HAMMER_ROUNDS = 200
 _HAMMER_RUN_BOUND_S = 120
 _FLUSH_RECOVERY_TRIES = 5
-_HOLD_OFF_LOOK_MS = 30
 # The drain of a listener whose stall is permanent, no frame ever reaching its next round: the verdict does not depend
 # on it, so it only has to outlast a listener that does finish (agent, 2026-10-27; owner-reviewed, 2026-11-06).
 _STALL_DRAIN_S = 1
@@ -349,6 +345,7 @@ class _SleepRecorder:
     def __init__(self, cap_ms: int) -> None:
         self.cap_ms = cap_ms
         self.delays: list[int] = []
+        self.callers: list[object] = []  # the task asking for each delay
         self._inner = asy_uart_comm.asyncio
         asy_uart_comm.asyncio = self  # type: ignore[assignment]
 
@@ -361,6 +358,7 @@ class _SleepRecorder:
     def sleep_ms(self, ms: int) -> "Awaitable[None]":
         check_sleep_ms(ms)
         self.delays.append(ms)
+        self.callers.append(asyncio.current_task())
         return self._inner.sleep_ms(min(ms, self.cap_ms))
 
 
@@ -850,9 +848,11 @@ def test_a_declined_get_does_not_back_off_the_next_answer() -> None:
     pair = run(build_pair(get_callback=get_cb, set_callback=accept_set()), RUN_LIMIT_S)
     recorder = _SleepRecorder(_FLOOD_STEP_MS)
     initial = pair.responder._backoff_initial_ms
+    listener: list[object] = []
 
     async def scenario() -> "tuple[list[PieceBuffer | None], PieceBuffer | None]":
         task = pair.responder.start_asy_listen()
+        listener.append(task)
         try:
             declined: list[PieceBuffer | None] = []
             while len(declined) < 4:  # no await inside a comprehension on MicroPython
@@ -867,7 +867,55 @@ def test_a_declined_get_does_not_back_off_the_next_answer() -> None:
         recorder.restore()
     assert declined == [None, None, None, None]
     assert copied_out(answer) == b"answer"
-    assert [d for d in recorder.delays if d >= initial] == [], recorder.delays
+    # The listener's own sleeps: the initiator waits out each resync's hold-off in one sleep of its own.
+    assert [d for n, d in enumerate(recorder.delays) if recorder.callers[n] is listener[0] and d >= initial] == [], recorder.delays
+
+
+def _second_set_while_the_fram_bus_is_held(set_cb: "CommCallback") -> "tuple[bool, bool]":
+    # Two SETs, ids 1 and 2, while another FRAM user holds the bus the responder's log writes need (an SGP40 backup held
+    # it up to 5.8 s on the bench, 2026-11-07); the hold ends only once the second SET has its answer.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=set_cb), RUN_LIMIT_S)
+    manager, _chip = make_fram_manager()
+    run(manager.setup(), RUN_LIMIT_S)
+    pair.responder.pr = make_logger(LogConfig(manager, 10, None), pair.responder.name)
+    run(pair.responder.pr.setup(), RUN_LIMIT_S)
+
+    async def scenario() -> "tuple[bool, bool]":
+        held, released = asyncio.Event(), asyncio.Event()
+
+        async def hold_the_bus() -> None:
+            held.set()
+            await released.wait()
+
+        holder = asyncio.create_task(hold_the_bus())
+        await held.wait()
+        listener = pair.responder.start_asy_listen()
+        try:
+            return await pair.initiator.uart_set(1, b"x"), await pair.initiator.uart_set(2, b"y")
+        finally:
+            released.set()
+            await holder
+            listener.cancel()
+
+    return run(scenario(), _LISTENER_RUN_BOUND_S)
+
+
+def test_a_declined_set_resyncs_without_waiting_on_its_fram_log_write() -> None:
+    # The resync runs at once, so the initiator's next SET, one quiet window after its own recovery, is received, not drained.
+    def set_cb(cmd_id: int) -> "tuple[bool, None]":
+        return cmd_id == 2, None
+
+    outcome = _second_set_while_the_fram_bus_is_held(set_cb)
+    assert outcome == (False, True), outcome
+
+
+def test_a_fault_resyncs_without_waiting_on_its_fram_log_write() -> None:
+    # The same through _fault(): an unusable callback result is a CALLBACK fault.
+    def set_cb(cmd_id: int) -> "tuple[bool, None] | None":
+        return (True, None) if cmd_id == 2 else None
+
+    outcome = _second_set_while_the_fram_bus_is_held(set_cb)
+    assert outcome == (False, True), outcome
 
 
 @_on_poll_rounds
@@ -1246,61 +1294,43 @@ def test_the_hold_off_window_derives_from_timeout() -> None:
     assert _make_comm(timeout=400)._resync_window_ms() == 600
 
 
+def _gate_sleeps(comm: UARTComm, clock: Ticks30Time, idle_ms: int) -> "tuple[list[int], bool]":
+    # Arms the hold-off on the fake clock, lets idle_ms pass, then runs the gate: its sleeps (each advancing the clock) and
+    # whether the hold-off is still active after it.
+    slept: list[int] = []
+
+    class _Asyncio:  # the gate's one asyncio name
+        @staticmethod
+        async def sleep_ms(ms: int) -> None:
+            slept.append(ms)
+            clock.advance(ms)
+            await asyncio.sleep_ms(0)
+
+    asy_uart_comm.time = clock  # type: ignore[assignment]
+    asy_uart_comm.asyncio = _Asyncio()  # type: ignore[assignment]
+    try:
+        comm._hold_off_writes()
+        clock.advance(idle_ms)
+        run(asyncio.wait_for(comm._await_write_gate(), _SHORT_BOUND_S), RUN_LIMIT_S)
+    finally:
+        asy_uart_comm.time, asy_uart_comm.asyncio = time, asyncio
+    return slept, comm._holdoff_active
+
+
 def test_the_hold_off_deadline_survives_the_ticks_rollover() -> None:
-    # Armed 5 ms before rp2's 2**30 ms wrap, the deadline lands past it: still held one ms before it, released one
-    # ms after. A raw subtraction misreads exactly this, once per uptime period, and waiting never reaches it.
+    # Armed 5 ms before rp2's 2**30 ms wrap, the deadline lands past it and the gate waits the whole window: a raw
+    # subtraction misreads exactly this, once per uptime period.
     comm = _make_comm()
+    window = comm._resync_window_ms()
     clock = Ticks30Time(TICKS_PERIOD - 5)
-    asy_uart_comm.time = clock  # type: ignore[assignment]
-
-    async def scenario() -> "tuple[bool, bool, bool]":
-        comm._hold_off_writes()
-        window = comm._resync_window_ms()
-        assert clock.now + window > TICKS_PERIOD
-        gate = asyncio.create_task(comm._await_write_gate())
-        await asyncio.sleep_ms(_GATE_LOOK_MS)  # the gate's first look, still before the wrap
-        held_before_the_wrap = not gate.done()
-        clock.advance(window - 1)
-        await asyncio.sleep_ms(_GATE_LOOK_MS)  # several of the gate's rounds, each sleeping the 1 ms left
-        held_past_it = not gate.done()
-        clock.advance(2)
-        await asyncio.wait_for(gate, _PAST_DEADLINE_BOUND_S)
-        return held_before_the_wrap, held_past_it, comm._holdoff_active
-
-    try:
-        assert run(scenario(), RUN_LIMIT_S) == (True, True, False)
-    finally:
-        asy_uart_comm.time = time
-
-
-def _hold_off_after(comm: UARTComm, clock: Ticks30Time, steps: "list[int]") -> "list[bool]":
-    # Arms the hold-off, then for each step advances the fake clock and reports whether the gate is
-    # still held once it has had time for a few of its own rounds (each sleeps at most 20 ms).
-    async def scenario() -> "list[bool]":
-        comm._hold_off_writes()
-        gate = asyncio.create_task(comm._await_write_gate())
-        held = []
-        for step in steps:
-            clock.advance(step)
-            await asyncio.sleep_ms(_HOLD_OFF_LOOK_MS)
-            held.append(not gate.done())
-        gate.cancel()
-        return held
-
-    asy_uart_comm.time = clock  # type: ignore[assignment]
-    try:
-        return run(scenario(), RUN_LIMIT_S)
-    finally:
-        asy_uart_comm.time = time
+    assert _gate_sleeps(comm, clock, 0) == ([window], False)
+    assert clock.now > TICKS_PERIOD
 
 
 def test_a_hold_off_aged_past_the_tick_horizon_expires() -> None:
     # Idle for more than 2**29 ms, the stored deadline reads as days ahead; one more than a window
     # away cannot be a deadline this side set, so it has expired.
-    comm = _make_comm()
-    clock = Ticks30Time(1000)
-    assert _hold_off_after(comm, clock, [2**29 + 1000]) == [False]
-    assert comm._holdoff_active is False
+    assert _gate_sleeps(_make_comm(), Ticks30Time(1000), 2**29 + 1000) == ([], False)
 
 
 def test_the_aliased_band_holds_at_most_one_window() -> None:
@@ -1308,15 +1338,13 @@ def test_the_aliased_band_holds_at_most_one_window() -> None:
     # so it holds, but never longer than the one window a normal hold-off costs.
     comm = _make_comm()
     window = comm._resync_window_ms()
-    clock = Ticks30Time(1000)
-    assert _hold_off_after(comm, clock, [TICKS_PERIOD + window // 2, window // 2 - 1, 2]) == [True, True, False]
+    assert _gate_sleeps(comm, Ticks30Time(1000), TICKS_PERIOD + window // 2) == ([window - window // 2], False)
 
 
-def test_an_unaged_hold_off_releases_at_its_window() -> None:
-    # A guard: the ordinary hold-off is unchanged, held one ms short of its window and released after it.
+def test_an_unaged_hold_off_waits_its_deadline_once() -> None:
+    # The gate sleeps until its deadline in one wait, never in steps that would wake it every few ms of the window.
     comm = _make_comm()
-    window = comm._resync_window_ms()
-    assert _hold_off_after(comm, Ticks30Time(1000), [window - 1, 2]) == [True, False]
+    assert _gate_sleeps(comm, Ticks30Time(1000), 0) == ([comm._resync_window_ms()], False)
 
 
 @_on_poll_rounds
@@ -1434,6 +1462,20 @@ def test_a_quiet_resync_persists_nothing() -> None:
     run(scenario(), _STEP_BOUND_S)
     assert persisted(pair.initiator) == [], persisted(pair.initiator)
     assert pair.initiator._holdoff_active is True  # the resync itself still ran
+
+
+def test_a_routine_resync_prints_the_bytes_it_drained() -> None:
+    # A frame the drain swallowed shows on the console without a trace image.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
+    pair.fake_a.feed_rx(b"xyz")
+
+    async def scenario() -> None:
+        async with pair.driver_a as device:
+            await pair.initiator._resync(device)
+
+    with record_prints(pair.initiator.pr) as rec:
+        run(scenario(), _STEP_BOUND_S)
+    assert rec.lines == [("UART_A", "Resyncing the link, drained", 3, "bytes")], rec.lines
 
 
 def test_one_fault_on_a_quiet_line_adds_one_entry() -> None:
@@ -1597,32 +1639,28 @@ def test_clear_with_nothing_in_flight_takes_the_lock_and_drains() -> None:
     assert pair.fake_a.rx_queue == bytearray()
 
 
-def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
-    # cancel_unacknowledged is cumulative, and clear() read it as a flag: once any holder had ever
-    # wedged, every later cancel - healthy ones included - persisted W55 again, which is the
-    # bounded-history churn Part C.7.1 exists to prevent, on a link that had already recovered.
+def test_clear_waits_out_a_healthy_holder_and_reports_nothing() -> None:
+    # A holder in the write gate's longest hold-off (1.5 x the 1,000 ms timeout, under the bus lock) acknowledges only
+    # when it leaves the locked region: clear() waits for that, with no deadline, and persists nothing.
     pair = Pair()
     run(pair.setup(), RUN_LIMIT_S)
     bus = pair.initiator._uart
     assert bus is not None
 
-    async def hold(ms: int) -> None:
-        async with bus:  # the cancel is acknowledged on leaving the locked region, never before
-            await asyncio.sleep_ms(ms)
+    async def hold() -> None:
+        async with bus:
+            await asyncio.sleep_ms(_WRITE_GATE_HOLD_MS)
 
-    async def scenario(hold_ms: int) -> None:
-        holder = asyncio.create_task(hold(hold_ms))
-        await asyncio.sleep_ms(0)  # one turn: the holder takes the bus (its hold may be shorter than a poll)
+    async def scenario() -> None:
+        holder = asyncio.create_task(hold())
+        await asyncio.sleep_ms(0)  # one turn: the holder takes the bus
         assert bus.session_lock.locked()
         await pair.initiator.clear()
+        assert not bus.session_lock.locked()  # returned once the holder acknowledged on its way out
         await holder
 
-    run(scenario(_PAST_CANCEL_ACK_HOLD_MS), _RUN_BOUND_S)  # past the driver's own 1000ms acknowledgement bound
-    assert bus.cancel_unacknowledged == 1
-    assert persisted(pair.initiator) == [_w("UART_CANCEL_UNACKED")]
-    run(scenario(_PROMPT_HOLD_MS), _RUN_BOUND_S)  # a holder that acknowledges promptly: nothing new to report
-    assert bus.cancel_unacknowledged == 1
-    assert persisted(pair.initiator) == [_w("UART_CANCEL_UNACKED")]
+    run(scenario(), _RUN_BOUND_S)
+    assert persisted(pair.initiator) == []
 
 
 # ---------------------------------------------------------------------------

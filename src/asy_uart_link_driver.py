@@ -1,11 +1,10 @@
 """Bench-only UART crossover-link exerciser: wraps one role's `UARTComm` over an already-built
 `asy_uart_driver.UART` bus, plus the banner/echo application logic and transfer/failure counters
 that have no home in the standalone protocol module itself. See SPECIFICATION.md Part J.7/A.7."""
-# Not a SensorReader/SensorReaderConfig subclass, like UARTComm (agent, 2026-09-11; Part J.9; owner-reviewed, 2026-11-06) -
+# Not a SensorReader/SensorReaderConfig subclass, like UARTComm (agent, 2026-09-11; Part J.9) -
 # resolved via buildgen.driver_registry._OVERRIDES.
 
 import asyncio
-import time
 
 from micropython import const
 
@@ -23,10 +22,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asy_api_response import ResponseEnvelope, _RequestLike
-    from asy_base_classes import ErrorSource, JsonDict, JsonValue, PieceBuffer, TaskStarter, TimerStarter
+    from asy_base_classes import ErrorSource, JsonDict, JsonValue, TaskStarter, TimerStarter
     from asy_print_log import ErrorLog, LogConfig, PrintLogHistory
     from asy_uart_comm import TransferLimits
-    from asy_uart_driver import UART
+    from asy_uart_driver import UART, PieceBuffer
     from asy_webserver_service import _MicrodotApp
 
 _NAME = const("UART")
@@ -55,7 +54,7 @@ _HEADER_BYTES = const(5)  # uid, cmd, size, chunks, cur_chunk (J.3)
 # script's; and the ACK window and pre-recovery wait, past its longest listen backoff too (5 more, J.5).
 _QUIET_TIMEOUTS = const(3)
 _WINDOW_TIMEOUTS = const(8)
-_HAZARD_RECOVERY_ATTEMPTS = const(2)  # after a hazard, a clean exchange within this many tries
+_HAZARD_RECOVERY_ATTEMPTS = const(1)  # one: its window outlasts the peer's longest backoff and resync (8 > 5 + 1.5 timeouts)
 _HAZARDS_KEY = const("UartHazards")  # PUT /uart's one key; buildgen reads it for the website's form
 # The link's own API on dev, registered by the generated module ahead of the static catch-all (owner, 2026-11-06: "If it is
 # selected, in brings in everything it needs"); buildgen reads it for the REST reference, as the webserver's ROUTES.
@@ -155,7 +154,7 @@ class UARTLinkDriver:
         try:
             return await self._comm.uart_set(_CMD_ECHO, payload)
         except Exception as e:  # an unsupervised task's top: never raises, so the run goes on to its next hazard
-            await self.pr.err_s("Hazard initiation failed:", e, errno=_ERR_UNEXPECTED)
+            self.pr.err_s("Hazard initiation failed:", e, errno=_ERR_UNEXPECTED)
             return None
 
     def _message_callback(self, cmd_id: int, cmd: int, payload: "PieceBuffer | None") -> None:
@@ -209,12 +208,10 @@ class UARTLinkDriver:
             for value in values:
                 frame[0], frame[1], frame[2], frame[3], frame[4], frame[5] = 1, CMD_SET, 1, 2, 1, _HAZARD_CMD_ID
                 frame[offset] = value
-                self.pr.wrn("TRACE sweep", name, value, time.ticks_ms())
                 if not await self._write_raw(frame):
                     acked.append(None)
                     continue
                 got = await self._read_raw(ack)
-                self.pr.wrn("TRACE sweep got", got, time.ticks_ms())
                 acked.append(got == self._frame and ack[1] == _WIRE_ACK)
                 if got is not None:
                     await asyncio.sleep_ms(self._quiet_ms)  # the peer answered: its own timeout and resync pass first
@@ -256,7 +253,7 @@ class UARTLinkDriver:
         return self._comm.get_timer_starters()  # empty - no machine.Timer anywhere in this file either
 
     def start_asy_exercise(self) -> asyncio.Task[None]:
-        return asyncio.get_event_loop().create_task(self._exercise_loop())
+        return asyncio.create_task(self._exercise_loop())
 
     # -- getters -----------------------------------------------------------
 

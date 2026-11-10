@@ -67,5 +67,11 @@ ADDRESS_CAPABLE_DRIVERS = frozenset({"bmp3xx"})
 # reason - a UART is point-to-point and has no address concept at all.
 FIXED_ADDRESS_DRIVERS = BUS_ATTACHED_DRIVERS - ADDRESS_CAPABLE_DRIVERS - {"fram"}
 
-# CRC mode of a uart_link end -> (asy_crc_checks class, width in bytes); held equal to src/asy_crc_checks.py by a test
+# The mandatory modules every device builds, never [[instance]] entries: each by its generated name, and its src/ file.
+MANDATORY_FILES: dict[str, str] = {
+    "sysfunct": "asy_system_service.py", "conn": "asy_wifi_service.py", "ntp": "asy_ntp_client.py",
+    "webserver": "asy_webserver_service.py", "dns": "asy_captive_dns.py",
+}
+
+# CRC mode of a uart_link end -> (crc_checks class, width in bytes); held equal to src/crc_checks.py by a test
 UART_CRC_MODES: dict[str, tuple[str, int]] = {"none": ("CRCPass", 0), "crc16": ("CRC16", 2)}

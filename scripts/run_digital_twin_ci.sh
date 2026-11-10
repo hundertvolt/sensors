@@ -84,6 +84,10 @@ else
     sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
 fi
 
+# Every device's module, wiring plan and API reference are generated fresh into build/generated_src/ (Part L.2).
+echo "== Generating buildgen device modules + wiring plans into build/generated_src/"
+uv run --no-sync scripts/_generate_sensortask_modules.py
+
 # Each part's twins boot the site it builds: the suite's frozen_modules/, the harness's own per-device copy.
 if runs_part suite; then
     echo "== Building the real $device website into frozen_modules/frozen_html.py"
@@ -94,13 +98,9 @@ if runs_part harness; then
     scripts/build_website.sh "$device" "build/generated_html/$device/frozen_html.py"
 fi
 
-# Every device's module, wiring plan and API reference are generated fresh into build/generated_src/ (Part L.2).
-echo "== Generating buildgen device modules + wiring plans into build/generated_src/"
-uv run --no-sync scripts/_generate_sensortask_modules.py
-
 # Port 53's UDP holders, printed before and after the twins: a socket there without SO_REUSEADDR fails the twins'
 # captive DNS bind (DNSSRV E INIT), and only the runner itself can name its process. A host without ss (iproute2, not in
-# the apt list) loses only this listing: `|| true` keeps the run going (agent, 2026-11-05; owner-reviewed, 2026-11-06).
+# the apt list) loses only this listing: `|| true` keeps the run going (agent, 2026-11-05).
 port_53_holders() {
     echo "== UDP port 53 holders ($1):"
     if [ "$(id -u)" -eq 0 ]; then ss -H -uanp 'sport = :53' || true; else sudo -n ss -H -uanp 'sport = :53' || ss -H -uan 'sport = :53' || true; fi

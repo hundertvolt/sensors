@@ -34,14 +34,11 @@ if TYPE_CHECKING:
 SCOPES = ("src", "tests", "digital_twin", "tests_hardware")
 POLICY = ("collect", "threshold", "disable", "enable")  # threshold only as a set: the zero-argument call reads it
 # Why a site may call gc (SPECIFICATION.md I.4(e)/(f.1)): every row names one.
-CATEGORIES = ("placement reset", "baseline", "boot mirror", "before a timed window", "twin exception", "measured collection pause", "stage")
+CATEGORIES = ("baseline", "before a timed window", "twin exception", "measured collection pause", "stage")
 _DS = "tests_hardware/device_scripts/"
 # The whole allowance, (module, enclosing function, call) -> its category and reason; a baseline's reading follows it.
 ALLOWED = {
-    ("src/asy_system_service.py", "SystemService.run_setups", "collect"): "placement reset: between the units of the one-time setup list",
-    ("src/asy_system_service.py", "SystemService.start_tasks", "collect"): "placement reset: between the units of the one-time task-start list",
     ("tests/_boot_contiguity_probe.py", "_dump", "collect"): "baseline: the heap map that follows",
-    ("tests/_boot_contiguity_probe.py", "_ProbeGc.collect", "collect"): "boot mirror: the placement reset on the probe's live arm",
     ("tests/_threshold_runner.py", "_run", "threshold"): "stage: the process's GC stage for the file it runs",
     ("tests/microtest.py", "_reset_process_state", "threshold"): "stage: the run's own stage restored after each test",
     ("tests/test_asy_base_classes.py", "test_piecebuffer_retains_nothing_after_construction", "collect"): "baseline: the retention readings",
@@ -73,7 +70,6 @@ ALLOWED = {
     (f"{_DS}allocation_need_per_source.py", "_build_sieve", "collect"): "baseline: the sieve the probes are placed in",
     (f"{_DS}allocation_need_per_source.py", "_measure", "collect"): "baseline: each probe's churn",
     (f"{_DS}allocation_need_per_source.py", "_release_sieve", "collect"): "baseline: the next rung's sieve",
-    (f"{_DS}heap_layout_after_full_boot_sequence.py", "_ProbeGc.collect", "collect"): "boot mirror: the placement reset on the live arm",
     (f"{_DS}loop_stretch_timing.py", "_main", "collect"): "measured collection pause: the pause SPECIFICATION.md F.3 bounds",
     (f"{_DS}serving_at_default_gc.py", "_observe", "collect"): "baseline: the heap map that follows",
     (f"{_DS}uart_dma_ring_interrupts_off.py", "_sweep", "collect"): "baseline: the ring's heap cost",

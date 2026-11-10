@@ -24,10 +24,8 @@ if TYPE_CHECKING:
 
 # @tunable module.max_error = 5
 _MAX_MODULE_ERROR = 5
-# @tunable dns.timeout_ms = 500
-_DNS_TIMEOUT_MS = 500
-# @tunable dns.tries = 1
-_DNS_TRIES = 1
+# @tunable dns.timeout_ms = 1000
+_DNS_TIMEOUT_MS = 1000  # per server: lwIP resends after DNS_TMR_INTERVAL (lib/lwip/src/include/lwip/dns.h:54, v1.29.0)
 # @tunable ntp.fetch_timeout_ms = 5000
 _NTP_FETCH_TIMEOUT_MS = 5000
 
@@ -108,7 +106,7 @@ def _build_call(spec: InstanceSpec, info: DriverInfo, ctx: _Ctx) -> str:
 
 
 def _bus_crc_class(model: DeviceModel, bus_id: str) -> "str | None":
-    # The CRC the bus's one uart_link instance names, as its asy_crc_checks class; None for no CRC.
+    # The CRC the bus's one uart_link instance names, as its crc_checks class; None for no CRC.
     links = [s for s in model.instances.values() if s.driver == "uart_link" and s.fields.get("bus") == bus_id]
     if not links:
         return None
@@ -203,7 +201,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             lines.append(f"    conn = WifiService({wifi}, {led_kw}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'conn')})")
             continue
         if node == "ntp":
-            timing = "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS)"
+            timing = "NtpTiming(_DNS_TIMEOUT_MS, _NTP_FETCH_TIMEOUT_MS)"
             lines.append(f"    ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, {timing}, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'ntp')})")
             continue
         if node == "sysfunct":
@@ -403,7 +401,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     names["asy_base_classes"] = ["ValueRef", "utc_now"] if have & {"sgp40", "notification"} else ["utc_now"]
     crc_classes = sorted({c for c in (_bus_crc_class(model, b) for b in _bus_tables(model)) if c is not None})
     if crc_classes:
-        names["asy_crc_checks"] = crc_classes
+        names["crc_checks"] = crc_classes
     if "uart_link" in have:
         names["asy_uart_comm"] = ["TransferLimits"]
     names["asy_print_log"] = ["DEFAULT_LOG", "LogConfig"]
@@ -424,7 +422,6 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("")
     lines.append(f"_MAX_MODULE_ERROR = const({_MAX_MODULE_ERROR})")
     lines.append(f"_DNS_TIMEOUT_MS = const({_DNS_TIMEOUT_MS})")
-    lines.append(f"_DNS_TRIES = const({_DNS_TRIES})")
     lines.append(f"_NTP_FETCH_TIMEOUT_MS = const({_NTP_FETCH_TIMEOUT_MS})")
     lines.append(f"_FIRMWARE_VERSION = const({_lit(FIRMWARE_VERSION)})")
     lines.append(f"_WEBSITE_VERSION = const({_lit(WEBSITE_VERSION)})")
@@ -451,14 +448,13 @@ def _emit_main(lines: "list[str]") -> None:
 
 
 def _emit_trigger_collector(lines: "list[str]", sensor_specs: "list[InstanceSpec]", ctx: _Ctx) -> None:
-    readers = [(ctx.instance_var(spec.key), _text(spec.fields["bus"])) for spec in sensor_specs if spec.driver_info is not None and class_has_read_triggers(spec.driver_info)]
-    order = trigger_spread(readers)
+    order = [ctx.instance_var(spec.key) for spec in sensor_specs if spec.driver_info is not None and class_has_read_triggers(spec.driver_info)]
     lines.append('def _collect_trigger_starters() -> "list[TimerStarter]":')
     if not order:
         lines.append("    return []")
         lines.append("")
         return
-    lines.append("    # In stagger-slot order: readers sharing a bus sit furthest apart (SPECIFICATION.md Part C.9.1).")
+    lines.append("    # In construction order, one stagger slot each (SPECIFICATION.md Part C.9.1).")
     lines.append("    starters: list[TimerStarter] = []")
     lines.append(f"    for module in {_tuple(order)}:")
     lines.append("        starters.extend(module.get_trigger_starters())")
@@ -891,13 +887,3 @@ def generate_module_source(model: DeviceModel, construction_order: "list[str | t
     _emit_main(lines)
     return "\n".join(lines) + "\n"
 
-
-def trigger_spread(readers: "list[tuple[str, str]]") -> "list[str]":
-    # (instance var, bus) pairs in construction order -> stagger-slot order: one reader from each bus
-    # group in turn, the largest group first and ties by construction order, so readers sharing a bus
-    # sit furthest apart in the one-second plan (SPECIFICATION.md Part C.9.1).
-    groups: dict[str, list[str]] = {}
-    for var, bus in readers:
-        groups.setdefault(bus, []).append(var)
-    ordered = sorted(groups.values(), key=len, reverse=True)
-    return [group[i] for i in range(max(map(len, ordered), default=0)) for group in ordered if i < len(group)]

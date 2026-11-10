@@ -25,18 +25,13 @@ _RUN_PHASE_ALLOWED: "dict[tuple[str, str, str], str]" = {
         ("asy_bmp3xx_driver.py", "BMP3XX_I2C._read_coefficients", attr): "setup only: the calibration coefficients, replaced at each read-task start"
         for attr in ("_pressure_calib", "_temp_calib")
     },
-    ("asy_fram_manager.py", "_FRAMBaseChunk._compare_with", "_compare_against"): "a view of the caller's buffer, cleared in finally",
     ("asy_i2c_driver.py", "I2C.init", "_args"): "per controller recovery: the stored arguments, replacing the last",
     ("asy_i2c_driver.py", "I2C.init", "_i2c"): "machine.I2C() returns a static object (ports/rp2/machine_i2c.c)",
     **{
         ("asy_isl29125_driver.py", f"ISL29125_Reader.{method}", "_cal_recent"): "calibration only, at most _CAL_CONVERGE_N ratios"
         for method in ("_end_calibration", "_measure_gain_ratio", "_note_candidate", "_read_on", "start_calibration")
     },
-    ("asy_neopixel_driver.py", "NeopixelDriver._overlay_loop", "_overlay_rgb"): "the pixel tuple, replaced at every overlay wake",
-    **{
-        ("asy_neopixel_driver.py", f"NeopixelDriver.{method}", "_rgbt"): "the signal's four values, replaced by the next request stored"
-        for method in ("led_signal", "request_signal")
-    },
+    ("asy_neopixel_driver.py", "NeopixelDriver.led_signal", "_rgbt"): "the external command's four values, replaced by the next one accepted",
     ("asy_scd30_driver.py", "SCD30_Reader._store_scd", "_datastruct"): "the latest reading, replaced at every read",
     ("asy_spi_driver.py", "SPI.init", "_spi"): "construction: init() runs from __init__ only, and machine.SPI() returns a static object (ports/rp2/machine_spi.c)",
     ("asy_system_service.py", "SystemService._reboot", "_reset_task"): "the one reset task of a reboot",

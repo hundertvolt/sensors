@@ -13,7 +13,7 @@ _CHIP_TESTS = "tests/test_digital_twin_isl29125.py"
 _AUTORANGE_TESTS = "tests/test_digital_twin_isl29125_autorange.py"
 
 # Each copy's name in its file and the driver const() it copies. CONFIG3 is not compared: the driver writes no CONFIG3
-# register of its own, while the fake models it (agent, 2026-10-14; owner-reviewed, 2026-11-06).
+# register of its own, while the fake models it (agent, 2026-10-14).
 _CHIP_COPIES = {
     "_DEVICE_ID": "_DEVICE_ID",
     "_REG_DEVICE_ID": "_REGISTER_DEVICE_ID",

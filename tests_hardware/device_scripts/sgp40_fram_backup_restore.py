@@ -59,7 +59,7 @@ async def _main() -> None:
     if reader1._ts_storage is None:
         done()
         return
-    fact("cleared_first", await reader1._ts_storage.clear())
+    fact("cleared_first", reader1._ts_storage.clear())
     # A fresh boot: a new FRAMManager over the same part allocates its chunks at the addresses reader1's took. Its
     # loggers are never set up, so they write nothing; the VOC-state chunk is the one this run writes.
     fram_b = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
@@ -74,7 +74,7 @@ async def _main() -> None:
             fact("restored_from", restored_from)
             fact("restored_state_matches", restored_from == last_backup)
     finally:
-        fact("cleared_last", reader2._ts_storage is not None and await reader2._ts_storage.clear())
+        fact("cleared_last", reader2._ts_storage is not None and reader2._ts_storage.clear())
     done()
 
 

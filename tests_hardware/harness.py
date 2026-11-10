@@ -31,12 +31,13 @@ import setup_toolchain
 from setup_toolchain import resolve_board_serial
 
 from buildgen.api_reference import generate_api_reference
-from buildgen.generate import expected_facts
 from buildgen.graph import build_construction_order
 from buildgen.jsontypes import JsonDict
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.source_ast import parse_source
 from buildgen.validate import _WDT_TIMEOUT_MS, build_model, device_max_connections_by_name
+from scripts import _twin_process
+from scripts._generate_sensortask_modules import expected_facts
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -57,10 +58,10 @@ RENDERED_SCRIPTS_DIR = REPO_ROOT / "build" / "device_scripts"
 SRC_DIR = REPO_ROOT / "src"
 _SYS_CLASS_TTY = Path("/sys/class/tty")
 
-# SPECIFICATION.md Part I.4(e)'s bar, as the board's own log shows it. BOTH spellings: src/'s
-# degrade handlers log str(e), so a real caught allocation failure reads "memory allocation
-# failed, ..." (py/runtime.c) and the class name appears only in an UNCAUGHT traceback.
-MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+# SPECIFICATION.md Part I.4(e)'s bar, as the board's own log shows it: both spellings, since src/'s degrade handlers log
+# str(e) and the class name appears only in an uncaught traceback (scripts/memory_markers.json, the one definition).
+MEMORY_ERROR_MARKERS = _twin_process.MEMORY_ERROR_MARKERS
+
 # One-time setup() lines, printed at DebugLevel >= 3 (the standard state holds 5); tests_scripts pins each against src/.
 BOOT_COMPLETION_MARKERS = ("config is ready", "FRAM SPI FRAM Driver Setup complete")
 
@@ -126,6 +127,8 @@ _LOG_TAIL_READ_TIMEOUT_S = 0.5
 _ELF_SYMBOLS_TIMEOUT_S = 120
 _OBSERVE_TAIL_AFTER_S = 5.0
 _OBSERVE_TAIL_STEP_S = 1.0
+# Up to 8 s for picotool to find the BOOTSEL device: the reflash's own wait (agent, 2026-10-15, 0c0ad52c), no bench
+# measurement behind it; a single try once found none and left the board in BOOTSEL 13 minutes (bench, 2026-11-05).
 _PICOTOOL_ATTEMPTS = 5
 _PICOTOOL_LOAD_TIMEOUT_S = 120
 _PICOTOOL_RETRY_BACKOFF_S = 2.0

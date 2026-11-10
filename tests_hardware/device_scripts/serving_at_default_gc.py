@@ -79,7 +79,7 @@ async def _observe(webserver: "WebserverService", wdt: "WDT") -> None:
     phase, recent, quiet, polls, dumps = "pre", [0, 0, 0], 0, 0, {"pre": 0, "load": 0, "post": 0}
     started = time.ticks_ms()
     while time.ticks_diff(time.ticks_ms(), started) < _WINDOW_S * 1000:
-        busy = 1 if webserver._open_conns.value else 0  # plain int: no lock, no coroutine, no allocation
+        busy = 1 if webserver._open_conns else 0  # plain int: no lock, no coroutine, no allocation
         recent = recent[1:] + [busy]
         quiet = 0 if busy else quiet + 1
         if phase == "pre" and sum(recent) >= _BUSY_TO_ENTER:

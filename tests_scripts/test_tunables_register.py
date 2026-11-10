@@ -35,7 +35,7 @@ _SITE_RE = re.compile(r"^(?P<path>[\w.][\w./-]*?)(?::[\d, -]+)?\s+[\u2014\u2013]
 
 # rp2's WDT refuses a longer timeout: ports/rp2/machine_wdt.c:32-38 (v1.29.0), a platform fact.
 _RP2_WDT_MAX_MS = 8388
-# "<<" in asy_system_service.py, read as a factor of at least four (agent, 2026-09-29; owner-reviewed, 2026-11-06): the ratio the
+# "<<" in asy_system_service.py, read as a factor of at least four (agent, 2026-09-29): the ratio the
 # shipped values meet exactly; the real margin is the supervisor-scan budget in wdt.timeout_ms's row.
 _TASK_CHECK_FACTOR = 4
 

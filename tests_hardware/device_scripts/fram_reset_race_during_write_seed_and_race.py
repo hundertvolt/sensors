@@ -55,8 +55,7 @@ async def _main() -> None:
         return
     seeded = []
     for addr, pattern in ((_GUARD_BEFORE_ADDR, _GUARD_BEFORE_PATTERN), (_TARGET_ADDR, _ORIGINAL_TARGET_PATTERN), (_GUARD_AFTER_ADDR, _GUARD_AFTER_PATTERN)):
-        async with fram:
-            seeded.append(await fram.set_values(pattern, addr_start=addr))
+        seeded.append(fram.set_values(pattern, addr_start=addr))
     fact("seeded", seeded)
     fact("system_task_exceptions", raised_in_tasks)
     wdt.feed()
@@ -64,25 +63,24 @@ async def _main() -> None:
         done()
         return
 
-    # The reset lands inside the victim's own payload transfer: the CS window does not yield, so this is the one seam.
-    spidev = fram._spidev
-    original_write_sync = spidev.write_sync
+    # The reset lands inside the victim's own payload transfer, at the bus write its last begin() bound: the CS window does
+    # not yield, so this is the one seam.
+    original_write = fram._bus_write
 
-    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> None:
+    def resetting_write(buf: "bytes | bytearray | memoryview") -> None:
         if len(buf) == len(_NEW_TARGET_PATTERN):  # the command buffers around the payload are 1 or 5 bytes
             machine.reset()  # never returns: a real RP2040 reset with CS still asserted
-        original_write_sync(buf)
+        original_write(buf)
 
     async def victim_writer() -> None:
-        async with fram:
-            await fram.set_values(_NEW_TARGET_PATTERN, addr_start=_TARGET_ADDR)
+        fram.set_values(_NEW_TARGET_PATTERN, addr_start=_TARGET_ADDR)
 
     print(_BANNER)
-    spidev.write_sync = resetting_write_sync  # type: ignore[method-assign]
+    fram._bus_write = resetting_write
     try:
         await asyncio.wait_for(victim_writer(), _VICTIM_BOUND_S)
     finally:
-        spidev.write_sync = original_write_sync  # type: ignore[method-assign]
+        fram._bus_write = original_write
     # Reached only when no payload transfer of the expected length came through the seam: nothing was tested.
     fact("reset_fired", False)
     done()

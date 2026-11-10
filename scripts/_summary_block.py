@@ -3,12 +3,12 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Python emitter of the runner summary block (SPECIFICATION.md E.10), byte-identical to
-scripts/_summary_block.sh, plus the reader of a scripts/_pytest_run_record.py run record."""
+"""The one emitter of the runner summary block (SPECIFICATION.md E.10): the shell and Node runners hand it their items
+(--print), the pytest runners call it in process; plus the reader of a scripts/_pytest_run_record.py run record."""
 
-# Usage: _summary_block.py --from-run-record PATH (--counts-only | --list KIND)
-# --counts-only prints "P F S D" (passed failed skipped deselected) for scripts/test.sh's L0 line;
-# --list prints one "name<TAB>detail" line per item of that kind (or per note, for "notes"). A usage error exits 2.
+# Usage: _summary_block.py --print RUNNER EXIT < records | --from-run-record PATH (--counts-only | --list KIND)
+# --print reads NUL-ended fields (item KIND NAME DETAIL, note NAME TEXT, unit/levels/gc/reason VALUE, counts UNIT P..Z),
+# prints the block, exits with its code; --counts-only prints "P F S D", --list "name<TAB>detail" lines.
 
 import argparse
 import json
@@ -235,13 +235,47 @@ def _add_session_status(summary: Summary, exitstatus: object) -> None:
         summary.add("failed", "pytest session", f"exit status {exitstatus} with no failed test recorded")
 
 
+def from_records(runner: str, data: str) -> Summary:
+    # The block a shell or Node runner accumulated, as NUL-separated records (the usage above); a malformed one raises.
+    tokens = data.split("\0")
+    if tokens and tokens[-1] == "":
+        tokens.pop()
+    summary, at = Summary(runner), 0
+    sizes = {"item": 3, "note": 2, "unit": 1, "levels": 1, "gc": 1, "reason": 1, "counts": 1 + len(KINDS)}
+    while at < len(tokens):
+        tag, at = tokens[at], at + 1
+        if tag not in sizes or at + sizes[tag] > len(tokens):
+            raise ValueError(f"malformed summary record {tag!r} at token {at}")
+        fields, at = tokens[at : at + sizes[tag]], at + sizes[tag]
+        if tag == "item":
+            summary.add(*fields)
+        elif tag == "note":
+            summary.note(*fields)
+        elif tag == "counts":
+            summary.extra_counts.append((fields[0], Counts(*(int(n) for n in fields[1:]))))
+        elif tag == "unit":
+            summary.unit = fields[0]
+        else:
+            setattr(summary, {"levels": "levels", "gc": "gc_stage", "reason": "not_clean_reason"}[tag], fields[0])
+    return summary
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--from-run-record", type=Path, required=True, metavar="PATH", help="a run record written by scripts/_pytest_run_record.py")
-    mode = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument("--print", nargs=2, metavar=("RUNNER", "EXIT"), help="print the block of the records on stdin and exit with its code")
+    parser.add_argument("--from-run-record", type=Path, metavar="PATH", help="a run record written by scripts/_pytest_run_record.py")
+    mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--counts-only", action="store_true", help='print "P F S D": passed, failed, skipped, deselected')
     mode.add_argument("--list", choices=(*KINDS, "notes"), metavar="KIND", help=f"print name<TAB>detail per item of KIND ({', '.join(KINDS)}) or per note (notes)")
     args = parser.parse_args(argv)  # a usage error exits 2 (argparse)
+    if args.print is not None:
+        runner, given = args.print
+        try:
+            return from_records(runner, sys.stdin.read()).print(int(given))
+        except ValueError as e:
+            parser.error(str(e))
+    if args.from_run_record is None or not (args.counts_only or args.list):
+        parser.error("--from-run-record needs --counts-only or --list, or use --print")
     summary = from_run_record(args.from_run_record)
     if args.counts_only:
         counts = summary.counts()

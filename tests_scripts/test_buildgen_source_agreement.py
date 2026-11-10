@@ -11,7 +11,7 @@ import pytest
 from _devices import DEVICE_NAMES, device_toml
 
 from buildgen import definitions
-from buildgen.buildspec import BUS_KIND_BY_DRIVER, REQUIRED_TOML_FIELDS
+from buildgen.buildspec import BUS_KIND_BY_DRIVER, MANDATORY_FILES, REQUIRED_TOML_FIELDS
 from buildgen.definitions import definitions_for_toml
 from buildgen.driver_registry import _OVERRIDES, DriverInfo, resolve_driver
 from buildgen.generate import generate_device
@@ -143,8 +143,9 @@ def test_every_driver_has_its_build_table_rows() -> None:
 
 def test_every_driver_and_mandatory_module_has_its_errcount_rows() -> None:
     catalog = {key: has_cfgmgr for key, _label, has_cfgmgr in definitions._ERRCOUNT_CATALOG}
-    owners = {name: _owns_cfgmgr(_tree(info.source_path), info.class_name) for name, info in _drivers().items()}
-    owners |= {key: _owns_cfgmgr(_tree(_SRC / filename)) for key, filename in definitions._MANDATORY_ERRCOUNT_FILES.items()}
+    # The LED keeps no log, so it has no row (SPECIFICATION.md A.4: the pixel has no failure path).
+    owners = {name: _owns_cfgmgr(_tree(info.source_path), info.class_name) for name, info in _drivers().items() if name != "neopixel"}
+    owners |= {key: _owns_cfgmgr(_tree(_SRC / filename)) for key, filename in MANDATORY_FILES.items()}
     assert catalog == owners, "the errcount catalog's (row, CFGMGR_ companion) pairs differ from the sources"
     assert set(definitions._CFGMGR_LABEL) == {key for key, has_cfgmgr in catalog.items() if has_cfgmgr}
 

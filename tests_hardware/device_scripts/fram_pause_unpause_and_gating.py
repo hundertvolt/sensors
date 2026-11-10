@@ -7,9 +7,9 @@ import asyncio
 import machine
 
 import asy_spi_driver
-from asy_crc_checks import CRC8
 from asy_fram_manager import FRAMChunk, FRAMManager, FRAMTimestampedChunk
 from asy_system_service import SystemService
+from crc_checks import CRC8
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -41,12 +41,12 @@ wdt: "machine.WDT | None" = None
 
 
 async def _check_auto_unpause_timers(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
-    # 5. The auto-unpause deadline, tested by the uptime pass on the board's real tick timer.
+    # 5. The auto-unpause deadline, tested by the uptime pass on the board's real 1 s tick.
     check(f"pause_permanent_storage({_PAUSE_S}) answered False", condition=sysfunct.pause_permanent_storage(_PAUSE_S))
     check(f"pause_permanent_storage({_PAUSE_S}) did not pause", condition=fram.get_pause() is True)
     await _sleep_fed_s(_PAUSE_S + _PAUSE_MARGIN_S)
     check(f"the auto-unpause deadline never ended the pause after {_PAUSE_S}s - storage stayed paused", condition=fram.get_pause() is False)
-    check("write after the real auto-unpause was still refused", condition=await chunk.write(PATTERN_B) is True)
+    check("write after the real auto-unpause was still refused", condition=chunk.write(PATTERN_B) is True)
 
     # 6. Zero duration unpauses immediately.
     sysfunct.pause_permanent_storage(_PAUSE_S)
@@ -68,14 +68,14 @@ async def _check_clear_and_timestamped(fram: FRAMManager, chunk: FRAMChunk) -> N
     # 9. clear() honours the same gate as write()/read() (mock tier covers this; the real chip
     #    never has). Proven against real bytes: a refused clear leaves the payload readable once unpaused.
     #    The payload is written here: step 8 writes it only when its own premise held.
-    check("the payload write before the clear check was refused", condition=await chunk.write(PATTERN_A) is True)
+    check("the payload write before the clear check was refused", condition=chunk.write(PATTERN_A) is True)
     fram.set_pause(value=True)
-    check("clear() while paused was not refused", condition=await chunk.clear() is False)
+    check("clear() while paused was not refused", condition=chunk.clear() is False)
     fram.set_pause(value=False)
-    check("a refused clear still wiped the real chip", condition=bytes(await chunk.read() or b"") == PATTERN_A)
-    check("clear() after unpausing was refused", condition=await chunk.clear() is True)
-    check("a cleared chunk did not read back as uninitialized", condition=await chunk.read() is None)
-    check("the cleared chunk could not be rewritten", condition=await chunk.write(PATTERN_A) is True)
+    check("a refused clear still wiped the real chip", condition=bytes(chunk.read() or b"") == PATTERN_A)
+    check("clear() after unpausing was refused", condition=chunk.clear() is True)
+    check("a cleared chunk did not read back as uninitialized", condition=chunk.read() is None)
+    check("the cleared chunk could not be rewritten", condition=chunk.write(PATTERN_A) is True)
 
     # 10. The timestamped chunk variant honours the gate too - this is the shape SGP40's real VOC
     #     backup uses (FRAMTimestampedChunk), so covering only the plain chunk above would leave
@@ -87,13 +87,13 @@ async def _check_clear_and_timestamped(fram: FRAMManager, chunk: FRAMChunk) -> N
         try:
             await _check_timestamped(fram, ts_chunk)
         finally:
-            fact("ts_cleared_last", await ts_chunk.clear())
+            fact("ts_cleared_last", ts_chunk.clear())
 
 
 async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
     # 8. Safety invariant under an exhausted alarm pool: storage is never left paused with nothing
-    #    able to unpause it. A pause arms no timer, so the pool cannot refuse it; the uptime tick
-    #    armed before the pool ran out ends it.
+    #    able to unpause it. Neither the pause nor the uptime tick that ends it arms a timer, so the
+    #    pool cannot refuse either.
     hogged = []
     exhausted = False
     try:
@@ -112,7 +112,7 @@ async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService
             "storage was left paused with no pending auto-unpause after the alarm pool was exhausted",
             condition=fram.get_pause() is False,
         )
-        check("a real write stayed refused after the exhausted-pool pause resolved", condition=await chunk.write(PATTERN_A) is True)
+        check("a real write stayed refused after the exhausted-pool pause resolved", condition=chunk.write(PATTERN_A) is True)
     deinit_failures: list[str] = []
     for hog in hogged:
         try:
@@ -124,28 +124,28 @@ async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService
 
 async def _check_gating(fram: FRAMManager, chunk: FRAMChunk) -> None:
     # 1. Baseline: unpaused round trip. Without this every later "blocked" result is ambiguous.
-    check("baseline write while unpaused returned False", condition=await chunk.write(PATTERN_A))
-    check("baseline read did not return the written pattern", condition=bytes(await chunk.read() or b"") == PATTERN_A)
+    check("baseline write while unpaused returned False", condition=chunk.write(PATTERN_A))
+    check("baseline read did not return the written pattern", condition=bytes(chunk.read() or b"") == PATTERN_A)
     check("manager reported paused before anything paused it", condition=fram.get_pause() is False)
 
     # 2. Paused write is refused AND never reaches the chip - proven by unpausing and reading the
     #    real bytes back: the old pattern there tells "refused" from "silently wrote".
     fram.set_pause(value=True)
     check("get_pause() did not reflect set_pause(True)", condition=fram.get_pause() is True)
-    check("write while paused returned True - the gate did not refuse it", condition=await chunk.write(PATTERN_B) is False)
+    check("write while paused returned True - the gate did not refuse it", condition=chunk.write(PATTERN_B) is False)
     fram.set_pause(value=False)
-    still_a = await chunk.read()
+    still_a = chunk.read()
     check("real chip contents changed while paused - the pause did not prevent the bus write", condition=bytes(still_a or b"") == PATTERN_A)
 
     # 3. Paused read is refused too.
     fram.set_pause(value=True)
-    check("read while paused returned data - the gate did not refuse it", condition=await chunk.read() is None)
+    check("read while paused returned data - the gate did not refuse it", condition=chunk.read() is None)
 
     # 4. Unpausing restores normal operation; PATTERN_B is not on the chip yet, so the read-back is fresh.
     fram.set_pause(value=False)
     check("get_pause() did not reflect set_pause(False)", condition=fram.get_pause() is False)
-    check("write after unpause was still refused", condition=await chunk.write(PATTERN_B) is True)
-    check("read after unpause did not return the fresh write", condition=bytes(await chunk.read() or b"") == PATTERN_B)
+    check("write after unpause was still refused", condition=chunk.write(PATTERN_B) is True)
+    check("read after unpause did not return the fresh write", condition=bytes(chunk.read() or b"") == PATTERN_B)
 
 
 async def _check_timestamped(fram: FRAMManager, ts_chunk: FRAMTimestampedChunk) -> None:
@@ -179,10 +179,9 @@ async def _main() -> None:
         done()
         return
     sysfunct = SystemService(_ntp_never_synced, storage=fram)
-    sysfunct.start_uptime_timer()  # the uptime pass that tests the auto-unpause deadline once a second
-    status_task = sysfunct.start_asy_status()
+    status_task = sysfunct.start_asy_status()  # the uptime pass that tests the auto-unpause deadline once a second
     try:
-        fact("cleared_first", await chunk.clear())
+        fact("cleared_first", chunk.clear())
         await _check_gating(fram, chunk)
         await _check_auto_unpause_timers(fram, sysfunct, chunk)
         await _check_exhausted_alarm_pool(fram, sysfunct, chunk)
@@ -190,7 +189,7 @@ async def _main() -> None:
     finally:
         status_task.cancel()
         fram.set_pause(value=False)
-        fact("cleared_last", await chunk.clear())
+        fact("cleared_last", chunk.clear())
     errors("failures", len(failures), failures)
     errors("skipped", len(skipped), skipped)
     done()

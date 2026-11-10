@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 _REPO = Path(__file__).resolve().parent.parent
-_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}
+_METHOD_KIND = {"err_s": "E", "wrn_s": "W"}  # each persisting entry point
 _KEYWORD = {"E": "errno", "W": "wrnno"}
 _PREFIX = {"E": "_ERR_", "W": "_WRN_"}
 
@@ -264,19 +264,19 @@ def test_the_scan_sees_the_trees_logging() -> None:
 
 
 def test_the_scan_sees_a_handler_entered_after_a_warning() -> None:
-    source = "async def f(pr):\n    try:\n        await pr.wrn_s('w', wrnno=_WRN_A)\n        step()\n    except OSError:\n        await pr.err_s('e', errno=_ERR_B)\n"
+    source = "async def f(pr):\n    try:\n        pr.wrn_s('w', wrnno=_WRN_A)\n        step()\n    except OSError:\n        pr.err_s('e', errno=_ERR_B)\n"
     assert _pairs([_parse("src/plant.py", source)]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
 
 
-_NESTED = "async def f(pr):\n    try:\n        try:\n            step()\n{arm}\n        finally:\n            release()\n    except Exception:\n        await pr.err_s('e', errno=_ERR_B)\n"
+_NESTED = "async def f(pr):\n    try:\n        try:\n            step()\n{arm}\n        finally:\n            release()\n    except Exception:\n        pr.err_s('e', errno=_ERR_B)\n"
 
 
 @pytest.mark.parametrize(
     "arm",
     [
-        "            await pr.wrn_s('w', wrnno=_WRN_A)",  # the nested try's last statement persists the warning
-        "        except OSError:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its handler does
-        "        except OSError:\n            pass\n        else:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its else arm does
+        "            pr.wrn_s('w', wrnno=_WRN_A)",  # the nested try's last statement persists the warning
+        "        except OSError:\n            pr.wrn_s('w', wrnno=_WRN_A)",  # its handler does
+        "        except OSError:\n            pass\n        else:\n            pr.wrn_s('w', wrnno=_WRN_A)",  # its else arm does
     ],
 )
 def test_the_scan_sees_an_outer_handler_entered_after_a_nested_try(arm: str) -> None:
@@ -285,5 +285,5 @@ def test_the_scan_sees_an_outer_handler_entered_after_a_nested_try(arm: str) -> 
 
 
 def test_a_second_fault_after_a_fault_passes() -> None:
-    source = "async def f(pr):\n    await pr.err_s('a', errno=_ERR_A)\n    await pr.err_s('b', errno=_ERR_B)\n"
+    source = "async def f(pr):\n    pr.err_s('a', errno=_ERR_A)\n    pr.err_s('b', errno=_ERR_B)\n"
     assert not _pairs([_parse("src/plant.py", source)])

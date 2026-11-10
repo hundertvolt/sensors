@@ -20,11 +20,10 @@ from rp2 import DMA
 import asy_base_classes
 import asy_uart_driver
 from asy_base_classes import COUNTER_CAP
-from asy_crc_checks import CRC16, CRCBase, CRCPass
 from asy_framing_codecs import COBS_DELIMITER, FramingBase, FramingCOBS, FramingPass
 from asy_print_log import PrintLog, PrintLogHistory
-from asy_uart_comm import UARTComm
 from asy_uart_driver import UART
+from crc_checks import CRC16, CRCBase, CRCPass
 
 try:
     from typing import TYPE_CHECKING
@@ -39,7 +38,7 @@ if TYPE_CHECKING:
     from _async_harness import CoroutineOf
     from typing_extensions import TypedDict, Unpack
 
-    from asy_base_classes import PieceBuffer
+    from asy_uart_driver import PieceBuffer
 
     class _UartBaseKw(TypedDict, total=False):
         # UART()'s keywords a test may name, framing aside: cobs_uart() names its own.
@@ -79,7 +78,6 @@ _TASK_INSIDE_MS = 5
 _STEP_BOUND_S = 2
 _NO_DELIMITER_TIMEOUT_MS = 100
 _LOCKED_WORK_MS = 30
-_SHORT_CANCEL_ACK_MS = 50
 _READY_TIMEOUT_MS = 100
 _DEADLOCK_WAIT_S = 0.2
 _FAST_POLL_WAIT_MS = 1
@@ -894,8 +892,8 @@ def test_resync_framing_is_inert_for_the_pass_through_codec() -> None:
 
 
 def test_cancel_during_a_completing_read_still_terminates() -> None:
-    # The cancel arrives while the lock is held but no ready() is in flight (here, in the post-read
-    # CRC yield), and the read completes normally: nothing acknowledged it once, a wedge in the
+    # The cancel arrives while the lock is held but no ready() is in flight (here, in work after the
+    # read), and the read completes normally: nothing acknowledged it once, a wedge in the
     # anti-wedge. Ordered by events, never sleeps, so host load cannot reorder the two tasks.
     uart = _make_uart()
     fake(uart).feed_rx(b"abcd")
@@ -906,7 +904,7 @@ def test_cancel_during_a_completing_read_still_terminates() -> None:
         async with uart:
             data = await uart.read(4)
             inside.set()
-            await release.wait()  # stands in for crc.check()'s own per-byte yields
+            await release.wait()  # stands in for any await after the read, the lock still held
             return data
 
     async def scenario() -> tuple[bytes | None, bool]:
@@ -997,36 +995,6 @@ def test_no_read_happens_after_the_cancel_is_acknowledged() -> None:
     assert uart._rx_level() == 4  # nothing was consumed after the acknowledgement
 
 
-def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
-    # J.5's "provably terminating" half: a lock holder that never calls ready() again and never
-    # exits cannot make cancel_read_timeout() block forever. It returns True (a cancel is
-    # outstanding, so clear() must not then take the lock) and records the un-acknowledged case.
-    uart = _make_uart()
-    never_set = asyncio.Event()
-
-    async def wedged() -> None:
-        async with uart:
-            await never_set.wait()  # never touches the bus again
-
-    async def scenario() -> "tuple[bool, int]":
-        task = asyncio.create_task(wedged())
-        try:
-            await asyncio.sleep_ms(_TASK_INSIDE_MS)
-            # A product bound waited out: the cancel acknowledgement.
-            result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=_SHORT_CANCEL_ACK_MS), _STEP_BOUND_S)
-            return result, uart.cancel_unacknowledged
-        finally:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:  # expected; anything else is a real failure
-                pass
-
-    result, unacked = run(scenario(), _RUN_BOUND_S)
-    assert result is True
-    assert unacked == 1
-
-
 def test_cancelling_a_session_at_each_await_releases_the_lock() -> None:
     # A locked read and a write cancelled after 0, 1, 2, ... turns on a fresh port, every sleep a bare yield: the lock
     # is free, no cancel counted, and the unwinding reads and writes nothing (mark: the state at the cancel). A count
@@ -1042,7 +1010,7 @@ def test_cancelling_a_session_at_each_await_releases_the_lock() -> None:
 
     async def build() -> UART:
         uart = _make_uart(crc=CRC16())
-        framed = await uart.crc.add(frame)
+        framed = uart.crc.add(frame)
         assert framed is not None
         fake(uart).feed_rx(bytes(framed))
         fake(uart).tx_pending_rounds = 2  # the write waits out two rounds of a busy TX ring
@@ -1057,7 +1025,6 @@ def test_cancelling_a_session_at_each_await_releases_the_lock() -> None:
     def invariants(uart: UART) -> None:
         held[0] += inside[0]
         assert_unlocked(session_lock=uart.session_lock)
-        assert uart.cancel_unacknowledged == 0, uart.cancel_unacknowledged
         assert seen(uart) == mark[0], f"read or written while unwinding: {mark[0]} -> {seen(uart)}"
 
     async def read_path(uart: UART) -> None:
@@ -1078,8 +1045,7 @@ def test_cancelling_a_session_at_each_await_releases_the_lock() -> None:
 
 def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
     # The other half of J.5's handshake: the request is acknowledged on every exit from the locked
-    # region, not only inside ready()'s loop. Ordered by events, the bound past the run bound: only a
-    # missing acknowledgement, never host load, counts as un-acknowledged.
+    # region, not only inside ready()'s loop. Ordered by events.
     uart = _make_uart()
     inside = asyncio.Event()
     release = asyncio.Event()
@@ -1089,19 +1055,17 @@ def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
             inside.set()
             await release.wait()
 
-    async def scenario() -> "tuple[bool, int]":
+    async def scenario() -> bool:
         task = asyncio.create_task(holder())
         await inside.wait()
-        canceller = asyncio.create_task(uart.cancel_read_timeout(timeout_ms=2000 * _RUN_BOUND_S))
+        canceller = asyncio.create_task(uart.cancel_read_timeout())
         await latched(uart)
         release.set()
-        result = await asyncio.wait_for(canceller, _STEP_BOUND_S)
+        result = await asyncio.wait_for(canceller, _STEP_BOUND_S)  # ends: acknowledged by the __aexit__
         await asyncio.wait_for(task, _STEP_BOUND_S)
-        return result, uart.cancel_unacknowledged
+        return result
 
-    result, unacked = run(scenario(), _RUN_BOUND_S)
-    assert result is True
-    assert unacked == 0  # acknowledged by the __aexit__
+    assert run(scenario(), _RUN_BOUND_S) is True
 
 
 def test_a_new_ready_call_does_not_clear_an_unrelated_cancel() -> None:
@@ -1235,7 +1199,7 @@ def test_read_until_complete_default_crc_is_pass_through() -> None:
 
 def test_read_until_complete_strips_and_verifies_real_crc() -> None:
     uart = _make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"hello"))
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
 
@@ -1248,7 +1212,7 @@ def test_read_until_complete_strips_and_verifies_real_crc() -> None:
 
 def test_read_until_complete_bad_crc_returns_none() -> None:
     uart = _make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"hello"))
     assert framed is not None
     framed[-1] ^= 0xFF  # corrupt the trailing CRC byte
     fake(uart).feed_rx(bytes(framed))
@@ -1273,7 +1237,7 @@ def test_readinto_until_complete_nbytes_too_large_for_buffer_returns_none() -> N
 
 def test_readinto_until_complete_fills_buffer_and_strips_crc() -> None:
     uart = _make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"world")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"world"))
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
     buf = bytearray(16)
@@ -1321,7 +1285,10 @@ def test_a_line_split_across_the_ring_end_reads_whole() -> None:
     assert fake(uart).rx_api_calls == 0
 
 
-class _UnbuildablePieceBuffer(asy_base_classes.PieceBuffer):
+_REAL_PIECE_BUFFER = asy_uart_driver.PieceBuffer
+
+
+class _UnbuildablePieceBuffer(_REAL_PIECE_BUFFER):
     # Rebound as the module's PieceBuffer: built as on a heap with no room left for one piece.
     def __init__(self, size: int, piece_bytes: int) -> None:
         raise MemoryError("simulated allocation failure")
@@ -1339,7 +1306,7 @@ def test_a_refused_line_piece_answers_none_prints_its_text_and_consumes_nothing(
             try:
                 refused = await read_line(uart)
             finally:
-                asy_uart_driver.PieceBuffer = asy_base_classes.PieceBuffer  # type: ignore[misc]
+                asy_uart_driver.PieceBuffer = _REAL_PIECE_BUFFER  # type: ignore[misc]
             return refused, uart.discarded_bytes, await read_line(uart)
 
     with record_prints() as rec:
@@ -1466,7 +1433,7 @@ def test_write_frames_with_configured_crc() -> None:
     assert op == "write"
     assert framed[:5] == b"hello"
     assert len(framed) == 5 + CRC16().length()
-    assert run(CRC16().check(bytearray(framed)), _RUN_BOUND_S) == bytearray(b"hello")
+    assert CRC16().check(bytearray(framed)) == bytearray(b"hello")
 
 
 def test_write_can_be_cancelled_while_waiting_for_tx_ready() -> None:
@@ -1717,7 +1684,7 @@ def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
 
 
 # ---------------------------------------------------------------------------
-# asy_crc_checks.py integration - real CRCBase subclasses (not mocked), plus
+# crc_checks.py integration - real CRCBase subclasses (not mocked), plus
 # MemoryError fault injection at the guarded call sites (module docstring's
 # "MemoryError guarding" section)
 # ---------------------------------------------------------------------------
@@ -1734,10 +1701,10 @@ class _MemoryErrorCRC:
     def length(self) -> int:
         return self._real.length()
 
-    async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # both called positionally
+    def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # both called positionally
         raise self._err
 
-    async def check(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:
+    def check(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:
         raise self._err
 
 
@@ -1763,7 +1730,7 @@ class _NoneCRC:
     def length(self) -> int:
         return 0
 
-    async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # called positionally
+    def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # called positionally
         return None
 
 
@@ -1781,7 +1748,7 @@ def test_write_returns_false_when_crc_add_returns_none() -> None:
 
 def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
     uart = _logged(_make_uart(crc=CRC16()))
-    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"hello"))
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
     err = MemoryError("injected for the CRC check")  # worded clear of the memory gates' markers
@@ -2802,7 +2769,7 @@ def test_a_start_timeout_counts_nothing() -> None:
 
 
 def test_a_crc_failure_counts_the_whole_frame() -> None:
-    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+    framed = CRC16().add(bytearray(b"hello"))
     assert framed is not None
     framed[-1] ^= 0xFF
     for read in _counted_reads(5):
@@ -2826,7 +2793,7 @@ def test_a_cobs_decode_failure_counts_the_consumed_bytes() -> None:
 def test_a_good_frame_counts_nothing() -> None:
     for read in (locked_read_until_complete, locked_readinto_until_complete):
         uart = _make_uart(crc=CRC16())
-        framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
+        framed = CRC16().add(bytearray(b"hello"))
         assert framed is not None
         fake(uart).feed_rx(bytes(framed))
         if read is locked_read_until_complete:
@@ -2890,27 +2857,6 @@ def test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged() -> None:
 
     assert run(scenario(), _RUN_BOUND_S) == (True, 0)
     assert (uart._cancel_req, uart._cancel_ack) == (0, 0), (uart._cancel_req, uart._cancel_ack)
-    assert uart.cancel_unacknowledged == 0
-
-
-def test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise() -> None:
-    uart = _make_uart()
-    comm = UARTComm(uart, "initiator")
-    uart.cancel_unacknowledged = COUNTER_CAP
-    comm._cancel_unacked_seen = COUNTER_CAP
-    release = asyncio.Event()
-
-    async def scenario() -> None:
-        task = asyncio.create_task(_holder(uart, release, reads=False))
-        await asyncio.sleep_ms(_TASK_INSIDE_MS)
-        await asyncio.wait_for(comm.clear(), _STEP_BOUND_S)
-        release.set()
-        await asyncio.wait_for(task, _STEP_BOUND_S)
-
-    run(scenario(), _RUN_BOUND_S)
-    assert uart.cancel_unacknowledged == 0, uart.cancel_unacknowledged
-    entry = run(comm.get_error_counter(), _RUN_BOUND_S)[comm.name]
-    assert entry["ErrNum"][-1] == code("W", "UART_CANCEL_UNACKED") and entry["ErrType"][-1] == "W", entry
 
 
 # ---------------------------------------------------------------------------

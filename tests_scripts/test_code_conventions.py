@@ -20,7 +20,7 @@ _LITERAL_PORT = "src/voc_algorithm.py"
 _COLLECTOR_NAMES = {
     "get_task_starters": re.compile(r"start_asy_\w+"),
     "get_timer_starters": re.compile(r"start_timer|start_\w+_timer"),
-    # Trigger starters arm a timer, so they take the timer starters' names (agent, 2026-10-07; owner-reviewed, 2026-11-06).
+    # Trigger starters arm a timer, so they take the timer starters' names (agent, 2026-10-07).
     "get_trigger_starters": re.compile(r"start_timer|start_\w+_timer"),
 }
 _TASK_COROUTINE = re.compile(r"_\w+_loop")
@@ -143,7 +143,7 @@ def log_keywords(module: Module) -> list[str]:
     found = []
     for node in ast.walk(module.tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"err_s", "wrn_s"}:
-            keyword = "errno" if node.func.attr == "err_s" else "wrnno"
+            keyword = "errno" if node.func.attr.startswith("err") else "wrnno"
             numbers = [a for a in node.args if (isinstance(a, ast.Constant) and type(a.value) is int) or _NUMBER_NAME.fullmatch(ast.unparse(a).rsplit(".", 1)[-1])]
             if keyword not in {k.arg for k in node.keywords} or numbers:
                 found.append(f"{module.path}:{node.lineno}: {node.func.attr}() needs its number as {keyword}=")
@@ -373,7 +373,7 @@ _NEGATIVE = {
         "class Svc:\n    def get_task_starters(self):\n        return [self.start_asy_poll]\n    def start_asy_poll(self):\n        return loop.create_task(self.poll())\n    async def poll(self):\n        pass\n",
         "src/asy_x.py:5: Svc.start_asy_poll() starts poll",
     ),
-    "log_keywords": ("src/asy_x.py", "async def f(pr):\n    await pr.err_s('bad', _ERR_BAD)\n", "src/asy_x.py:2: err_s() needs its number as errno="),
+    "log_keywords": ("src/asy_x.py", "async def f(pr):\n    pr.err_s('bad', _ERR_BAD)\n", "src/asy_x.py:2: err_s() needs its number as errno="),
     "no_print": ("src/asy_x.py", "async def f():\n    print('x')\n", "src/asy_x.py:2: print()"),
     "no_assert": ("build/generated_src/sensortask_x.py", "def f(a):\n    assert a is not None\n    assert a > 0\n", "build/generated_src/sensortask_x.py:2: assert"),
     "member_order": ("src/asy_x.py", "class C:\n    async def setup(self):\n        pass\n    def reset(self):\n        pass\n", "src/asy_x.py class C: setup sits where D.15 puts reset"),

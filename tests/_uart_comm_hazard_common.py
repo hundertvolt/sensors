@@ -4,7 +4,7 @@ in both, imported by test_uart_comm_hazard.py and test_uart_comm_cancel_sweep.py
 from _async_harness import run
 from _uart_comm_harness import RUN_LIMIT_S, Pair, PollRoundClock, accept_set, echo_get
 
-from asy_crc_checks import CRC16
+from crc_checks import CRC16
 
 try:
     from typing import TYPE_CHECKING
@@ -14,7 +14,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from asy_crc_checks import CRCBase
+    from crc_checks import CRCBase
 
     # None means "no CRC on the bus"; otherwise a zero-argument factory, called once per end. A factory, not
     # an instance, CRCBase carrying state the two ends must not share. Not type[CRCBase], which would
@@ -29,7 +29,6 @@ _PAYLOAD = 8
 
 _EXCHANGE_LIMIT_S = 20
 _STEP_BOUND_S = 5
-_CRC_TIMEOUT_FACTOR = 8
 
 
 # Every check runs both with and without a CRC (agent, 2026-09-12; owner-reviewed, 2026-11-06) - the dev wiring selects
@@ -38,17 +37,10 @@ _CRC_TIMEOUT_FACTOR = 8
 CRC_MODES = (("nocrc", None), ("crc16", CRC16))
 
 
-def timeout_for(crc: "CrcMaker") -> int:
-    # A CRC yields once per byte, and the peer keeps polling through those yields, so the same budget covers
-    # far fewer bytes - measured as transactions timing out at this tier's short 30ms. The real
-    # link's 1000ms has ample headroom; this keeps the mock's speed at the same relative margin.
-    return _TIMEOUT_MS if crc is None else _TIMEOUT_MS * _CRC_TIMEOUT_FACTOR
-
-
 def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None, answer: bytes = b"v", *, debug: int | None = None) -> Pair:
     maker = (lambda: None) if crc is None else crc
     pair = Pair(
-        payload_size=_PAYLOAD, timeout=timeout_for(crc) if timeout_ms is None else timeout_ms,
+        payload_size=_PAYLOAD, timeout=_TIMEOUT_MS if timeout_ms is None else timeout_ms,
         get_callback=echo_get(answer), set_callback=accept_set(), crc_a=maker(), crc_b=maker(), debug=debug,
     )
     assert run(pair.setup(), RUN_LIMIT_S) is True

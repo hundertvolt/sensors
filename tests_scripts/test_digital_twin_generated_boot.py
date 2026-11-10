@@ -25,6 +25,7 @@ from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import module_int_const
+from scripts._generate_sensortask_modules import expected_facts
 from scripts._twin_process import twin_env
 from tests._error_codes import code
 
@@ -131,7 +132,7 @@ def _boot_generated_device(root: "Path | None", generated: "GeneratedDevice", mi
         return failures
 
     failures, output = _run_twin(cmd, _REPO_ROOT, env, smoke)
-    failures.extend(_boot_order_failures(generated.expected_facts, output))
+    failures.extend(_boot_order_failures(expected_facts(generated.model), output))
     if _STOP_SEEN not in output:
         failures.append(f"the twin did not end on its stop file - it served out its whole {_TWIN_DURATION_S} s bound")
     return failures

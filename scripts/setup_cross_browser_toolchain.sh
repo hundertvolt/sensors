@@ -32,7 +32,7 @@ APT_OPTIONS=(-o "Acquire::Retries=$((NETWORK_ATTEMPTS - 1))" -o "Acquire::http::
 # Microsoft's package-signing key ("Microsoft (Release signing)"): the fingerprint gpg --show-keys reads from the key
 # served at https://packages.microsoft.com/keys/microsoft.asc.
 EDGE_KEY_FINGERPRINT=BC528686B50D79E339D3721CEB3E94ADBE1229CF
-# micromamba only bootstraps the Firefox env, so it is pinned (agent, 2026-10-19; owner-reviewed, 2026-11-06): the SHA-256 is the release's own
+# micromamba only bootstraps the Firefox env, so it is pinned (agent, 2026-10-19): the SHA-256 is the release's own
 # https://github.com/mamba-org/micromamba-releases/releases/download/2.9.0-0/micromamba-linux-64.sha256, re-hashed here.
 MICROMAMBA_VERSION=2.9.0-0
 MICROMAMBA_SHA256=366cd9cd8be14df1ab8ed50352a82111082a36686b2d389fdb79a92c3fafb3e3

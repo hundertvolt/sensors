@@ -16,10 +16,11 @@ sys.path.insert(0, str(root))
 from buildgen.api_reference import api_reference_json, generate_api_reference
 from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device, main
+from scripts._generate_sensortask_modules import expected_facts
 parts, frozen = [], set()
 for toml in sorted((root / "devices").glob("*.toml")):
     r = generate_device(toml, root / "src", root / "ext", build_date="2026-01-01T00:00:00Z")
-    parts += [r.module_source, r.boot_entry_source, r.boot_entry_noautostart_source, json.dumps(r.expected_facts, sort_keys=True),
+    parts += [r.module_source, r.boot_entry_source, r.boot_entry_noautostart_source, json.dumps(expected_facts(r.model, root / "src"), sort_keys=True),
               json.dumps(generate_definitions(r.model, root / "src"), sort_keys=True, ensure_ascii=False),
               api_reference_json(generate_api_reference(r.model, root / "src")), json.dumps(sorted(r.frozen_modules))]
     frozen |= set(r.frozen_modules)

@@ -39,7 +39,7 @@ class NeoPixel:
     def __len__(self) -> int:
         return self.n
 
-    def __setitem__(self, i: int, v: "tuple[int, ...]") -> None:
+    def __setitem__(self, i: int, v: "list[int] | tuple[int, ...]") -> None:
         # As micropython-lib neopixel.py:28-31: an int keeps its low byte (py/binary.c:512-521), a float raises TypeError
         # at its component, the earlier components already stored.
         offset = i * self.bpp

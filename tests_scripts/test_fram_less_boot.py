@@ -51,7 +51,7 @@ async def main():
         "storage": module.sysfunct._storage is not None,
         "stored": stored,
         "erasefram": answer,
-        "armed": module.sysfunct._reset_armed,
+        "armed": module.sysfunct._phase >= 3,  # _PHASE_ARMED
         "resets": machine.reset_count,
     }
 

@@ -64,13 +64,12 @@ gates, traps).
   `flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor` (device
   script `tests_hardware/device_scripts/fram_command_hold_timing.py`, which writes only in its
   scratch region, the part's top 256 bytes above every chunk, and never calls `get_chunk()`, so
-  production's error logs are safe). Its first run on silicon is owed; the 2026-09-25 measurement
-  gave 2.8-3.4 ms per 1-byte write without yielding (~0.6-0.7 ms per CS command, F.5.8). Expected:
-  the longest non-yielding FRAM stretch within one UART poll floor (80 B at 115200 baud, 6,944 µs,
-  SPECIFICATION.md J.6), and the block hold within its 25,000 µs budget (Part F.3's
-  `hold.fram_block` row, which also records that the per-block hold stays: owner, 2026-09-26:
-  'Probably better to keep'). Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM
-  chip models no wire time).
+  production's error logs are safe). Its first run on silicon with the synchronous path is owed.
+  Expected: one command within one UART poll floor (80 B at 115200 baud, 6,944 µs,
+  SPECIFICATION.md J.6), and a log entry's 51 commands within 5,000 µs (Part F.3's
+  `stall.fram_entry`, `l3.fram_entry_budget_us`); the SGP40 backup's 8,000 µs acceptance has no
+  device-script check yet. Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM chip models
+  no wire time).
 - **The two unfed boot stretches, measured** — a `dev` boot log with a `ticks_ms()` stamp at every
   watchdog feed, taken in a hardware session (zero wear): the stretch from `WDT()` to the first
   setup feed, and from the last setup feed to the supervisor's first, each expected well inside the
@@ -90,7 +89,7 @@ gates, traps).
   default flash tier, zero wear) and `test_flash_write_loop_gap_is_recorded` (one scratch flash
   write, `--allow-persistence-write`). Expected: the collection, VOC-step and CRC-gap figures under
   the 21 ms GC term (Part N `uart.gc_pause_worst_ms`), and the flash calls' spans recorded. The
-  figures go into SPECIFICATION.md Part F.3's `stall.gc`, `stall.voc_process`, `stall.crc_byte` and
+  figures go into SPECIFICATION.md Part F.3's `stall.gc`, `stall.voc_process`, `stall.crc` and
   `stall.flash_program` rows. Twin row: none (silicon-only figures).
 - **Loop lag under combined load on the bench** — on `dev`, the bench tier's
   `bench/test_memory_stress_bench.py::test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer`
@@ -400,7 +399,8 @@ gates, traps).
   - **The installer, much changed since the legs** (the recipe's `env --tier generic` step runs it):
     the `[lwip]` table and its readback through the C compiler CMake recorded, the patched `modlwip.c`
     copy in every rp2 image and in `build-lwip` (SPECIFICATION.md B.14.4), the Unix variant header's
-    GC mark stack (B.14.6), bounded and retried subprocesses and apt calls, `sudo --preserve-env`, the
+    GC mark stack (B.14.6) and two-byte qstr lengths (F.7 row 32, read back by each Unix build's version
+    probe), bounded and retried network steps and apt calls, `sudo --preserve-env`, the
     tier command table, Node's checksum-verified install. The host lwIP build has met only GCC 13.3 on x86-64, and
     only the GCC 14 leg exercises the mbedtls `-Wno-array-bounds` rule. Two readings are owed too: the
     apt-get(8), apt.conf(5) and dpkg(1) pages behind the installer's apt download/install split, and
@@ -408,6 +408,9 @@ gates, traps).
   - **A reused chroot**: a changed `toolchain/micropython_overrides.py` makes `scripts/_unix_port.sh
     ensure` rebuild the three Unix binaries once; a binary from before the settrace split is detected
     and rebuilt; a toolchain without its `toolchain-record.json` counts as unbuilt.
+  - **Fewer jobs, nothing installed** (2026-11-09): `scripts/test.sh` and the twin legs take one device
+    per `hardware_family` (`scripts/_devices.sh`'s `distinct_devices`: bash and `sed`), and
+    `GC_THRESHOLD=32768 scripts/test.sh` runs no pytest tier, its summary listing it as skipped.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
   fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
   `sensortask-*.py` built as part of the real rewrite needs a full Unix-port equivalent, runnable on

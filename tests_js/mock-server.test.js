@@ -573,7 +573,7 @@ describe("installMockFetch", () => {
 
     it("refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed", async () => {
         // Mirrors NeopixelDriver.led_signal(): a REST command arriving while a signal is queued or
-        // running is refused at once (owner, 2026-09-29), never queued behind it.
+        // running is refused at once (owner, 2026-10-02), never queued behind it.
         vi.setSystemTime(Date.now());
         uninstall = installMockFetch(DEFS, DATA);
         const flash = JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 2 } });

@@ -15,7 +15,7 @@ import network
 from _async_harness import cancel, run
 from _cancel_sweep import assert_unlocked, cancel_at_each_await
 from _error_codes import code
-from _fake_time import DrivenTime, tick
+from _fake_time import DrivenTime, ManualTick, tick
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _port_bands import PortAllocator
@@ -184,6 +184,12 @@ class _FakeLED:
         self.state = not self.state
 
 
+def _tick_of(client: WifiService) -> ManualTick:
+    # The ManualTick _make_client() installs, typed as one.
+    assert isinstance(client._tick, ManualTick), client._tick
+    return client._tick
+
+
 def _make_client(
     conn_fail_to_hotspot: int = 5,
     ext_led: "_FakeLED | None" = None,
@@ -202,6 +208,7 @@ def _make_client(
         log=LogConfig(None, 10, debug),
     )
     run(client.cfgmgr.setup())
+    client._tick = ManualTick()  # the uptime pass runs where a test ticks it
     return client
 
 
@@ -319,37 +326,9 @@ def test_get_task_starters_returns_wlan_connect_uptime_counter_and_hotspot_watch
     assert starters == [client.start_asy_connect, client.start_asy_uptime, client.start_asy_hotspot_timeout]
 
 
-def test_get_timer_starters_returns_the_counter_timer() -> None:
+def test_get_timer_starters_is_empty_the_uptime_cadence_being_its_own_sleep() -> None:
     client = _make_client()
-    assert client.get_timer_starters() == [client.start_uptime_timer]
-
-
-def test_start_counter_timer_arms_periodic_1s() -> None:
-    client = _make_client()
-    assert client._tick_armed is None  # not attempted yet: a test or tool that starts only the tasks
-    client.start_uptime_timer()
-    assert client._counter_timer.mode == Timer.PERIODIC
-    assert client._counter_timer.period == 1000
-    assert client._tick_armed is True
-
-
-def test_start_counter_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
-    client = _make_client()
-    with RaiseOnArm():
-        client.start_uptime_timer()  # must not raise despite the timer failing to arm
-    assert client._counter_timer.period == -1  # never actually armed
-    assert client._tick_armed is False  # recorded, so _connect_loop() retries it
-
-
-def test_start_counter_timer_degrades_gracefully_on_a_memory_error() -> None:
-    # Sibling of the OSError test above, for the other arm of start_uptime_timer()'s own
-    # `except (OSError, MemoryError)`: a real alarm allocation can fail with MemoryError instead,
-    # which is not an OSError subclass - same graceful degradation must hold either way.
-    client = _make_client()
-    with RaiseOnArm(MemoryError):
-        client.start_uptime_timer()  # must not raise despite the timer failing to arm
-    assert client._counter_timer.period == -1  # never actually armed
-    assert client._tick_armed is False
+    assert client.get_timer_starters() == []
 
 
 def _no_sta(client: WifiService, *, failing: bool = False) -> None:
@@ -359,77 +338,6 @@ def _no_sta(client: WifiService, *, failing: bool = False) -> None:
             client._hw_op_failed = True
 
     client._run_sta_mode = sta  # type: ignore[method-assign]  # the branch is not under test
-
-
-def test_a_failed_tick_arm_is_retried_by_the_next_loop_iteration() -> None:
-    # The snapshot and NTP's DHCP DNS hang on this tick, so a failed arm is retried each iteration and a
-    # failed retry persists one TIMER entry and counts toward the give-up streak.
-    client = _make_client()
-    run(client.pr.setup())
-    with RaiseOnArm():
-        client.start_uptime_timer()
-    _no_sta(client)
-
-    async def scenario() -> "tuple[bool | None, bool | None]":
-        task = asyncio.create_task(client._connect_loop())
-        with RaiseOnArm():
-            for _ in range(4):  # one iteration: the re-arm fails again
-                await asyncio.sleep(0)
-        still_failing = client._tick_armed
-        for _ in range(4):  # the next iteration: the pool has room again
-            await asyncio.sleep(0)
-        rearmed = client._tick_armed
-        await cancel(task)
-        return still_failing, rearmed
-
-    with FastAsyncSleep():
-        still_failing, rearmed = run(scenario())
-    assert (still_failing, rearmed) == (False, True)
-    assert client._counter_timer.period == 1000
-    log = run(client.get_error_counter())
-    assert code("E", "TIMER") in _used_slots(log)
-
-
-def test_a_refused_tick_prints_the_arm_line_at_every_arm() -> None:
-    # Every refused arm prints the helper's line, the first and each later pass's re-arm alike: the console prints all,
-    # and the logger's newest-entry rule alone keeps the history from repeating.
-    client = _make_client()
-    run(client.pr.setup())
-    client.pr.set_level(5)
-    _no_sta(client)
-
-    async def scenario() -> None:
-        task = asyncio.create_task(client._connect_loop())
-        for _ in range(12):  # several iterations, every re-arm refused
-            await asyncio.sleep(0)
-        await cancel(task)
-
-    with record_prints() as recorder, FastAsyncSleep(), RaiseOnArm():
-        client.start_uptime_timer()
-        run(scenario())
-    passes = [ln for ln in recorder.lines if "WiFi uptime timer not armed" in ln]
-    assert len(passes) >= 2, recorder.lines
-    armed = [ln[:4] for ln in recorder.lines if "Could not arm" in ln]
-    assert armed == [("WIFI", "Could not arm", "WiFi uptime", "timer:")] * (1 + len(passes)), (armed, len(passes))
-
-
-def test_max_failed_rearms_end_the_loop() -> None:
-    # A re-arm that keeps failing escalates: the streak ends the task, and the supervisor takes the next step.
-    client = _make_client(max_module_error=2)
-    run(client.pr.setup())
-    _no_sta(client)
-    client._tick_armed = False
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(client._connect_loop())
-        with RaiseOnArm():
-            await asyncio.wait_for(task, _CONNECT_BOUND_S)
-        return task.done()
-
-    with FastAsyncSleep():
-        assert run(scenario()) is True
-    kept = _used_slots(run(client.get_error_counter()))
-    assert code("E", "TIMER") in kept and code("E", "WLAN_GIVE_UP") in kept, kept
 
 
 def test_an_unreadable_status_keeps_the_link_state_and_uptime() -> None:
@@ -446,16 +354,16 @@ def test_an_unreadable_status_keeps_the_link_state_and_uptime() -> None:
             await asyncio.sleep(0)
             for _ in range(3):
                 clock.advance(1000)
-                await tick(client._time_counter_trigger_event)
+                await tick(_tick_of(client))
             before = await client.get_data()
             _wlan(client).raise_on["status"] = OSError("simulated status failure")
             for _ in range(2):
                 clock.advance(1000)
-                await tick(client._time_counter_trigger_event)
+                await tick(_tick_of(client))
             during = (client._wifi_connected, await client.get_wifi_uptime(), await client.get_data())
             del _wlan(client).raise_on["status"]
             clock.advance(1000)
-            await tick(client._time_counter_trigger_event)
+            await tick(_tick_of(client))
             after = await client.get_wifi_uptime()
             await cancel(task)
             return 3, before, during[0], during[1], during[2], after
@@ -744,7 +652,7 @@ def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
     run(client.pr.setup())
     counter = run(client.get_error_counter())
     assert counter["WIFI"]["ErrCount"] == 0
-    run(client.pr.err_s("boom", errno=11))
+    client.pr.err_s("boom", errno=11)
     counter = run(client.get_error_counter())
     assert counter["WIFI"]["ErrCount"] == 1
 
@@ -1640,7 +1548,7 @@ def test_uptime_loop_short_circuits_and_zeroes_uptime_while_deactivated() -> Non
             task = asyncio.create_task(client._uptime_loop())
             for _ in range(2):
                 clock.advance(1000)
-                await tick(client._time_counter_trigger_event)
+                await tick(_tick_of(client))
             uptime = await client.get_wifi_uptime()
             data = await client.get_data()
             await cancel(task)
@@ -1661,7 +1569,7 @@ def test_uptime_loop_counts_measured_seconds_while_connected() -> None:
             await asyncio.sleep(0)
             for _ in range(3):
                 clock.advance(1000)
-                await tick(client._time_counter_trigger_event)
+                await tick(_tick_of(client))
             uptime = await client.get_wifi_uptime()
             await cancel(task)
             return uptime
@@ -1680,7 +1588,7 @@ def test_a_delayed_wake_advances_uptime_by_the_measured_time() -> None:
             task = asyncio.create_task(client._uptime_loop())
             await asyncio.sleep(0)
             clock.advance(2500)
-            await tick(client._time_counter_trigger_event)
+            await tick(_tick_of(client))
             uptime = await client.get_wifi_uptime()
             await cancel(task)
             return uptime
@@ -1697,7 +1605,7 @@ def test_uptime_loop_resets_uptime_while_not_connected() -> None:
             task = asyncio.create_task(client._uptime_loop())
             for _ in range(2):
                 clock.advance(1000)
-                await tick(client._time_counter_trigger_event)
+                await tick(_tick_of(client))
             uptime = await client.get_wifi_uptime()
             await cancel(task)
             return uptime
@@ -4211,7 +4119,7 @@ def test_integration_sta_connect_succeeds_and_propagates_to_get_data() -> None:
         counter_task = asyncio.create_task(client._uptime_loop())
         connected_once = False
         for _ in range(_CONNECT_POLL_TRIES):
-            client._time_counter_trigger_event.set()
+            _tick_of(client).set()
             await asyncio.sleep_ms(_CONNECT_POLL_MS)
             data = await client.get_data()
             if data.Connected:
@@ -4618,13 +4526,6 @@ def test_start_asy_uptime_counter_returns_a_real_task() -> None:
         return is_task
 
     assert run(scenario()) is True
-
-
-def test_stop_counter_timer_deinits_the_counter_timer() -> None:
-    client = _make_client()
-    client.start_uptime_timer()
-    client.stop_uptime_timer()
-    assert client._counter_timer.deinit_called is True
 
 
 # The snapshot's timestamp is asy_base_classes.utc_now(): None until NTP has set the clock this boot

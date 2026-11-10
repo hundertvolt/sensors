@@ -69,8 +69,8 @@ declare module "vitest/browser" {
             code: number | null;
             stdout: string;
             stderr: string;
-            lock: { runner: string | null; pid: string | null } | null;
-            rootAfterTaker: string[];
+            lock: { runner: string; pid: string };
+            freeAfterTaker: boolean;
         }>;
     }
 }

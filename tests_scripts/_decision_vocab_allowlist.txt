@@ -63,7 +63,6 @@ SPECIFICATION.md	it spends a real flash cycle, which is why `tests_hardware/`'s 
 SPECIFICATION.md	no retained state unless deliberately stateful (prefer pure functions);
 SPECIFICATION.md	the exact boundary values *accepted*;
 SPECIFICATION.md	the hotspot password is a per-device TOML field defaulting to the existing hardc
-SPECIFICATION.md	the ~5.8x wall-time cost is accepted, and the yield's original reason (a 256 B C
 SPECIFICATION.md	| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberat
 UART_C_PORT_CHANGELOG.md	- **Class A — protocol-level, must be mirrored in C.** It alters the bytes emitt
 UART_C_PORT_CHANGELOG.md	A change that alters emitted bytes is a coordinated flag-day, and **the project
@@ -102,7 +101,6 @@ scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- del
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
 src/asy_bmp3xx_driver.py	PresOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not conti
 src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
-src/asy_fram_driver.py	get_values()' own numbers and messages, in the one place that has them, whicheve
 src/asy_isl29125_driver.py	Calibrate is deliberately absent from this schema argument: ConfigManager.get_di
 src/asy_isl29125_driver.py	Only the four hardware-backed fields have one: the software knobs have nothing t
 src/asy_isl29125_driver.py	The shadow must never claim a value the part did not take: normalise() scales ev
@@ -140,7 +138,6 @@ tests/test_asy_api_response.py	Both hooks supplied at once, with the synchronous
 tests/test_asy_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
 tests/test_asy_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
 tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
-tests/test_asy_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
 tests/test_asy_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n
 tests/test_asy_config_manager.py	An authoring shape that used to be rejected outright (def declared "int" but wri
 tests/test_asy_config_manager.py	Deliberate consequence of _cache (see module docstring): get_dict never re-opens
@@ -154,13 +151,10 @@ tests/test_asy_config_manager.py	lower boundary accepted
 tests/test_asy_config_manager.py	type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8): a JSON i
 tests/test_asy_config_manager.py	upper boundary accepted
 tests/test_asy_config_manager.py	write_config()'s one deferred flush per accepted change
-tests/test_asy_crc_checks.py	Fewer total bytes fed than the CRC width itself must never report a valid (let a
-tests/test_asy_crc_checks.py	a later call passing a (deliberately invalid) init must not retroactively invali
 tests/test_asy_dns_client.py	Both are unused by design - it raises before reading them.
 tests/test_asy_dns_client.py	The target offset is never followed, so any 0xC1-0xFF leading byte must be accep
 tests/test_asy_fram_driver.py	0xF0..0xFF - deliberately distinct from the seed
 tests/test_asy_fram_driver.py	Detection boundary - what this layer cannot catch, by design (not a bug)
-tests/test_asy_fram_driver.py	Without it the double release would raise out of __aexit__ and the driver's own
 tests/test_asy_fram_manager.py	...and is refused anyway, deliberately
 tests/test_asy_fram_manager.py	A READ fault deliberately - machine.SPI's fake makes write() non-injectable on p
 tests/test_asy_fram_manager.py	Asserting on ErrType rather than ErrCount is deliberate: ErrCount counts "W" ent
@@ -202,7 +196,6 @@ tests/test_asy_scd30_driver.py	the three getters are pure cache reads (see src/a
 tests/test_asy_sgp40_driver.py	get_dict_cfg() deliberately passes its own BackupPeriod/BackupMaxAge/WaitTimeNTP
 tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_spi_driver.py	Deliberately NOT swallowed: a transfer that overran left garbage in the buffer,
-tests/test_asy_spi_driver.py	The synchronous session deliberately does not take the lock, so the caller-holds
 tests/test_asy_spi_driver.py	tests/machine.py deliberately diverges here (see its own note) so a test can tel
 tests/test_asy_system_service.py	exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
 tests/test_asy_uart_comm.py	A caller must never believe a failed transfer succeeded.
@@ -216,10 +209,8 @@ tests/test_asy_uart_comm.py	The 0xFE -> 0 wrap is a deliberate off-by-one barrie
 tests/test_asy_uart_comm.py	The UID space is exactly as large as the longest train, so no UID repeats inside
 tests/test_asy_uart_comm.py	an idle uart_listen() waits forever by design, so the task is cancelled out
 tests/test_asy_uart_comm.py	setup()'s drain is deliberately not a fault and not counted, but it shares _drai
-tests/test_asy_uart_driver.py	J.5's "provably terminating" half: a lock holder that never calls ready() again
 tests/test_asy_uart_driver.py	Not reentrant by design (a plain asyncio.Lock, same as I2CDevice/SPIDevice's sha
 tests/test_asy_uart_driver.py	Two consecutive delimiters must never surface as a zero-length frame to index in
-tests/test_asy_uart_driver.py	never touches the bus again
 tests/test_asy_udp_socket.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_udp_socket.py	write() semantically requires a connected socket, so calling it on a bound-but-u
 tests/test_asy_webserver_service.py	A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") n

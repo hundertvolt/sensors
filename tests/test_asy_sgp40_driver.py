@@ -43,9 +43,9 @@ if TYPE_CHECKING:
 
     from asy_base_classes import NtpSyncFct
     from asy_config_manager import ConfigSchema
-    from asy_crc_checks import CRCBase
     from asy_fram_manager import FRAMChunkTimestampedBuffer, FRAMManager, FRAMTimestampedChunk
     from asy_print_log import ErrorLog
+    from crc_checks import CRCBase
 
 # Per-test config-file isolation via tests/_tmp_scratch.py - see that module's docstring for the
 # mechanism. Most tests here share _SHARED_CFG_DIR: they only rely on schema defaults, so they
@@ -60,7 +60,7 @@ _EVENT_WAIT_S = 1
 
 def _crc8(data: bytes) -> int:
     # Independent CRC-8 reimplementation for building fixtures - not the driver's own
-    # asy_crc_checks.CRC8, so a bug shared between the two couldn't hide behind a self-consistent test.
+    # crc_checks.CRC8, so a bug shared between the two couldn't hide behind a self-consistent test.
     crc = 0xFF
     for byte in data:
         crc ^= byte
@@ -1325,9 +1325,9 @@ def test_the_backup_chunk_owner_differs_from_the_loggers() -> None:
     owners: list[object] = []
     real_get_timestamped_chunk = manager.get_timestamped_chunk
 
-    def recording(size: int, ntp_sync_callback: "NtpSyncFct", crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "FRAMTimestampedChunk | None":
+    def recording(size: int, ntp_sync_callback: "NtpSyncFct", crc: "CRCBase | None" = None, verify: int = 0, *, owner: str) -> "FRAMTimestampedChunk | None":
         owners.append(owner)
-        return real_get_timestamped_chunk(size, ntp_sync_callback, crc, verify, check_length, owner=owner)
+        return real_get_timestamped_chunk(size, ntp_sync_callback, crc, verify, owner=owner)
 
     manager.get_timestamped_chunk = recording  # type: ignore[method-assign]
     reader = SGP40_Reader(
@@ -1985,9 +1985,9 @@ def test_an_allocation_failure_in_the_restore_keeps_the_backup_and_logs_its_text
     logged: list[tuple[object, ...]] = []
     real_err_s = reader.pr.err_s
 
-    async def recording_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
+    def recording_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
         logged.append(args)
-        await real_err_s(*args, errno=errno, sep=sep, end=end)
+        real_err_s(*args, errno=errno, sep=sep, end=end)
 
     reader.pr.err_s = recording_err_s  # type: ignore[method-assign]
     with UTCValid():
@@ -2689,7 +2689,7 @@ class _AlwaysFailCRC:
     # Minimal fake matching CRCBase.add_into()'s contract just enough to force the "computation
     # failed" branch measure_raw() must handle; the real CRC8 cannot fail through its fixed buffer
     # shape. `start` keeps its unprefixed name: measure_raw() passes it by keyword.
-    async def add_into(self, _buffer: bytearray, _size: int, start: int = 0, _init: int | None = None) -> int | None:
+    def add_into(self, _buffer: bytearray, _size: int, start: int = 0, _init: int | None = None) -> int | None:
         return None
 
 
@@ -2848,7 +2848,7 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
             cfg_path=_SHARED_CFG_DIR,
         )
         await reader.setup()
-        await reader.pr.err_s("SGP40", "simulated fault", errno=1)
+        reader.pr.err_s("SGP40", "simulated fault", errno=1)
 
         manager2, _ = make_fram_manager(chip=chip)
         await manager2.setup()
@@ -3265,7 +3265,7 @@ class _FailSecondAddIntoCRC:
     # measure_raw()'s two crc.add_into() calls are distinguished by their start= argument (2 for
     # humidity, 5 for temperature). The add_into-failure test above covers the first; this covers
     # the second call's own separate None-check.
-    async def add_into(self, _buffer: bytearray, size: int, start: int = 0, _init: int | None = None) -> int | None:
+    def add_into(self, _buffer: bytearray, size: int, start: int = 0, _init: int | None = None) -> int | None:
         return None if start == 5 else size
 
 

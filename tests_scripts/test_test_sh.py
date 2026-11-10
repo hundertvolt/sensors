@@ -10,17 +10,13 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 import pytest
-import tomllib
 from _script_loader import load_script_module
-
-import scripts._twin_process as twin_process
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -82,10 +78,6 @@ _PER_DEVICE_DEVICES = ("fixture-device-b", "fixture-device-a")
 
 _PER_DEVICE_REFUSAL = "RuntimeError: run through scripts/test.sh, or set TEST_DEVICE to one of devices/*.toml"
 
-# The qstr limit the intern check refuses past (checked against the interpreter there) and the unit layout it reads.
-_LIMIT = twin_process._QSTR_MAX_BYTES
-_UNIT_LAYOUT = tomllib.loads((Path(__file__).resolve().parent.parent / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["unit"]
-_INTERN_REFUSAL = f" - the Unix port interns each as a qstr of at most {_LIMIT} bytes and dies before a file starts\n"
 
 _ENV_PROBE = 'echo "TEST_DEVICE=${TEST_DEVICE-<unset>}"\necho "1/1 passed, 0 failed, 0 skipped"'
 _TWIN_HOST_PROBE = 'echo "TEST_TWIN_HOST=${TEST_TWIN_HOST-<unset>}"\necho "1/1 passed, 0 failed, 0 skipped"'
@@ -128,16 +120,17 @@ def _cleanup_body(repo_root: Path) -> str:
     return body.group(0)
 
 
-def _device_step(repo_root: Path, tmp_path: Path, stems: "tuple[str, ...]") -> "subprocess.CompletedProcess[str]":
-    # scripts/test.sh's own device step in a fixture tree beside scripts/_devices.sh, printing the list and the site.
+def _device_step(repo_root: Path, tmp_path: Path, stems: "tuple[str, ...]", family: "tuple[str, ...]" = ()) -> "subprocess.CompletedProcess[str]":
+    # scripts/test.sh's own device step in a fixture tree beside scripts/_devices.sh, printing the list and the site; the
+    # stems in `family` share one [device] hardware_family.
     text = _test_sh_text(repo_root)
-    start = text.index('devices_text="$(derived_devices)"')
+    start = text.index('devices_text="$(distinct_devices)"')
     end = text.index("\n", text.index('site_device="${devices[0]}"', start)) + 1
     (tmp_path / "scripts").mkdir()
     shutil.copy2(repo_root / "scripts" / "_devices.sh", tmp_path / "scripts" / "_devices.sh")
     (tmp_path / "devices").mkdir()
     for stem in stems:
-        (tmp_path / "devices" / f"{stem}.toml").write_text("# fixture\n", encoding="utf-8")
+        (tmp_path / "devices" / f"{stem}.toml").write_text('[device]\nhardware_family = "f"\n' if stem in family else "# fixture\n", encoding="utf-8")
     script = f'set -euo pipefail\nsource scripts/_devices.sh\n{text[start:end]}echo "${{devices[*]}} | $site_device"\n'
     return subprocess.run(["/bin/bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
 
@@ -201,7 +194,7 @@ def _fake_repo(repo_root: Path, tmp_path: Path) -> Path:
     # A stand-in repo root holding the helpers the tail calls, so its archive lands under tmp_path.
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
-    for name in ("_summary_block.sh", "_summary_block.py", "_archive_evidence.py"):
+    for name in ("_summary_block.sh", "_summary_block.py", "_require_python.sh", "_archive_evidence.py"):
         shutil.copy(repo_root / "scripts" / name, root / "scripts" / name)
     return root
 
@@ -223,9 +216,10 @@ def _flag_markers(repo_root: Path, tmp_path: Path, output: str | None, path_pref
     if output is not None:
         log.write_text(output, encoding="utf-8")
     script = tmp_path / "flag.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nresults_dir="{results}"\n{body.group(0)}\n_flag_memory_errors case "{log}"\n', encoding="utf-8")
-    path = f"{path_prefix}:{os.environ['PATH']}" if path_prefix else os.environ["PATH"]
-    subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, env={**os.environ, "PATH": path})
+    # A stub grep goes on PATH after the markers are loaded, so it reaches only the gate's own greps.
+    stub = f'PATH="{path_prefix}:$PATH"; hash -r\n' if path_prefix else ""
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nresults_dir="{results}"\n{_marker_load(repo_root)}{body.group(0)}\n{stub}_flag_memory_errors case "{log}"\n', encoding="utf-8")
+    subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True)
     memerr, noverdict = results / "case.memerr", results / "case.noverdict"
     return (memerr.read_text(encoding="utf-8") if memerr.exists() else "", noverdict.read_text(encoding="utf-8") if noverdict.exists() else "")
 
@@ -236,7 +230,7 @@ def _flavour_of(repo_root: Path, binary: Path) -> str:
     return subprocess.run(["/bin/bash", "-c", probe], capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S).stdout.strip()
 
 
-def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subprocess.CompletedProcess[str]":
+def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str, *, coverage: int = 0, after: str = "") -> "subprocess.CompletedProcess[str]":
     # Runs scripts/test.sh's GC_THRESHOLD validation block alone, extracted from the real source -
     # not the whole script, since an ACCEPTED value carries on into the live-tree sweeps while this
     # file's tests run concurrently with 85 test files holding scratch dirs under tests/_tmp.
@@ -246,7 +240,7 @@ def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subproc
     assert start is not None, "scripts/test.sh no longer validates GC_THRESHOLD - update this test with it"
     end = next(i for i in range(start, len(lines)) if lines[i] == "fi")
     script = tmp_path / "check.sh"
-    script.write_text("#!/usr/bin/env bash\nset -euo pipefail\ncoverage=0\n" + "\n".join(lines[start : end + 1]) + "\n", encoding="utf-8")
+    script.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\ncoverage={coverage}\n" + "\n".join(lines[start : end + 1]) + f"\n{after}\n", encoding="utf-8")
     return subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "GC_THRESHOLD": value}, check=False)
 
 
@@ -353,12 +347,6 @@ def _nested_run_with_sentinels(repo_root: Path, tmp_path: Path, args: list[str],
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _padded_root(tmp_path: Path, under: str, size: int) -> Path:
-    # A checkout root below tmp_path's real path whose `under` directory is `size` bytes long.
-    base = os.path.realpath(tmp_path)
-    return Path(base, "r" * (size - len(os.fsencode(f"{base}/")) - len(f"/repo/{under}")), "repo")
-
-
 def _passing(tag: str, count: str = "3/3 passed, 0 failed, 0 skipped") -> tuple[str, str, None]:
     return ("PASS\n", f"[{tag}] PASS test_a\n[{tag}] {count}\n", None)
 
@@ -370,7 +358,7 @@ def _per_device_files(repo_root: Path) -> "list[Path]":
 def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list[str], list[str], str]":
     # scripts/test.sh's own functions, EXIT trap and dispatch loop over two fixture files whose stub interpreter runs
     # until signalled, then reports whether port 53's lock was still held; the run aborts once both are running.
-    # Returns the exit code, the processes it left (killed here), each stub's report, the lock root's entries, its output.
+    # Returns the exit code, the processes it left (killed here), each stub's report, the locks still held, its output.
     tree, ready, ended, runtime = (tmp_path / name for name in ("tree", "ready", "ended", "runtime"))
     for directory in (tree / "tests", ready, ended, runtime):
         directory.mkdir(parents=True)
@@ -379,7 +367,7 @@ def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list
     stub = tmp_path / "micropython"
     stub.write_text(
         '#!/usr/bin/env bash\nname="$(basename "${@: -1}" .py)"\n'
-        f"trap 'sleep 0.5; if [ -d \"{runtime}/sensors-port-53.lock\" ]; then echo held; else echo released; fi >\"{ended}/$name\"; exit 1' TERM\n"
+        f"trap 'sleep 0.5; if flock -n \"{runtime}/sensors-port-53.flock\" true; then echo released; else echo held; fi >\"{ended}/$name\"; exit 1' TERM\n"
         f'echo "$$" >"{ready}/$name"\nwhile :; do sleep 0.1; done\n', encoding="utf-8",
     )
     stub.chmod(0o755)
@@ -393,6 +381,7 @@ def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list
         f'tests_scripts_inner_pidfile="{tmp_path}/inner.pid"\nevidence_archived=1\ncoverage=0\nmicropython_bin="{stub}"\n'
         f'lwip_bin="{stub}"\nper_file_timeout_s=60\nmax_attempts=3\nmax_parallel=4\ndeclare -A per_file_timeout_overrides_s=()\n'
         'devices=()\nunit_micropypath="build/generated_src:src:tests:.frozen"\n'
+        + _marker_load(repo_root)
         + "\n".join(functions)
         + f'\ntrap _cleanup EXIT\nresults_dir="{tmp_path}/results"\nmkdir "$results_dir"\n{dispatch}\n'
         + f'until [ -s "{ready}/test_a" ] && [ -s "{ready}/test_b" ]; do sleep 0.05; done\nfalse  # the abort under test, mid-loop\n', encoding="utf-8",
@@ -408,7 +397,7 @@ def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list
     left = _processes_carrying(token)
     _kill_all(left)
     reports = sorted(path.read_text(encoding="utf-8") for path in ended.iterdir())
-    return done.returncode, left, reports, sorted(path.name for path in runtime.iterdir()), (tmp_path / "out").read_text(encoding="utf-8")
+    return done.returncode, left, reports, _held_locks(runtime), (tmp_path / "out").read_text(encoding="utf-8")
 
 
 def _processes_carrying(token: str) -> "list[int]":
@@ -600,6 +589,7 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
         "#!/usr/bin/env bash\nset -euo pipefail\n"
         f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{default_bin}"\nper_file_timeout_s={limits.timeout_s}\nmax_attempts={limits.attempts}\n'
         'unit_micropypath="build/generated_src:src:tests:.frozen"\ndeclare -A per_file_timeout_overrides_s=()\n'
+        + _marker_load(repo_root)
         + "\n".join(b.group(0) for b in bodies if b)
         + f'\nrun_test_file tests/test_x.py "{results}/{_tag(f"tests/test_x.py[{job.device}]" if job.device else "tests/test_x.py")}.status" "{job.device}" "{stub if own_binary else ""}" "{job.twin_host}"\n', encoding="utf-8",
     )
@@ -607,20 +597,6 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
     (tmp_path / "stderr").write_text(done.stderr, encoding="utf-8")
     assert done.returncode == 0, done.stderr
     return results
-
-
-def _run_intern_check(repo_root: Path, tmp_path: Path, root: Path, *, coverage: bool = False, layout: str = _UNIT_LAYOUT, raw_dir: str = "/raw", files: "tuple[str, ...] | None" = (), env: "dict[str, str | None] | None" = None) -> "subprocess.CompletedProcess[str]":
-    # scripts/test.sh's own intern check run in `root` (files planted there, test_p.py PER_DEVICE; None plants nothing) on
-    # the fixture devices and the given unit layout, under a UTF-8 locale and $HOME, `env` adding (None: removing) more.
-    text = _test_sh_text(repo_root)
-    block = text[text.index("\nqstr_max_bytes=") + 1 : text.index("\nfi\n", text.index('uninternable="$(_uninternable)"')) + len("\nfi\n")]
-    for name in () if files is None else ("tests/test_a.py", "tests/test_p.py", "tests/lwip_host/test_l.py", *files):
-        (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text("PER_DEVICE = True\n" if name.endswith("/test_p.py") else "", encoding="utf-8")
-    script = tmp_path / "intern_check.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\ncoverage={int(coverage)}\nraw_dir="{raw_dir}"\ndevices=({" ".join(_PER_DEVICE_DEVICES)})\nunit_micropypath="{layout}"\n{block}echo PASSED\n', encoding="utf-8")
-    merged = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": "/home/fixture", **(env or {})}
-    return subprocess.run(["/bin/bash", str(script)], cwd=root, capture_output=True, text=True, env={k: v for k, v in merged.items() if v is not None}, check=False, timeout=_SNIPPET_TIMEOUT_S)
 
 
 def _run_memerr_detail(repo_root: Path, tmp_path: Path) -> tuple[int, str]:
@@ -689,6 +665,7 @@ def _run_scenarios_job(repo_root: Path, tmp_path: Path, *, gc_threshold: str | N
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
         f'results_dir="{results}"\nmicropython_bin=/std\nmax_attempts=1\ndeclare -A per_file_timeout_overrides_s=([scenarios]=30)\n'
+        + _marker_load(repo_root)
         + "\n".join(b.group(0) for b in bodies if b)
         + f'\nrun_scenarios_job fixture-device-a "{results}/scenarios[fixture-device-a].status"\n', encoding="utf-8",
     )
@@ -746,7 +723,7 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
     return done.returncode, done.stdout, root
 
 
-def _run_tier(repo_root: Path, tmp_path: Path, *, coverage: bool = False, first_attempt: str = "", later_attempts: str = "", timeout_s: float = 30) -> tuple[str, int, str]:
+def _run_tier(repo_root: Path, tmp_path: Path, *, coverage: bool = False, first_attempt: str = "", later_attempts: str = "", timeout_s: float = 30, gc_threshold: str = "") -> tuple[str, int, str]:
     # scripts/test.sh's own tier launch block, its hard stop 1 s, over a stub uv that records its arguments, then runs
     # `first_attempt` on its first call and `later_attempts` on every later one (bash); returns the status, calls, stderr.
     text = _test_sh_text(repo_root).replace("--kill-after=10 ", "--kill-after=1 ")
@@ -769,9 +746,9 @@ def _run_tier(repo_root: Path, tmp_path: Path, *, coverage: bool = False, first_
         + text[start:end]
         + 'wait "$tests_scripts_pid"\n', encoding="utf-8",
     )
-    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
+    env = {**{k: v for k, v in os.environ.items() if k != "GC_THRESHOLD"}, "PATH": f"{stub_bin}:{os.environ['PATH']}", **({"GC_THRESHOLD": gc_threshold} if gc_threshold else {})}
     done = subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
-    return (tmp_path / "status").read_text(encoding="utf-8"), len(calls.read_text(encoding="utf-8").splitlines()), done.stderr
+    return (tmp_path / "status").read_text(encoding="utf-8"), len(calls.read_text(encoding="utf-8").splitlines()) if calls.exists() else 0, done.stderr
 
 
 def _scenario_log(tag: str) -> str:
@@ -804,6 +781,19 @@ def _tag(job: str) -> str:
 
 def _test_sh_text(repo_root: Path) -> str:
     return (repo_root / "scripts" / "test.sh").read_text(encoding="utf-8")
+
+
+def _held_locks(runtime: Path) -> list[str]:
+    # The port-lock files under one lock root that a process still holds (flock -n on each fails).
+    flock = shutil.which("flock") or "/usr/bin/flock"
+    return sorted(path.name for path in runtime.glob("*.flock") if subprocess.run([flock, "-n", str(path), "true"], check=False, timeout=_SNIPPET_TIMEOUT_S).returncode != 0)
+
+
+def _marker_load(repo_root: Path) -> str:
+    # scripts/test.sh's own load of the memory markers its gate greps for, the file named absolutely for any cwd.
+    block = re.search(r"^memory_markers=\(\)$.*?^\[ \"\$\{#memory_markers\[@\]\}\" -gt 0 \].*?$", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert block is not None, "scripts/test.sh no longer loads memory_markers from scripts/memory_markers.json - update this test with it"
+    return block.group(0).replace("scripts/memory_markers.json", str(repo_root / "scripts" / "memory_markers.json")) + "\n"
 
 
 def _twin_hosts(repo_root: Path) -> list[str]:
@@ -900,7 +890,6 @@ def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> 
 def test_each_speed_band_picks_its_own_multiplier(repo_root: Path, tmp_path: Path, probe_ms: int, expected: int) -> None:
     # Both inclusive edges and the next 10ms step past each (the uptime clock's resolution): 250/900
     # are compared with -le, and an edge silently flipping to -lt is the realistic way to break this.
-    # 2x is the bench Pi4's class - 4 cores, but slow enough that 16 processes starve a twin test.
     (jobs, cores, multiplier, measured), _ = _run_detector_with_uptime(repo_root, tmp_path, probe_ms)
     assert measured == probe_ms, f"the uptime stub did not take effect: asked for {probe_ms}ms, detector measured {measured}ms"
     assert multiplier == expected, f"a {probe_ms}ms probe must pick {expected}x"
@@ -1082,12 +1071,12 @@ def test_the_exit_trap_releases_the_port_lock_on_an_aborted_run(repo_root: Path,
         f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\nport_lock_take 53 scripts/test.sh\n"
         f'raw_dir=""\nresults_dir=""\ntests_scripts_status_file="{tmp_path}/status"\n'
         f'tests_scripts_pid=""\ntests_scripts_inner_pidfile="{tmp_path}/pid"\nevidence_archived=0\n'
-        f'{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\ntest -d "$XDG_RUNTIME_DIR/sensors-port-53.lock"\nfalse\n', encoding="utf-8",
+        f'{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\ntest -f "$XDG_RUNTIME_DIR/sensors-port-53.flock"\nfalse\n', encoding="utf-8",
     )
     env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK")}
     done = subprocess.run(["/bin/bash", str(script)], env={**env, "XDG_RUNTIME_DIR": str(runtime)}, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
     assert done.returncode == 1, done.stderr
-    assert list(runtime.iterdir()) == [], "the aborted run left port 53 held"
+    assert _held_locks(runtime) == [], "the aborted run left port 53 held"
 
 
 # ---------------------------------------------------------------------------
@@ -1131,6 +1120,24 @@ def test_a_tier_that_fails_is_not_retried(repo_root: Path, tmp_path: Path) -> No
     status, calls, stderr = _run_tier(repo_root, tmp_path, first_attempt="exit 1", later_attempts="exit 0")
     assert (status, calls) == ("FAIL\n", 1), stderr
     assert "exceeded" not in stderr, stderr
+
+
+def test_the_gc_stage_skips_the_tier_and_its_block_says_so_in_one_line(repo_root: Path, tmp_path: Path) -> None:
+    # No tests_scripts/ test reads GC_THRESHOLD, so the plain run's verdict is the GC stage's: pytest never starts.
+    status, calls, stderr = _run_tier(repo_root, tmp_path / "tier", gc_threshold="32768")
+    assert (status, calls) == ("SKIPPED\n", 0), stderr
+    code, out, _ = _run_tail(repo_root, tmp_path / "tail", {"tests/test_ok.py": _passing("test_ok")}, pytest_status=status.strip(), record=None)
+    block = _block(out)
+    assert code == 0, out
+    assert "Levels: L0 skipped · L1 PASS · L2 PASS" in block, block
+    assert "\nSkipped:\n  - tests_scripts/ (pytest): not run at a set GC_THRESHOLD - no host test reads it, the plain run's verdict stands\nDeselected:" in block, block
+    assert "Counts (tests_scripts tests)" not in block and "no verdict" not in out, out
+
+
+def test_a_coverage_run_ignores_the_gc_threshold_and_so_runs_the_tier(repo_root: Path, tmp_path: Path) -> None:
+    # --coverage has its own runner and renders the host report from the tier: the threshold is dropped, not half-honoured.
+    done = _gc_threshold_check(repo_root, tmp_path, "32768", coverage=1, after='echo "GC_THRESHOLD=${GC_THRESHOLD-unset}"')
+    assert (done.returncode, done.stdout) == (0, "GC_THRESHOLD=unset\n"), done
 
 
 # ---------------------------------------------------------------------------
@@ -1398,107 +1405,6 @@ def test_help_prints_every_option_and_variable_and_touches_nothing(repo_root: Pa
         assert default in line, f"--help gives no default for {name}: {line!r}"
     assert scratch_kept, "--help swept tests/_tmp"
     assert fixture_kept, "--help swept devices/zz_test_*.toml"
-
-
-# ---------------------------------------------------------------------------
-# The intern check. A string the Unix port cannot intern as a qstr kills every file before it starts ("FATAL: uncaught
-# NLR", exit 1, read as a broken suite), so the run refuses it first, naming it (ports/unix/main.c:412, :560, :688).
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("case", ["lwip script directory", "micropypath entry", "multibyte micropypath entry", "home-relative entry without HOME", "test file", "coverage data file"])
-def test_a_string_no_test_file_could_intern_exits_2_naming_it_before_any_file_starts(repo_root: Path, tmp_path: Path, case: str) -> None:
-    # Each one the interpreter interns before the file's first line, in bytes as it measures them: the script's real
-    # directory, a MICROPYPATH entry (a ~/ one too once $HOME is unset), an argument from the script on.
-    root, layout, coverage, raw_dir = _padded_root(tmp_path, "tests/lwip_host", 200), _UNIT_LAYOUT, False, "/raw"
-    files: tuple[str, ...] = ()
-    env: dict[str, str | None] = {}
-    if case == "lwip script directory":
-        root = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1)
-        named = f"the script's directory {root}/tests/lwip_host ({_LIMIT + 1} bytes)"
-    elif case == "micropypath entry":
-        layout = f"src:{'m' * (_LIMIT + 1)}"
-        named = f"MICROPYPATH entry 2 {'m' * (_LIMIT + 1)} ({_LIMIT + 1} bytes)"
-    elif case == "multibyte micropypath entry":
-        layout = f"{chr(0xE9) * ((_LIMIT + 1) // 2)}:src"
-        named = f"MICROPYPATH entry 1 {chr(0xE9) * ((_LIMIT + 1) // 2)} ({_LIMIT + 1} bytes)"
-    elif case == "home-relative entry without HOME":
-        layout, env = f"src:~/{'m' * (_LIMIT - 1)}", {"HOME": None}
-        named = f"MICROPYPATH entry 2 ~/{'m' * (_LIMIT - 1)} ({_LIMIT + 1} bytes)"
-    elif case == "test file":
-        files = (f"tests/test_{'t' * (_LIMIT - 13)}.py",)
-        named = f"argument 0 {files[0]} ({_LIMIT + 1} bytes)"
-    else:
-        coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json"))
-        named = ", ".join(f"argument 2 {raw_dir}/test_p[{device}].json ({_LIMIT + 1} bytes)" for device in _PER_DEVICE_DEVICES)
-    done = _run_intern_check(repo_root, tmp_path, root, coverage=coverage, layout=layout, raw_dir=raw_dir, files=files, env=env)
-    assert (done.returncode, done.stdout, done.stderr) == (2, "", f"error: no test file was started: {named}{_INTERN_REFUSAL}"), done
-
-
-@pytest.mark.parametrize("case", ["plain at the limit", "coverage at the limit", "home-relative entry", "threshold runs lwip through its runner", "coverage runs no lwip file"])
-def test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run(repo_root: Path, tmp_path: Path, case: str) -> None:
-    # The boundary's other side: 255 bytes everywhere, a ~/ entry the interpreter builds from $HOME, and what no launch of
-    # the mode passes (the GC stage and --coverage start every file from tests/'s own runner; --coverage runs no lwip file).
-    root, layout, coverage, raw_dir = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1), _UNIT_LAYOUT, False, "/raw"
-    files: tuple[str, ...] = ()
-    env: dict[str, str | None] = {}
-    if case == "plain at the limit":
-        root, layout, files = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:{'m' * _LIMIT}", (f"tests/test_{'t' * (_LIMIT - 14)}.py",)
-    elif case == "coverage at the limit":
-        coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json") - 1)
-    elif case == "home-relative entry":
-        root, layout = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:~/{'m' * _LIMIT}"
-    elif case == "threshold runs lwip through its runner":
-        env = {"GC_THRESHOLD": "32768"}
-    else:
-        coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json") - 1)
-        files = ("tests/lwip_host/test_lwip_host_files_are_skipped.py",)
-    done = _run_intern_check(repo_root, tmp_path, root, coverage=coverage, layout=layout, raw_dir=raw_dir, files=files, env=env)
-    assert (done.returncode, done.stdout, done.stderr) == (0, "PASSED\n", ""), done
-
-
-def test_more_than_five_strings_are_named_five_and_the_rest_counted(repo_root: Path, tmp_path: Path) -> None:
-    # A long TMPDIR under --coverage would name every file's data file: the first five carry the cause.
-    layout = ":".join(chr(ord("a") + n) * (_LIMIT + 1) for n in range(7))
-    done = _run_intern_check(repo_root, tmp_path, _padded_root(tmp_path, "tests/lwip_host", 200), layout=layout)
-    named = ", ".join(f"MICROPYPATH entry {n + 1} {chr(ord('a') + n) * (_LIMIT + 1)} ({_LIMIT + 1} bytes)" for n in range(5))
-    assert (done.returncode, done.stdout, done.stderr) == (2, "", f"error: no test file was started: {named}, +2 more{_INTERN_REFUSAL}"), done
-
-
-@pytest.mark.parametrize(("coverage", "env"), [(False, {}), (False, {"GC_THRESHOLD": "32768"}), (True, {})], ids=["plain", "gc stage", "coverage"])
-def test_this_checkout_passes_the_intern_check_in_every_mode(repo_root: Path, tmp_path: Path, *, coverage: bool, env: "dict[str, str | None]") -> None:
-    # The false-positive direction on a real tree: this checkout, its own files and layout and a mktemp-length data
-    # directory pass in every mode, on a path longer than CI's checkout and the documented ones.
-    done = _run_intern_check(repo_root, tmp_path, repo_root, coverage=coverage, raw_dir=str(Path(tempfile.gettempdir()) / "tmp.XXXXXXXXXX"), files=None, env=env)
-    assert (done.returncode, done.stdout, done.stderr) == (0, "PASSED\n", ""), done
-
-
-def test_a_checkout_too_deep_to_intern_is_refused_before_the_lock_a_sweep_or_a_build(repo_root: Path, tmp_path: Path) -> None:
-    # End to end on a copy of the runner and its libraries, a stub uv recording any build: exit 2 naming the directory,
-    # with port 53's lock never taken, tests/_tmp never swept and nothing built.
-    root = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1)
-    for name in ("test.sh", "_port_lock.sh", "_devices.sh", "_unix_port.sh", "micropypath.toml"):
-        (root / "scripts").mkdir(parents=True, exist_ok=True)
-        shutil.copy2(repo_root / "scripts" / name, root / "scripts" / name)
-    for name in ("devices/fixture-device-a.toml", "tests/test_a.py", "tests/lwip_host/test_l.py", "tests/_tmp/held.txt"):
-        (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text("", encoding="utf-8")
-    stub_bin, run_dir, calls = tmp_path / "stub_bin", tmp_path / "run", tmp_path / "uv_calls"
-    stub_bin.mkdir()
-    run_dir.mkdir()
-    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\necho "$*" >>"{calls}"\nexit 1\n', encoding="utf-8")
-    (stub_bin / "uv").chmod(0o755)
-    env = {"PATH": f"{stub_bin}:/usr/bin:/bin", "HOME": str(tmp_path), "LANG": "C.UTF-8", "XDG_RUNTIME_DIR": str(run_dir), "PICO_TOOLCHAIN_DIR": str(tmp_path / "toolchain")}
-    done = subprocess.run(["/bin/bash", str(root / "scripts" / "test.sh")], cwd=tmp_path, capture_output=True, text=True, env=env, check=False, timeout=_NESTED_RUN_TIMEOUT_S)
-    named = f"the script's directory {root}/tests/lwip_host ({_LIMIT + 1} bytes)"
-    assert (done.returncode, done.stdout, done.stderr) == (2, "", f"error: no test file was started: {named}{_INTERN_REFUSAL}"), done
-    assert (calls.exists(), sorted(run_dir.iterdir()), (root / "tests" / "_tmp" / "held.txt").is_file()) == (False, [], True)
-
-
-def test_the_runs_limit_is_the_twin_launchs_own(repo_root: Path) -> None:
-    # The runner's copy of the qstr limit is scripts/_twin_process.py's, which is checked against the interpreter itself.
-    copies = re.findall(r"^qstr_max_bytes=(\d+)$", _test_sh_text(repo_root), re.MULTILINE)
-    assert copies == [str(_LIMIT)], f"scripts/test.sh holds the qstr limit {copies}, scripts/_twin_process.py {_LIMIT}"
 
 
 # ---------------------------------------------------------------------------
@@ -2303,8 +2209,9 @@ def test_a_per_device_file_runs_once_per_derived_device_and_any_other_file_once(
     ]
 
 
-def test_the_device_list_is_the_derived_set_and_the_site_is_its_first_device(repo_root: Path, tmp_path: Path) -> None:
-    done = _device_step(repo_root, tmp_path, ("fixture_b", "fixture_a", "zz_test_x"))
+def test_the_device_list_is_one_device_per_hardware_family_and_the_site_is_its_first_device(repo_root: Path, tmp_path: Path) -> None:
+    # Owner, 2026-10-23: a family's devices differ only in name and hostname, which no per-device job's result reads.
+    done = _device_step(repo_root, tmp_path, ("fixture_c", "fixture_b", "fixture_a", "zz_test_x"), family=("fixture_b", "fixture_c"))
     assert (done.returncode, done.stdout) == (0, "fixture_a fixture_b | fixture_a\n"), done
 
 
@@ -2316,9 +2223,9 @@ def test_a_tree_with_no_device_stops_before_anything_is_generated(repo_root: Pat
 def test_the_device_list_is_read_once_before_generation_and_before_the_tier(repo_root: Path) -> None:
     # The tier plants zz_test_ device fixtures while it runs; the list every later step takes is read before it.
     code = _without_comments(_test_sh_text(repo_root))
-    read_at, generate_at, tier_at = code.find('devices_text="$(derived_devices)"'), code.find(_GENERATE_LINE), code.find(_PYTEST_LINE)
+    read_at, generate_at, tier_at = code.find('devices_text="$(distinct_devices)"'), code.find(_GENERATE_LINE), code.find(_PYTEST_LINE)
     assert -1 < read_at < generate_at < tier_at, (read_at, generate_at, tier_at)
-    assert code.count("derived_devices") == 1, "the device list is read more than once"
+    assert code.count("_devices)") == 1, "the device list is read more than once"
     assert "wiring_plan.json" not in code, "the jobs take the derived devices, not a glob of the generated tree"
 
 

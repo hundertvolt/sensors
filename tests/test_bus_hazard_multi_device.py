@@ -32,12 +32,13 @@ from _tmp_scratch import TmpScratch
 
 from asy_bmp3xx_driver import BMP3XX_I2C
 from asy_config_manager import ConfigManager
-from asy_crc_checks import CRC8, CRC16
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader
+from asy_print_log import PrintLogHistoryStore
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 from asy_spi_driver import SPIDevice
+from crc_checks import CRC8, CRC16, CRC32
 
 try:
     from typing import TYPE_CHECKING
@@ -581,6 +582,8 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
     async_done = fram_done = 0
     reads: list[bytes] = []
 
+    refused = refused_free = 0
+
     async def async_worker() -> None:
         nonlocal async_done
         for _ in range(rounds):
@@ -590,19 +593,27 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
             async_done += 1
 
     async def fram_worker() -> None:
-        # Only FRAM_SPI.__aenter__ taking the bus lock keeps this block out of the other device's CS window.
-        nonlocal overlap_observed, fram_done
+        # The FRAM's synchronous operation is refused at its begin() while the other device's session holds the bus, never
+        # run in its CS window; it runs once the bus is free.
+        nonlocal overlap_observed, fram_done, refused, refused_free
         buf = bytearray(4)
-        for _ in range(rounds):
-            async with fram:
-                overlap_observed = overlap_observed or async_device._cs_pin.value() == async_device._cs_active_value
-                fram._read_address(0, buf)
-            reads.append(bytes(buf))
-            fram_done += 1
+        while fram_done < rounds:
+            held, asserted = bus.bus_lock.locked(), async_device._cs_pin.value() == async_device._cs_active_value
+            try:
+                fram.begin()
+                assert fram.get_values(buf, 0)
+            except RuntimeError:
+                refused += 1
+                refused_free += not held
+            else:
+                overlap_observed = overlap_observed or asserted
+                reads.append(bytes(buf))
+                fram_done += 1
             await asyncio.sleep(0)
 
     run(_gather(async_worker(), fram_worker()))
-    assert not overlap_observed, "the FRAM's block session ran while another device held its CS asserted"
+    assert not overlap_observed, "the FRAM's command ran while another device held its CS asserted"
+    assert refused > 0 and refused_free == 0, (refused, refused_free)
     assert (async_done, fram_done) == (rounds, rounds)
     assert reads == [b"\x11\x22\x33\x44"] * rounds
     assert async_device._cs_pin.value() == 1  # both back to inactive afterwards
@@ -630,8 +641,7 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
     async def scenario() -> bool:
         raised = False
         try:
-            async with fram:
-                fram._read_address(0, bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
+            fram._read_address(0, bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
         except OSError:
             raised = True
         try:
@@ -644,7 +654,50 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
     assert chip.opcodes == [_OPCODE_READ, _NEIGHBOUR_BYTE[0]], f"the neighbour's write did not reach the bus: {chip.opcodes}"
     assert fram._spidev._cs_pin.value() == 1
     assert not bus.bus_lock.locked()
-    assert not fram.session_lock.locked()
+
+
+def test_two_fram_users_in_two_tasks_never_interleave_their_commands() -> None:
+    # The structural guarantee: no FRAM operation and no log call suspends, so the SGP40 backup's write and verify and a
+    # SYSTEM entry, each from its own task, reach the chip as two whole runs of CS cycles, and both land whole.
+    manager, _chip = make_fram_manager()
+    run(manager.setup())
+    backup = manager.get_chunk(264, crc=CRC32(), verify=1, owner="SGP40_VOC")
+    assert backup is not None
+    store = PrintLogHistoryStore(manager, 10, None, name="SYSTEM")
+    run(store.setup())
+    owners: list[str] = []
+    names: dict[int, str] = {}
+    chip = manager.fram._spidev.spi._spi
+    assert chip is not None
+    write = chip.write
+
+    def tagged(buf: object) -> None:  # every command opens with a write; each operation's begin() binds this one
+        owners.append(names[id(asyncio.current_task())])
+        write(buf)
+
+    chip.write = tagged  # type: ignore[method-assign]
+
+    async def backing_up() -> bool:
+        names[id(asyncio.current_task())] = "backup"
+        await asyncio.sleep(0)  # both tasks started before either operates
+        return backup.write(bytes(range(132)) * 2)
+
+    async def logging() -> None:
+        names[id(asyncio.current_task())] = "entry"
+        await asyncio.sleep(0)
+        store.err_s("beside the backup", errno=code("E", "TEST_SEED_A"))
+
+    async def scenario() -> bool:
+        writing = asyncio.create_task(backing_up())
+        await asyncio.create_task(logging())
+        return await writing
+
+    assert run(scenario()) is True
+    chip.write = write  # type: ignore[method-assign]
+    runs = [owner for i, owner in enumerate(owners) if i == 0 or owners[i - 1] != owner]
+    assert sorted(runs) == ["backup", "entry"], runs
+    assert backup.read() == bytearray(bytes(range(132)) * 2)
+    assert store._read() == (store._err_count, tuple(store.history))
 
 
 # ---------------------------------------------------------------------------
@@ -654,7 +707,6 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
 
 _CHUNKS = ((24, CRC16), (12, CRC8), (40, CRC16))  # payload size and CRC of each chunk the erase rigs allocate
 _CHUNK_OWNERS = ("SYSTEM", "WIFI", "NTP")
-_ERASE_OFFSETS = range(0, 100, 10)  # turns the write and the read get before the erase starts: both end by turn 87
 _NEIGHBOUR_BYTE = b"\xa5"  # another device's traffic on the FRAM's bus: no MB85RS opcode, so the chip fake ignores it
 _CANCEL_OFFSETS = 40  # scheduler turns into the SGP40's setup and measurement; the cycle ends at 26
 _COUNT_SCHEMA: "ConfigSchema" = (("Count", "int", 7, 0, 100, None),)
@@ -772,51 +824,31 @@ async def _cancel_sgp40_after(i2c: I2C, isl: ISL29125_I2C, sgp: SGP40_I2C, turns
     return held_bus, held_device, ended
 
 
-async def _erase_in_flight(manager: "FRAMManager", chip: _EraseWire, chunks: "list[FRAMChunk]", turns: int) -> "list[object] | None":
-    # The shutdown's quiesce, then the erase, started `turns` scheduler turns into a write of chunk 0 and a read of
-    # chunk 1 (each begun once it holds its chunk's lock); a later write and read, the chip's own probe and another
-    # device on its bus run beside the erase. None: both finished before the erase started.
+async def _erase_beside_callers(manager: "FRAMManager", chip: _EraseWire, chunks: "list[FRAMChunk]") -> "list[object]":
+    # The shutdown's pause, then the erase: a later write and read of two chunks, and another device on its bus, run
+    # beside it. Returns the later operations' answers and the erase's.
     written, kept = chunks[0], chunks[1]
-    writer = asyncio.create_task(written.write(bytes([0x5A]) * written.size))
-    reader = asyncio.create_task(kept.read())
-    for _ in range(turns):
-        await asyncio.sleep(0)
-    if writer.done() and reader.done():
-        await writer
-        await reader
-        return None
-    begun = [written._op_lock.locked() or writer.done(), kept._op_lock.locked() or reader.done()]
-    both_in_flight = begun == [True, True] and not writer.done() and not reader.done()
-    blocks = _blocks(chip, written)
-    torn_if_cut = blocks[0] != blocks[1]
-    await manager.quiesce(lambda: None)
-    settled = [writer.done(), reader.done()]  # read as quiesce() returns: it waited out every operation begun
-    idle = bytes([_fram_const("asy_fram_manager", "_STATUS_IDLE")]) * 2
-    whole = all(_blocks(chip, chunk)[0] == _blocks(chip, chunk)[1] and _blocks(chip, chunk)[0][-2:] == idle for chunk in chunks)
-    finished = [await writer is True, await reader == bytearray(bytes([2]) * kept.size)]
+    manager.set_pause(value=True)
     neighbour = SPIDevice(manager.fram._spidev.spi, 6)
     await neighbour.setup()
     stop = asyncio.Event()
-
-    async def probe() -> None:  # the chip watch's probe: both FRAM locks, one RDID cycle
-        while not stop.is_set():
-            assert await manager.fram.verify_present() is True
-            await asyncio.sleep(0)
 
     async def other_device() -> None:  # the bus lock only, one CS cycle per session
         while not stop.is_set():
             async with neighbour:
                 await neighbour.write(_NEIGHBOUR_BYTE)
 
-    later = [asyncio.create_task(written.write(bytes(written.size))), asyncio.create_task(kept.read())]
-    callers = [asyncio.create_task(probe()), asyncio.create_task(other_device())]
+    async def later() -> "list[object]":
+        await asyncio.sleep(0)
+        return [written.write(bytes(written.size)), kept.read()]
+
+    caller = asyncio.create_task(other_device())
+    refusing = asyncio.create_task(later())
     erased = await manager.erase_chip(_arm_wire(manager, chip))
     chip.erase_pass = 0
     stop.set()
-    refused = [await later[0], await later[1]]
-    for caller in callers:
-        await caller
-    return [begun, both_in_flight, torn_if_cut, settled, finished, whole, refused, erased]
+    await caller
+    return [await refusing, erased]
 
 
 def _erase_rig(part: "type[_EraseWire]") -> "tuple[FRAMManager, _EraseWire, list[FRAMChunk]]":
@@ -829,7 +861,7 @@ def _erase_rig(part: "type[_EraseWire]") -> "tuple[FRAMManager, _EraseWire, list
     for n, (size, crc) in enumerate(_CHUNKS):
         chunk = manager.get_chunk(size, crc=crc(), owner=_CHUNK_OWNERS[n])
         assert chunk is not None
-        assert run(chunk.write(bytes([n + 1]) * size)) is True
+        assert chunk.write(bytes([n + 1]) * size) is True
         chunks.append(chunk)
     return manager, chip, chunks
 
@@ -885,16 +917,16 @@ async def _read_while_storing(store: ConfigManager, path: str) -> "tuple[int, in
 
 
 def _record_write_statuses(manager: "FRAMManager") -> "list[int]":
-    # Every set_values_sync() status from now on, OR-ed into the one element returned.
+    # How many set_values() calls from now on were refused, in the one element returned.
     seen = [0]
-    real = manager.fram.set_values_sync
+    real = manager.fram.set_values
 
-    def recording(buf: "bytes | bytearray | memoryview", addr_start: int) -> int:
-        status = real(buf, addr_start)
-        seen[0] |= status
-        return status
+    def recording(buf: "bytes | bytearray | memoryview", addr_start: int) -> bool:
+        ok = real(buf, addr_start)
+        seen[0] += not ok
+        return ok
 
-    manager.fram.set_values_sync = recording  # type: ignore[method-assign]
+    manager.fram.set_values = recording  # type: ignore[method-assign]
     return seen
 
 
@@ -996,31 +1028,16 @@ def test_the_erase_writes_each_status_byte_then_every_unit_once_ascending_at_the
         assert (chip.faults, chip.foreign) == (0, 0), part
         assert sorted(chip.status_writes) == _status_bytes(), (part, chip.status_writes)
         assert chip.next_unit == part.SIZE, (part, chip.next_unit)
-        assert statuses[0] == 0, f"a write status {statuses[0]:#x} (_SV_BAD_RANGE is {_fram_const('asy_fram_driver', '_SV_BAD_RANGE'):#x})"
+        assert statuses[0] == 0, f"{statuses[0]} erase write(s) refused"
 
 
-def test_an_erase_lets_a_write_and_a_read_in_flight_finish_whole_refuses_later_ones_and_holds_each_unit_whole() -> None:
-    # At offsets into a chunk write and a chunk read: each one begun finishes, each chunk's two copies end equal and
-    # idle, one not begun and later ones are refused, and each erase write's five CS cycles stay contiguous while the
-    # chip's probe and another device on its bus land between them (the unit holds both FRAM locks).
-    failures = []
-    in_flight = torn = 0
-    for turns in _ERASE_OFFSETS:
-        manager, chip, chunks = _erase_rig(_EraseWire)
-        facts = run(_erase_in_flight(manager, chip, chunks, turns))
-        if facts is None:
-            break
-        begun, both_in_flight, torn_if_cut, settled, finished, whole, refused, erased = facts
-        in_flight += bool(both_in_flight)
-        torn += bool(torn_if_cut)
-        wire = [chip.faults, chip.foreign > 0, chip.next_unit, sorted(chip.status_writes) == _status_bytes()]
-        if [settled, finished, whole, refused, erased, wire] != [begun, begun, True, [False, None], True, [0, True, _EraseWire.SIZE, True]]:
-            failures.append(f"turns={turns}: begun={begun} settled={settled} finished={finished} whole={whole} refused={refused} erased={erased} wire={wire}")
-    else:
-        raise AssertionError(f"the write and the read were still in flight after {max(_ERASE_OFFSETS)} turns")
-    assert not failures, failures
-    assert in_flight > 0, "no offset caught the write and the read both in flight"
-    assert torn > 0, "no offset caught the write between its two copies"
+def test_an_erase_refuses_later_operations_and_holds_each_unit_whole_beside_another_device() -> None:
+    # The shutdown pauses the chunk layer, then erases: a later write and read are refused, and each erase write's five CS
+    # cycles stay contiguous while another device on its bus lands between the units.
+    manager, chip, chunks = _erase_rig(_EraseWire)
+    refused, erased = run(_erase_beside_callers(manager, chip, chunks))
+    wire = [chip.faults, chip.foreign > 0, chip.next_unit, sorted(chip.status_writes) == _status_bytes()]
+    assert [refused, erased, wire] == [[False, None], True, [0, True, _EraseWire.SIZE, True]], (refused, erased, wire)
 
 
 def test_a_sensor_cancelled_inside_its_session_leaves_the_bus_free_and_the_sibling_read_valid() -> None:

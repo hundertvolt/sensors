@@ -66,7 +66,7 @@ async def _main() -> None:
         while (isl_rec.reads == 0 or sgp_rec.reads == 0) and time.ticks_diff(deadline, time.ticks_ms()) > 0:
             await fed_sleep_ms(wdt, _SIBLING_STEP_MS)
         # Then an SGP40 round's head: the write begins inside that sibling's session, ahead of its command, which then
-        # waits on the bus (its CRC staging yields first, src/asy_crc_checks.py _crc()).
+        # waits on the bus (its CRC staging yields first, src/crc_checks.py _crc()).
         was_in_flight = sgp_rec.in_flight
         while (was_in_flight or not sgp_rec.in_flight) and time.ticks_diff(deadline, time.ticks_ms()) > 0:
             was_in_flight = sgp_rec.in_flight
