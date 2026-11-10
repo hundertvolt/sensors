@@ -1253,8 +1253,8 @@ def _load_while_ntp_is_unreachable(ctx: Context, *, writes: bool) -> None:
 
 def _log_at_error_level(state: Path) -> "tuple[str, ...]":
     # A boot's loggers at warning level, so a caught allocation failure's, error's or warning's line reaches the memory gate
-    # (agent, 2026-10-20, extending the owner's option 1, owner, 2026-10-20: "Option 1 is good"; owner-reviewed,
-    # 2026-11-06): built so by the runner's flag and kept by a stored DebugLevel, planted unless one is stored.
+    # (agent, 2026-10-20, extending the owner's option 1, owner, 2026-10-20: "Option 1 is good"):
+    # built so by the runner's flag and kept by a stored DebugLevel, planted unless one is stored.
     level = _src_int("asy_print_log.py", "_LOG_WARN")
     config = state_paths(state).config_dir
     config.mkdir(parents=True, exist_ok=True)
