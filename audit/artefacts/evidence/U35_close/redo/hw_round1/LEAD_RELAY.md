@@ -1,5 +1,16 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-10 22:19 UTC - lead to bench: the image's tree moved before the round; two manual pulls join j
+New head: this commit; code commit f02afce1 (main line eb8a214e). One change in src/ against 21:29's tree:
+FRAM_SPI.verify_present() restored (the owner's 2026-09-26 ruling keeps it; nothing calls it, no behaviour change),
+plus tests and doc lines. Build every image from this head (the dev image, the lwIP and GC controls), not 7cfeee71.
+If you already started: a. stands (board on snapshot 58, host only); a control built from 7cfeee71 is rebuilt from
+this head; any 3g-5h result taken on 7cfeee71's image runs again on this one.
+j. adds, with the owner, after M1, no runner step active: manual/manual_bus_electrical.py's
+test_fram_unplug_replug_recovery and test_uart_crossover_pull_recovery (the owner pulls and replugs the leads on
+the prompts; no flash or NVM write). Send each figure: seconds to the first FRAM entry, the codes, the recovery.
+Everything else in 21:29's relay stands, wear last.
+
 ## Relay 2026-11-10 21:29 UTC - lead to bench: the last round, on the final image
 New head: 7cfeee71 (main line bfa240fa = snapshot 61 4a0f1b76, CI green; the owner's go for this round, wear
 last, 21:23 UTC). src/ changed since snapshot 58: a new image. First: a fresh
