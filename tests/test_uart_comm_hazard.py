@@ -10,12 +10,12 @@ from _error_codes import code
 from _fake_time import DrivenTime
 from _twin_readiness import wait_for_value
 from _uart_comm_harness import ERROR_LEVEL, Pair, PollRoundClock, accept_set, copied_out, echo_get, frames, transfer_limits
-from _uart_comm_hazard_common import _PAYLOAD, _STEP_BOUND_S, _TIMEOUT_MS, hazard_pair, register_both_crc_modes
+from _uart_comm_hazard_common import _PAYLOAD, _TIMEOUT_MS, hazard_pair, register_both_crc_modes
 
 import asy_uart_comm
 import asy_uart_driver
 from asy_print_log import DEFAULT_LOG, LogConfig
-from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UARTComm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm
 from crc_checks import CRC16
 
 try:
@@ -339,10 +339,7 @@ def _check_a_payload_size_mismatch_never_delivers_wrong_data(crc: "CrcMaker") ->
             return await pair.initiator.uart_set(0x02, b"mismatched")
         finally:
             await responder.clear()
-            try:
-                await asyncio.wait_for(listener, _STEP_BOUND_S)
-            except asyncio.TimeoutError:
-                listener.cancel()
+            await listener  # clear() above unsticks a listener still waiting on its peer
 
     # The one configuration error the design cannot self-heal: it must fail, not deliver a
     # wrong-length payload as though it were right.
@@ -412,10 +409,7 @@ def _check_a_peer_that_resets_mid_transaction_converges_once_it_returns(crc: "Cr
             await pair.initiator.uart_set(0x02, bytes(_PAYLOAD * 3))
         finally:
             await pair.responder.clear()
-            try:
-                await asyncio.wait_for(listener, _STEP_BOUND_S)
-            except asyncio.TimeoutError:
-                listener.cancel()
+            await listener  # clear() above unsticks a listener still waiting on its peer
 
     run(cut_off_mid_train())
 
@@ -434,10 +428,7 @@ def _check_a_peer_that_resets_mid_transaction_converges_once_it_returns(crc: "Cr
             return await pair.initiator.uart_get(0x01)
         finally:
             await reborn.clear()
-            try:
-                await asyncio.wait_for(listener, _STEP_BOUND_S)
-            except asyncio.TimeoutError:
-                listener.cancel()
+            await listener  # clear() above unsticks a listener still waiting on its peer
 
     recovered = False
     for _ in range(_RECOVERY_ATTEMPTS):
@@ -460,10 +451,8 @@ def _check_a_peer_whose_frames_all_fail_their_crc_is_diagnosed(crc: "CrcMaker") 
 def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc: "CrcMaker") -> None:
     # The silent-tail-loss failure: a frame that does not fit the receive ring loses its end, and the result is
     # indistinguishable from a link fault. The module refuses the configuration instead (SPECIFICATION.md Part J.6).
-    from asy_uart_comm import ROLE_INITIATOR, UARTComm
-    from asy_uart_driver import UART as Driver
     # rxbuf holds the 260-byte frame, so only the ring's floor can refuse this: both refuse with one code.
-    too_small = Driver(0, tx_pin=0, rx_pin=1, rxbuf=512, txbuf=256, rx_ring=256, poll_wait_ms=1, poll_idle_ms=1)
+    too_small = asy_uart_driver.UART(0, tx_pin=0, rx_pin=1, rxbuf=512, txbuf=256, rx_ring=256, poll_wait_ms=1, poll_idle_ms=1)
     comm = UARTComm(too_small, ROLE_INITIATOR, limits=transfer_limits(payload_size=255, timeout=_TIMEOUT_MS), name="UART_TINY", log=_ERROR_LOG)
     assert comm._init_errno == code("E", "UART_RXBUF"), "a receive ring below one whole frame was accepted"
     assert run(comm.setup()) is False, "a refused construction still opened its readiness gate"
@@ -1049,10 +1038,7 @@ async def _exchange_quietly(pair: Pair) -> "PieceBuffer | None":
         return await pair.initiator.uart_get(0x01)
     finally:
         await pair.responder.clear()
-        try:
-            await asyncio.wait_for(listener, _STEP_BOUND_S)
-        except asyncio.TimeoutError:
-            listener.cancel()
+        await listener  # clear() above unsticks a listener still waiting on its peer
 
 
 async def _failed_exchanges(initiator: UARTComm, responder: UARTComm, count: int) -> None:
@@ -1061,10 +1047,7 @@ async def _failed_exchanges(initiator: UARTComm, responder: UARTComm, count: int
         listener = asyncio.create_task(responder.uart_listen())
         await initiator.uart_set(0x02, b"nonsense")
         await responder.clear()
-        try:
-            await asyncio.wait_for(listener, _STEP_BOUND_S)
-        except asyncio.TimeoutError:
-            listener.cancel()
+        await listener  # clear() above unsticks a listener still waiting on its peer
 
 
 def _hammer_clean(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) -> None:

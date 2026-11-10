@@ -240,6 +240,7 @@ def test_flush_scd30_persists_only_the_last_constructed_chip() -> None:
     machine.configure_wiring(_two_scd30_one_fram_plan())
     first = _built(lambda: I2C(0, scl=Pin(_I2C0["scl"]), sda=Pin(_I2C0["sda"]), freq=50000)).devices[0x61]
     last = _built(lambda: I2C(1, scl=Pin(_I2C1["scl"]), sda=Pin(_I2C1["sda"]), freq=50000)).devices[0x61]
+    assert isinstance(first, SCD30Chip) and isinstance(last, SCD30Chip)
     first._measurement_interval_s, last._measurement_interval_s = 7, 9
     machine.flush_scd30()
     with open(path) as f:

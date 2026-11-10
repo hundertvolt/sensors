@@ -6,10 +6,12 @@ device - imports, mounts and serves correctly through a real WebserverService/Mi
 # frozen_modules/frozen_html.py -> `import frozen_html` (mount on import) -> WebserverService. scripts/test.sh builds it
 # first, for the device it names; the import mounts /html once per process.
 
+import io
 import sys
 
 sys.path.insert(0, "ext")
 
+import deflate
 import frozen_html  # mounts /html on import
 from _async_harness import run
 from _generated_tree import devices, require_fresh
@@ -47,10 +49,6 @@ def _decompress(body: "_ResponseBody") -> bytes:
     # send_file() streams from a file-like object; DeflateIO(AUTO) detects the gzip header (v1.29.0). No `with` (a BytesIO
     # needs no close) and an ignore: the stub declares neither __enter__/__exit__ nor a typed read() - removal trigger:
     # SPECIFICATION.md B.15.
-    import io
-
-    import deflate
-
     d = deflate.DeflateIO(io.BytesIO(body.read()), deflate.AUTO, 0, True)
     return d.read()  # type: ignore[no-any-return]
 

@@ -23,7 +23,7 @@ from _devices import DEVICE_NAMES, device_toml, devices_with
 from _script_loader import load_script_module
 from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, write_doc
 
-from buildgen.codegen import _Ctx, _identifier, _lit, _sgp40_status_vars, generate_boot_entry_source, generate_module_source
+from buildgen.codegen import _build_args_notification, _build_call, _Ctx, _identifier, _lit, _sgp40_status_vars, generate_boot_entry_source, generate_module_source
 from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import GeneratedDevice, generate_device, main
@@ -1443,8 +1443,6 @@ def test_identifier_rejects_a_name_python_could_not_use(src_dir: Path) -> None:
 def test_codegen_has_no_build_recipe_for_an_unknown_driver(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # driver_registry can resolve a driver that codegen has no constructor recipe for - the build
     # must say exactly that, and name where to add one.
-    from buildgen.codegen import _build_call, _Ctx
-    from buildgen.validate import build_model
 
     # Driven at the _build_call() level: an instance of such a driver can't be carried through a
     # whole build, because _check_required_fields() rejects a driver with no buildspec.py entry
@@ -1462,8 +1460,6 @@ def test_notification_with_no_signal_sink_wiring_field_fails_loud(tmp_path: Path
     # _build_args_notification()'s internal invariant: signal_sink is always resolved by
     # validate.py before codegen runs, so no real TOML reaches this. Driven by mutating an
     # already-validated spec, the same way the unknown-driver test above reaches its branch.
-    from buildgen.codegen import _build_args_notification, _Ctx
-    from buildgen.validate import build_model
 
     model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     spec = model.instances[("notification", "")]
@@ -1476,9 +1472,6 @@ def test_instance_with_no_driver_info_fails_loud_at_codegen_time(tmp_path: Path,
     # _emit_header_and_imports()'s internal invariant: driver_info is always resolved before
     # codegen runs. Driven through generate_module_source(), the same seam generate_device()
     # uses, on a valid model with one instance's driver_info cleared afterwards.
-    from buildgen.codegen import generate_module_source
-    from buildgen.graph import build_construction_order
-    from buildgen.validate import build_model
 
     model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     build_construction_order(model)
@@ -1491,9 +1484,6 @@ def test_construction_order_entry_that_is_neither_a_bare_node_nor_an_instance_ke
     # _emit_build_system()'s internal invariant: build_construction_order() only emits the three
     # infra names or a real instance key, so no TOML reaches this. Driven by inserting a bogus
     # bare string into an already-computed construction order.
-    from buildgen.codegen import generate_module_source
-    from buildgen.graph import build_construction_order
-    from buildgen.validate import build_model
 
     model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     build_construction_order(model)

@@ -17,9 +17,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/, for the shared summary block
-
-from _summary_block import Summary, from_run_record  # type: ignore[import-not-found]
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # the repo root, for the shared summary block
+from scripts._summary_block import Summary, from_run_record
 
 # Skip-gating marker -> the option (argparse dest) that runs it: its skip is expected only while
 # that option is unset. The wear gates deselect instead and reach the verdict as deselections.
@@ -72,7 +71,7 @@ def _judge_skip(nodeid: str, reason: str, markers: "list[str]", options: "dict[s
 
 
 @dataclass
-class _Verdict(Summary):  # type: ignore[misc]  # Summary is Any to mypy: scripts/ is not on host_typecheck.ini's mypy_path
+class _Verdict(Summary):
     # pytest's own nonzero exit is propagated unchanged, so its Result names it rather than reading
     # pytest's 2 (interrupted) or 4 (its usage error) as this block's usage-error or NOT CLEAN code.
     pytest_exit: int = 0
@@ -130,7 +129,7 @@ def judge(record_path: Path, pytest_exit: int, runner: str, levels: str, not_cle
     return exit_code
 
 
-class _CollectionOnly(Summary):  # type: ignore[misc]
+class _CollectionOnly(Summary):
     def result(self, exit_code: int) -> str:
         return "NOT A RUN (collection only)"
 

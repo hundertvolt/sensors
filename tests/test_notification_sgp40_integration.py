@@ -14,8 +14,10 @@ I2C transaction runs for real."""
 from collections import namedtuple
 
 from _async_harness import cancel_all, run
+from _crc8 import crc8
 from _fake_time import DrivenTime, FakeTime, UTCValid
 from _fast_sleep import FastAsyncSleep
+from _notification_cycle import cycle
 from _tmp_scratch import TmpScratch
 from machine import I2C as _MachineI2C  # tests/machine.py's fake bus, under the driver's own I2C wrapper
 
@@ -42,31 +44,6 @@ if TYPE_CHECKING:
 _scratch = TmpScratch("notify_sgp40")
 
 
-def _crc8(data: bytes) -> int:
-    crc = 0xFF
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = ((crc << 1) ^ _CRC_POLY) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
-    return crc
-
-
-_CRC_POLY = 0x31  # SGP40 datasheet Table 7 - same polynomial as test_asy_sgp40_driver.py's own
-
-
-async def _cycle(clock: DrivenTime, notify: NotificationService, flashes: int) -> None:
-    # The monitor's first cycle by the service's own rule: 2 x FlashDur after each triggered flash, so 1 ms before that
-    # end the loop has not parked on its next cycle yet; then it parks there, FlashInterval after its start.
-    cfg = (await notify.get_dict_cfg())["NOTIFY"]
-    flash_dur, interval = cfg["FlashDur"], cfg["FlashInterval"]
-    assert isinstance(flash_dur, float) and isinstance(interval, float), cfg
-    start = clock.now
-    end = start + flashes * round(flash_dur * 2000)
-    if end > start:
-        await clock.elapse(end - 1 - start)
-        assert start + round(interval * 1000) not in clock.wakes(), f"the cycle ended by virtual t={clock.now} ms: {clock.wakes()}"
-    await clock.elapse(end - clock.now)
-    assert clock.wakes()[-1] == start + round(interval * 1000), f"at virtual t={clock.now} ms the loop waits for {clock.wakes()}"
 
 
 def _drive_one_cycle(reader: SGP40_Reader, fake_bus: "_MachineI2C", raw: int) -> "SGP40":
@@ -148,7 +125,7 @@ def _settle_and_spike(reader: SGP40_Reader, fake_bus: "_MachineI2C") -> "SGP40":
 
 def _word(value: int) -> bytes:
     payload = bytes([(value >> 8) & 0xFF, value & 0xFF])
-    return payload + bytes([_crc8(payload)])
+    return payload + bytes([crc8(payload)])
 
 
 def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> None:
@@ -161,7 +138,7 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 1)
+        await cycle(clock, notify, 1)
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:
@@ -191,7 +168,7 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 0)  # one monitor pass: nothing was triggered, so nothing settles
+        await cycle(clock, notify, 0)  # one monitor pass: nothing was triggered, so nothing settles
         await cancel_all(tasks, settle_yields=1)
 
         sgp_log = await sgp_reader.get_error_counter()
@@ -235,7 +212,7 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
     async def scenario(clock: DrivenTime) -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await _cycle(clock, notify, 1)
+        await cycle(clock, notify, 1)
         await cancel_all(tasks, settle_yields=1)
 
     with _driven() as clock:

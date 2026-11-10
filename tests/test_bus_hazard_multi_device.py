@@ -48,6 +48,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
 
+    from machine import I2CEntry
+
     from asy_config_manager import ConfigSchema
     from asy_fram_manager import FRAMChunk, FRAMManager
 
@@ -791,7 +793,7 @@ def _assert_recovery_between(i2c: I2C, address: int, trigger: bytes) -> None:
     log = list(fake(i2c).log)  # a snapshot of the ring log, oldest first
     first = log.index(("writeto", address, trigger, True))
     init = next(i for i in range(first, len(log)) if log[i][0] == "init")
-    last = max(i for i in range(first + 1, len(log)) if log[i][0] == "readfrom_into" and log[i][1] == address)
+    last = max(i for i in range(first + 1, len(log)) if log[i][0:2] == ("readfrom_into", address))
     assert first < init < last, f"the recovery did not land between the two halves: {log[first : last + 1]}"
 
 
@@ -947,7 +949,7 @@ async def _recover_between_halves(i2c: I2C, target: int, trigger: bytes, read: "
         bus.writeto = real_writeto  # type: ignore[method-assign]
 
 
-def _register_reads_unbroken(log: "list[tuple[object, ...]]", address: int) -> int:
+def _register_reads_unbroken(log: "list[I2CEntry]", address: int) -> int:
     # Every no-stop register-address write to `address` is followed at once by its readfrom_into, never by
     # a sibling's transfer between the two. Returns how many such reads the log holds.
     count = 0

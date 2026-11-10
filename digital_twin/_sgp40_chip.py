@@ -2,7 +2,9 @@
 (serial number, self-test, measure-raw, heater-off) with walked SRAW_VOC ticks, and resets on the I2C general call
 (datasheet Table 17). Independent of tests/machine.py's fake I2C."""
 
+import errno
 import random as _random_module
+import time
 
 from _crc8 import word
 from _fault_injection import FaultInjector
@@ -16,6 +18,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Protocol
 
+    from _mpy_shed.time_mp import _TicksMs
+
     class _RandomSource(Protocol):
         # Structural stand-in for the `random` module (the default) or a seeded random.Random -
         # machine.py's configure_random_source() seam. Only these two are ever called here.
@@ -27,6 +31,8 @@ _CMD_SELF_TEST = b"\x28\x0e"  # datasheet Table 12
 _CMD_MEASURE_RAW = b"\x26\x0f"  # "launches/continues the VOC measurement mode" (datasheet 3.1)
 _CMD_HEATER_OFF = b"\x36\x15"  # datasheet Table 14: hotplate off, idle mode
 _GENERAL_CALL_RESET = b"\x06"  # the byte after the general-call address 0x00 (datasheet Table 17)
+# After an unknown command the bench part timed out every transfer and read again 528 ms later (dev, 2026-10-29).
+_UNKNOWN_COMMAND_TIMEOUT_MS = 528
 # Not datasheet-derived: a typical indoor walk inside the datasheet's SRAW_VOC range 0-65 535 ticks (SGP40 datasheet
 # Table 1); the step is a plausibility bound.
 _RAW_WALK_DEFAULT = Walk(26000, 34000, 1000)
@@ -50,9 +56,16 @@ class SGP40Chip:
         self.resets = 0  # twin-only test surface: general-call resets the chip took
         self.heater_offs = 0  # twin-only test surface: heater-off commands the chip took
         self._serial_reply: bytes | None = None  # drawn at the first serial read, then fixed (datasheet 3.4)
+        self._timed_out_until: _TicksMs | None = None  # ticks_ms an unknown command's timeout window ends at
         # Initial value: one draw within the walk's [lo,hi] at construction - every value after this
         # one steps from the last instead (see handle_writeto()'s MEASURE_RAW branch below).
         self._raw = self._random.randint(int(raw.lo), int(raw.hi))
+
+    def _check_timed_out(self) -> None:
+        if self._timed_out_until is not None:
+            if time.ticks_diff(self._timed_out_until, time.ticks_ms()) > 0:
+                raise OSError(errno.ETIMEDOUT, "SGP40 timed out after an unknown command")
+            self._timed_out_until = None
 
     def _idle(self) -> None:
         self._pending_reply = bytes(3)
@@ -81,12 +94,14 @@ class SGP40Chip:
     def handle_readfrom_into(self, nbytes: int) -> bytes:
         self.fault.maybe_hang("readfrom_into")
         self.fault.maybe_raise("readfrom_into", key=self._last_cmd)
+        self._check_timed_out()
         return (self._pending_reply + bytes(nbytes))[:nbytes]
 
     def handle_writeto(self, data: bytes) -> None:
         self.fault.maybe_hang("writeto")
         key = (data[0] << 8) | data[1] if len(data) >= 2 else None
         self.fault.maybe_raise("writeto", key=key)
+        self._check_timed_out()
         if key is not None:
             self._last_cmd = key
         if data == _CMD_SERIAL_NUMBER:
@@ -107,7 +122,9 @@ class SGP40Chip:
             self.heater_offs = saturating_add(self.heater_offs)
             return
         else:
-            return  # assumption: the datasheet states no reaction to an unknown command (fidelity row)
+            if key is not None:  # a command word the chip does not know; a probe or a lone byte is none
+                self._timed_out_until = time.ticks_add(time.ticks_ms(), _UNKNOWN_COMMAND_TIMEOUT_MS)
+            return
         self._pending_reply = self._maybe_corrupt(reply)
 
     def power_cycle(self) -> None:

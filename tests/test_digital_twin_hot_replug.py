@@ -117,6 +117,7 @@ def _power_cycled_bmp3xx_on(device: str) -> None:
         bus = machine.peripheral(bus_name)
         assert isinstance(bus, machine.I2C)
         chip = bus.devices[attachment["address"]]
+        assert isinstance(chip, _bmp3xx_chip.BMP3XXChip)
 
         async def body() -> None:
             sysfunct = module.sysfunct

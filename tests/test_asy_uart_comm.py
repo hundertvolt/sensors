@@ -50,6 +50,7 @@ from asy_uart_comm import (
     ResponderCallbacks,
     TransferLimits,
     UARTComm,
+    _next_uid,
 )
 from asy_uart_driver import UART, PieceBuffer
 from crc_checks import CRC16
@@ -61,9 +62,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Coroutine
-    from typing import Any, TypeVar
+    from typing import TypeVar
 
-    from _uart_comm_harness import CommCallback, MessageCallback
+    from _uart_comm_harness import CommCallback
     from machine import UART as FakeUART
     from typing_extensions import TypedDict, Unpack
 
@@ -71,17 +72,7 @@ if TYPE_CHECKING:
     from asy_uart_comm import _PullCallback
 
     class _CommKw(TypedDict, total=False):
-        # _make_comm()'s keywords: the four transfer_limits() fields, the role, the bus, the callbacks and UARTComm's own.
-        # payload_size and timeout take any value: the validation tests pass a str, None or a float on purpose.
-        payload_size: object
-        timeout: object
-        chunk_bytes: int
-        max_transfer_bytes: int
-        role: str
-        uart: UART | None
-        get_callback: CommCallback | None
-        set_callback: CommCallback | None
-        message_callback: MessageCallback | None
+        # UARTComm's own keywords, which _make_comm() passes through.
         name: str
         log: LogConfig
         logger: PrintLogHistory | None
@@ -115,9 +106,6 @@ _WRITE_GATE_HOLD_MS = 1500  # the write gate's longest hold-off under the bus lo
 _REFUSALS = 50
 _HAMMER_ROUNDS = 200
 _FLUSH_RECOVERY_TRIES = 5
-# The drain of a listener whose stall is permanent, no frame ever reaching its next round: the verdict does not depend
-# on it, so it only has to outlast a listener that does finish (agent, 2026-10-27).
-_STALL_DRAIN_S = 1
 
 
 def logged(comm: UARTComm) -> "tuple[int, list[str]]":
@@ -141,21 +129,26 @@ def _w(name: str) -> str:  # persisted()'s form of a catalog wrnno
     return f"W{code('W', name)}"
 
 
-def _make_comm(**kwargs: "Unpack[_CommKw]") -> UARTComm:
+def _make_comm(
+    *,
+    payload_size: int = PAYLOAD_SIZE,
+    timeout: int = TIMEOUT_MS,
+    chunk_bytes: int = DEFAULT_LIMITS.chunk_bytes,
+    max_transfer_bytes: int = DEFAULT_LIMITS.max_transfer_bytes,
+    role: str = ROLE_INITIATOR,
+    uart: "UART | None" = None,
+    get_callback: "CommCallback | None" = None,
+    set_callback: "CommCallback | None" = None,
+    **kwargs: "Unpack[_CommKw]",
+) -> UARTComm:
+    # transfer_limits()'s fields, the role, the bus (None: the link's own driver) and the callbacks, then UARTComm's own.
     DMA.reset_registry()  # each link's ring holds two of the twelve channels: a later pair in one test frees them
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     driver._uart.rx_rate = float("inf")  # type: ignore[union-attr]  # fed bytes land at once, not on the fake clock
     driver.poller = LinkPoller(driver._uart, mask=select.POLLOUT)  # type: ignore[arg-type, assignment]
-    params: dict[str, Any] = dict(kwargs)
-    fields = {n: params.pop(n) for n in ("payload_size", "timeout", "chunk_bytes", "max_transfer_bytes") if n in params}
-    if "limits" not in params:
-        params["limits"] = transfer_limits(**fields)
-    role = params.pop("role", ROLE_INITIATOR)
-    bus = params.pop("uart", driver)
-    names = ("get_callback", "set_callback", "message_callback")
-    if any(n in params for n in names):
-        params["callbacks"] = ResponderCallbacks(*(params.pop(n, None) for n in names))
-    return UARTComm(bus, role, **params)
+    callbacks = None if get_callback is None and set_callback is None else ResponderCallbacks(get_callback, set_callback, None)
+    limits = transfer_limits(payload_size, timeout, chunk_bytes, max_transfer_bytes)
+    return UARTComm(driver if uart is None else uart, role, limits, callbacks, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +220,7 @@ def test_invalid_role_is_refused_and_has_no_default() -> None:
 
 def test_a_none_bus_is_recorded_distinctly_and_never_raises() -> None:
     # Otherwise every call returns a sentinel with no explanation of which thing was wrong.
-    comm = _make_comm(uart=None)
+    comm = UARTComm(None, ROLE_INITIATOR, transfer_limits())
     assert comm._init_errno != 0
     assert run(comm.setup()) is False
     assert run(comm.uart_set(1, b"x")) is False
@@ -1002,8 +995,6 @@ def test_size_always_matches_the_bytes_actually_copied() -> None:
 def test_the_uid_cycle_covers_every_legal_value_and_never_0xff() -> None:
     # The 0xFE -> 0 wrap is a deliberate off-by-one barrier and keeps the UID space exactly
     # as large as the longest train, so no UID repeats inside one transfer.
-    from asy_uart_comm import _next_uid
-
     seen = []
     uid = 0
     for _ in range(255):
@@ -1016,8 +1007,6 @@ def test_the_uid_cycle_covers_every_legal_value_and_never_0xff() -> None:
 
 def test_the_next_uid_prediction_is_correct_at_the_wrap_boundary() -> None:
     # A bare +1 mispredicts precisely here, once every 255 frames.
-    from asy_uart_comm import _next_uid
-
     assert _next_uid(0xFD) == 0xFE
     assert _next_uid(0xFE) == 0
 
@@ -1198,7 +1187,7 @@ def test_a_clean_write_round_trip_is_acknowledged() -> None:
 @_on_poll_rounds
 def test_a_stall_the_test_declares_is_not_a_failure() -> None:
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), rounds=2, listener_may_stall=True, drain_s=_STALL_DRAIN_S)) is True
+    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), rounds=2, listener_may_stall=True)) is True
 
 
 def test_a_missing_ack_bounds_the_wait_and_resyncs() -> None:
@@ -1215,7 +1204,7 @@ def test_a_write_that_never_reaches_the_peer_fails_the_same_way() -> None:
     # Indistinguishable from a lost ACK at this layer, and the distinction is not invented.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_a).silent = True
-    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), listener_may_stall=True, drain_s=_STALL_DRAIN_S)) is False
+    assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi"), listener_may_stall=True)) is False
 
 
 def test_a_stale_ack_uid_is_rejected() -> None:
@@ -2184,7 +2173,7 @@ def test_an_out_of_range_command_id_is_refused_not_truncated() -> None:
     # different, valid command the peer executed while the call reported success. The header
     # fields were already guarded against exactly this (_prepare_tx); the command id was not.
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
-    assert run(pair.with_listener(pair.initiator.uart_set(0x101, b"x"), listener_may_stall=True, drain_s=_STALL_DRAIN_S)) is False
+    assert run(pair.with_listener(pair.initiator.uart_set(0x101, b"x"), listener_may_stall=True)) is False
     assert pair.wire_from_initiator() == b"", "a refused command id must not put a frame on the wire"
     assert run(pair.initiator.uart_set(-1, b"x")) is False
     assert run(pair.initiator.uart_get(0x100)) is None
@@ -2210,7 +2199,7 @@ def test_a_negative_expected_size_is_refused_not_read_as_dont_care() -> None:
     # land on it, silently turning an exact-size GET into an unchecked one.
     pair = run(build_pair(get_callback=echo_get(b"hello"), set_callback=accept_set()))
     # Refused before anything is sent, so the responder's listen round never completes.
-    assert run(pair.with_listener(pair.initiator.uart_get(1, -5), listener_may_stall=True, drain_s=_STALL_DRAIN_S)) is None
+    assert run(pair.with_listener(pair.initiator.uart_get(1, -5), listener_may_stall=True)) is None
     # The contrast case: None really does mean don't care, and still works.
     assert copied_out(run(pair.with_listener(pair.initiator.uart_get(1)))) == b"hello"
 
@@ -2231,7 +2220,7 @@ def test_a_non_integer_payload_size_is_refused_instead_of_raising() -> None:
     # first, so `5 + "48"` raised TypeError out of __init__ itself. The constructor is the one
     # entry point that cannot answer with a sentinel: there is no object yet to ask.
     for bad in ("48", None, 1.5):
-        comm = _make_comm(payload_size=bad)
+        comm = _make_comm(payload_size=bad)  # type: ignore[arg-type]  # not an int, on purpose
         assert comm._init_errno != 0, bad
         assert comm._payload_size == bad, "the caller's own value stays on self, for the log to name"
         assert run(comm.setup()) is False
@@ -2240,7 +2229,7 @@ def test_a_non_integer_payload_size_is_refused_instead_of_raising() -> None:
 def test_a_non_integer_timeout_is_refused_instead_of_raising() -> None:
     # The backoff was computed before validation ran, so `"1000" // 2` raised first.
     for bad in ("1000", None):
-        comm = _make_comm(timeout=bad)
+        comm = _make_comm(timeout=bad)  # type: ignore[arg-type]  # not an int, on purpose
         assert comm._init_errno != 0, bad
         assert run(comm.setup()) is False
 
@@ -2960,7 +2949,7 @@ def test_a_write_failing_at_each_point_of_a_get_reports_and_resyncs() -> None:
         initiating = side == "initiator"
         fail_write_after(pair.fake_a if initiating else pair.fake_b, successes)
         # A write cut at any point can leave the responder's round unfinished; that is the case under test.
-        got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True, drain_s=_STALL_DRAIN_S))
+        got = run(pair.with_listener(pair.initiator.uart_get(1), listener_may_stall=True))
         failing = pair.initiator if initiating else pair.responder
         return got, logged(failing), failing._holdoff_active
 

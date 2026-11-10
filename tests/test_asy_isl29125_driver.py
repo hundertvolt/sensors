@@ -267,15 +267,13 @@ def ready_protocol() -> "tuple[I2C, ISL29125_I2C]":
 
 
 def ready_reader(name: str, **kwargs: "object") -> "tuple[I2C, ISL29125_Reader]":
-    import time as _time
-
     i2c, reader = _make_reader(name, **kwargs)  # type: ignore[arg-type]  # **object forwarding, checked at each call site
     with FastAsyncSleep():
         assert run(init_reader(reader, i2c)) is True
     # init's CONFIG1 burst legitimately leaves a settle pending, and these tests run in zero wall
     # clock - so the first conversion is marked complete here rather than every test sleeping 303ms.
     # The settle behaviour has its own tests (test_no_sample_is_reported_during_the_settle_window).
-    reader._isl._settle_until_ms = _time.ticks_ms()
+    reader._isl._settle_until_ms = time.ticks_ms()
     # 0x00 is read-only as the device ID and write-only as the reset command on real hardware, a
     # split tests/machine.py's flat register dict cannot model - so setup()'s reset write leaves
     # 0x46 where the ID should be. Restored so a later device-ID re-read sees a real chip.

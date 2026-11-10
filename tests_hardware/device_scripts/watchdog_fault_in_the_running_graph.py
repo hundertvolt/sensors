@@ -9,10 +9,9 @@ import os
 import _bench_device as device  # rendered: the bench device's generated module
 import machine
 
-from asy_print_log import PrintLog
-
 # @include _shared/facts.py
 # @include _shared/watchdog.py
+# @include _shared/unretrieved.py
 
 try:
     from typing import TYPE_CHECKING
@@ -21,6 +20,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
 
 if TYPE_CHECKING:
     from _shared.facts import done, fact
+    from _shared.unretrieved import report_unretrieved
     from _shared.watchdog import _WDT_TIMEOUT_MS, arm
     from bench_facts import BenchFacts
 
@@ -32,7 +32,6 @@ _POLL_MS = 100
 _READY_WAIT_MS = 60_000  # the scratch boot's construction, setups and task start, fed by the product throughout
 _ROUND_MS = 500
 _UNFED_ROUNDS = 3 * _WDT_TIMEOUT_MS // _ROUND_MS  # well past the watchdog's period: the reset ends the run first
-_REPORT = PrintLog(level=1, name="UNRETRIEVED TASK EXCEPTION:")
 
 
 class _CountingWatchdog:
@@ -58,7 +57,7 @@ def _tasks_started() -> bool:
 
 
 async def _main() -> None:
-    asyncio.get_event_loop().set_exception_handler(_REPORT.report_unretrieved)  # before main(): the firmware keeps it
+    report_unretrieved()
     watchdog = _CountingWatchdog(arm())
     mode = BENCH.get("mode", "main_exit")
     fact("mode", mode)

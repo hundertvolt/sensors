@@ -20,7 +20,6 @@ _OVERRIDE_REASONS = {
     "test_setter_microdot_integration": "the one file registering real Microdot routes, whose upstream stub leaves the decorators untyped",
     "frozen_html": "the frozen website the generated modules import only to mount it, on no search path",
 }
-_ANY_BASELINE = "disallow_any_explicit"  # the explicit-Any baseline sections: they only shrink (test_mypy_any_baseline.py)
 # The runs that check one file alone, each with its config, because a second file of the same module name would join it.
 _SINGLE_FILE_RUNS = (("pyproject.toml", "tests/network.py"), ("host_typecheck.ini", "tests_scripts/conftest.py"), ("host_typecheck.ini", "tests_hardware/bench/conftest.py"))
 # Files two runs with different module resolution both check, and why both must stay clean.
@@ -68,9 +67,6 @@ def test_every_main_pass_override_is_a_named_one() -> None:
     for override in overrides:
         assert isinstance(override, dict)
         modules = override["module"] if isinstance(override["module"], list) else [override["module"]]
-        if set(override) == {"module", _ANY_BASELINE}:
-            assert override[_ANY_BASELINE] is False, override
-            continue
         unnamed = [m for m in modules if m not in _OVERRIDE_REASONS]
         assert not unnamed, f"[[tool.mypy.overrides]] for {unnamed} has no reason in this test - name it with its reason, or drop it"
 

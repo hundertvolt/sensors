@@ -55,7 +55,7 @@ import asy_webserver_service
 import asy_wifi_service
 from asy_base_classes import SensorReader
 from asy_fram_manager import _FRAMBaseChunk, _owner_seed
-from asy_ntp_client import NTP
+from asy_ntp_client import NTP, NTPClient
 from asy_print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
@@ -96,14 +96,14 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping
+    from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping, Sequence
     from types import ModuleType
-    from typing import Any, Protocol, TypeVar
+    from typing import Protocol, TypeGuard, TypeVar
 
     from _twin_devices import I2CAttachment
     from typing_extensions import TypedDict, Unpack
 
-    from asy_base_classes import RegionBuffer, SetupFct, TaskStarter, TimerStarter
+    from asy_base_classes import ErrorSource, RegionBuffer, SetupFct, TaskStarter, TimerStarter
     from asy_bmp3xx_driver import BMP3XX_Reader
     from asy_i2c_driver import I2CDevice
     from asy_isl29125_driver import ISL29125_Reader
@@ -128,6 +128,17 @@ if TYPE_CHECKING:
         # The expected facts buildgen writes per device, as far as the scenarios read them.
         boot_sequence: "dict[str, list[str]]"
         fram_wired: "list[str]"
+
+    class _FanIn(Protocol):
+        # A build_system() global that joins the fan-in collectors (Part C.14).
+        def get_error_sources(self) -> "list[ErrorSource]": ...
+        def get_loggers(self) -> "Sequence[PrintLog]": ...
+
+    class _ConfigOwner(_FanIn, Protocol):
+        # One of them that also owns a config store.
+        cfgmgr: asy_config_manager.ConfigManager
+
+        def get_cfg_schema(self) -> asy_config_manager.ConfigSchema: ...
 
     class _Owner(Protocol):
         # A module build_system() constructs, as the starter collectors call it.
@@ -296,8 +307,6 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
     # main() itself, not just build_system(), must accept and forward the override - the real entry
     # point calls <module>.main(). Fakes every step after the setup list, as the main-call-order
     # scenario below does: the real ones start every task and then supervise them for good.
-    from asy_ntp_client import NTPClient
-
     real_start_tasks = SystemService.start_tasks
     real_start_timers = SystemService.start_timers
     real_force_sync = NTPClient.ntp_force_sync
@@ -609,7 +618,7 @@ def _scenario_fresh_filesystem_writes_once(device: str) -> None:
     first, second = _DirWrites(cfg_path), _DirWrites(cfg_path)
     with first:
         module = build(device, cfg_path=cfg_path, offline_ntp=False, log_errors=False)  # no task runs: truly empty, NTP's store included
-    owners = [obj for obj in _module_objects(module).values() if getattr(obj, "cfgmgr", None) is not None]
+    owners = [obj for obj in _module_objects(module).values() if _owns_config(obj)]
     storing = [obj.cfgmgr for obj in owners if any(asy_config_manager.check_cfg_get_default(field)[0] for field in obj.get_cfg_schema())]
     assert sorted(first.paths) == sorted(cfg_path + "config_" + store.name[len("CFGMGR_") :] + ".cfg" for store in storing), first.paths
     with second:
@@ -1285,10 +1294,14 @@ async def _main_until_supervised(module: "ModuleType", device: str, recorder: "B
             await asyncio.sleep(0)
 
 
-def _module_objects(module: "ModuleType") -> "dict[str, Any]":
+def _module_objects(module: "ModuleType") -> "dict[str, _FanIn]":
     # Every module global build_system() constructed that joins the fan-in collectors.
     found = {name: getattr(module, name) for name in dir(module) if not name.startswith("_")}
     return {name: obj for name, obj in found.items() if not isinstance(obj, type) and hasattr(obj, "get_loggers")}
+
+
+def _owns_config(obj: "_FanIn") -> "TypeGuard[_ConfigOwner]":
+    return getattr(obj, "cfgmgr", None) is not None
 
 
 def _obj(value: object) -> "dict[str, object]":

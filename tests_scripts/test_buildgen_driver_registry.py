@@ -2,6 +2,7 @@
 documented fallback table), and the _NAME-constant parser instance-name collision detection relies
 on. See SPECIFICATION.md Part L.1's acceptance criterion #1."""
 
+import ast
 import os
 import subprocess
 import sys
@@ -10,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, class_has_read_triggers, parse_name_constant, resolve_driver
+from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, _class_needs_setup, class_has_read_triggers, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 
 if TYPE_CHECKING:
@@ -145,9 +146,6 @@ def test_parse_name_constant_non_string(tmp_path: Path) -> None:
 def test_needs_setup_returns_false_when_the_class_is_absent_from_the_file(tmp_path: Path) -> None:
     # The scan walks the whole module looking for the named class; a file that simply doesn't
     # define it must answer "no setup needed" rather than raise.
-    import ast
-
-    from buildgen.driver_registry import _class_needs_setup
 
     tree = ast.parse("class SomethingElse:\n    pass\n")
     assert _class_needs_setup(tree, "X_Reader") is False

@@ -8,11 +8,10 @@ import time
 
 import _bench_device as device  # rendered: the bench device's generated module
 
-from asy_print_log import PrintLog
-
 # @include _shared/facts.py
 # @include _shared/map_dump.py
 # @include _shared/watchdog.py
+# @include _shared/unretrieved.py
 
 try:
     from typing import TYPE_CHECKING
@@ -22,6 +21,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
 if TYPE_CHECKING:
     from _shared.facts import done, fact
     from _shared.map_dump import dump
+    from _shared.unretrieved import report_unretrieved
     from _shared.watchdog import arm, fed_sleep_ms
     from bench_facts import BenchFacts
 
@@ -36,12 +36,10 @@ _SAMPLE_INTERVAL_MS = 1000
 _WINDOW_S = 90
 # A fixed wait, never an in-process readiness request: one would share the heap under measurement (Part E.9).
 _BOOT_WAIT_S = 20
-# The product's own unretrieved-task report at the error level, so it prints whatever level the board's config holds.
-_REPORT = PrintLog(level=1, name="UNRETRIEVED TASK EXCEPTION:")
 
 
 async def _run() -> None:
-    asyncio.get_event_loop().set_exception_handler(_REPORT.report_unretrieved)  # before main(): the firmware keeps it
+    report_unretrieved()
     fact("gc_threshold", gc.threshold())
     wdt = arm()
     # Production config path: the only writes it can cause are the ones a production boot makes anyway (an absent

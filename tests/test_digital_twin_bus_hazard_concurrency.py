@@ -475,8 +475,8 @@ def _three_concurrent_measurements(device: str) -> None:
 
 
 def test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
-    # Every device whose plan shares a bus: wozi's SGP40+BMP3xx pairing has no real-hardware proof (wozi is not flashed,
-    # CLAUDE.md), dev's grouping has its bench proof too (tests_hardware/flash/test_bus_concurrency.py).
+    # Every device whose plan shares a bus: a pairing on a device without `bench = true` has no real-hardware proof (it is
+    # never flashed, CLAUDE.md); the bench device's has its bench proof too (tests_hardware/flash/test_bus_concurrency.py).
     for device, bus_name, _occupants in _SHARED:
 
         async def scenario(device: str = device, bus_name: str = bus_name) -> None:
@@ -1229,7 +1229,7 @@ def test_no_scd30_write_reaches_the_chip_while_a_system_command_runs() -> None:
         ((bus_name, address),) = [(bus, a["address"]) for bus, attachments in sorted(wiring_plan(device)["buses"].items()) for a in attachments if a["driver"] == "scd30"][:1]
         bus = machine.peripheral(bus_name)
         assert isinstance(bus, machine.I2C)
-        chip = bus.devices[address]
+        chip = cast("SCD30Chip", bus.devices[address])
         body: dict[str, object] = {}
         for name, kind, _default, low, _high, _choices in scd30.get_cfg_schema():
             body[name] = True if kind == "bool" else (low + 1.0 if kind == "float" else low + 1)

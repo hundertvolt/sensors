@@ -71,11 +71,9 @@ def _on_path(directory: str) -> "Iterator[None]":
 @pytest.fixture
 def digital_twin_machine(repo_root: Path) -> "Iterator[ModuleType]":
     # digital_twin/machine.py has no MicroPython-only import at module scope (only individual method
-    # bodies do), so plain `import machine` under this suite's own CPython/pytest process works.
+    # bodies do), so loading it under this suite's own CPython/pytest process works.
     with _on_path(str(repo_root / "digital_twin")), _on_path(str(repo_root / "fakes")):  # fakes/: the helpers it imports
-        import machine  # type: ignore[import-not-found]  # only resolvable once digital_twin/ is on sys.path, above
-
-        yield machine
+        yield load_script_module(repo_root / "digital_twin" / "machine.py", "machine")  # gone again with the path entry
 
 
 @pytest.mark.parametrize("body", ["passes", "raises"])
