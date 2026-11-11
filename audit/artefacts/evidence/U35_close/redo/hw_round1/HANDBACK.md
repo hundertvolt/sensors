@@ -43249,3 +43249,53 @@ status: confirmed as measured; whether the shrink continues past three loads not
      - SGP40 W65/W35 inside the bus-load window; teardown codes NTP E71, SGP40 W33/W35 after tests that reset the board.
 - Board: on gc_control.uf2, serving (ResetReason 21, SysUptime 82 s at 08:56); FRAM was erased by the
   tier's own erase tests, so its logs restart there. Waiting for your word before 3 (the owner's approval for 3 stands).
+
+## Bench 2026-11-11 11:20 UTC - d: the final image read against A-E
+
+- 3 08:59-09:03: FC +1 (final dev image, head c75d3ebd), BuildDate 2026-11-11T08:59:34Z, match. Flash cycles today: 2.
+  4b 09:03-09:27 passed 83, failed 9, skipped 4, 1,417 s. 5 09:27-10:48 passed 105, failed 6, 13 teardown/setup errors,
+  skipped 2, 4,858 s. 5h 10:48-11:01 rc 0. No allocation-failure text in any (0 matches). Archives
+  build/archive/run_bench_hardware_suite/20261111T092718Z (5); 4b's under run_flash_hardware_suite, same morning.
+- A: gone as A (no SyntaxError; the twins ran). What is left are three real twin-vs-chip divergences, the same at both
+  thresholds: SCD30 C03_read_before_a_command chip 'dddddd' twin '000000'; BMP3xx B03_pwr_ctrl_during_forced chip '13'
+  twin '03'; FRAM C02_wel_after_write chip '1' twin '0'. (sgp40 passed on this run.) New to you: the twins never ran on
+  this host before.
+- B (before your 09:12 fix): 4b x4, same text, log tail ends in the running loop ("SYSTEM All tasks running.", sensor
+  lines): held SDA [machine_reset]/[watchdog], bootloader command, task_supervisor [supervisor_raise]. One more in 5,
+  likely the same family: test_reset_reasons escalate failed in call at _attributed()'s `mpremote exec` of the
+  reason-bits read, OSError EIO from the port (the budget reboot was still re-enumerating USB; the script's own asserts
+  before it passed). On the control image this node passed in call.
+- C: same three, unchanged: c_stack_budget `'FRAM_SPI' object has no attribute 'set_values_sync'` (4b), `_CCT_MIN` KeyError
+  x2 in 5 (rest_endpoints measurements; bus_concurrency_under_api_load ...ntp_transient_outage...).
+- D: built graph on the final image 103,360 B (control 103,296 B, +64 B), free after the build 84,784 B, largest block
+  34,448 B (same as control). Baseline before the build: alloc 67,376, free 120,752, largest 118,864.
+- E, per behaviour (final image vs control):
+  1. SGP40 E10 INIT + SYSTEM E44 TASK_RETURNED: NOT on the final image. No E10/E44 in any errcount read after 3, 4b, 5,
+     5h, nor in any test's teardown codes; the same five tests' teardowns now carry only NTP E71 / ISL29125 codes. On the
+     control image its text was the console line `6.305 SGP40 Error in initial setup: [Errno 5] EIO`, then
+     `6.771 SYSTEM Task SGP40.start_asy_read ended: returned`, `6.794 ... attempting restart, error counter increased to
+     100`, and `8.522 SGP40 initialized with storage` on the restart (archive 20261111T073543Z boot-log.txt, the
+     session's first boot: the console capture before the first test; preceding steps are the test session's
+     hard_reset into a serving boot, BMP3XX initialized at 6.047, timers 0/1 at 6.26). Per-test console for the later
+     boots was not captured.
+  2. modlwip send stall: SHOWS, other side of the same 10 s edge. Final: page_s None (the page load hit the 10.01 s
+     timeout), zero_window 5, /status max 1.28 s, stopped 0 s, no reboot, drained, page after True. Control: page 1.61 s,
+     /status 10.01 s, stopped 10.51 s. Every other route under 0.82 s on both.
+  3. Negative Content-Length: NOT on the final image (passed). On the control image: the refused head was counted
+     (HTTPDropped rose within the 15 s wait), then _load.serving()'s one GET /status (10 s timeout) did not return 200;
+     serving() swallows OSError/HTTP errors, so the exact outcome is not recorded. It did not answer within 10 s, so not
+     within 5 s either.
+  4. UART multi-chunk under load: SHOWS. 69 of 81 intact, 12 failures from round 46 on ("stored False, answer None"),
+     Failures 0 -> 28, Transfers 17 -> 18 (control: 76 of 86, 10, 0 -> 29). Teardown adds UART_init E85 UART_REENTRANT
+     and WEBSERVER W51 (both also on control).
+  5. SGP40 under bus load and teardown codes: SHOWS. bus_concurrency ...never_corrupts...: SGP40 counter 2 under load.
+     Teardown codes on the final image: NTP E71 (x6 tests), SGP40 W33/W34/W35/W65, WEBSERVER W51 (x2), ISL29125 W31,
+     and new here ISL29125 E13 CHIP_SET (loop end [exception]) and E55 ISL_STATUS_READ + E1 STREAK (loop end [base]).
+- errcount read after each step (W/E entries only; counters): 3: NTP E71 (2), SGP40 W33 (9). 4b: CFGMGR_SGP40/
+  SYSTEM/WIFI W22 (5 each), SGP40 W65,W34 (9), SYSTEM test seeds E125/E126 + E115 SUPERVISOR_RAISED (49; the flash tier's
+  own seeds and its supervisor_raise test). 5: SGP40 W33 (9). 5h: NTP E71 (1), SGP40 W33 (12), WEBSERVER W60 (140, the
+  ceiling's refusals under 6 readers).
+- 5h (final vs control): after the one collect, free 82,240-82,288 B both, largest block 18,048 / 24,768 / 18,432 /
+  49,360 B (control 3,328-5,360). Under 6 readers /status 200 x107-108 with ConnectionResetError x47-48 per minute
+  (control 111-113 / 34-44); 2 readers 101 / 0 (control 116 / 0).
+- Board: final image, serving. Next, per 09:12: B's 11 and C's 3 nodes on this image (no flash), on head baeb86a0.
