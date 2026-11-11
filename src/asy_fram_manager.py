@@ -163,18 +163,22 @@ class _FRAMBaseChunk:
             return None
         return uninit0
 
-    def _read(self, buf: bytearray) -> bool | None:
+    def _read(self, buf: RegionBuffer) -> bool | None:
         # True: valid data. False: read, and no copy usable (blank, invalid, or two differing copies).
-        # None: not read (paused, a bad buffer, a fault without a valid copy beside it, a failed repair).
+        # None: not read (an unallocated or bad buffer, paused, a fault without a valid copy beside it, a failed repair).
+        image = buf.get_buf()
+        if image is None:
+            return None
         if self._mempause():
             self.pr.wrn_s("FRAM communication paused, not reading FRAM!", wrnno=_WRN_FRAM_PAUSED)
             return None
-        if len(buf) != self.size + self.crc.length():
-            self.pr.err_s("Data size", len(buf), "does not match chunk size", self.size, "!", errno=_ERR_BAD_ARG)
+        if len(image) != self.size + self.crc.length():
+            self.pr.err_s("Data size", len(image), "does not match chunk size", self.size, "!", errno=_ERR_BAD_ARG)
             return None
         if not _begin(self.fram, self.pr):
             return None
-        valid, uninit, fault = self._read_into(buf, self._block_addr[0])
+        valid, uninit, _match = self._read_chunk(image, self._block_addr[0])
+        fault = self._read_fault
         if not valid:  # if first copy is invalid, take second copy
             if uninit:
                 self.pr.evt("Uninitialized data in block 0, reading block 1")
@@ -182,7 +186,8 @@ class _FRAMBaseChunk:
                 self.pr.wrn_s("Read fault in block 0, reading block 1", wrnno=_WRN_FRAM_BLOCK_INVALID)
             else:
                 self.pr.wrn_s("Invalid data in block 0, reading block 1", wrnno=_WRN_FRAM_BLOCK_INVALID)
-            valid, uninit1, fault1 = self._read_into(buf, self._block_addr[1])
+            valid, uninit1, _match = self._read_chunk(image, self._block_addr[1])
+            fault1 = self._read_fault
             if not valid:
                 if uninit1:
                     self.pr.evt("Uninitialized data in block 1")
@@ -194,13 +199,13 @@ class _FRAMBaseChunk:
                 return None if fault or fault1 else False
             self.pr.all("Valid data in block 1, overwriting block 0")
             # if block 1 is valid, overwrite invalid block 0 with valid data
-            if not self._write_chunk(buf, self._block_addr[0]):
+            if not self._write_chunk(image, self._block_addr[0]):
                 self.pr.err_s("Writing block 0 failed!", errno=_ERR_FRAM_BLOCK_WRITE)
                 return None  # writing failed, means something is really wrong, better do not use data
             self.pr.all("Data read successfully from block 1")
             return True
         self.pr.all("Data read successfully from block 0")
-        valid, uninit, match, fault = self._compare_with(buf, self._block_addr[1])
+        valid, uninit, match, fault = self._compare_with(image, self._block_addr[1])
         if not valid:  # check block 1 even if block 0 is valid
             if uninit:
                 self.pr.evt("Uninitialized data in block 1, writing block 0 data")
@@ -208,18 +213,18 @@ class _FRAMBaseChunk:
                 self.pr.wrn_s("Read fault in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
             else:
                 self.pr.wrn_s("Invalid data in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
-            if not self._write_chunk(buf, self._block_addr[1]):
+            if not self._write_chunk(image, self._block_addr[1]):
                 self.pr.err_s("Writing block 1 failed!", errno=_ERR_FRAM_BLOCK_WRITE)
                 return None  # writing failed, means something is really wrong, better do not use data
             self.pr.all("Data read successfully from block 0")
             return True
-        if not match:
+        if match:
+            self.pr.all("Both blocks valid and data verified")
+        else:
             # No generation counter says which block is newer, so a write torn between blocks leaves two valid
             # but differing copies: a hard failure, never a guess (owner, 2026-07-18). The next write heals it.
             self.pr.err_s("Both blocks valid but different data", errno=_ERR_FRAM_COPIES_DIFFER)
-            return False
-        self.pr.all("Both blocks valid and data verified")
-        return True
+        return match
 
     def _read_chunk(self, buf: bytearray, addr: int, against: bytearray | None = None) -> tuple[bool, bool, bool]:
         # The block whole into buf; its CRC runs after the closing status pair, and beside a valid copy (against) only on
@@ -246,28 +251,27 @@ class _FRAMBaseChunk:
             return False, False, False
         return True, False, against is None
 
-    def _read_into(self, buf: bytearray, addr: int) -> tuple[bool, bool, bool]:
-        valid, uninit, _match = self._read_chunk(buf, addr)
-        return valid, uninit, self._read_fault
-
-    def _write(self, buf: bytearray) -> bool:
+    def _write(self, buf: RegionBuffer) -> bool:
+        image = buf.get_buf()
+        if image is None:
+            return False
         if self._mempause():
             self.pr.wrn_s("FRAM communication paused, not writing FRAM!", wrnno=_WRN_FRAM_PAUSED)
             return False
-        if len(buf) != self.size + self.crc.length():
-            self.pr.err_s("Data size", len(buf), "does not match chunk size", self.size, "!", errno=_ERR_BAD_ARG)
+        if len(image) != self.size + self.crc.length():
+            self.pr.err_s("Data size", len(image), "does not match chunk size", self.size, "!", errno=_ERR_BAD_ARG)
             return False
-        if self.crc.add_into(buf, self.size, init=self._crc_seed) is None:  # once for both blocks
+        if self.crc.add_into(image, self.size, init=self._crc_seed) is None:  # once for both blocks
             self.pr.err_s("CRC computation failed!", errno=_ERR_FRAM_CRC_FAILED)
             return False
         if not _begin(self.fram, self.pr):
             return False
         self.pr.all("Writing both blocks, one not IDLE first")
-        if not self._write_chunk(buf, -1):
+        if not self._write_chunk(image, -1):
             self.pr.err_s("Writing block", self._first, "failed!", errno=_ERR_FRAM_BLOCK_WRITE)
             return False
         second = 1 - self._first
-        if not self._write_chunk(buf, self._block_addr[second]):
+        if not self._write_chunk(image, self._block_addr[second]):
             self.pr.err_s("Writing block", second, "failed!", errno=_ERR_FRAM_BLOCK_WRITE)
             return False
         if self._verify > 0:
@@ -276,7 +280,7 @@ class _FRAMBaseChunk:
                 self._verify_counter = 0
                 self.pr.evt("Verifying written data")
                 for n in range(len(self._block_addr)):
-                    valid, uninit, match, _fault = self._compare_with(buf, self._block_addr[n])
+                    valid, uninit, match, _fault = self._compare_with(image, self._block_addr[n])
                     if not valid or uninit or not match:
                         self.pr.err_s("Block", n, "write verification error!", errno=_ERR_FRAM_VERIFY)
                         return False
@@ -339,6 +343,10 @@ class FRAMChunkBuffer(RegionBuffer):
 
 
 class FRAMChunk(_FRAMBaseChunk):
+    # The block read and write themselves, no frame between: each plain level under a FRAM access is C stack (F.1).
+    read_into = _FRAMBaseChunk._read
+    write_into = _FRAMBaseChunk._write
+
     def get_buffer(self) -> FRAMChunkBuffer:
         return FRAMChunkBuffer(self.size, self.crc.length(), self.pr)
 
@@ -351,12 +359,6 @@ class FRAMChunk(_FRAMBaseChunk):
             return None
         return bytearray(dbuf)
 
-    def read_into(self, buf: RegionBuffer) -> bool | None:
-        dbuf = buf.get_buf()
-        if dbuf is None:
-            return None
-        return self._read(dbuf)
-
     def write(self, data: bytes | bytearray) -> bool:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         databuf = buf.get_data_buf()
@@ -368,12 +370,6 @@ class FRAMChunk(_FRAMBaseChunk):
         databuf[0 : len(data)] = data
         del data  # free memory after using preallocated buffer
         return self.write_into(buf)
-
-    def write_into(self, buf: RegionBuffer) -> bool:
-        dbuf = buf.get_buf()
-        if dbuf is None:
-            return False
-        return self._write(dbuf)
 
 
 class FRAMChunkTimestampedBuffer(RegionBuffer):
@@ -416,10 +412,7 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
         return ts, age, bytearray(dbuf)
 
     async def read_into(self, buf: FRAMChunkTimestampedBuffer) -> tuple[bool | None, int | None, int | None]:
-        bbuf = buf.get_buf()
-        if bbuf is None:
-            return None, None, None
-        res = self._read(bbuf)
+        res = self._read(buf)  # None for an unallocated buffer
         if res is not True:
             return res, None, None
         age = None
@@ -484,10 +477,7 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
         if tbuf is None:
             return False, False, None
         struct.pack_into(_TS_FMT, tbuf, 0, utc)
-        bbuf = buf.get_buf()
-        if bbuf is None:
-            return False, False, None
-        return self._write(bbuf), ntp_synced, utc
+        return self._write(buf), ntp_synced, utc
 
 
 class FRAMManager:

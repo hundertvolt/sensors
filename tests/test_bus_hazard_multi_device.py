@@ -638,7 +638,7 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
     async def scenario() -> bool:
         raised = False
         try:
-            fram._read_address(0, bytearray(32))  # 32+ bytes: the DMA path, the only one that can raise
+            fram.get_values(bytearray(32), 0)  # 32+ bytes: the DMA path, the only one that can raise
         except OSError:
             raised = True
         await neighbour_writes()  # a lock the overrun left held hangs the neighbour

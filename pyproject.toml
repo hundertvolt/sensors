@@ -231,6 +231,8 @@ max-returns = 10
 # `print()` is the log transport, not debug residue - asy_print_log.py is built on it (T20); its one module flag, with
 # one writer, is the C-stack fatal flag report_if_fatal() sets (PLW0603).
 "src/asy_print_log.py" = ["PLW0603", "T20"]
+# FRAMChunk's read_into()/write_into() alias the base chunk's _read()/_write(): no frame between, F.1's C stack (SLF001).
+"src/asy_fram_manager.py" = ["SLF001"]
 # The sensor drivers: the `_push_*` family takes the config-VALUE union through Part C.5.2's single-positional-argument
 # contract that D.10 forbids splitting (FBT001); C.2's `<CHIP>_<Role>` compounds and the Sensirion port's names (N801);
 # get_CO2 is the datasheet's name (N802); `x != x` is the NaN test at each site, commented there (PLR0124).

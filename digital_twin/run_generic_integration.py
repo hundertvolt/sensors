@@ -998,8 +998,8 @@ def _test_p99_us(bins: "list[int]", samples: int, worst: int) -> int:
 
 def _test_pin_send_buffer(module: "ModuleType", say: "Callable[[str], None]" = print) -> None:
     # WebserverService._serve() gets each stream start_server() accepts; rebound while the setup batch still runs, it
-    # pins each socket's send buffer at the kernel's floor first, as rp2's is small and fixed (TCP_SND_BUF 6,400 B,
-    # extmod/lwip-include/lwipopts_common.h:94, v1.29.0), so a large body is mid-write at a client's reset on any host.
+    # pins each socket's send buffer at the kernel's floor first, as rp2's is small and fixed (TCP_SND_BUF in
+    # toolchain/versions.toml's [lwip]), so a large body is mid-write at a client's reset on any host.
     service = module.webserver
     real_serve = service._serve
 

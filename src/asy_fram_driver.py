@@ -138,7 +138,7 @@ class FRAM_SPI:
         self._wrsr_buf[0] = _SPI_OPCODE_WRSR
         self._wrsr_buf[1] = target
         self._send_command(self._wrsr_buf)
-        ok = (self._read_status() & _SR_WP_MASK) == target  # verify the one way this can change
+        ok = (self._send_and_read(_CMD_RDSR, self._status_buf)[0] & _SR_WP_MASK) == target  # verify the one way this can change
         status = en | (_W_OK if self._disable_write() else _W_WEL_STUCK)
         if not ok:
             if self._wp_pin is not None:
@@ -162,29 +162,23 @@ class FRAM_SPI:
         # (continual programming, p.6), so this WRDI is what clears it on both - one cheap retry, then False, which
         # the caller turns into a warning: a stuck latch doesn't undo the operation.
         self._send_command(_CMD_WRDI)
-        if not self._read_status() & _SR_WEL:
+        if not self._send_and_read(_CMD_RDSR, self._status_buf)[0] & _SR_WEL:
             return True
         self._send_command(_CMD_WRDI)
-        return not self._read_status() & _SR_WEL
+        return not self._send_and_read(_CMD_RDSR, self._status_buf)[0] & _SR_WEL
 
     def _enable_write(self) -> int:
         # WREN-and-verify preamble for WRITE/WRSR (WEL gates both): RDSR catches a corrupted WREN the chip would
         # otherwise silently ignore the next WRITE/WRSR for. One retry, as _disable_write() retries WRDI; each
         # WREN is its own CS cycle, and the CS rising edge ends any half-received command (datasheet p.6).
         self._send_command(_CMD_WREN)
-        if self._read_status() & _SR_WEL:
+        if self._send_and_read(_CMD_RDSR, self._status_buf)[0] & _SR_WEL:
             return _W_OK
         self._send_command(_CMD_WREN)
-        return _W_WEL_RETRIED if self._read_status() & _SR_WEL else _W_WEL_NOT_SET
+        return _W_WEL_RETRIED if self._send_and_read(_CMD_RDSR, self._status_buf)[0] & _SR_WEL else _W_WEL_NOT_SET
 
-    def _read_address(self, address: int, read_buffer: bytearray | memoryview) -> None:
-        self._send_and_read(self._setup_addr_buffer(address, _SPI_OPCODE_READ), read_buffer)
-
-    def _read_status(self) -> int:
-        self._send_and_read(_CMD_RDSR, self._status_buf)
-        return self._status_buf[0]
-
-    def _send_and_read(self, command: bytes | bytearray, read_buffer: bytearray | memoryview) -> None:
+    def _send_and_read(self, command: bytes | bytearray, read_buffer: bytearray | memoryview) -> bytearray | memoryview:
+        # Answers read_buffer, so a status read indexes it in place: no helper level under the deepest FRAM chain (F.1).
         cs, on = self._cs, self._cs_on
         cs(on)
         try:
@@ -192,6 +186,7 @@ class FRAM_SPI:
             self._bus_readinto(read_buffer)
         finally:
             cs(not on)
+        return read_buffer
 
     def _send_and_write(self, command: bytes | bytearray, data: bytes | bytearray | memoryview) -> None:
         cs, on = self._cs, self._cs_on
@@ -250,7 +245,7 @@ class FRAM_SPI:
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             self.pr.err_s("get_values: Invalid FRAM address range!", errno=_ERR_BAD_ARG)
             return False
-        self._read_address(addr_start, buf)
+        self._send_and_read(self._setup_addr_buffer(addr_start, _SPI_OPCODE_READ), buf)
         return True
 
     def get_write_protected(self) -> bool:
@@ -321,7 +316,7 @@ class FRAM_SPI:
         if not present:
             raise OSError("FRAM SPI device not found")
         # WPEN/BP0/BP1 are nonvolatile (datasheet) - re-sync _wp from hardware, not the ctor's wp=.
-        self._wp = (self._read_status() & _SR_WP_MASK) == _SR_WP_SET
+        self._wp = (self._send_and_read(_CMD_RDSR, self._status_buf)[0] & _SR_WP_MASK) == _SR_WP_SET
         if attempt > 1:
             self.pr.wrn_s("FRAM answered its identification only on attempt", attempt, wrnno=_WRN_FRAM_ID_RETRIED)
         if self._wp_pin is not None:

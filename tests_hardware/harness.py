@@ -733,6 +733,8 @@ def restore_board_to_serving(board: "Board", bench: "BenchBridge", dut_ip: str) 
         poll_interval_s=_SERVING_RESTORE_POLL_S,
         description="DUT serving HTTP again after a device script left main.py stopped",
     )
+    # A serving board can still be re-enumerating on USB, where the next mpremote call fails (bench, 2026-11-11).
+    wait_until(board.is_device_present, timeout_s=_SERVING_RESTORE_TIMEOUT_S, description="the board back on USB after the restore's reset")
 
 
 def save_fram_raw(board: "Board", reason: str) -> FramDump:

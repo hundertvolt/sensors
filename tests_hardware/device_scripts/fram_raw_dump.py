@@ -50,7 +50,7 @@ async def _main() -> None:
             wdt.feed()
         if failed_at is not None:
             break
-    status = fram._read_status()
+    status = fram._send_and_read(b"\x05", fram._status_buf)[0]  # RDSR (datasheet p.6), as the driver reads it
     fact("dump_size", sum(length for _start, length in _EVIDENCE_REGIONS))
     fact("zero_pieces", skipped)
     fact("read_failed_at", failed_at)

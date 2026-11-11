@@ -514,8 +514,8 @@ def test_fram_recovers_after_a_write_its_chip_never_enabled() -> None:
 
 
 def test_fram_recovers_after_an_injected_spi_read_fault() -> None:
-    # Read-side sibling of the write test above: _read_address() has no try/except of its own, so an rp2 read
-    # error propagates raw from get_values(); its recovery needs its own proof.
+    # Read-side sibling of the write test above: get_values() has no try/except around its read, so an rp2 read
+    # error propagates raw from it; its recovery needs its own proof.
     async def scenario(device: str) -> None:
         module, _watchdog = await _boot(device)
         fram_spi = module.fram.fram

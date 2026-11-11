@@ -452,8 +452,10 @@ def test_wait_until_ends_at_its_bound_and_checks_once_more_there(clock: _Clock) 
     assert clock.waits == [1.0, 1.0, 0.5] and checks == [0.0, 1.0, 2.0, 2.5]
 
 
-def test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_for_http(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_for_http_and_usb(monkeypatch: pytest.MonkeyPatch, clock: _Clock) -> None:
+    # A serving board can still be re-enumerating on USB, and the next test's first mpremote call then fails (bench, 2026-11-11).
     fake = _Recorder()
+    present = iter([False, True])
 
     def kick_then_reset(board: object, bench: object) -> None:
         assert board is fake and bench is fake
@@ -463,10 +465,16 @@ def test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_fo
         fake.calls.append("fetch")
         return http_client.HttpResponse(200, {}, b"{}")
 
+    def is_device_present() -> bool:
+        fake.calls.append("is_device_present")
+        return next(present)
+
     monkeypatch.setattr(harness, "kick_then_reset", kick_then_reset)
     monkeypatch.setattr(http_client, "fetch", fetch)
+    monkeypatch.setattr(fake, "is_device_present", is_device_present, raising=False)
     harness.restore_board_to_serving(fake, fake, "dut")  # type: ignore[arg-type]
-    assert fake.calls == ["kick_then_reset", "kick_all_stations", "hard_reset", "fetch"]
+    assert fake.calls == ["kick_then_reset", "kick_all_stations", "hard_reset", "fetch", "is_device_present", "is_device_present"]
+    assert clock.waits == [harness._WAIT_UNTIL_POLL_S]
 
 
 def test_kick_then_reset_kicks_the_stations_before_the_one_reset() -> None:
