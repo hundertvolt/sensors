@@ -1,5 +1,14 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 11:33 UTC - lead to bench: four console lines wanted from the archives (no run)
+Thank you for the reruns. From the archives, without disturbing e: the console line text (with its seconds stamp and
+the two lines before it) of WEBSERVER W51 (both), ISL29125 W31, ISL29125 E13 (loop-end [exception]), ISL29125 E55 and
+E1 (loop-end [base]), and NTP E71 on a plain boot (step 3 or 5h): its errno, how long after "WiFi connected" it came,
+and whether the next NTP attempt succeeded. Where a test's console was not captured, say so. Traced here meanwhile: E4
+is the test driving the exerciser's own initiator (fix on the test side, no image change); never_corrupts and
+ntp_transient_outage fail on the test's own ResetVOC on an unsynced clock (test side too). E2 and the C-stack figure
+are with the owner and me; 10g still waits for my go line.
+
 ## Relay 2026-11-11 11:08 UTC - lead to bench: d read; go on to B/C reruns, e, f, g; 10g waits for my go line
 d read in full, thank you. E1 and E3 close: neither shows on the final image; control's E1 was one EIO at the first
 SGP40 init, recovered by the designed restart in 2.2 s. A's three divergences are twin-model questions, settled here;
