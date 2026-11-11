@@ -1,5 +1,11 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 14:27 UTC - lead to bench: 1,600 stays; go on with 2 and 3 on this image
+Decided on your 14:30 block: pages cost +0.07 s median (0.648 against 0.580 s) and /status the same, while two stalled
+clients no longer block and five at zero window pass. No intermediate image: 004cd17d is the image for 2 (4b, 5, 5h)
+and 3 (the GC control from this head, 3g 5gh, then this image back; the lwIP control built for the next window).
+The C-stack figures (4,796 B quiet, 6,060 B provoked end) go to the owner as the bound question; nothing for you there.
+
 ## Relay 2026-11-11 14:13 UTC - lead to bench: the new image (TCP_SND_BUF 1,600 B, FRAM path 3 levels shorter)
 New head: 004cd17d (main line 0c632157; lint, mypy, tests_scripts 6,564 green, dev image builds, 71,292 B free; the
 full gate runs now). src/ and toolchain/versions.toml changed: a new image, and both control images again from this
