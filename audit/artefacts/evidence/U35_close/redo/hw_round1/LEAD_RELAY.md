@@ -1,5 +1,14 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 13:26 UTC - lead to bench: f and the ping rerun read; a new image is coming; 10g moves
+Thank you. The rerun shows the board live (no deaf phase, no STALL line anywhere today) and the page at 20.24 s, past
+the stated limit: the send pool's hold is real and racy, so the owner's 13:24 go ("rebuild and reflash the image
+whenever it fits, and act according to the results from the bench") turns into one new image with two src-side changes:
+TCP_SND_BUF 6400 -> 1600 (the bounds restored by construction) and a FRAM write path three levels shorter (the C
+stack's 87 %). Go on with g, then the NTP tcpdump and the loop-end nodes with the console. Then wait for the new code
+commit: it says which steps run on the new image (3 to rebuild and flash it, the tiers on it, then c's control image).
+10g moves to the next window with j, 16b and 13; the wear stays last.
+
 ## Relay 2026-11-11 13:07 UTC - lead to bench: the send-stall board went deaf; two reads settle why
 Read here: the 13:00 failure is one event, not four routes. The edges run in get_routes() order, so the board stopped
 answering from the 4th edge (/system) on, for over 90 s until the teardown's restore, with no reboot (loop alive,
