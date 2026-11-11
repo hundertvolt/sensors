@@ -67,6 +67,10 @@ _LOAD_CODES = (("E", "READ_RANGE"), ("W", "ISL_DIVERGED"))
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
 )
 def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
+    # The board may come straight from a reboot whose clock is unsynced: SGP40's restore then waits for the sync, the
+    # resets delete the backup it waits for (W65) and the next one goes undated (W35). NTP's retry timer resyncs
+    # within one retry wait and the attempt after it.
+    wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_load.ntp_retry_period_s() + _load.ntp_attempt_s() + _NTP_BLOCK_MARGIN_S, poll_interval_s=_NTP_RESYNC_POLL_S, description="NTP synced before the SGP40 resets")
     reset_all_error_logs(dut_ip, request.node.name)
     load = _load.Load()
     resets = threading.Thread(target=_sgp40_resets, args=(dut_ip, load, _FETCH_TIMEOUT_S, ""), name="sgp40-resets")
@@ -126,10 +130,14 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
 
 
 @pytest.mark.provokes_log(
-    "the blocked NTP port's NTP_NO_REPLY the test waits for, and the ceiling's reject-when-full under the readers",
+    "the blocked NTP port's NTP_NO_REPLY the test waits for, the ceiling's reject-when-full under the readers, and SGP40"
+    " on the unsynced boot: its restore, waiting for the sync, finds the backup ResetVOC deleted, and the block outlasts"
+    " the next backup's NTP wait, which then goes undated",
     ("NTP", "E", "NTP_NO_REPLY"),
     ("WEBSERVER", "W", "HTTP_REFUSED"),
     ("WEBSERVER", "W", "HTTP_PEER_RESET"),
+    ("SGP40", "W", "SGP_NO_BACKUP"),
+    ("SGP40", "W", "SGP_WRITTEN_NO_TS"),
 )
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
     # A synced client attempts nothing for NTPInterval hours and an unchanged NTPHost PUT fires no post function
@@ -160,7 +168,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     started = time.monotonic()
     wait_until(lambda: _load.ntp_synced(dut_ip), timeout_s=_NTP_RESYNC_TIMEOUT_S + block_s, poll_interval_s=_NTP_RESYNC_POLL_S, description="NTP resynced by its own retry timer after the block, under bus load")
     result_note(f"NTP resynced {time.monotonic() - started:.1f}s after the block lifted")
-    _assert_bus_logs_empty(dut_ip)
+    owed = {name: (2, [("W", code("W", "SGP_NO_BACKUP")), ("W", code("W", "SGP_WRITTEN_NO_TS"))]) for name in _load.instance_loggers("sgp40")}
+    _assert_bus_logs_empty(dut_ip, owed=owed)  # each SGP40 holds the provokes_log pair, in order, or nothing
     assert_no_task_ended(dut_ip, "bus load under a network fault")
     reset_all_error_logs(dut_ip, request.node.name)
 
@@ -420,14 +429,15 @@ def test_reboot_under_api_load(board: Board, bench: "BenchBridge", dut_ip: str, 
 # workers above use and which looks like a trigger, reaches a software-only reset instead.
 
 
-def _assert_bus_logs_empty(dut_ip: str, extra: "tuple[str, ...]" = ()) -> None:
-    # Every logger a bus load reaches (each I2C/SPI instance's, from the bench TOML) empty; the read paths' new codes are
-    # named so a failure says which of them a load provoked.
+def _assert_bus_logs_empty(dut_ip: str, extra: "tuple[str, ...]" = (), owed: "dict[str, tuple[int, list[tuple[str, int]]]] | None" = None) -> None:
+    # Every logger a bus load reaches (each I2C/SPI instance's, from the bench TOML) empty, or holding exactly what the arm
+    # owes it (counter, entries); the read paths' new codes are named so a failure says which of them a load provoked.
     named = {code(kind, name): name for kind, name in _LOAD_CODES}
     for module in (*_load.bus_loggers(), *extra):
         entry = errcount_entry(get_errcount(dut_ip), module)
         seen = sorted({named[num] for h in entry["history"] if isinstance(num := h.get("num"), int) and num in named})
-        assert entry["counter"] == 0, f"{module!r} logged under bus load (of the read paths' load codes: {seen or 'none'}): {entry!r}"
+        held = (entry["counter"], [(h.get("type"), h.get("num")) for h in entry["history"] if h.get("type") != "N"])
+        assert entry["counter"] == 0 or held == (owed or {}).get(module), f"{module!r} logged under bus load (of the read paths' load codes: {seen or 'none'}): {entry!r}"
 
 
 def _assert_load(load: _load.Load, floor: int, context: str, *, transport_failures_allowed: bool) -> None:

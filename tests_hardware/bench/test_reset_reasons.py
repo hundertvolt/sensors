@@ -42,8 +42,10 @@ _BOOT_PHASES = (1, 2, 3, 4, 5)  # asy_system_service.py's BOOT_CONSTRUCTION .. B
 
 
 def _attributed(board: "Board", dut_ip: str, expected: int, result_note: "Callable[[str], None]", context: str) -> int:
-    # Asserts the reason, then reads the watchdog's REASON bits off the chip (the exec parks main.py) for the half checks.
+    # Asserts the reason, then reads the watchdog's REASON bits off the chip (the exec parks main.py) for the half checks,
+    # once the board is on USB: a serving board can still be re-enumerating there, and the exec then fails (bench, 2026-11-11).
     reason = _system_status(dut_ip).get("ResetReason")
+    wait_until(board.is_device_present, timeout_s=_SERVING_TIMEOUT_S, description=f"{context}: the board back on USB for the REASON bits read")
     bits = next((int(line.split()[1]) for line in board.exec(_READ_REASON_BITS).splitlines() if line.startswith("REASON_BITS ")), None)
     result_note(f"{context}: ResetReason {reason}, watchdog REASON bits {bits}")
     assert reason == expected, f"{context}: ResetReason reads {reason}, not {expected}; watchdog REASON bits {bits}"

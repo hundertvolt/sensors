@@ -151,7 +151,7 @@ def _build_i2c_chip(attachment: "_I2CAttachment") -> "I2CChip":
     if driver == "sgp40":
         return SGP40Chip(random_source=_random_source)
     if driver == "bmp3xx":
-        return BMP3XXChip(random_source=_random_source)
+        return BMP3XXChip(random_source=_random_source, clock=lambda: time)
     if driver == "isl29125":
         return ISL29125Chip(random_source=_random_source, int_pin=Pin(attachment["irq_pin"], mode=Pin.IN), timer_factory=_simulation_timer)
     raise ValueError(f"digital twin has no I2C chip fake for driver {driver!r} - add one to machine._build_i2c_chip()")
