@@ -43339,3 +43339,22 @@ status: confirmed as measured; whether the shrink continues past three loads not
   - ISL29125 W31, E13 (loop-end [exception]), E55 + E1 (loop-end [base]): not captured; those tests save errcount and
     the raw FRAM only (errcount-/fram-raw-reset-reason-loop-end-*.{json,txt} in the archive).
 - Next: 12:30 items 2 and 3 (chip_conformance; the five bench nodes), then f.
+
+## Bench 2026-11-11 13:00 UTC - 12:30 items 2 and 3 on the final image (head 9e821210, no flash)
+
+- 4b 12:44-12:46: chip_conformance scd30, bmp3xx, fram: 3 passed. The twins match the chip.
+- 5 12:46-12:56: 5 passed, 2 failed, 2 teardown errors, 557 s. My -k "test_concurrent_get_sensors_under_real_multi_
+  client_load" also took two nodes you did not list (survives_light_network_degradation, survives_repeated_real_wifi_
+  flapping); both passed.
+  - never_corrupts PASSED, ntp_transient_outage PASSED, multi-chunk echo PASSED in call (teardown: WEBSERVER W51).
+  - test_no_send_stall_with_the_override FAILED, on control's side of the edge this time and worse: page_s 7.62 s
+    (inside the new 20 s), zero_window 5, but /status, /system, /notification and /uart each 10.02 s, stopped answering
+    10.52 s, drained False, page_after False, no reboot; /measurements, /sensors, /networking 0.77 s. Failed bounds:
+    'stopped answering 10.5 s', 'the slots did not drain', 'no full page load after the clients closed'. Teardown:
+    UART_init E81 UART_NO_ACK, E22 TIMEOUT, W54 UART_DRAIN_BOUND; UART_resp E81, E88 UART_PEER_INITIATED (errcount
+    after the step: UART_init counter 9, UART_resp 6).
+  - reset_reasons [escalate] FAILED earlier than in d: at its first step, _evidence()'s save_fram_raw (mpremote run
+    fram_raw_dump.py, OSError EIO on the port), before the test's own action. It ran right after the send-stall node,
+    whose slots had not drained; the board was re-enumerating after that teardown's restore.
+- After the step the board serves: BootSignature set, LocalTime 13:56 local, so NTP synced in that boot.
+- Next: f (run 12a 12g), then 12:46's two reads (tcpdump of NTP across one hard_reset; loop-end nodes with console).
