@@ -68,6 +68,12 @@ _PRESSURE_WALK_DEFAULT = Walk(950.0, 1050.0, 5.0)  # hPa
 _CAL_RAW = bytes.fromhex("6c6b5014fd9065a041ec05381868101ef4e0fc03fe")
 
 
+def _conversion_us(osr: int) -> int:
+    # A forced conversion's time, both enables set: DS001 3.9.2, the bench's BMP384/BMP388 (DS003 the same; DS002's BMP390
+    # within 3 %), osr_p in OSR bits 2:0 and osr_t in bits 5:3 (4.3.17).
+    return 234 + 392 + 313 + 2000 * ((1 << (osr & 0x07)) + (1 << (osr >> 3 & 0x07)))
+
+
 def _decode_calibration(raw: bytes) -> "tuple[tuple[float, float, float], tuple[float, ...]]":
     coeff = struct.unpack("<HHbhhbbHHbbhbb", raw)
     temp_calib = (coeff[0] / 2**-8.0, coeff[1] / 2**30.0, coeff[2] / 2**48.0)
@@ -85,12 +91,6 @@ def _decode_calibration(raw: bytes) -> "tuple[tuple[float, float, float], tuple[
         coeff[13] / 2**65.0,
     )
     return temp_calib, pressure_calib
-
-
-def _conversion_us(osr: int) -> int:
-    # A forced conversion's time, both enables set: DS001 3.9.2, the bench's BMP384/BMP388 (DS003 the same; DS002's BMP390
-    # within 3 %), osr_p in OSR bits 2:0 and osr_t in bits 5:3 (4.3.17).
-    return 234 + 392 + 313 + 2000 * ((1 << (osr & 0x07)) + (1 << (osr >> 3 & 0x07)))
 
 
 def _invert_pressure(pressure_calib: "tuple[float, ...]", temperature: float, target_pa: float, guess: float = 8_000_000.0) -> float:
@@ -138,6 +138,7 @@ class BMP3XXChip:
         self._min_temp_c, self._max_temp_c = temp.lo, temp.hi
         self._min_pressure_hpa, self._max_pressure_hpa = pressure.lo, pressure.hi
         self._temp_step_c, self._pressure_step_hpa = temp.step, pressure.step
+        self._conversion_end: _TicksUs | None = None  # the ticks_us() a running forced conversion ends at
         self._power_up()  # the register state a powered-up chip holds
         self.fault = FaultInjector()
         self._temp_calib, self._pressure_calib = _decode_calibration(_CAL_RAW)
@@ -155,15 +156,6 @@ class BMP3XXChip:
         self._soft_reset()
         self._burst = bytes(6)
 
-    def _soft_reset(self) -> None:
-        # 0xB6: "all user configuration settings are overwritten with their default state" (DS001 4.3.22).
-        self._status = _STATUS_CMD_RDY
-        self._pwr_ctrl = 0x00  # PWR_CTRL's default value (DS001 register map)
-        self._osr = _OSR_RESET
-        self._config = _CONFIG_RESET
-        self._conversion_end: _TicksUs | None = None  # the ticks_us() a running forced conversion ends at
-        self._event |= _EVENT_POR_DETECTED  # por_detected "'1' after device power up or softreset" (DS001 4.3.7)
-
     def _settle(self) -> None:
         # A forced conversion ended by now lands: its reading and data ready, the mode back to sleep (DS001 Table 40).
         clock = self._clock()
@@ -171,6 +163,15 @@ class BMP3XXChip:
             self._conversion_end = None
             self._trigger_measurement()
             self._pwr_ctrl &= _CONTROL_ENABLES
+
+    def _soft_reset(self) -> None:
+        # 0xB6: "all user configuration settings are overwritten with their default state" (DS001 4.3.22).
+        self._status = _STATUS_CMD_RDY
+        self._pwr_ctrl = 0x00  # PWR_CTRL's default value (DS001 register map)
+        self._osr = _OSR_RESET
+        self._config = _CONFIG_RESET
+        self._conversion_end = None
+        self._event |= _EVENT_POR_DETECTED  # por_detected "'1' after device power up or softreset" (DS001 4.3.7)
 
     def _trigger_measurement(self) -> None:
         self._temp_c = self._clamp(self._temp_c + self._random.uniform(-self._temp_step_c, self._temp_step_c), self._min_temp_c, self._max_temp_c)
