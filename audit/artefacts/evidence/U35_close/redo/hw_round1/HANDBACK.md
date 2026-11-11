@@ -43457,7 +43457,7 @@ status: confirmed as measured; whether the shrink continues past three loads not
   2,420-2,820; provoked FRAM 6,060 (_send_and_write 5,796), i2c1 2,420-2,820; status none.
 Going on with 2 (4b, 5, 5h) while the lead decides.
 
-## Bench 2026-11-11 16:40 UTC - step 2 on 004cd17d (TCP_SND_BUF 1,600), and 16:26's three items
+## Bench 2026-11-11 16:29 UTC - step 2 on 004cd17d (TCP_SND_BUF 1,600), and 16:26's three items
 - 4b 14:25-14:46 (1,241 s): passed 90, failed 2, skipped 4 (d: 83 / 9). The two: the old C-stack half bound, and D.
   5 14:46-16:07 (4,833 s): passed 110, failed 1, 10 teardown/setup errors, skipped 2 (d: 105 / 6 / 13). 5h 16:07-16:21
   rc 0. No allocation-failure text (the two matches in 5 are a test's name). Archive of 5:
