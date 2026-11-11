@@ -1,5 +1,10 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 05:37 UTC - lead to bench: h is 10g alone
+The owner's pick (05:37 UTC): one long soak, 10g (the HTTP soak); 10c-10f and 10h do not run in this round.
+10g runs after g, before or after j and k as the owner's time at the bench suits, and starts only if it ends inside
+the window (else it opens the next one). i (wear) comes after 10g is green and my cleared: line.
+
 ## Relay 2026-11-11 05:32 UTC - lead to bench: the owner's 16 h window, from 05:28 UTC to 21:28 UTC
 Head 43834938 stands; nothing new in src/. The owner gives this round 16 h of bench time from 05:28 UTC.
 First, with step 1's evidence: your estimate for a-g, j and k, from your own measured step times.
