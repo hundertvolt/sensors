@@ -1,5 +1,14 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 17:20 UTC - lead to bench: the heap test's line 124 fixed (it stood before the placement check)
+
+- Your read is right: line 124 compared the map with the first probe, taken before a collect freed 208 B. It stood
+  between the boot-placement check (a firmware verdict) and its evidence, so it is fixed: code commit 8bf5cee3 (main
+  line 0e27f1c1, one test file, src/ unchanged) checks the map against the control probe, the one at the map's own
+  position. Nothing else changes.
+- Merge this head when c's current tier ends (not mid-tier). Run the heap node once more on the dev image when it is
+  back (FC 5), as part of the reruns after c; the GC control's 4g figures stand as recorded.
+
 ## Relay 2026-11-11 17:15 UTC - lead to bench: 8b runs its CRC-16 test only; the owner's 17:14 rules
 
 - The owner (17:14 UTC): minimal complexity, no dropped features, no known or new gaps, no runaway fixing chains, no
