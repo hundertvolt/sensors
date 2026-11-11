@@ -43218,3 +43218,34 @@ status: confirmed as measured; whether the shrink continues past three loads not
   by 8b (wear, after cleared:). On your word I add the second line to build_control.sh's lwip case and build it
   (about 5 min, then it is the last rp2 build before... nothing: 3 builds the final image after it anyway).
 - c starts now: GC_CONTROL_IMAGE=<abs>/gc_control.uf2 run 3g 5gh (FC +1 at 3g, approved by the owner).
+
+## Bench 2026-11-11 08:56:55 UTC - c: red on the GC control image; stopped before 3 as the relay says
+
+- 3g 06:23-06:24: FC +1 (gc_control.uf2), BuildDate match. Flash cycles today: 1.
+- 4g/5g first runs (06:24, 06:30) ran no test: the session's STA wait missed the one console line (fixed, 3377b388,
+  the owner's choice). Reruns: 4g 07:05-07:35 passed 74, failed 18, skipped 4, 1,781 s; 5g 07:35-08:55 passed 93,
+  failed 18 (with teardown errors), skipped 2, 4,781 s. No allocation-failure text in either (0 matches).
+  5gh 06:37-06:50 rc 0 (above, before the reruns).
+- Sorted by cause (archives build/archive/run_flash_hardware_suite/20261111T070556Z, run_bench_hardware_suite/20261111T073543Z):
+  A. Host arm64 Unix port (06:20 relay's rig fix): 4g test_chip_conformance x5, the twin half at gc.threshold(-1):
+     SyntaxError invalid micropython decorator, src/crc_checks.py:20.
+  B. Console tail misses the boot lines, same class as the STA wait: 4g x11, wait_for_boot "no boot line ... within
+     60 s", log tail ends at "SYSTEM System uptime: 60" (the board booted; "config is ready" and the FRAM setup line print
+     in its first second, while USB re-enumerates). held SDA through a reset x2, test_system_commands x6 (FRAM erase,
+     erase in flight, reboot paused, reset mid-erase 50/150/250, bootloader), test_task_supervisor fault x2.
+  C. Test vs tree: 5g x2 `KeyError: '_CCT_MIN is not a const() in src/math_helpers.py'` (rest_endpoints measurements;
+     bus_concurrency_under_api_load ...never...); 4g c_stack_budget.py `AttributeError: 'FRAM_SPI' object has no
+     attribute 'set_values_sync'` (test_c_stack_peak_is_within_half_the_limit).
+  D. Budget: 4g test_real_gc_heap_headroom: built graph 103,296 B over 100,000 B at both thresholds (103,136 / 103,200);
+     largest block after the build 34,448 B (min 32,768 holds).
+  E. Product behaviour on this image (no threshold), to compare on the final image:
+     - SGP40 E10 INIT then SYSTEM E44 TASK_RETURNED on boots: teardown of 5 tests (webserver before first NTP, escalation
+       reboot, invalid record, reboot at first answer, STA after hard reset) and test_webserver_answers_before_the_first_
+       ntp_sync_completes itself ("a task ended and was restarted").
+     - test_no_send_stall_with_the_override: "stopped answering 10.5 s" (the image carries modlwip_eagain).
+     - test_a_negative_content_length_is_refused_and_counted_once: webserver unresponsive afterwards.
+     - test_a_multi_chunk_set_echoes_intact_under_serving_load: 76 of 86 intact, 10 "stored False, answer None",
+       UARTLINK Failures 0 -> 29.
+     - SGP40 W65/W35 inside the bus-load window; teardown codes NTP E71, SGP40 W33/W35 after tests that reset the board.
+- Board: on gc_control.uf2, serving (ResetReason 21, SysUptime 82 s at 08:56); FRAM was erased by the
+  tier's own erase tests, so its logs restart there. Waiting for your word before 3 (the owner's approval for 3 stands).
