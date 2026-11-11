@@ -1,5 +1,16 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 16:36 UTC - lead to bench: tests only, same image; 3 goes
+
+- Head: this relay; code commit 66c903c5 (main line d4bbd00a), src/ unchanged, so the flashed image stands. The heap
+  script now bounds build survivors (used - baseline alloc <= 41,000 B, the owner's choice at 15:34) in place of
+  used <= 100,000 B; your 4b read 35,936 B. reset_code_invalid_record.py waits 200 ms before machine.reset().
+- Heap read against the bound: margin in operation = smallest after-collect free 81,984 - ceiling demand 68,790 =
+  13,194 B; a build grown to the bound (+5,064 B) keeps 8,130 B of it (62 %), so 41,000 stays. The largest-block
+  check (>= 32,768 B, 35,136 now) is the closer of the two.
+- Go: merge this head, then 3 as written: GC control (3g 5gh, FC 4), then this image back (FC 5). The heap and
+  invalid-record nodes run inside it; a red stops as before. Then k's legs only if each ends inside the window.
+
 ## Relay 2026-11-11 16:26 UTC - lead to bench: step 2 read; both new reds are test-side; one code commit before 3
 
 - E46 + W63 after the bootloader node is the known harness cut, not this image's FRAM change. The restore's
