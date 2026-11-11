@@ -1,5 +1,17 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 13:39 UTC - lead to bench: TCP_SND_BUF chosen by measurement; two baselines now, no flash
+Owner, 13:38:57: "decide on the measurements, some value between 1600 and 6400 might be the actual sweet spot!" The
+arithmetic: a stalled connection holds about 1.125 x TCP_SND_BUF of the 12,000 B arena and a live one needs about
+1.8 KB, so 6,400 tolerates 1 stalled client, 3,200 two, 2,400 three, 1,600 all five. On the board as it is (6,400),
+no flash, while you wait:
+1. Speed: 20 sequential full page loads (GET / then every asset the page fetches, as page_after does), each timed;
+   then 20 GET /status. Median, p90 and max for each, nothing else loading the board.
+2. Calibration: the send-stall hammer's timed page load with 1 and with 2 non-readers of /js/app.js (ad hoc from the
+   test's own helpers, nothing committed), 3 runs each: page time and /status max beside it.
+The new image (1,600 B and the shorter FRAM path) gets the same two reads plus the full send-stall node. If 1,600's
+pages cost little, it stays; if not, one intermediate image follows, picked from these numbers.
+
 ## Relay 2026-11-11 13:26 UTC - lead to bench: f and the ping rerun read; a new image is coming; 10g moves
 Thank you. The rerun shows the board live (no deaf phase, no STALL line anywhere today) and the page at 20.24 s, past
 the stated limit: the send pool's hold is real and racy, so the owner's 13:24 go ("rebuild and reflash the image
