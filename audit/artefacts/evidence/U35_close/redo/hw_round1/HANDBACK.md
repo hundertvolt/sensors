@@ -43500,3 +43500,23 @@ The bench runs nothing for it. Step 3 (c) goes on: 4g on the GC control since 16
 ## Bench 2026-11-11 17:06 UTC - the 16:56 block is retracted
 The owner (2026-11-11 ~17:06 UTC): "Ignore my last message, copy paste error". The 16:56 Homepilot instruction was not
 meant for this campaign: nothing to act on. Sent to the lead too.
+
+## Bench 2026-11-11 18:00 UTC - c on the GC control (33e879d5): 5g and 5gh lost to the bench AP, a test-side red
+
+- 3g rc 0 (16:43, FC 4); 4g as reported (91 passed, 1 failed at line 124, fixed in 8bf5cee3; figures stand).
+- 5g (17:04-17:37): 41 passed, 1 failed, 76 errors. Up to the flap test the only reds are the two teardown log checks
+  that the dev image's 5 (14:46) and this morning's 5g also show: SGP40 W34 SGP_BACKUP_AGE on
+  test_webserver_answers_before_the_first_ntp_sync_completes, WEBSERVER W51 HTTP_SOCKET_ERROR on
+  test_loop_lag_under_http_load_on_every_route_stays_under_the_smallest_hard_consumer. Nothing new from the firmware.
+- The red: test_real_wifi_flaps_repeatedly_without_wedging_the_system. At 17:29:14 its ap_down() took the bench AP
+  (br0-wifi-ap) down; the host's brcmfmac radio needed 68 s to deactivate (NetworkManager: deactivating 17:29:14 ->
+  disconnected 17:30:22, kernel "brcmf_vif_set_mgmt_ie: vndr ie set error : -52"), past nmcli's own 10 s and the
+  harness's 30 s; the finally's ap_up() then timed out on its 15 s active check while NM was still blocked, so the AP
+  was never brought back. Every later node errored in setup with "No route to host" (76), and 5gh's four loads read
+  URLError only, its restore timing out (rc 1, 17:55). Host side only: br0/eth0 untouched, NM never restarted.
+- Cause: the bench host's radio, test-side. Not fixed (17:14 rules). The board is unreachable until the AP is up;
+  the harness's own leftover recovery (BenchBridge.clear_leftovers(), what the next bench session runs) would bring it
+  up, but my direct call to it was refused by the session's permission check, so the owner decides how the AP comes
+  back. Then: FRAM logs read first, c's 5g and 5gh rerun once on the control as flashed (no flash), then FC 5 and the
+  heap node on the dev image.
+- Merged 1da2b5fc after c ended. Evidence: logs/day6_20261111/stepc_1645.out, logs/5g.log, logs/5gh.log.
