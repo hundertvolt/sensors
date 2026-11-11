@@ -1,5 +1,13 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 16:47 UTC - lead to bench: not the two ranges; 8b holds until I settle its control test
+
+- Not `run 7f 8f` then `run 10b 10b`: that skips all of 8b, and 8b also carries the UART CRC-16 build test (its other
+  two flash cycles), which still runs. My 16:44 line "run 7f 10b with 8b left out" was wrong for the same reason.
+- What 8b does about test_send_stall_on_the_unpatched_image at 1,600 B goes to the owner; I relay the answer before
+  the wear (next window, after cleared:). Change nothing in round1.sh or build_control.sh meanwhile; no control build.
+- c goes on as you have it.
+
 ## Relay 2026-11-11 16:44 UTC - lead to bench: no lwIP control; 8b is settled by arithmetic at 1,600 B
 
 - Do not build the lwIP control, and do not drop line 719. At TCP_SND_BUF 1,600 the unpatched image cannot reach
