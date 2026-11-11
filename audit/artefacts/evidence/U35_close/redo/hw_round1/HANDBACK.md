@@ -43190,3 +43190,18 @@ status: confirmed as measured; whether the shrink continues past three loads not
   with the owner at the bench.
 - New order: a-g without the owner's steps (~13:15), then 10g if it ends by 21:28 (~19:35), then k's legs as the rest
   of the window allows, each only if it ends inside the window.
+
+## Bench 2026-11-11 06:13:00 UTC - a: 4a red, one host-architecture cause; b-d go on (hardware tiers do not use it)
+
+- 4a (05:53-06:11, 1,090 s, rc 1): scripts/test.sh failed before L3, no hardware touched. Every MicroPython file and all
+  48 tests_scripts failures/errors have one cause: `SyntaxError: invalid micropython decorator` at src/crc_checks.py:20,
+  `@micropython.viper` (in src/ since snapshot 58, dab692d6; the last 4a on this Pi was 11-05, before it).
+- Why: the v1.29.0 Unix port picks its native emitter by host CPU (ports/unix/mpconfigport.h:67-85: x64, x86, thumb,
+  arm, rv32); aarch64 has none, so on the bench Pi 4 (arm64) both @micropython.native and @micropython.viper are a
+  compile-time SyntaxError. Checked directly on the freshly built build-standard binary (05:42 UTC): a three-line
+  @micropython.native function fails the same way. CI's x86_64 runners have the X64 emitter, so CI stays green; the
+  rp2 image (thumb) is unaffected (snapshot 58 runs it on silicon).
+- Consequence: on this host the unit tier, the twin tier and every tests_scripts twin boot cannot run, and k's two
+  chroot legs on this Pi (arm64) will fail the same way at scripts/test.sh. The fix is in the tree, not the bench.
+- The hardware tiers (flash, bench) run the board and do not use the Unix port; their runs keep --skip-lower-levels as
+  the sheet has them. b, c and d go on as planned. Log: logs/4a.log (from line 151104).
