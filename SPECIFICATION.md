@@ -2502,9 +2502,10 @@ therefore tolerates floor(10,200 / (1.125 x `TCP_SND_BUF`)) of them: 5 at 1,600 
 close abort to free the arena. Within the tolerance the stalled connections reach a zero send
 buffer (`POLLOUT` clear) before the arena fills, so they wait in the poller instead of spinning;
 past it (at most six admitted connections and three closing pcbs) the arena still fills, so the
-override stays. The shipped 1,600 B is measured on silicon, 2026-11-11 (agent, 2026-11-11, on the
-owner's "act according to the results from the bench"); its cost per page load, estimated +0.1-0.8 s
-on Wi-Fi (a 42 KB page in about 27 round trips instead of about 7), is measured: owed.
+override stays. The shipped 1,600 B is chosen on silicon (agent, 2026-11-11, on the owner's "decide
+on the measurements"): 20 full page loads take 0.648/0.720/0.801 s (median/p90/max) against 6,400 B's
+0.580/0.684/0.702 s, `GET /status` 0.671/0.758/0.833 s against 0.599/0.725/0.741 s, and a page load
+beside five clients that stopped reading 0.547 s (dev, 2026-11-11).
 `tests_hardware/bench/test_modlwip_send_stall.py` holds a page load beside `max_connections` - 1
 such clients, and `GET /status` beside it, to 3 s.
 

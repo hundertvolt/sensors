@@ -80,7 +80,7 @@ def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_not
     # A failed bound goes to the owner, never a quietly larger bound.
     verdicts = _measure(board, dut_ip)
     _note(result_note, "the normal image", verdicts)
-    assert verdicts.zero_window >= _MIN_ZERO_WINDOW, f"only {verdicts.zero_window} connection(s) reached zero window: the patched branch was never proven reached"
+    assert verdicts.zero_window >= _MIN_ZERO_WINDOW, f"only {verdicts.zero_window} connection(s) reached zero window: the hammer never blocked the board's sends"
     assert not verdicts.failed_bounds(), f"the override did not hold: {verdicts.failed_bounds()}"
     assert_no_task_ended(dut_ip, "the lwIP send-stall hammer")
 
