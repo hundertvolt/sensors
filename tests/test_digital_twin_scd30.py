@@ -330,8 +330,15 @@ def test_read_firmware_version_reports_the_fixed_plausible_value() -> None:
 
 
 def test_a_read_with_no_command_pending_returns_0xdd_bytes() -> None:
-    # The bench's part answers a read before any command with 0xDD bytes (`scd30_conformance_probe.py`'s `C03_read_before_a_command`).
-    assert SCD30Chip().handle_readfrom_into(3) == b"\xdd\xdd\xdd"
+    # The bench's part answers a read before any command with 0xDD bytes, as the probe reads it after its soft reset
+    # (`scd30_conformance_probe.py`'s `C03_read_before_a_command`); a power-up leaves no command pending either.
+    chip = SCD30Chip()
+    assert chip.handle_readfrom_into(3) == b"\xdd\xdd\xdd"
+    chip.handle_writeto(bytes([0xD3, 0x04]))  # SOFT_RESET
+    assert chip.handle_readfrom_into(3) == b"\xdd\xdd\xdd"
+    assert _get(chip, 0xD1, 0x00) == word(0x0342)
+    chip.power_cycle()
+    assert chip.handle_readfrom_into(3) == b"\xdd\xdd\xdd"
 
 
 def test_readfrom_into_with_an_unrecognized_last_command_returns_zero_bytes() -> None:

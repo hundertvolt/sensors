@@ -202,6 +202,7 @@ class SCD30Chip:
 
     def _power_up(self) -> None:
         # Soft reset: "the same state as after powering up" (Interface Description 1.4.10); NVM settings survive.
+        self._last_cmd = None  # no command pending, so a read answers 0xDD
         self._data_ready = False
         self._buffer = bytes(18)
         self._frc_reference = _FRC_POWER_UP_PPM
