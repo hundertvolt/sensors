@@ -226,7 +226,7 @@ _FRAM_STATE_DEFAULT = "digital_twin/fram_state.json"
 _SCD30_STATE_DEFAULT = "digital_twin/scd30_state.json"
 _MEM_BACKUP_STATE_DEFAULT = "digital_twin/mem_backup_state.json"
 
-_PRODUCT_DIRS = ("src", "ext", "generated_src")  # the product's module directories, the ones the wall clock is installed in
+_PRODUCT_DIRS = ("src", "ext", "generated_src", "portable_src")  # the product's module directories, the ones the wall clock is installed in
 # the manual run's persistent default (owner, 2026-08-13); automated callers pass their own --config-dir
 _CONFIG_DIR_DEFAULT = "digital_twin/config/"
 _NTP_PORT = 123  # the port the product's client sends to (RFC 5905 7.2; src/asy_ntp_client.py _NTP_UDP_PORT)

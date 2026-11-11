@@ -22,6 +22,7 @@ import fcntl
 import functools
 import hashlib
 import json
+import platform
 import sys
 from pathlib import Path
 
@@ -47,6 +48,10 @@ from buildgen.version import current_build_date  # noqa: E402 - the repo root is
 _NAMED_INPUTS = ("buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py")
 _INPUT_GLOBS = ("buildgen/*.py", "src/*.py", "ext/*.py")
 _STAMP_NAMES = (".inputs_stamp.json", "definitions/inputs_stamp.json")
+# The hosts whose Unix port compiles no native code (MicroPython 1.29, ports/unix/mpconfigport.h): there each src/
+# module with a native function gets a copy in build/portable_src/, first on every launcher's path (micropypath.toml),
+# that function swapped for its plain twin in fakes/_native_twins.py.
+_NO_NATIVE_EMITTER = ("aarch64", "arm64", "riscv64")
 # The generated main()'s statements in order: each awaited call by name, each boot-phase mark by its
 # constant (SPECIFICATION.md Part A.7). The boot-sequence scenarios record a real run against it.
 BOOT_PHASES = ("build_system", "BOOT_SETUP", "run_setups", "BOOT_TASKS", "start_tasks", "BOOT_TIMERS", "start_timers", "BOOT_NTP", "ntp_force_sync", "BOOT_DONE", "supervise_tasks")
@@ -192,6 +197,26 @@ def _input_hashes(device_tomls: "list[Path]") -> "dict[str, str]":
     return {path.relative_to(REPO_ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs if path.is_file()}
 
 
+def _portable_copies(portable_dir: Path) -> "dict[Path, str] | None":
+    # Every src/ module with a @micropython.native or .viper function, each such function replaced by an import of its
+    # twin; checked on every host, so a native function with no twin fails here first, not on an arm64 host later.
+    twins_path = REPO_ROOT / "fakes" / "_native_twins.py"
+    twins = {node.name for node in parse_source(twins_path.read_text(encoding="utf-8"), str(twins_path)).body if isinstance(node, ast.FunctionDef)}
+    copies: dict[Path, str] = {}
+    for path in sorted((REPO_ROOT / "src").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        native = [node for node in parse_source(text, str(path)).body if isinstance(node, ast.FunctionDef) and any(isinstance(d, ast.Attribute) and isinstance(d.value, ast.Name) and d.value.id == "micropython" and d.attr in ("native", "viper") for d in node.decorator_list)]
+        lines = text.splitlines(keepends=True)
+        for node in reversed(native):
+            if node.name not in twins:
+                print(f"error: src/{path.name}'s native function {node.name}() has no plain twin in fakes/_native_twins.py", file=sys.stderr)
+                return None
+            lines[min(d.lineno for d in node.decorator_list) - 1 : node.end_lineno] = [f"from _native_twins import {node.name}\n"]
+        if native:
+            copies[portable_dir / path.name] = "".join(lines)
+    return copies
+
+
 def _remove_all_but(out_dir: Path, kept: "set[Path]") -> bool:
     # Every finished file of the generator's own directories that this run did not write is a removed device's: gone, so no
     # consumer globbing the tree takes it for a device. A .tmp is another run's write before its rename and stays.
@@ -222,6 +247,20 @@ def _stamps(hashes: "dict[str, str]", device_tomls: "list[Path]", outputs: "list
     # The inputs read and every file of the tree, stamps included, for tests/_generated_tree.py; each TOML's hash for the JS loader.
     tomls = {path.stem: hashes[path.relative_to(REPO_ROOT).as_posix()] for path in device_tomls}
     return dict(zip(_STAMP_NAMES, (json.dumps({"inputs": hashes, "outputs": sorted([*outputs, *_STAMP_NAMES])}), json.dumps({"tomls": tomls})), strict=True))
+
+
+def _sync_portable_copies() -> bool:
+    # Written on a host without a native emitter, emptied on every other, so a host that compiles native code runs it.
+    portable_dir = REPO_ROOT / "build" / "portable_src"
+    copies = _portable_copies(portable_dir)
+    if copies is None:
+        return False
+    if platform.machine().lower() not in _NO_NATIVE_EMITTER:
+        if not portable_dir.is_dir():
+            return True
+        copies = {}
+    portable_dir.mkdir(parents=True, exist_ok=True)
+    return _write_through_rename(copies) and _remove_all_but(portable_dir, set(copies))
 
 
 def _write_through_rename(files: "dict[Path, str]") -> bool:
@@ -275,7 +314,7 @@ def main(argv: "tuple[str, ...] | list[str]" = ()) -> int:
     # One whole-tree run at a time: two at once rename each other's .tmp files away. A second waits, then finds it current.
     with (out_dir.parent / "generated_src.lock").open("a", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _generate_tree(out_dir, if_stale=args.if_stale)
+        return _generate_tree(out_dir, if_stale=args.if_stale) or (0 if _sync_portable_copies() else 1)
 
 
 if __name__ == "__main__":

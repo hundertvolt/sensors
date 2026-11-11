@@ -34,7 +34,7 @@ def test_the_loader_globs_the_directory_the_generator_writes(generator: ModuleTy
     # The generator writes under a temporary root (test_generate_sensortask_modules.py's set-up),
     # so the directory it really fills is found from its output, not from its source text.
     monkeypatch.setattr(generator, "REPO_ROOT", tmp_path)
-    for name in ("devices", "src", "ext"):
+    for name in ("devices", "src", "ext", "fakes"):
         (tmp_path / name).symlink_to(repo_root / name)
     assert generator.main() == 0
     written = {str(p.parent.relative_to(tmp_path)) for d in DEVICE_NAMES for p in tmp_path.rglob(f"{output}/{d}.json")}
@@ -47,7 +47,7 @@ def test_the_loader_reads_the_toml_stamp_the_generator_writes(generator: ModuleT
     # One stamp, in the definitions directory the loader globs, naming every device by its stem with its TOML's sha256:
     # the names and hashes tests_js/_generated_definitions.js compares, under the stem it reads the stamp by.
     monkeypatch.setattr(generator, "REPO_ROOT", tmp_path)
-    for name in ("devices", "src", "ext"):
+    for name in ("devices", "src", "ext", "fakes"):
         (tmp_path / name).symlink_to(repo_root / name)
     assert generator.main() == 0
     stamps = sorted(tmp_path.rglob("inputs_stamp.json"))

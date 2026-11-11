@@ -5291,7 +5291,8 @@ scripts/_run_checks.sh mpy:tests/test_math_helpers.py
 The unit and twin layouts are defined once, in `scripts/micropypath.toml`; every launcher reads
 them there (`scripts/_unix_port.sh`'s `micropypath`, `tomllib`, `tests_js/_micropypath.js`), and
 `tests_scripts/test_twin_never_needs_tests_on_its_path.py` fails a twin launch whose path is spelled
-out instead or reaches `tests/`.
+out instead or reaches `tests/`. Both start with `build/portable_src/`, which holds files only on a host whose
+Unix port compiles no native code (F.1).
 
 `.frozen` is required in `MICROPYPATH` because it replaces the interpreter's default `sys.path`
 rather than extending it, and the default path is what makes frozen-in modules (`asyncio` included)
@@ -6178,7 +6179,12 @@ v1.29.0); a plain `mpy-cross` refuses such a module. The limits that bind: no de
 `ptr8` has no bounds check, so its caller sizes the buffer; the word is 32 bits on silicon and 64 on
 the Unix port, so a result is masked to its width; no 64-bit product; a body runs without the
 scheduler (docs `reference/speed_python.rst`). ruff reads the viper names as builtins
-(`pyproject.toml`), and mypy wants one `arg-type` ignore per function.
+(`pyproject.toml`), and mypy wants one `arg-type` ignore per function. The Unix port compiles native code
+on x86, x86-64, 32-bit ARM and RV32 only (`ports/unix/mpconfigport.h:67-85`, v1.29.0), so on an arm64 host
+(the bench Pi4) `scripts/_generate_sensortask_modules.py` copies each such module into `build/portable_src/`,
+first in both `scripts/micropypath.toml` layouts, with the function swapped for its plain twin in
+`fakes/_native_twins.py`; `tests/test_native_twins.py` proves each twin equal to its original where native code
+compiles (CI), and a native function with no twin fails the generator on every host.
 
 **Which stores wear.** The flash filesystem (W25Q16JV: at least 100K program-erase cycles per
 sector, datasheet section 2) and the SCD30's NVM (no published endurance figure, M.2) are the
