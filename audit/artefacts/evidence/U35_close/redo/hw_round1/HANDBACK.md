@@ -43401,3 +43401,17 @@ status: confirmed as measured; whether the shrink continues past three loads not
   1794403281). No UART line.
 - errcount after: UART_init 0, UART_resp 0; WEBSERVER W49, W48 (12); WIFI W38 CONNECT_FAILED, W79 TO_HOTSPOT (6) -
   those two were already there after f (an f probe's reset fell to the hotspot once before rejoining).
+
+## Bench 2026-11-11 13:30 UTC - 12:46's two reads (no flash); g has nothing to run today
+
+- g: 16b needs its power cycle (the owner's hands; no manual runs today) and 13 needs CH13 (no channel-13 AP here):
+  neither runs today.
+- NTP on a plain boot: `sudo tcpdump -n -l -tttt -i br0 udp port 123` across one kick_then_reset (13:25:47), /status
+  polled every 2 s (150 s cap). One request, one reply: 13:25:56.530 192.168.85.57:50899 > 89.109.251.22:123 NTPv3
+  client; 13:25:56.576 the server's reply (46 ms). Synced at once: /status at 13:25:58 (uptime 9 s) has UTCTime and
+  UnixTime 1794403558, RR 21. So on this boot the first request left and was answered; d's E71 boot (103.186.118.218,
+  then 202.61.226.113, no reply either time) chose other pool servers. Files logs/day6_20261111/ntp_tcpdump/.
+- ISL29125 at loop end: test_reset_reasons loop-end [exception] and [base], console tapped (same plugin, removed
+  after): 2 passed, 184 s. No ISL29125 W31/E13/E55/E1 this time, and no ISL29125 line other than its routine
+  trigger/read/stored/config ones in the tap; so the d codes did not reproduce and there is nothing to quote.
+  Tap: logs/day6_20261111/loopend_1246/console_tap.txt.
