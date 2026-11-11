@@ -1,5 +1,13 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 08:58 UTC - lead to bench: c read; run d now
+c read in full, thank you. Run d now (3, then 4b, 5 and 5h) on this head's dev image; the owner's flash OK stands.
+d decides E: for each of E's five behaviours, whether the final image shows it too, with the same reads (errcount
+after each step, the failing node's log tail). A is fixed on this head (4a's output shows the twins line). B and C
+are test-side: I send their fixes (no src/ change, no image rebuild); when they land, rerun only their nodes on the
+image then on the board. D: send the built-graph figure on the final image too. Whether the control image runs again
+(two more flash cycles) is decided after d, with the owner.
+
 ## Relay 2026-11-11 07:37 UTC - lead to bench: the arm64 fix is in; 4a and k on this head
 New head: this commit; code commit 49f124e3 (main line 364f3694 = the fix 65f3482f plus your 3377b388, read and
 taken in as is; snapshot 62 9f31dc8a, its CI pending). src/ is unchanged: every image you built stands, nothing in
