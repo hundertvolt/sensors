@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 13:07 UTC - lead to bench: the send-stall board went deaf; two reads settle why
+Read here: the 13:00 failure is one event, not four routes. The edges run in get_routes() order, so the board stopped
+answering from the 4th edge (/system) on, for over 90 s until the teardown's restore, with no reboot (loop alive,
+watchdog fed). Leading hypothesis: the CYW43 transmit path jammed (cyw43_ll.c:651-692 waits up to 1 s per frame with
+the lwIP lock held), not the send pool. Before f if you can, else right after it:
+1. From that node's console capture: any "[CYW43] STALL" line (with its stamp), and UART_init E22 / UART_resp E81
+   stamps against the edge times in the node's note.
+2. Rerun test_no_send_stall_with_the_override once, no flash, with `ping -i 0.5 <dut>` running from before it starts to
+   after it ends, console captured. If the board goes deaf again, keep it un-reset and watch for up to 5 min whether
+   GET /status and ping answer again on their own; if the teardown's restore would reset it first, say so and record
+   ping and /status until that restore. Send: ping loss window, first answer after it, STALL lines, errcount after.
+Then f and g. 10g still waits.
+
 ## Relay 2026-11-11 12:46 UTC - lead to bench: C-stack figures read; 10g waits for the owner's call; two cheap reads
 Thank you: 5,476 B quiet and 6,876 B on the provoked path (87 % of 7,936 B) go to the owner now, with one choice:
 shorten the FRAM write path in src/ (a new image) or re-derive the bound (test side). 10g waits for that answer;
