@@ -120,8 +120,11 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: "Board", resu
     layout = maps["after_build_system"]
     result_note(f"MAP after_build_system: {layout.summary()}")
     # The probe allocates and the map does not, so they fail in different ways: a disagreement means one is wrong, and
-    # the probe understating by a power-of-two fraction of 192 KB is the known pinning artefact.
-    assert abs(layout.largest_free_run - largest) <= layout.block_bytes * _PROBE_MAP_TOLERANCE_BLOCKS, f"the allocating probe says {largest} B and the block map says {layout.largest_free_run} B for one run:\n{output}"
+    # the probe understating by a power-of-two fraction of 192 KB is the known pinning artefact. The control probe is
+    # the one taken at the map's own position, with only a collect between them.
+    control = facts.get("heap_after_build_system_control")
+    probed = control.get("largest_block") if isinstance(control, dict) else None
+    assert isinstance(probed, int) and abs(layout.largest_free_run - probed) <= layout.block_bytes * _PROBE_MAP_TOLERANCE_BLOCKS, f"the allocating probe says {probed} B and the block map says {layout.largest_free_run} B for one run:\n{output}"
     # Long-lived objects stay out of the heap top (owner, 2026-10-02, heap-floors-kept); asserted twice (agent, 2026-09-19), because the two fail
     # for different reasons - the boot's own placement, and whatever already sat up there.
     assert "baseline" in maps, f"no baseline block map in the device output - the placement delta cannot be computed:\n{output}"
