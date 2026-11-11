@@ -848,6 +848,13 @@ def test_boot_lines_need_a_completion_marker_never_a_bare_tag() -> None:
     assert harness.boot_lines(lines) == [lines[2]]
 
 
+def test_boot_lines_take_an_uptime_below_the_one_before_it_as_a_reboot() -> None:
+    # The markers print in the boot's first second, which a reset's USB gap can hide; the uptime falling cannot hide.
+    lines = ["SYSTEM System uptime: 41", "SYSTEM System uptime: 42", "SYSTEM System uptime: 1", "SYSTEM System uptime: 2"]
+    assert harness.boot_lines(lines) == [lines[2]]
+    assert harness.boot_lines(lines[:2]) == []
+
+
 def test_crash_lines_take_a_traceback_and_both_allocation_spellings() -> None:
     lines = ["Traceback (most recent call last):", "SYSTEM memory allocation failed, allocating 512 bytes", "MemoryError:", "WIFI connected"]
     assert harness.crash_lines(lines) == lines[:3]
@@ -893,6 +900,14 @@ def test_wait_for_boot_returns_once_a_boot_line_arrived_and_names_the_debug_leve
     with pytest.raises(TimeoutError, match="DebugLevel >= 3"):
         harness.wait_for_boot(_LogBoard([["CFGMGR_SYSTEM loading"]]), 2.5)  # type: ignore[arg-type]
     assert clock.now == pytest.approx(2 * harness._OBSERVE_TAIL_STEP_S + 2.5), "the tail ran past its bound"
+
+
+def test_wait_for_boot_takes_a_fresh_boots_first_uptime_line_never_a_board_the_reset_missed(clock: _Clock) -> None:
+    lines = harness.wait_for_boot(_LogBoard([["noise"], ["SYSTEM System uptime: 3"]]), 60.0)  # type: ignore[arg-type]
+    assert lines == ["noise", "SYSTEM System uptime: 3"]
+    stale = [f"SYSTEM System uptime: {harness._FRESH_BOOT_UPTIME_SLACK_S + 100 + n}" for n in range(3)]
+    with pytest.raises(TimeoutError, match="no fresh uptime line"):
+        harness.wait_for_boot(_LogBoard([[line] for line in stale]), 5.0)  # type: ignore[arg-type]
 
 
 def test_retryable_picotool_exit_is_the_no_bootsel_device_status_only() -> None:

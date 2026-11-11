@@ -127,6 +127,10 @@ _LOG_TAIL_READ_TIMEOUT_S = 0.5
 _ELF_SYMBOLS_TIMEOUT_S = 120
 _OBSERVE_TAIL_AFTER_S = 5.0
 _OBSERVE_TAIL_STEP_S = 1.0
+# A fresh boot's first uptime line reads at most the wait's own time plus this: the reset, its USB gap and the presence
+# wait before the boot wait began. A board the reset missed reads its whole uptime.
+_FRESH_BOOT_UPTIME_SLACK_S = 30
+_UPTIME_LINE = "System uptime: "
 # Up to 8 s for picotool to find the BOOTSEL device: the reflash's own wait (agent, 2026-10-15, 0c0ad52c), no bench
 # measurement behind it; a single try once found none and left the board in BOOTSEL 13 minutes (bench, 2026-11-05).
 _PICOTOOL_ATTEMPTS = 5
@@ -313,6 +317,12 @@ def _streaming_paths(method: str) -> "set[str]":
     return streaming
 
 
+def _uptime(line: str) -> "int | None":
+    # The N of SYSTEM's "System uptime: N" line, None for any other line.
+    _head, found, tail = line.partition(_UPTIME_LINE)
+    return int(tail) if found and tail.strip().isdigit() else None
+
+
 def _usb_reset_device(device: str) -> "tuple[bool, str]":
     # Workaround: the bench's USB CDC can stop entering raw REPL until the port is rebound (tests_hardware/README.md
     # traps); one unbind+bind per _mpremote() call, each sudo tee checked. Remove when a full round records no rebind.
@@ -434,8 +444,17 @@ def bench_device() -> str:
 
 
 def boot_lines(lines: "list[str]") -> "list[str]":
-    # The lines proving a boot ran its one-time setup(): a completion marker, never a bare CFGMGR_/FRAM tag.
-    return [line for line in lines if any(marker in line for marker in BOOT_COMPLETION_MARKERS)]
+    # The lines proving a boot ran its one-time setup(): a completion marker, never a bare CFGMGR_/FRAM tag, or an uptime
+    # below the one before it (the status loop starts after every setup()). The markers print in the boot's first
+    # second, which a reset's USB gap can hide; the uptime prints every second at DebugLevel 5.
+    found: list[str] = []
+    last: int | None = None
+    for line in lines:
+        uptime = _uptime(line)
+        if any(marker in line for marker in BOOT_COMPLETION_MARKERS) or (uptime is not None and last is not None and uptime < last):
+            found.append(line)
+        last = uptime if uptime is not None else last
+    return found
 
 
 def configured_max_connections(device: "str | None" = None) -> int:
@@ -740,15 +759,21 @@ def scratch_config_entries() -> "tuple[tuple[str, str, str], ...]":
 
 
 def wait_for_boot(board: "Board", timeout_s: float) -> "list[str]":
-    # Passive: the live log until a boot line arrives (boot_lines()), every line read so far returned. Those lines are
-    # printed at DebugLevel >= 3, so a timeout names that need rather than a hung boot alone.
+    # Passive: the live log until a boot line arrives (boot_lines()) or a fresh boot's first uptime line, every line read
+    # so far returned. A timeout names the DebugLevel these need rather than a hung boot alone.
     lines: list[str] = []
-    deadline = time.monotonic() + timeout_s
+    first: int | None = None  # the first uptime read, judged fresh or not once, when it arrives
+    start = time.monotonic()
+    deadline = start + timeout_s
     while time.monotonic() < deadline:
         lines.extend(board.tail_log(min(_OBSERVE_TAIL_STEP_S, max(deadline - time.monotonic(), 0.0))))
+        if first is None:
+            first = next((u for u in map(_uptime, lines) if u is not None), None)
+            if first is not None and first <= time.monotonic() - start + _FRESH_BOOT_UPTIME_SLACK_S:
+                return lines
         if boot_lines(lines):
             return lines
-    raise TimeoutError(f"no boot line ({' / '.join(BOOT_COMPLETION_MARKERS)}) within {timeout_s}s - the board needs DebugLevel >= 3 for it (the standard state holds 5); log tail: {lines[-5:]!r}")
+    raise TimeoutError(f"no boot line ({' / '.join(BOOT_COMPLETION_MARKERS)}) and no fresh uptime line within {timeout_s}s - the board needs DebugLevel >= 3 and 5 for them (the standard state holds 5); log tail: {lines[-5:]!r}")
 
 
 def wait_for_script_server(dut_ip: str, stop: "threading.Event", path: str = "/status", timeout_s: float = _SCRIPT_SERVER_TIMEOUT_S, handover_s: float = _SCRIPT_SERVER_HANDOVER_S) -> bool:

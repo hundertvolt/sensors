@@ -39,9 +39,8 @@ _WAIT_POLL_S = 2.0
 # From serving: the first backup 60 s after boot with NTP synced, about 30 s later undated (src/asy_sgp40_driver.py).
 _SGP40_FIRST_BACKUP_TIMEOUT_S = 150.0
 _ISL29125_DRIVER = "asy_isl29125_driver.py"
-_MATH_HELPERS = "math_helpers.py"
 _NTP = "asy_ntp_client.py"
-_HUE_SPAN = (0.0, 360.0)  # source: src/math_helpers.py rgb_to_hsb(), "hue in [0, 360)"
+_HUE_SPAN = (0.0, 360.0)  # source: src/asy_isl29125_driver.py rgb_to_hsb(), "hue in [0, 360)"
 # The widest JSON number a double round-trips to: no numeric field a client sends can be longer.
 _MAX_JSON_NUMBER = len("-1.2345678901234567e+308")
 _NESTED_ROUTE = "/sensors"  # source: src/asy_webserver_service.py, the one PUT route nesting its body per group
@@ -148,9 +147,9 @@ def _isl29125_findings(name: str, data: JSONObject) -> "list[str]":
         findings.append(f"{name}.RangeAct={data.get('RangeAct')!r} is none of the driver's ranges {ranges!r} (src/{_ISL29125_DRIVER} _VAL_RANGE)")
     cct = data.get("CCT")
     if cct is not None:
-        findings += _outside(f"{name}.CCT", cct, src_number(_MATH_HELPERS, "_CCT_MIN"), src_number(_MATH_HELPERS, "_CCT_MAX"), "src/math_helpers.py _CCT_MIN/_CCT_MAX (McCamy 1992)")
-    unit = (src_number(_MATH_HELPERS, "_COLOUR_IN_MIN"), src_number(_MATH_HELPERS, "_COLOUR_IN_MAX"), "src/math_helpers.py _COLOUR_IN_MIN/_COLOUR_IN_MAX")
-    for group, fields in (("RGB", (("R", unit), ("G", unit), ("B", unit))), ("HSB", (("H", (*_HUE_SPAN, "src/math_helpers.py rgb_to_hsb()")), ("S", unit), ("B", unit)))):
+        findings += _outside(f"{name}.CCT", cct, src_number(_ISL29125_DRIVER, "_CCT_MIN"), src_number(_ISL29125_DRIVER, "_CCT_MAX"), f"src/{_ISL29125_DRIVER} _CCT_MIN/_CCT_MAX (McCamy 1992)")
+    unit = (src_number(_ISL29125_DRIVER, "_COLOUR_IN_MIN"), src_number(_ISL29125_DRIVER, "_COLOUR_IN_MAX"), f"src/{_ISL29125_DRIVER} _COLOUR_IN_MIN/_COLOUR_IN_MAX")
+    for group, fields in (("RGB", (("R", unit), ("G", unit), ("B", unit))), ("HSB", (("H", (*_HUE_SPAN, f"src/{_ISL29125_DRIVER} rgb_to_hsb()")), ("S", unit), ("B", unit)))):
         values = data.get(group)
         if not isinstance(values, dict):
             findings.append(f"{name}.{group} is {values!r}, not an object")

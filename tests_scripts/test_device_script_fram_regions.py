@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 _SCRIPTS = Path(__file__).resolve().parents[1] / "tests_hardware" / "device_scripts"
-_RAW_CALLS = frozenset({"set_values", "get_values", "set_values_sync", "get_values_sync"})
+_RAW_CALLS = frozenset({"set_values", "get_values"})
 _REGIONS = ("_SCRATCH_REGIONS", "_EVIDENCE_REGIONS")
 # The twin boot test_digital_twin_boot_contiguity.py measures with: scripts/test.sh's own path and heap size.
 _MICROPYPATH = tomllib.loads((Path(__file__).resolve().parents[1] / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["unit"]
