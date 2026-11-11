@@ -43312,3 +43312,30 @@ status: confirmed as measured; whether the shrink continues past three loads not
   321 s. _CCT_MIN gone: measurements passed, ...never_corrupts... passed. The failure is E5, not C:
   ...survives_an_ntp_transient_outage_and_retry: 'SGP40' logged under bus load (counter 2), teardown SGP40 W65 + W35.
 - Next: e (run 9 10m) as the 11:08 relay says.
+
+## Bench 2026-11-11 12:45 UTC - e green; the C-stack node (12:30 item 1); the 11:33 console lines
+
+- e on the final image: 9 11:18-11:20 1 passed (rc 4, the wrapper's NOT CLEAN); 10a 11:20-11:38 6 passed; 10m
+  11:38-12:41 6 passed. errcount after each: every counter 0. No allocation-failure text.
+- C-stack (head 9e821210, no flash) 12:41-12:43, failed its half bound as expected: c_stack_peak 5476 B of 7936 B,
+  chain fram._send_and_read, phase setup; provoked_end 6876 B, provoked_logged 1. leaf_peaks by phase:
+  setup: fram._send_and_read 5476, fram._send_command 5212, fram._send_and_write 4948.
+  provoked: fram._send_and_read 6876, fram._send_command 6612, fram._send_and_write 6348, i2c1.writeto 2820,
+  i2c1.readfrom_into 2420.
+  run: fram._send_and_read 4300, fram._send_command 4036, fram._send_and_write 3772, i2c1.* 2820 max, i2c0.* 2620 max.
+  status: i2c1.set_register_struct 2620, i2c1.get_register_bytes 2420.
+- 11:33's lines (archives only, no run):
+  - NTP E71 on a plain boot (5's session boot, 20261111T092718Z boot-log.txt): `6.940 NTP NTP sync starting.` (before
+    the link), `8.504 WIFI WLAN connection established`, then `13.588 SGP40 read`, `13.589 SGP40 data stored`,
+    `13.592 NTP No reply from NTP server: 103.186.118.218` (5.09 s after established; no errno in the line), `13.602 NTP
+    Invalid NTP time received!`. Next attempt `65.637 NTP NTP sync starting.` -> `70.707 NTP No reply from NTP server:
+    202.61.226.113` (lines before: `70.702 BMP3XX read`, `70.703 BMP3XX data stored`). The capture ends at 89.97 s with
+    no successful sync in it.
+  - WEBSERVER W51: the two tests that logged it (loop_lag on every route; uart multi-chunk) have no console capture.
+    Its text from a neighbour's capture (test_heap_under_connection_ceiling, heap-at-peak-script.txt, no stamps), twice:
+    `WEBSERVER Connection reclaimed (per-call timeout): `, `FRAM Writing both blocks, one not IDLE first`,
+    `WEBSERVER Microdot caught: `, `WEBSERVER Connection reclaimed (socket error): [Errno 113] EHOSTUNREACH`; a
+    `WIFI WLAN connecting` line sits between the two occurrences.
+  - ISL29125 W31, E13 (loop-end [exception]), E55 + E1 (loop-end [base]): not captured; those tests save errcount and
+    the raw FRAM only (errcount-/fram-raw-reset-reason-loop-end-*.{json,txt} in the archive).
+- Next: 12:30 items 2 and 3 (chip_conformance; the five bench nodes), then f.
