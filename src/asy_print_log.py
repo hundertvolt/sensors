@@ -186,10 +186,6 @@ class PrintLogHistory(PrintLog):
             return False
         return True
 
-    def _store(self, min_e: int, max_e: int, errno: int) -> None:
-        if self._record(min_e, max_e, errno) and not self._write():
-            self._diag("PrintLog: History write failed!")
-
     def _write(self) -> bool:
         return True
 
@@ -211,9 +207,11 @@ class PrintLogHistory(PrintLog):
         return {self.name: {"ErrCount": self._err_count, "ErrNum": err_num, "ErrType": err_type}}
 
     def err_s(self, *args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
-        # Prints (the C-stack record first) and records the entry, and a store writes it to FRAM before returning (C.7.1).
+        # Prints (the C-stack record first) and records the entry, and a store writes it to FRAM before returning (C.7.1),
+        # with no helper between: every plain level under a FRAM write sits on the C stack (F.1).
         self._line(_LOG_ERR, args, sep, end)
-        self._store(_NO_ERR, _MAX_ERR, errno)
+        if self._record(_NO_ERR, _MAX_ERR, errno) and not self._write():
+            self._diag("PrintLog: History write failed!")
 
     async def reset(self) -> bool:  # RAM only: nothing to write, so it clears at once and answers True
         self._clear()
@@ -225,7 +223,8 @@ class PrintLogHistory(PrintLog):
 
     def wrn_s(self, *args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:  # as err_s()
         self._line(_LOG_WARN, args, sep, end)
-        self._store(_NO_WRN, _MAX_WRN, wrnno)
+        if self._record(_NO_WRN, _MAX_WRN, wrnno) and not self._write():
+            self._diag("PrintLog: History write failed!")
 
 
 class PrintLogHistoryStore(PrintLogHistory):

@@ -844,7 +844,7 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 `device_scripts/c_stack_budget.py`, L3, ungated) boots the bench device's generated system over the
 scratch config directory `hwtest-scratch/` and wraps every I2C bus leaf and the FRAM driver's three
 SPI command functions (`_send_and_read()`, `_send_and_write()`, `_send_command()`: where every FRAM
-chain ends, four plain calls below `set_values()`, whose own wrapper would add a frame under them,
+chain ends, three plain calls below `set_values()`, whose own wrapper would add a frame under them,
 944 B on the twin; agent, 2026-11-11) from outside to record `micropython.stack_use()` per phase:
 the setup batch, the started tasks and timers over a fed 10 s window
 (`l3.c_stack_budget_window_ms`), then one `GET /status` dispatched in-process through the app's own
@@ -855,7 +855,7 @@ takes, once, that route's deepest static chain ending in a FRAM-backed log entry
 (`set_utc_valid()`), the system source's local time reads NTP's config store as `setup()` leaves it
 on a directory at its path (`valid` False; agent, 2026-11-11), and `CFGMGR_NTP` logs E34
 `CFG_NOT_VALID` (`asy_config_manager.py` `_get_values()`, 12 await levels from the request's top,
-then 13 nested plain calls down to `_send_and_read()`); its end is its own fact (`provoked_end`,
+then 10 nested plain calls down to `_send_and_read()`); its end is its own fact (`provoked_end`,
 beside `provoked_logged`, the entries it logged). The host holds the peak to half the 7,936 B limit
 and notes the provoked end beside it; the twin's figures (`twin_c_stack_peak`) are reported, never
 compared. No flash cycle and no production config file: each setup writes its defaults once into the

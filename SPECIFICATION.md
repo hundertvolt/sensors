@@ -6424,8 +6424,10 @@ await chain in C, so the budget is the longest await chain times the per-level c
 `mem.max_await_depth`); on silicon one await level inside a task costs about 200 B, and at depth 28
 three plain calls of headroom remained while 32 failed (dev, 2026-10-29, under `mpremote run`, a few
 frames deeper than the frozen entry). The longest chain: a `GET /status` through Microdot's dispatch whose system
-source reads a damaged NTP config, so that config store's FRAM-backed log write meets a failed
-status-byte read in its verify pass and the FRAM manager's own log records it. Its analysis (`tests_scripts/_await_depth.py`) starts a chain
+source reads NTP's config store while it is not valid, 12 await levels down to `ConfigManager._get_values()`,
+whose `CFGMGR_NTP` entry (E34) then reaches the chip through 10 plain calls from `err_s()` to the SPI command
+`_send_and_read()`, about 264 B each on silicon (dev, 2026-11-10), no pass-through helper among them (agent,
+2026-11-11). Its analysis (`tests_scripts/_await_depth.py`) starts a chain
 at every coroutine a task-creating call is handed in `src/` and the generated modules
 (`create_task()`, `asyncio.run()`, the server callback; `wait_for()`, `wait_for_ms()` and `gather()`
 run theirs as tasks of their own), Microdot calling every registered handler through
@@ -6922,7 +6924,7 @@ would raise there when real hardware could not.
 - **Only transfers of ≥ 32 bytes are affected** — `dma_min_size_threshold` is 32; anything shorter
   uses `spi_write_read_blocking()`, which has no overrun check.
 
-Reachable in this codebase: `asy_fram_driver.py`'s `_read_address()` reads the SGP40 VOC parameter
+Reachable in this codebase: `asy_fram_driver.py`'s `get_values()` reads the SGP40 VOC parameter
 chunk in one 260-byte `readinto()` (`_VOC_PARAMS_MEMSIZE` 256 + CRC32 4), well past the threshold.
 It propagates uncaught out of `get_values()`, matching `asy_i2c_driver.py`'s "a real `OSError`
 always propagates" contract — an overrun leaves garbage in the buffer, so reporting success would

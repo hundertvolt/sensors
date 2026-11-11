@@ -1016,7 +1016,7 @@ def test_printloghistorystore_setup_fails_cleanly_when_both_read_and_write_fail(
 
 
 def test_printloghistorystore_err_s_survives_a_write_failure_without_raising() -> None:
-    # _store_err()'s failed-write path must not itself raise even though the underlying persist-write
+    # err_s()'s failed-write path must not itself raise even though the underlying persist-write
     # now fails - in-memory state should still update.
     manager, chip = make_fram_manager()
     run(manager.setup())
@@ -1026,6 +1026,21 @@ def test_printloghistorystore_err_s_survives_a_write_failure_without_raising() -
     store.err_s("boom", errno=3)
     assert store._err_count == 1  # the entry, kept in RAM; the failed write adds none
     assert list(store.history)[-1] == 3
+
+
+def test_a_failed_entry_write_prints_its_diagnostic_once_per_call() -> None:
+    # err_s() and wrn_s() each print a failed write after their own line, under the logger's name; a landed write prints none.
+    chunk = _CountingFramChunk(2 + 4)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4, level=1, name="S")
+    run(store.setup())
+    failed = ("S", "PrintLog: History write failed!")
+    with record_prints() as rec:
+        store.err_s("landed", errno=3)
+        chunk.write_result = False
+        store.err_s("lost", errno=4)
+        store.wrn_s("lost", wrnno=2)  # level 1 prints no warning line, only the diagnostic
+    assert rec.lines == [("S", "landed"), ("S", "lost"), failed, failed], rec.lines
+    assert chunk.writes == 4  # setup's own, then one per call
 
 
 def test_make_logger_builds_a_store_or_a_ram_history_by_config() -> None:
