@@ -43,8 +43,8 @@ apt_packages = [
 # incoherent set is refused by name.
 #
 # Sized for max_connections = 6 (Part H.7), 2,324 B of GC heap per connection: PCB = limit + 3
-# spares, SEG = limit x 8, MEM_SIZE = limit x 2,000 B, PBUF_POOL_SIZE unchanged. Each rule's reason:
-# B.14.2.
+# spares, SEG = limit x 8, MEM_SIZE = limit x 2,000 B, TCP_SND_BUF as the bench measures it,
+# PBUF_POOL_SIZE unchanged. Each rule's reason: B.14.2.
 [lwip]
 MEMP_NUM_TCP_PCB = 9
 # @tunable lwip.memp_num_tcp_pcb_listen = 8
@@ -61,6 +61,6 @@ MEM_SIZE = 12000
 TCP_MSS = 800
 # @tunable lwip.tcp_wnd = 6400
 TCP_WND = 6400
-# @tunable lwip.tcp_snd_buf = 6400
-TCP_SND_BUF = 6400
+# @tunable lwip.tcp_snd_buf = 1600
+TCP_SND_BUF = 1600
 MEMP_NUM_TCP_SEG = 48

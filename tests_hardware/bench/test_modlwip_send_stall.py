@@ -30,9 +30,6 @@ _STALL_SETTLE_S = 2.0
 _SLOW_CLIENT_BPS = 256
 # A request served while the stack is full: well under the 5 s per-call timeout and the stall's up-to-10 s freeze.
 _REQUEST_MAX_S = 3.0
-# A page beside clients that stop reading waits for the lwIP send arena they fill, freed by the per-call timeout
-# plus modlwip's 10 s close abort (about 15 s); then it loads: a stated limit (owner, 2026-11-11).
-_PAGE_MAX_S = 20.0
 _HOLD_S = 10.0
 _STATUS_POLL_S = 0.5
 _STOPPED_ANSWERING_S = 5.0
@@ -63,7 +60,7 @@ class _Verdicts:
     refused: "dict[str, int]" = dataclasses.field(default_factory=dict)  # dead clients the ceiling refused, per edge
 
     def failed_bounds(self) -> "list[str]":
-        failed = [] if self.page_s is not None and self.page_s <= _PAGE_MAX_S else [f"page load {self.page_s} s > {_PAGE_MAX_S} s"]
+        failed = [] if self.page_s is not None and self.page_s <= _REQUEST_MAX_S else [f"page load {self.page_s} s > {_REQUEST_MAX_S} s"]
         failed += [f"GET /status {over}" for over in self.status_over]
         failed += [f"stopped answering {self.stopped_s:.1f} s"] if self.stopped_s >= _STOPPED_ANSWERING_S else []
         failed += ["rebooted"] if self.rebooted else []
@@ -143,7 +140,7 @@ def _hammer(dut_ip: str) -> _Verdicts:
         verdicts.zero_window = sum(1 for before, sock in zip(first, sockets, strict=True) if before and _queued(sock) == before)
         started = time.monotonic()
         try:
-            page = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=_PAGE_MAX_S)
+            page = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=_STOPPED_ANSWERING_S * 2)
             verdicts.page_s = time.monotonic() - started if page.status_code == 200 else None
         except (OSError, http_client.HTTP_ERROR):
             verdicts.page_s = None

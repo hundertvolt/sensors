@@ -2469,28 +2469,44 @@ at once (and a `max_connections` below 1 is refused by name, since every share d
   drain the pool, leaving the rest holding data the stack has accepted but cannot push. The
   override therefore requires `MEMP_NUM_TCP_SEG >= max_connections x (TCP_SND_BUF / TCP_MSS)` —
   a full window of full-MSS segments per admitted connection. It does not stop the pool running
-  out: a connection queues up to `TCP_SND_QUEUELEN` (32) segments, one per short write, and a
-  closing pcb keeps its queue, so the pool is one of the three `ERR_MEM` sources below.
+  out: a connection queues up to `TCP_SND_QUEUELEN` segments (4 x `TCP_SND_BUF` / `TCP_MSS`,
+  rounded up: 8 at 1,600 B), one per short write, so six admitted connections' queues alone can fill
+  the 48 at any value from lwIP's floor up, and a closing pcb keeps its queue, so the pool is one of
+  the three `ERR_MEM` sources below.
 - **`MEM_SIZE` is the arena every outbound byte passes through.** `extmod/modlwip.c:802` calls
   `tcp_write()` with `TCP_WRITE_FLAG_COPY` unconditionally, so the payload is copied into a
   `PBUF_RAM` pbuf, which `pbuf_alloc()` takes from `mem_malloc()` — that heap. The override
   requires its per-connection share to stay at or above **2,000 B**, which is what the
   4-connection design gave (8000 / 4). A relationship, not a tuning target. A floor, not a bound on
-  demand: a page-load connection queues up to `TCP_SND_BUF` (6,400 B) plus pbuf overhead, about
-  7.2 KB, and a closing pcb keeps its queue until it is acknowledged or aborted 10 s after close
-  (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`), so two clients that stop reading mid page load fill the
-  12,000 B arena. `tcp_write()` then answers `ERR_MEM` while the socket still reports room — from
-  the arena, the global segment pool, or the connection's `TCP_SND_QUEUELEN` pbuf limit — and the
+  demand: a page-load connection queues up to `TCP_SND_BUF` plus pbuf overhead, and a closing pcb
+  keeps its queue until it is acknowledged or aborted 10 s after close
+  (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`). When the arena is full, `tcp_write()` answers `ERR_MEM`
+  while the socket still reports room — as it does for the global segment pool and for the
+  connection's `TCP_SND_QUEUELEN` pbuf limit — and the
   pinned `extmod/modlwip.c` retries it up to 200 x 50 ms inside one call (`:801-813`), even on a
   non-blocking socket: up to 10 s with the whole VM frozen, past the 8,388 ms watchdog, and no
   asyncio timeout can interrupt it (a live peer's ACK ends the wait sooner, still in 50 ms steps).
   The firmware build replaces that loop (B.14.4, the `modlwip_eagain` override; owner, 2026-09-30):
   a non-blocking write that meets `ERR_MEM` returns `EAGAIN`, and the webserver's per-call write
   timeout bounds the wait cooperatively (A.5), as it does for a non-blocking write that finds no
-  room at all, which answers `EAGAIN` upstream too (`:758-769`). On silicon (2026-11-11) a page load
-  beside five such clients waits for the arena until the per-call timeout and the close abort free it,
-  about 15 s, while `/status` keeps answering: a stated limit (owner, 2026-11-11), held to 20 s by
-  `tests_hardware/bench/test_modlwip_send_stall.py`.
+  room at all, which answers `EAGAIN` upstream too (`:758-769`).
+
+**`TCP_SND_BUF` sets how many clients that stop reading the arena tolerates** (owner, 2026-11-11:
+"decide on the measurements, some value between 1600 and 6400 might be the actual sweet spot!").
+Such a client's connection queues up to `TCP_SND_BUF`, about 1.125 x `TCP_SND_BUF` of the arena
+(100 B of pbuf, headers and allocator per 800 B segment), and a live connection beside them needs
+about 1.8 KB, two full segments, to keep sending a segment per acknowledgement. The 12,000 B arena
+therefore tolerates floor(10,200 / (1.125 x `TCP_SND_BUF`)) of them: 5 at 1,600 B (lwIP's floor,
+2 x `TCP_MSS`), 3 at 2,400 B, 2 at 3,200 B, 1 at MicroPython's 6,400 B, where on silicon
+(2026-11-11) a page load beside five took 7.6 s to 20.2 s, waiting for the per-call timeout and the
+close abort to free the arena. Within the tolerance the stalled connections reach a zero send
+buffer (`POLLOUT` clear) before the arena fills, so they wait in the poller instead of spinning;
+past it (at most six admitted connections and three closing pcbs) the arena still fills, so the
+override stays. The shipped 1,600 B is measured on silicon, 2026-11-11 (agent, 2026-11-11, on the
+owner's "act according to the results from the bench"); its cost per page load, estimated +0.1-0.8 s
+on Wi-Fi (a 42 KB page in about 27 round trips instead of about 7), is measured: owed.
+`tests_hardware/bench/test_modlwip_send_stall.py` holds a page load beside `max_connections` - 1
+such clients, and `GET /status` beside it, to 3 s.
 
 `buildgen/validate.py` runs the N-connection half per device, where N is known, and refuses a
 device whose `max_connections` the firmware's own pools cannot serve.
@@ -2605,7 +2621,7 @@ connection is non-blocking (`extmod/asyncio/stream.py:172`), and `src/` otherwis
 `Stream.write()` keeps the unsent rest (`:66-74`) and `drain()` retries it through the event loop
 (`:77-87`), so the watchdog feeder and every other task keep running, and the webserver's per-call
 write timeout reclaims a connection whose peer never drains (A.5). No `TCP_NODELAY` call is made
-anywhere, and `[lwip]` keeps its values (owner, 2026-09-30; F.9).
+anywhere, and `[lwip]` keeps its values (owner, 2026-09-30; F.9), `TCP_SND_BUF` apart (B.14.2.1).
 
 **The second patch: no listener callbacks at close** (owner, 2026-10-26). `close()` on a TCP socket
 (`MP_STREAM_CLOSE`, `extmod/modlwip.c:1678-1690`) calls `tcp_err()` and `tcp_recv()` on every pcb
@@ -12075,7 +12091,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `lwip.memp_num_udp_pcb` | 5 | `toolchain/versions.toml` — `5` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
 | `lwip.tcp_mss` | 800 | `toolchain/versions.toml` — `800` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
 | `lwip.tcp_wnd` | 6400 | `toolchain/versions.toml` — `6400` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
-| `lwip.tcp_snd_buf` | 6400 | `toolchain/versions.toml` — `6400` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
+| `lwip.tcp_snd_buf` | 1600 | `toolchain/versions.toml` — `1600` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | measured on silicon, 2026-11-11: the first value the bench measures (agent, 2026-11-11, on the owner's 2026-11-11 "decide on the measurements, some value between 1600 and 6400 might be the actual sweet spot!"); lwIP's floor, 2 x `lwip.tcp_mss` | the arena tolerates 5 clients that stop reading beside a live connection, floor(10,200 / (1.125 x value)) (B.14.2.1); lwIP refuses a value below 2 x `lwip.tcp_mss` | the bench measures another value, the pin moves (B.14.2's anchors), or `lwip.tcp_mss`, `MEM_SIZE` or `max_connections` changes |
 | `lwip.mem_size_per_connection_floor` | 2000 B | `toolchain/micropython_overrides.py` — `2000` | `MEM_SIZE` (derived per `max_connections`, `toolchain/versions.toml`) | estimated (agent, `31da2b3`) — measurement owed: a connection's arena share at the ceiling, L4 | unknown until measured | the pin moves or the serving piece size changes |
 | `lwip.spare_tcp_pcbs` | 3 | `toolchain/micropython_overrides.py` — `3` | `MEMP_NUM_TCP_PCB` and `MEMP_NUM_TCP_SEG` (derived per `max_connections`) | estimated (agent, `58b14ac`) — measurement owed: pcbs in TIME_WAIT at the ceiling, L4 | unknown until measured | the pin moves or the close linger changes |
 | `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30`; `.github/actions/playwright-chromium/action.yml` — `30`; `.github/actions/apt-cache-restore/action.yml` — `30`; `scripts/setup_cross_browser_toolchain.sh` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the install once, apt retrying each failed fetch itself (B.4); the same bound in the shared Playwright action's apt drop-in before its install (CI, B.10.1), which on the 20261012 runner image the image's own later-sorting `zz-retries` (15 s, one retry) overrides; in the `-o` options of `.github/actions/apt-cache-restore`'s list update, which win over every drop-in; and on every apt fetch `scripts/setup_cross_browser_toolchain.sh` makes (H.7) | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | attention; three 30 s attempts fit the firmware job's 20-minute limit 13x over | a mirror's failure pattern changes |

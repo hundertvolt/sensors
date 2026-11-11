@@ -394,6 +394,8 @@ gates, traps).
   - **An arm64 leg runs two functions as plain twins** (2026-11-11): the Unix port compiles no native code
     on arm64 (v1.29.0), so the CRC engine and the UART ring copy run as `build/portable_src/` copies there
     (SPECIFICATION.md F.1); nothing installed. Before this, every arm64 Unix-port run failed at import.
+  - **`[lwip]` `TCP_SND_BUF` 6,400 → 1,600 B** (2026-11-11): nothing installed; a reused chroot's changed
+    `toolchain/versions.toml` runs setup once, as above, and `build-lwip` takes the new value.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
   fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
   `sensortask-*.py` built as part of the real rewrite needs a full Unix-port equivalent, runnable on
