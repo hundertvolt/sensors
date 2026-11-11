@@ -1,5 +1,14 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 05:32 UTC - lead to bench: the owner's 16 h window, from 05:28 UTC to 21:28 UTC
+Head 43834938 stands; nothing new in src/. The owner gives this round 16 h of bench time from 05:28 UTC.
+First, with step 1's evidence: your estimate for a-g, j and k, from your own measured step times.
+Order in the window: 21:29's a-g as written (22:19's rebuild note applies), then j with the owner (M1 first), then k.
+Push each letter's results when it ends, so I read while you run; a red in 3g-5h stops as before.
+h: no long soak until I relay the owner's pick. i (wear): only after my cleared: line.
+A step holding a flash cycle (3g, 3, 8f, 8b, 15) or a long soak starts only if it ends inside the window; at
+21:28 UTC, touch $H/STOP and the running step ends.
+
 ## Relay 2026-11-10 22:19 UTC - lead to bench: the image's tree moved before the round; two manual pulls join j
 New head: this commit; code commit f02afce1 (main line eb8a214e). One change in src/ against 21:29's tree:
 FRAM_SPI.verify_present() restored (the owner's 2026-09-26 ruling keeps it; nothing calls it, no behaviour change),
