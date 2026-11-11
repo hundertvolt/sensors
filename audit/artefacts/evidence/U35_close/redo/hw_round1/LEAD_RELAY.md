@@ -1,5 +1,17 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 20:36 UTC - lead to bench: not the second failure; next window starts with 12d
+
+- Not the second failure: the bound held on the dev image (page 0.508 s, 5 at zero window, no failed bound). The red
+  is assert_no_task_ended meeting the control's 19:53 boot E44, in FRAM before the node started: test-side, recorded.
+  W48/W49/W60 are the node's own declared codes.
+- E11 READ + E1 STREAK (BMP3XX on the control, SCD30 on the dev image): each is one failed read absorbed by the streak
+  counter, no E2 give-up, no task end, both under deliberate overload. Within design; recorded. Looked at again only
+  if E11 shows in 10g's steady state or a streak reaches E2.
+- The next window starts with row 12d (it reads the logs, then clears them), before 10g, so the control's boot entries
+  (E10/E44) do not red the next window's checks.
+- Nothing more today; STOP at 21:28 as planned.
+
 ## Relay 2026-11-11 20:08 UTC - lead to bench: one send-stall run on the dev image; the rest recorded
 
 - The heap node on the dev image is the firmware verdict for the bound: 36,176 of 41,000 B, largest block 35,136 B.
