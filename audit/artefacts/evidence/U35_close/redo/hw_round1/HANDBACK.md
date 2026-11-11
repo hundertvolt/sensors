@@ -43434,3 +43434,25 @@ status: confirmed as measured; whether the shrink continues past three loads not
   So at 6,400 one stalled client costs nothing measurable and two stop the page and /status for about 5 s, then refuse
   the page, as the arithmetic says (6,400 tolerates one).
 - Waiting for the new image's code commit (owner approved its flash and the control's two at 13:31 in this session).
+
+## Bench 2026-11-11 14:30 UTC - 14:13 item 1: the new image (004cd17d, TCP_SND_BUF 1,600 B), its reads
+- 3 (FC 3 today, the owner's 13:31 approval): rc 0, 14:14:17-14:17:57; image 1,158,812 B, 69,988 B free before the
+  filesystem; serving at uptime 16 s, ResetReason 2, MemFree 79,488 B (66,416 B after 3 on 6,400 at 09:03).
+- Speed, nothing else loading the board (`logs/day6_20261111/reads_1600/image1600.txt`, 6,400's figures beside):
+  full page median 0.648 / p90 0.720 / max 0.801 s (6,400: 0.580 / 0.684 / 0.702); GET /status 0.671 / 0.758 /
+  0.833 s (6,400: 0.599 / 0.725 / 0.741). The page is GET / alone (gzip, self-contained, no assets), as on 6,400.
+- Calibration (same script; `_PAGE_MAX_S` left the test, so a local 20 s client timeout as on 6,400): 1 non-reader:
+  page 0.536 / 0.695 / 0.498 s, all 200, /status max 0.639 / 0.747 s (run 3: the page beat the first 0.5 s poll, so
+  no /status sample). 2 non-readers: page 0.536 / 0.844 / 0.828 s, all 200, /status max 0.710 / 0.785 / 0.766 s
+  (6,400: refused at about 5.3 s each run, /status about 5.7 s). zero_window held for every non-reader.
+- Send-stall node, console tapped (`reads_1600/sendstall_console_tap.txt`): test_no_send_stall_with_the_override
+  PASSED: page 0.547 s with 5 connections at zero window, /status max 1.12 s, longest silence 0.0 s, no dead client
+  refused, per edge 0.71-0.89 s, /status 1.12 s (6,400 at 13:21: page 20.24 s). test_send_stall_on_the_unpatched_image
+  SKIPPED (needs the lwIP control image). No STALL, CYW43, error or traceback line in the console. errcount after:
+  WEBSERVER W48/W49 counter 123 (the hammer's dead clients), WIFI W38/W79 counter 6 (history from before), SYSTEM and
+  both UART 0.
+- C-stack node (4b): FAILED on its half bound as expected: peak 4,796 B in setup on fram._send_command (was 5,476 B
+  on fram._send_and_read); provoked_end 6,060 B of 7,936 B, 76 % (was 6,876 B, 87 %), provoked_logged 1. Leaf peaks:
+  setup fram._send_command/_send_and_read 4,796, _send_and_write 4,532; run FRAM 3,972 (_send_and_write 3,708), I2C
+  2,420-2,820; provoked FRAM 6,060 (_send_and_write 5,796), i2c1 2,420-2,820; status none.
+Going on with 2 (4b, 5, 5h) while the lead decides.
