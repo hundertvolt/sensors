@@ -1,5 +1,12 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 15:13 UTC - lead to bench: tests and docs only, same image; pull between steps
+New head: 19973a4d (main line 0912e830; gate green but for the lwIP host file, now 9/9 and 4/4 at both GC stages;
+tests_scripts 6,564 passed). src/, toolchain/, devices/ unchanged: the image you flashed (004cd17d) stays, no flash.
+Pull between steps, never mid-step. What changes for you: the owner chose (14:43) to bound the C stack on the deepest
+chain, so flash/test_memory_stress.py's node is now test_c_stack_deepest_chain_leaves_the_reserve (provoked_end must
+leave 1,024 B of 7,936 B; 6,060 B passes); test_modlwip_send_stall.py's precondition message only. Order unchanged.
+
 ## Relay 2026-11-11 14:27 UTC - lead to bench: 1,600 stays; go on with 2 and 3 on this image
 Decided on your 14:30 block: pages cost +0.07 s median (0.648 against 0.580 s) and /status the same, while two stalled
 clients no longer block and five at zero window pass. No intermediate image: 004cd17d is the image for 2 (4b, 5, 5h)
