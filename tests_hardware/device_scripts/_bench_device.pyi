@@ -6,11 +6,13 @@ from machine import WDT
 
 from asy_base_classes import SetupFct, TaskStarter, TimerStarter
 from asy_fram_manager import FRAMManager
+from asy_ntp_client import NTPClient
 from asy_sgp40_driver import SGP40_Reader
 from asy_system_service import SystemService
 from asy_webserver_service import WebserverService
 
 fram: FRAMManager | None
+ntp: NTPClient | None
 sgp40: SGP40_Reader | None
 sysfunct: SystemService | None
 webserver: WebserverService | None

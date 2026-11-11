@@ -178,7 +178,11 @@ def test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget(board: "
 def test_c_stack_peak_is_within_half_the_limit(board: "Board", result_note: "Callable[[str], None]") -> None:
     _output, facts = _run(board, "c_stack_budget.py", _C_STACK_SCRIPT_TIMEOUT_S)
     limit = facts.get("c_stack_limit")
-    result_note(f"C stack: chain {facts.get('chain')}, peak {facts.get('c_stack_peak', facts.get('twin_c_stack_peak'))} B of {limit} B; leaves {facts.get('leaf_peaks')}")
+    # The provoked FRAM-backed log entry's end is noted beside the peak, never compared: a bound for it is the owner's.
+    result_note(
+        f"C stack: chain {facts.get('chain')} in {facts.get('phase')}, peak {facts.get('c_stack_peak', facts.get('twin_c_stack_peak'))} B of {limit} B; "
+        f"GET /status's deepest FRAM-backed log entry ({facts.get('provoked_logged')} logged) ends at {facts.get('provoked_end')} B; leaves by phase {facts.get('leaf_peaks')}",
+    )
     assert isinstance(limit, int) and facts.get("chain") is not None, f"no leaf of the running system recorded a stack reading: {facts}"
     if "twin_c_stack_peak" in facts:
         return  # the Unix port's 64-bit frames are not the board's: reported, never compared
