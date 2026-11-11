@@ -43416,7 +43416,7 @@ status: confirmed as measured; whether the shrink continues past three loads not
   trigger/read/stored/config ones in the tap; so the d codes did not reproduce and there is nothing to quote.
   Tap: logs/day6_20261111/loopend_1246/console_tap.txt.
 
-## Bench 2026-11-11 13:55 UTC - 13:39's two baselines on the image as flashed (TCP_SND_BUF 6,400), no flash
+## Bench 2026-11-11 13:43 UTC - 13:39's two baselines on the image as flashed (TCP_SND_BUF 6,400), no flash
 
 - Scripts and output: logs/day6_20261111/baselines_1339/ (ad hoc, from the test's own helpers; nothing committed).
   Board serving, nothing else loading it; max_connections 6.
