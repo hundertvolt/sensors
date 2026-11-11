@@ -1,5 +1,15 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 09:12 UTC - lead to bench: B and C fixed on the test side; what d should bring for E
+New head: this commit; code commit baefb7aa (main line 015dda9f). src/ unchanged, no image rebuild. Pull it after d
+ends, not during. B: wait_for_boot() also returns on a fresh boot's first "System uptime: N" line (N at most the
+wait's time plus 30 s; the status loop starts only after every setup(), DebugLevel 5), and boot_lines() takes an
+uptime below the one before it as a reboot. C: bench/_load.py reads its bounds from asy_isl29125_driver.py, where
+they moved; c_stack_budget.py records set_values()/get_values(). After d, rerun B's 11 and C's 3 nodes on the final
+image (no flash). For E, from d, or from c's logs where they hold it: E1, the E10 entry's text and what the test did
+just before that reset; E3, the failing probe's outcome (status code or exception) and whether GET /status answered
+within 5 s after it; E2 and E4 as d shows them. D: the final image's built-graph figure; I settle it with the heap.
+
 ## Relay 2026-11-11 08:58 UTC - lead to bench: c read; run d now
 c read in full, thank you. Run d now (3, then 4b, 5 and 5h) on this head's dev image; the owner's flash OK stands.
 d decides E: for each of E's five behaviours, whether the final image shows it too, with the same reads (errcount
