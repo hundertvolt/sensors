@@ -43358,3 +43358,46 @@ status: confirmed as measured; whether the shrink continues past three loads not
     whose slots had not drained; the board was re-enumerating after that teardown's restore.
 - After the step the board serves: BootSignature set, LocalTime 13:56 local, so NTP synced in that boot.
 - Next: f (run 12a 12g), then 12:46's two reads (tcpdump of NTP across one hard_reset; loop-end nodes with console).
+
+## Bench 2026-11-11 13:20 UTC - f on the final image; 13:07 item 1
+
+- f 12:57-13:19 (run 12a 12g), no flash:
+  - 12a boot_stretch rc 1: the script's output was cut mid-print by a USB EIO about 30 s into the boot (the
+    board left USB while printing). What arrived: first_feed_ms 1051, feeds 26, stamps_ms the first 17 of 26:
+    1051, 1111, 1156, 1225, 1247, 1311, 1349, 1425, 1489, 1515, 1539, 1573, 3093, 5105, 7109, 9119, 11121.
+    Largest gap among them 2,012 ms (after the 1573 setup run, the 2 s feed cadence). First run of 12a, no earlier copy.
+  - 12b ring_peak rc 0: uart0 size 512 peak 106, uart1 size 512 peak 53, overruns 0, 395,237 samples (about 10 min).
+  - 12c dns_idle rc 0: after_silence_ms 73.7 / 107.1 / 111.7 / 115.0 / 13.7; burst_ms 107.4 / 112.9 / 120.6 / 127.5;
+    counts alone 27,116, beside 24,819, share 8.47 %.
+  - 12d reset_errors rc 0 (its ResetErrors PUTs after its own log read): 1-4 readers, every PUT 200 "Valid" in
+    0.69-0.92 s, get_failures 0.
+  - 12e general_call_per_chip rc 0: present 0x61, 0x59, 0x44; NAK polls 0 for each; the call acked; ISL29125 config1 13
+    before and after (it did not take the reset).
+  - 12g fram_chunk_timing rc 0: log_read_13B med 11,574 us (max 14,594); backup_write_268B med 13,939 (max 20,277);
+    backup_read_268B med 13,740 (max 17,199); readback matches; viper crc32 264 B med 1,293 us; log_errors 0.
+  - The EIO tracebacks after DONE in 12b/12c are each script's own reset at its end (rc 0).
+- 13:07 item 1: the 12:46 send-stall node has no console capture (that run's archive 20261111T124642Z holds pytest.log,
+  errcount and raw FRAM only; no boot-log either), so no "[CYW43] STALL" line can be read, and errcount entries carry no
+  stamps, so UART_init E22 / UART_resp E81 cannot be placed against the edges. No "STALL" or "CYW43" text in any
+  archive from today. Item 2 (rerun with ping and the console tapped) runs now.
+
+## Bench 2026-11-11 13:30 UTC - 13:07 item 2: the send-stall node once more, ping and console tapped (no flash)
+
+- Setup: `ping -D -i 0.5 -W 1 <dut>` from 13:20:58 to after the run; a host-side pytest plugin (my scratchpad, copied
+  into scripts/ for the run's import path only, removed after, never committed) wrote every mpremote stdout and every
+  tail_log line, UTC-stamped, and held the node's teardown while GET /status failed (2 s polls, 300 s cap) so the
+  restore would not reset a deaf board. A first try at 13:20:07 ran no test (the runner's PYTHONPATH=scripts hid the
+  plugin; nothing reached the board). Files: logs/day6_20261111/sendstall_1307/{console_tap.txt,ping.txt,run.out}.
+- 13:21:03-13:24:10, 1 failed in 186 s: 'page load 20.24 s > 20.0 s'. The board did NOT go deaf: zero_window 5,
+  /status max 1.23 s, longest silence 0.0 s, drained True, page after True, no reboot; every route 0.67-1.23 s.
+  The watch read GET /status 200 at once (13:23:36), so the teardown followed without a hold.
+- Ping: 417 sent, 330 answered. Every loss window lies outside the test's call: 13:21:11 (10.0 s), 13:21:23 (8.0 s),
+  13:21:34 (8.5 s), each with the session's mpremote exec at that second (session start: exec + reset into serving);
+  13:23:39 (8.5 s) and 13:23:56 (8.5 s), the teardown's restore and the session-end evidence. From 13:21:44 to 13:23:39
+  no ping lost; RTT median 4.7 ms, max 21 ms.
+- Console (tail continuous 13:21:52-13:23:35, 103 "System uptime" lines from 7 to 118 s, so the loop ran throughout):
+  no "[CYW43] STALL" and no "CYW43" text at all. WEBSERVER: 13:21:57 five "Connection reclaimed (timed out)", 13:23:27-28
+  six "Connection reset by the peer before or during its response". NTP synced on this boot at 13:21:22 (received
+  1794403281). No UART line.
+- errcount after: UART_init 0, UART_resp 0; WEBSERVER W49, W48 (12); WIFI W38 CONNECT_FAILED, W79 TO_HOTSPOT (6) -
+  those two were already there after f (an f probe's reset fell to the hotspot once before rejoining).
