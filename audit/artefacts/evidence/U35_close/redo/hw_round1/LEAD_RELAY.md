@@ -1,5 +1,17 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 20:08 UTC - lead to bench: one send-stall run on the dev image; the rest recorded
+
+- The heap node on the dev image is the firmware verdict for the bound: 36,176 of 41,000 B, largest block 35,136 B.
+  It stands. The control's known items, the HeapMapError (test-side) and BMP3XX E11 + E1 once in the C-stack [escape]
+  teardown are recorded, no action; the E11/E1 is looked at only if it recurs.
+- test_no_send_stall_with_the_override failing on the control (page None, pool edge 5.19 s) is a failed firmware
+  bound, so it gets one run on the dev image (no flash): today before 21:28 if the host load is below 2 when you
+  start, else first in the next window. Record the figures only; the test and its bounds stay as they are. A second
+  failure goes to the owner, as the test's own rule says.
+- If time is left after it, run the invalid-record node once on the dev image (the 200 ms flush is in). If not, it is
+  not needed: its 16:3x pass carries the firmware verdict.
+
 ## Relay 2026-11-11 17:20 UTC - lead to bench: the heap test's line 124 fixed (it stood before the placement check)
 
 - Your read is right: line 124 compared the map with the first probe, taken before a collect freed 208 B. It stood
