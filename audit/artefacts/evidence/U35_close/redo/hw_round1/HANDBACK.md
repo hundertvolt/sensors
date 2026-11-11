@@ -43456,3 +43456,32 @@ status: confirmed as measured; whether the shrink continues past three loads not
   setup fram._send_command/_send_and_read 4,796, _send_and_write 4,532; run FRAM 3,972 (_send_and_write 3,708), I2C
   2,420-2,820; provoked FRAM 6,060 (_send_and_write 5,796), i2c1 2,420-2,820; status none.
 Going on with 2 (4b, 5, 5h) while the lead decides.
+
+## Bench 2026-11-11 16:40 UTC - step 2 on 004cd17d (TCP_SND_BUF 1,600), and 16:26's three items
+- 4b 14:25-14:46 (1,241 s): passed 90, failed 2, skipped 4 (d: 83 / 9). The two: the old C-stack half bound, and D.
+  5 14:46-16:07 (4,833 s): passed 110, failed 1, 10 teardown/setup errors, skipped 2 (d: 105 / 6 / 13). 5h 16:07-16:21
+  rc 0. No allocation-failure text (the two matches in 5 are a test's name). Archive of 5:
+  build/archive/run_bench_hardware_suite/20261111T144649Z.
+- Gone against d: `_CCT_MIN` x2, ntp_transient_outage in call, the send stall, escalate in call, loop end [exception]
+  and [base], near_miss's teardown; multi-chunk's call passes now (its teardown keeps WEBSERVER W51).
+- New in 5: bootloader_reboot teardown FRAM E46 + W63 (logged on that node's boot: the archive's start-of-node read has
+  none, the next node's start read has FRAM 2 [E46, W63]); invalid_record failed in call ("the script wrote no invalid
+  record: {'state': 'invalid'}"). The other teardowns: SGP40 W33/W34/W35 (boot_order, ntp_recovers, real_ntp
+  unreachable, radio_reinit), NTP E71 (c_stack_exhaustion[escape], reset_errors_after_reboot), WEBSERVER W51 (loop lag,
+  multi-chunk); fram_erase's setup carries the serving-heap nodes' window.
+- D (4b heap facts): used 103,216 B (max 100,000); baseline alloc 67,280, free 120,848, largest 118,960; after the
+  build alloc 103,216, free 84,928, largest block 35,136 (min 32,768); build survivors 35,936 B. Control arm alloc
+  103,056 / largest 35,264; production threshold 103,120 / 35,264. (d, 6,400: used 103,360, baseline 67,376,
+  largest 34,448, survivors 35,984.)
+- 5h: boot free 83,248 / largest 62,944 (d: 64,272 / 64,224). After the one collect after each 120 s idle: free 82,384 /
+  81,984 / 82,272 / 82,400 B, largest block 23,552 / 20,288 / 24,592 / 57,792 B (d: 82,240-82,288, 18,048 / 24,768 /
+  18,432 / 49,360). Under load free min 15,616 / 15,424 / 14,000 (6 readers), 39,968 (2). /status under 6 readers
+  200 x106 / 106 / 105 with ConnectionResetError x42 / 30 / 49 per minute; 2 readers 100 / 0.
+- errcount after each step (W/E only; counters): 4b: CFGMGR_* W22 (1 each; CFGMGR_NTP 2 with E34, the provoked entry),
+  SGP40 W33 (12), WEBSERVER W60 (121). 5: the same plus ISL29125 E13 (1). 5h: SGP40 W33 (12), WEBSERVER W60 (121).
+- 16:26's items (no flash): merged 15:13 and 16:26. test_c_stack_deepest_chain_leaves_the_reserve PASSED (peak 4,796 B
+  setup, provoked_end 6,060 B, provoked_logged 1). Bootloader node rerun with the console tapped
+  (logs/day6_20261111/reruns_1635/console_tap.txt): PASSED, teardown clean, no E46/W63, every FRAM line "read
+  successfully" / "Both blocks valid"; reply to USB loss 5.2 s, ResetReason 2. invalid_record ran beside it (before
+  the flush fix) and PASSED: ResetReason 0, watchdog REASON bits 2.
+Waiting for the code commit (heap bound + invalid-record flush), then 3 (GC control).
