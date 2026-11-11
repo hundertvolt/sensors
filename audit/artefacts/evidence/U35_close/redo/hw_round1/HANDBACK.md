@@ -43550,3 +43550,20 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - k not started: both chroot legs are heavy host jobs longer than the 80 minutes left, and the host is already loaded.
   STOP at 21:28. Next window: 10g, j, 16b, 13, k, and the wear after cleared:.
 - Evidence: logs/day6_20261111/stepc_rerun_1820.out, run3_1955.out, heap_rerun_2002.out, logs/5g.log, 5gh.log, 4b.log.
+
+## Bench 2026-11-11 20:35 UTC - 20:08's two runs on the dev image (no flash): send stall and invalid record
+
+- Send stall (20:27:40, host load 1.74 at the start, as the relay asked; 3.13 at the end): the bounds HOLD. Page load
+  0.508 s with 5 at zero window, /status max 1.13 s, longest silence 0.0 s, every route <= 1.13 s, refused dead
+  clients none, failed bounds none. The node still FAILED, at its last line, assert_no_task_ended: SYSTEM counter 1,
+  E44 TASK_RETURNED. That entry is not this image's. SYSTEM [E44] (1) and SGP40 [W33, E10, W33] (12) stood unchanged
+  in FRAM from the control's 19:53 read-across (5gh) through step 3's read (FC 5), the heap node's 4b and this
+  session's start (archive 20261111T202741Z, errcount-session-start.json): the GC control's known boot E10 + E44,
+  persisting across the flash. The node clears no logs itself; in a full tier an earlier node's ResetErrors does, in
+  a one-node run nothing does. Test-side, recorded, not rerun: a rerun meets the same entry, and clearing it is a
+  ResetErrors outside 12d. New in this session's end read: SCD30 E11 READ + E1 STREAK (2), WEBSERVER W48/W49 next to
+  the W60 refusals.
+- Invalid record (20:32:14): PASSED in call, so the 200 ms flush holds on USB. Teardown: the known NTP E71 NTP_NO_REPLY
+  log check.
+- Evidence: logs/day6_20261111/sendstall_dev_2027.out, sendstall_dev_2027/status_after.json,
+  invalid_record_dev_2036.out, logs/5.log, archive 20261111T202741Z.
