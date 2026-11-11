@@ -27,8 +27,6 @@ if TYPE_CHECKING:
     from bench_facts import BenchFacts
     from machine import WDT
 
-    from asy_uart_comm import UARTComm
-
 BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _CMD_ECHO = 0x02  # source: src/asy_uart_link_driver.py _CMD_ECHO (a folded const, unreadable at run time)
@@ -41,8 +39,9 @@ _LOAD_WAIT_MS = 90000
 _POLL_MS = 250
 
 
-async def _echo_rounds(wdt: "WDT", comm: "UARTComm") -> None:
+async def _echo_rounds(wdt: "WDT", link: "UARTLinkDriver") -> None:
     # Each round's pattern is written into the one sent buffer, the answer copied into the one scratch of its length.
+    comm = link._comm
     size = comm._payload_size * 2 + 7  # three data chunks: a multi-chunk train both ways
     sent = bytearray(size)
     scratch = bytearray(size)
@@ -52,6 +51,12 @@ async def _echo_rounds(wdt: "WDT", comm: "UARTComm") -> None:
     round_no = 0
     started = time.ticks_ms()
     while round_no < _ROUNDS or time.ticks_diff(time.ticks_ms(), started) < _WINDOW_MS:
+        # The exerciser's banner GETs share this initiator, which refuses a second transaction (J.2): each round waits
+        # for the next of them to end, then runs in the exerciser's sleep after it.
+        ticks = link._transfers + link._failures
+        while link._transfers + link._failures == ticks:
+            wdt.feed()
+            await asyncio.sleep_ms(0)
         for i in range(size):
             sent[i] = (round_no * 31 + i) & 0xFF
         stored = await comm.uart_set(_CMD_ECHO, sent)
@@ -64,7 +69,6 @@ async def _echo_rounds(wdt: "WDT", comm: "UARTComm") -> None:
                 failed.append("round " + str(round_no) + ": stored " + str(stored) + ", answer " + ("None" if answer is None else str(len(answer)) + " B"))
         round_no += 1
         wdt.feed()
-        await asyncio.sleep_ms(0)
     fact("size", size)
     fact("total", round_no)
     fact("intact", intact)
@@ -105,7 +109,7 @@ async def _run() -> None:
         if link is not None:
             fact("before", await link.get_link_status())
             fact("load_seen", await _load_seen(wdt))
-            await _echo_rounds(wdt, link._comm)
+            await _echo_rounds(wdt, link)
             fact("after", await link.get_link_status())
     finally:
         main_task.cancel()

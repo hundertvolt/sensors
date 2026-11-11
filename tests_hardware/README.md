@@ -1165,8 +1165,10 @@ assumption, not at a product bug.
     the FRAM's SPI bus and heavy allocation churn at once, asserting both ways - the link keeps
     transferring *and* nothing else was starved.
   - The bench tier carries a multi-chunk SET under serving load (`uart_link_echo_under_serving_load.py`
-    driving the initiator's public `uart_set()`), with no `src/` change, besides the link's
-    transfer/failure count in `/status`'s `UARTLINK`, asserted advancing while the API is hammered.
+    driving the initiator's public `uart_set()` in the exerciser's sleep after each of its banner GETs,
+    since the initiator refuses a second transaction: SPECIFICATION.md J.2), with no `src/` change,
+    besides the link's transfer/failure count in `/status`'s `UARTLINK`, asserted advancing while the
+    API is hammered.
     The comm hazards run under API load through `PUT /uart`'s dispatch-only `UartHazards` on `dev`
     (SPECIFICATION.md A.8 and E.6.6): the bench tier's
     `test_a_hazard_run_under_the_readers_load_reports_every_verdict` starts one hazard run while 3
