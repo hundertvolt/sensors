@@ -43299,3 +43299,16 @@ status: confirmed as measured; whether the shrink continues past three loads not
   49,360 B (control 3,328-5,360). Under 6 readers /status 200 x107-108 with ConnectionResetError x47-48 per minute
   (control 111-113 / 34-44); 2 readers 101 / 0 (control 116 / 0).
 - Board: final image, serving. Next, per 09:12: B's 11 and C's 3 nodes on this image (no flash), on head baeb86a0.
+
+## Bench 2026-11-11 11:20 UTC - B's 11 and C's 3 rerun on the final image (head baeb86a0, no flash)
+
+- 4b 11:05-11:11 (PYTEST_K: B's 11 + c_stack): 11 passed, 1 failed, 343 s. All 11 B nodes pass with the uptime-line
+  boot wait (held SDA x2, FRAM erase, erase in flight [mempause], reboot paused, reset mid-erase 50/150/250,
+  bootloader, task_supervisor main_exit/supervisor_raise).
+- C c_stack now runs and measures: `the C-stack peak 4380 B is over half the 7936 B limit (chain fram.set_values)`
+  (4380 > 3968); leaf peaks i2c1.writeto 2820, i2c0.writeto 2420, i2c0.get_register_bytes 2620, ... (log 4b.log, last
+  step). A budget finding now, not a test-vs-tree one.
+- 5 11:12-11:17 (PYTEST_K: measurements + both bus_concurrency_under_api_load): 4 passed, 1 failed + its teardown error,
+  321 s. _CCT_MIN gone: measurements passed, ...never_corrupts... passed. The failure is E5, not C:
+  ...survives_an_ntp_transient_outage_and_retry: 'SGP40' logged under bus load (counter 2), teardown SGP40 W65 + W35.
+- Next: e (run 9 10m) as the 11:08 relay says.
