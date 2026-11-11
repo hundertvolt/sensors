@@ -1501,3 +1501,21 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-11 14:43:51 UTC - C-stack test bound: option A
 "A"
 (The hardware test bounds the deepest chain instead of half the limit: the provoked end must leave at least 1,024 B (about four call levels) of the 7,936 B limit; the quiet peak stays reported. Test change only, no new image. Replaces the half-limit bound owner-reviewed 2026-10-02.)
+
+## 2026-11-11 15:25:47 UTC - which question is open
+"what question?"
+(The owner asks which heap-bound question is meant; answered with the question itself.)
+
+## 2026-11-11 15:34:56 UTC - heap bound after the full system build: option A
+"A"
+(The heap test bounds what the build and its setups add on top of the memory in use before them: about 41,000 B (today's 35,984 B with the ~14 % headroom the 100,000 B total had over September's figure), replacing the 100,000 B total (owner, 2026-10-02). The script's size and the imports no longer move it; the largest-free-block check (2 x 16,384 B) stays. Test change only, no new image.)
+
+## 2026-11-11 15:38:40 UTC - the heap bound stays clear of critical values
+"anyhow make sure the heap bound does not get close to critical values"
+(With option A in place, the heap must still be guaranteed to stay clear of the values that are actually critical for operation; the relative bound alone must not let the heap drift toward them.)
+
+## 2026-11-11 15:46:33 UTC - today's bench progress (question)
+
+> Did we have reasonable progress in today's bench runs?
+
+(The owner asks whether today's bench window made reasonable progress. A question, not a ruling.)
