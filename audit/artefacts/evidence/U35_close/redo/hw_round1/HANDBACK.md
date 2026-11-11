@@ -43520,3 +43520,33 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   back. Then: FRAM logs read first, c's 5g and 5gh rerun once on the control as flashed (no flash), then FC 5 and the
   heap node on the dev image.
 - Merged 1da2b5fc after c ended. Evidence: logs/day6_20261111/stepc_1645.out, logs/5g.log, logs/5gh.log.
+
+## Bench 2026-11-11 20:08 UTC - c's rerun on the GC control, FC 5, the heap node on the dev image; the day's end
+
+- The AP: the owner's `nmcli connection up br0-wifi-ap` (18:17:18, run in this session on the owner's word). The
+  board served at 18:18:56. FRAM read first (logs/day6_20261111/ap_restore_1817/status_after_ap.json): WIFI W79/W37/W80
+  (hotspot fallback, no AP, silent: the AP's absence), SGP40 E10 INIT + SYSTEM E44 TASK_RETURNED, LastTaskEnd
+  SGP40.start_asy_read at uptime 5 (the control image's known boot behaviour, this morning's item E1), ResetReason 21.
+- Host load: another session's Node test runs (not this campaign's) held the host at load 5-7 from before 19:40 to past
+  20:03, so through 5g's rerun, 5gh, step 3 and the heap node. Timing-sensitive results below carry that.
+- 5g rerun (18:19-19:40, the control as flashed, no flash): 108 passed, 3 failed, 11 errors. Against the dev image's 5
+  and this morning's 5g:
+  1. Known on the control: SGP40 E10 + SYSTEM E44 in two reset-reason teardowns; negative Content-Length timed out
+     (this morning's E3); W51 on the multi-chunk node; NTP E71, SGP40 W33/W35/W65 teardown codes.
+  2. test_no_send_stall_with_the_override FAILED: page load None (the pool edge read 5.19 s) with 5 at zero window,
+     every other route <= 0.82 s, no reboot. The 17:0x run on the same image passed it at 0.63 s. Recorded, not rerun
+     again; the host load above applies.
+  3. test_serving_sweep_at_the_reactive_default: HeapMapError "map covers 11742 blocks of 16 B against a reported total
+     of 187904 B - the capture is incomplete" (a capture read short, test-side), and the next node's setup error chains
+     from its log check.
+  4. New once: BMP3XX E11 READ + E1 STREAK in the teardown of test_a_c_stack_exhaustion_is_attributed[escape].
+- 5gh rerun rc 0: 6 readers /status 200 x109, ConnectionResetError 30-36 per minute; 2 readers 112 / 0. After one
+  collect: free 82,000-82,368 B, largest block 3,456 / 7,136 / 5,712 / 7,632 B (dev image 16:07: 20,288-57,792 B).
+- FC 5 (19:54, ledger): step 3 rc 0 at 20:01, the dev image rebuilt from this head (src/ unchanged since 004cd17d).
+  Its first errcount read still carries SGP40 W33/E10 from the control's boots (FRAM persists across the flash).
+- Heap node on the dev image (20:02): PASSED. The build's own 36,176 B (max 41,000), largest block 35,136 B (min
+  32,768), map largest free run 35,264 B, the same as the control probe at the map's position. Boot placement:
+  2,259 new blocks, highest 81 %, none in the top 16 K or 32 K.
+- k not started: both chroot legs are heavy host jobs longer than the 80 minutes left, and the host is already loaded.
+  STOP at 21:28. Next window: 10g, j, 16b, 13, k, and the wear after cleared:.
+- Evidence: logs/day6_20261111/stepc_rerun_1820.out, run3_1955.out, heap_rerun_2002.out, logs/5g.log, 5gh.log, 4b.log.
