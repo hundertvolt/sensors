@@ -840,7 +840,7 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 - **Both instruments that wait for a device script's own server** first let main.py's go quiet
   (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
-**The C-stack budget** (`flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit`,
+**The C-stack budget** (`flash/test_memory_stress.py::test_c_stack_deepest_chain_leaves_the_reserve`,
 `device_scripts/c_stack_budget.py`, L3, ungated) boots the bench device's generated system over the
 scratch config directory `hwtest-scratch/` and wraps every I2C bus leaf and the FRAM driver's three
 SPI command functions (`_send_and_read()`, `_send_and_write()`, `_send_command()`: where every FRAM
@@ -856,8 +856,9 @@ takes, once, that route's deepest static chain ending in a FRAM-backed log entry
 on a directory at its path (`valid` False; agent, 2026-11-11), and `CFGMGR_NTP` logs E34
 `CFG_NOT_VALID` (`asy_config_manager.py` `_get_values()`, 12 await levels from the request's top,
 then 10 nested plain calls down to `_send_and_read()`); its end is its own fact (`provoked_end`,
-beside `provoked_logged`, the entries it logged). The host holds the peak to half the 7,936 B limit
-and notes the provoked end beside it; the twin's figures (`twin_c_stack_peak`) are reported, never
+beside `provoked_logged`, the entries it logged). The host holds the provoked end to leave
+`l3.c_stack_reserve_b` (1,024 B) of the 7,936 B limit and notes the quiet peak beside it (owner,
+2026-11-11); the twin's figures (`twin_c_stack_peak`) are reported, never
 compared. No flash cycle and no production config file: each setup writes its defaults once into the
 scratch directory, removed afterwards; the booted modules' logs, the provoked E34 among them, go
 into FRAM, which the session start saved first.

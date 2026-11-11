@@ -40,6 +40,9 @@ _FLASH_GAP_SCRIPT_TIMEOUT_S = 30.0
 _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
 # The C-stack script's own 10 s window plus the build, its setup batch and the timer stagger.
 _C_STACK_SCRIPT_TIMEOUT_S = 60.0
+# The C stack the deepest FRAM-backed log entry must leave free: about four call levels (owner, 2026-11-11).
+# @tunable l3.c_stack_reserve_b = 1024
+_C_STACK_RESERVE_B = 1024
 # The twin run's server: the script's scratch-config main() binds it inside the run's own network namespace.
 _TWIN_SERVER = ("127.0.0.1", 8080)
 
@@ -175,10 +178,10 @@ def test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget(board: "
     assert isinstance(lag_max, int) and lag_max <= bound_us, f"the loop lagged {lag_max} us, past the {bound_us} us smallest hard consumer: {facts}"
 
 
-def test_c_stack_peak_is_within_half_the_limit(board: "Board", result_note: "Callable[[str], None]") -> None:
+def test_c_stack_deepest_chain_leaves_the_reserve(board: "Board", result_note: "Callable[[str], None]") -> None:
     _output, facts = _run(board, "c_stack_budget.py", _C_STACK_SCRIPT_TIMEOUT_S)
     limit = facts.get("c_stack_limit")
-    # The provoked FRAM-backed log entry's end is noted beside the peak, never compared: a bound for it is the owner's.
+    # The quiet peak is noted beside the deepest FRAM-backed log entry's end, which carries the bound.
     result_note(
         f"C stack: chain {facts.get('chain')} in {facts.get('phase')}, peak {facts.get('c_stack_peak', facts.get('twin_c_stack_peak'))} B of {limit} B; "
         f"GET /status's deepest FRAM-backed log entry ({facts.get('provoked_logged')} logged) ends at {facts.get('provoked_end')} B; leaves by phase {facts.get('leaf_peaks')}",
@@ -186,8 +189,9 @@ def test_c_stack_peak_is_within_half_the_limit(board: "Board", result_note: "Cal
     assert isinstance(limit, int) and facts.get("chain") is not None, f"no leaf of the running system recorded a stack reading: {facts}"
     if "twin_c_stack_peak" in facts:
         return  # the Unix port's 64-bit frames are not the board's: reported, never compared
-    peak = facts.get("c_stack_peak")
-    assert isinstance(peak, int) and peak <= limit // 2, f"the C-stack peak {peak} B is over half the {limit} B limit (chain {facts.get('chain')}): {facts}"
+    end = facts.get("provoked_end")
+    assert facts.get("provoked_logged"), f"the provoked chain logged no entry, so the reserve was checked against nothing: {facts}"
+    assert isinstance(end, int) and end <= limit - _C_STACK_RESERVE_B, f"the deepest FRAM-backed log entry ends at {end} B, leaving under {_C_STACK_RESERVE_B} B of the {limit} B limit: {facts}"
 
 
 def _sta(dut_ip: str) -> bool:
