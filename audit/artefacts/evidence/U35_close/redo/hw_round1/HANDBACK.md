@@ -43521,7 +43521,7 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   heap node on the dev image.
 - Merged 1da2b5fc after c ended. Evidence: logs/day6_20261111/stepc_1645.out, logs/5g.log, logs/5gh.log.
 
-## Bench 2026-11-11 20:08 UTC - c's rerun on the GC control, FC 5, the heap node on the dev image; the day's end
+## Bench 2026-11-11 20:04 UTC - c's rerun on the GC control, FC 5, the heap node on the dev image; the day's end
 
 - The AP: the owner's `nmcli connection up br0-wifi-ap` (18:17:18, run in this session on the owner's word). The
   board served at 18:18:56. FRAM read first (logs/day6_20261111/ap_restore_1817/status_after_ap.json): WIFI W79/W37/W80
