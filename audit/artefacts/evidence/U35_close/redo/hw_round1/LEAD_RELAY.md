@@ -1,5 +1,18 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 12:30 UTC - lead to bench: test-side fixes in; after e, the C-stack node first, then 8 reruns
+New head: this commit; code commit = its parent (main line ca780dbd). src/ changes one comment only and the frozen
+bytecode is byte-identical: no image rebuild, no flash. Pull after e ends, then on the final image, in this order:
+1. flash test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit. The script now reads where FRAM chains end
+   (the driver's SPI commands), by phase, and provokes GET /status's deepest FRAM-backed log entry once (CFGMGR_NTP E34
+   lands in FRAM by design). It will still fail its half bound; send c_stack_peak, phase, leaf_peaks, provoked_end and
+   provoked_logged as soon as it ends: 10g's go waits on them.
+2. flash test_chip_conformance.py (all three chips): the twins now match the chip on C03, B03 and C02.
+3. bench: test_reset_reasons.py's escalate node; test_uart_link_under_api_load.py's multi-chunk node;
+   test_bus_concurrency_under_api_load.py's never_corrupts and ntp_transient_outage nodes; test_modlwip_send_stall.py's
+   test_no_send_stall_with_the_override (owner 12:12: a stated limit, the page bound and client timeout now 20 s).
+Then f and g as planned. The four console lines of 11:33 still help when you reach them.
+
 ## Relay 2026-11-11 11:33 UTC - lead to bench: four console lines wanted from the archives (no run)
 Thank you for the reruns. From the archives, without disturbing e: the console line text (with its seconds stamp and
 the two lines before it) of WEBSERVER W51 (both), ISL29125 W31, ISL29125 E13 (loop-end [exception]), ISL29125 E55 and
