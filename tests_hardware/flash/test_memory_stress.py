@@ -109,11 +109,11 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: "Board", resu
     output = board.run_isolated(DEVICE_SCRIPTS_DIR / "heap_headroom_after_full_system_build.py", timeout_s=_HEADROOM_SCRIPT_TIMEOUT_S, worst_case_allocation=WORST_CASE_ALLOCATION)
     facts = parse_facts(output)
     assert not crash_lines(output.splitlines()), "the headroom build crashed or failed an allocation:\n" + "\n".join(crash_lines(output.splitlines()))
-    stages, used, max_used = facts.get("gc_threshold"), facts.get("used"), facts.get("max_used")
+    stages, added, max_added = facts.get("gc_threshold"), facts.get("added"), facts.get("max_added")
     largest, min_largest = facts.get("largest_block"), facts.get("min_largest_block")
     heaps = {key: value for key, value in facts.items() if key.startswith("heap_")}
-    result_note(f"heap headroom at gc.threshold {stages}: used {used} B (max {max_used}), largest block {largest} B (min {min_largest}); {heaps}")
-    assert isinstance(used, int) and isinstance(max_used, int) and used <= max_used, f"at gc.threshold {stages}: the built object graph holds {used} B, over {max_used} B; facts {facts}"
+    result_note(f"heap headroom at gc.threshold {stages}: used {facts.get('used')} B, the build's own {added} B (max {max_added}), largest block {largest} B (min {min_largest}); {heaps}")
+    assert isinstance(added, int) and isinstance(max_added, int) and added <= max_added, f"at gc.threshold {stages}: the build and its setups keep {added} B, over {max_added} B; facts {facts}"
     assert isinstance(largest, int) and isinstance(min_largest, int) and largest >= min_largest, f"at gc.threshold {stages}: {largest} B contiguous, under {min_largest} B (the worst allocation twice); facts {facts}"
     maps = heap_map.parse_labelled(output)
     assert "after_build_system" in maps, f"no mem_info(1) block map in the device output - the layout cannot be checked:\n{output}"
