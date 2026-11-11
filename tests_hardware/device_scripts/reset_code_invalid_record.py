@@ -2,6 +2,8 @@
 slot, then machine.reset() - which the next boot must read as code 0. STATE="valid_record_wait" writes a valid record
 (code 3) and waits, fed; STATE="boot_phase" calls begin_boot() and returns fed; no flash write in any state."""
 
+import time
+
 import machine
 
 from asy_system_service import begin_boot, write_reset_record
@@ -26,6 +28,7 @@ _NOT_MAGIC = 0x12345678  # neither asy_system_service.py's record magic nor 0 (t
 # cannot be imported and is restated here.
 _RR_REBOOT = 3
 _RUN_WAIT_S = 60
+_FLUSH_MS = 200  # the facts leave rp2's USB queue before machine.reset() cuts it, as an immediate reset can lose them
 
 
 def _invalid_record_reset() -> None:
@@ -33,6 +36,7 @@ def _invalid_record_reset() -> None:
     record[0] = _NOT_MAGIC
     fact("invalid_record", [record[0], record[1], record[2]])
     print("RESET NOW")
+    time.sleep_ms(_FLUSH_MS)
     machine.reset()
 
 
