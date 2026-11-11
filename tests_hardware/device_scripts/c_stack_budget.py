@@ -41,7 +41,7 @@ _C_STACK_LIMIT = 0x2000 - 256
 # @tunable l3.c_stack_budget_window_ms = 10000
 _WINDOW_MS = 10000  # about ten read cycles of every reader the build starts
 _I2C_LEAVES = ("readfrom_into", "writeto", "writeto_then_readfrom", "get_register_bytes", "get_register_struct", "get_bits", "set_bits", "set_register_struct")
-_FRAM_LEAVES = ("set_values_sync", "get_values_sync")
+_FRAM_LEAVES = ("set_values", "get_values")
 peaks: dict[str, int] = {}
 
 

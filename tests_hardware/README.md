@@ -1248,7 +1248,9 @@ assumption, not at a product bug.
   one-time-per-`setup()` lines (`harness.BOOT_COMPLETION_MARKERS`, read through `wait_for_boot()` and
   `boot_lines()`) and `asy_wifi_service.py`'s `pr.one()` lines, all printed at `DebugLevel` >= 3
   (`asy_print_log.py`'s `_LOG_ONCE`); `test_real_ntp_sync_succeeds_over_genuine_udp` needs
-  `asy_ntp_client.py`'s `pr.all()` lines at 5. At the shipped `DebugLevel` 0 none of these print, so a
+  `asy_ntp_client.py`'s `pr.all()` lines at 5. The one-time lines print in the boot's first second, which a
+  reset's USB gap can hide, so both helpers also take SYSTEM's per-second `System uptime:` line at 5: a fresh
+  low value after a reset, or one below the line before it. At the shipped `DebugLevel` 0 none of these print, so a
   board left there reads as a dead link. The standard-state fixture stops such a session at its
   start naming the level, or repairs it with `--repair-standard-state` ("Prerequisites").
 - **WS2812 bit timing is specified in `datasheets/ws2812/WS2812.pdf` p.4** ("Data transfer time":
