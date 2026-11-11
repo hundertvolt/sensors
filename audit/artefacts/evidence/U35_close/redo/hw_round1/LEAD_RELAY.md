@@ -1,5 +1,15 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 17:15 UTC - lead to bench: 8b runs its CRC-16 test only; the owner's 17:14 rules
+
+- The owner (17:14 UTC): minimal complexity, no dropped features, no known or new gaps, no runaway fixing chains, no
+  drift into fixing tests; the focus is the quality of the firmware and buildgen.
+- 8b: no control build and no test change. In the wear, 8b's slot runs the UART CRC-16 build test alone (two flash
+  cycles), selected in your own invocation; test_send_stall_on_the_unpatched_image stays in the suite unrun, its
+  outcome at 1,600 B settled by arithmetic (recorded). Only round1.sh's selection may change for this, nothing else.
+- From now on a red whose cause is test-side is recorded, rerun once, and not fixed unless it stands between a firmware
+  verdict and its evidence; send it to me as before and I decide. c goes on as you have it.
+
 ## Relay 2026-11-11 16:47 UTC - lead to bench: not the two ranges; 8b holds until I settle its control test
 
 - Not `run 7f 8f` then `run 10b 10b`: that skips all of 8b, and 8b also carries the UART CRC-16 build test (its other
