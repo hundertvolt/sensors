@@ -11,11 +11,16 @@ import time
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
+import _bmp3xx_chip
 from _bmp3xx_chip import BMP3XXChip
+from _ticks30 import Ticks30Time
 from _twin_common import Walk
 from _twin_random import FixedRandom
 
 _PROBE_HANG_S = 0.05
+_LONGEST_CONVERSION_MS = 129  # DS001 3.9.2 at x32/x32 (OSR 0x2D): 128 939 us
+_CLOCK = Ticks30Time()
+_bmp3xx_chip.time = _CLOCK  # type: ignore[assignment, attr-defined]  # the fake's conversions run on this clock, which each test advances
 
 
 def _decode_temp_pressure(_chip: "BMP3XXChip | None", cal_raw: bytes) -> "tuple[float, float, float, tuple[float, ...]]":
@@ -63,6 +68,14 @@ def _read(chip: BMP3XXChip, reg: int, nbytes: int) -> bytes:
     return chip.handle_readfrom_mem(reg, nbytes)
 
 
+def _convert(chip: BMP3XXChip) -> bytes:
+    # A forced conversion run past the longest one on the driven clock; the PWR_CTRL read it returns is the access that
+    # lands it.
+    _write(chip, 0x1B, [0x13])
+    _CLOCK.advance(_LONGEST_CONVERSION_MS)
+    return _read(chip, 0x1B, 1)
+
+
 def _write(chip: BMP3XXChip, reg: int, data: "list[int]") -> None:
     chip.handle_writeto_mem(reg, bytes(data))
 
@@ -90,7 +103,7 @@ def test_forced_mode_trigger_sets_data_ready_and_a_readable_burst() -> None:
     # First 2 values: the uniform draw at construction. Last 2: the step delta the forced-mode
     # trigger below draws - zeroed so the final decoded value stays exactly at the constructed one.
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[22.0, 1000.0, 0.0, 0.0]))
-    _write(chip, 0x1B, [0x13])  # CONTROL = forced mode, press+temp enabled
+    _convert(chip)  # CONTROL = forced mode, press+temp enabled
     status = _read(chip, 0x03, 1)[0]
     assert status & 0x60 == 0x60  # STATUS_DATA_READY (both drdy_press|drdy_temp)
     burst = _read(chip, 0x04, 6)
@@ -99,7 +112,7 @@ def test_forced_mode_trigger_sets_data_ready_and_a_readable_burst() -> None:
 
 def test_forced_mode_reading_decodes_to_the_requested_target_via_the_real_formula() -> None:
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[21.0, 987.0, 0.0, 0.0]))
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     burst = _read(chip, 0x04, 6)
     cal_raw = _read(chip, 0x31, 21)
     adc_p = burst[2] << 16 | burst[1] << 8 | burst[0]
@@ -121,7 +134,7 @@ def test_construction_draws_an_initial_value_within_range_without_a_forced_mode_
 def test_forced_mode_trigger_steps_from_the_previous_value_rather_than_a_fresh_draw() -> None:
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.5, -2.0]))
     assert chip._temp_c == 20.0 and chip._pressure_hpa == 1000.0  # construction draw
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     assert chip._temp_c == 20.5  # 20.0 + 0.5
     assert chip._pressure_hpa == 998.0  # 1000.0 + -2.0
 
@@ -131,7 +144,7 @@ def test_forced_mode_trigger_step_is_clamped_to_the_configured_max() -> None:
         pressure=Walk(950.0, 1050.0, 5.0),
         random_source=FixedRandom(uniform_values=[20.0, 1048.0, 0.0, 5.0]),
     )
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     assert chip._pressure_hpa == 1050.0  # 1048.0 + 5.0 would be 1053.0 - clamped to the pressure walk's hi
 
 
@@ -140,14 +153,14 @@ def test_forced_mode_trigger_step_is_clamped_to_the_configured_min() -> None:
         temp=Walk(15.0, 30.0, 1.0),
         random_source=FixedRandom(uniform_values=[15.4, 1000.0, -1.0, 0.0]),
     )
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     assert chip._temp_c == 15.0  # 15.4 + -1.0 would be 14.4 - clamped to the temp walk's lo
 
 
 def test_step_bounds_are_configurable_via_the_constructor() -> None:
     random = FixedRandom(uniform_values=[20.0, 1000.0, 0.1, 0.5])
     chip = BMP3XXChip(temp=Walk(15.0, 30.0, 0.1), pressure=Walk(950.0, 1050.0, 0.5), random_source=random)
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     assert random.calls[2:] == [(-0.1, 0.1), (-0.5, 0.5)], random.calls  # the step draws take the walks' own steps
 
 
@@ -165,9 +178,9 @@ def test_a_fresh_reading_is_drawn_on_every_forced_mode_trigger() -> None:
     # draws its own fresh step, not the same value twice, while staying within the walk's bound.
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0, 1.0, 5.0]))
     cal_raw = _read(chip, 0x31, 21)
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     burst1 = _read(chip, 0x04, 6)
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     burst2 = _read(chip, 0x04, 6)
     assert burst1 != burst2
     adc_p1 = burst1[2] << 16 | burst1[1] << 8 | burst1[0]
@@ -194,7 +207,7 @@ def test_osr_and_config_registers_store_whatever_byte_they_are_given() -> None:
 
 def test_soft_reset_command_restores_command_ready_status() -> None:
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     assert _read(chip, 0x03, 1)[0] & 0x60  # data ready, not command-ready-only
     _write(chip, 0x1C, [0x0D])
     _write(chip, 0x1F, [0x06])
@@ -207,7 +220,7 @@ def test_soft_reset_command_restores_command_ready_status() -> None:
 def test_a_data_read_clears_the_data_ready_bits_it_covers() -> None:
     # DS001 Table 27: drdy_press resets when a pressure DATA register is read, drdy_temp when a temperature one is.
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     assert _read(chip, 0x03, 1) == b"\x70"
     _read(chip, 0x04, 3)
     assert _read(chip, 0x03, 1) == b"\x50"
@@ -219,10 +232,27 @@ def test_pwr_ctrl_reads_sleep_with_both_enables_after_a_forced_conversion() -> N
     # DS001 Table 40: a forced conversion returns the mode to sleep, press_en and temp_en kept (the bench's part: 0x03).
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
     assert _read(chip, 0x1B, 1) == b"\x00"
-    _write(chip, 0x1B, [0x13])
-    assert _read(chip, 0x1B, 1) == b"\x03"
+    assert _convert(chip) == b"\x03"
     _write(chip, 0x7E, [0xB6])
     assert _read(chip, 0x1B, 1) == b"\x00"
+
+
+def test_pwr_ctrl_reads_forced_mode_for_the_conversion_time_and_a_soft_reset_ends_it() -> None:
+    # DS001 3.9.2: 234 + (392 + 2**osr_p * 2000) + (313 + 2**osr_t * 2000) us, 4 939 at the reset OSR and 128 939 at
+    # x32/x32; the bench's part reads 0x13 meanwhile. A soft reset ends a running conversion with nothing landed.
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0, 0.0, 0.0]))
+    for osr, last_forced_ms in ((0x00, 4), (0x2D, 128)):
+        _write(chip, 0x1C, [osr])
+        _write(chip, 0x1B, [0x13])
+        _CLOCK.advance(last_forced_ms)
+        assert (_read(chip, 0x1B, 1), _read(chip, 0x03, 1)) == (b"\x13", b"\x10"), osr
+        _CLOCK.advance(1)
+        assert (_read(chip, 0x1B, 1), _read(chip, 0x03, 1)) == (b"\x03", b"\x70"), osr
+        _read(chip, 0x04, 6)  # the data read clears data ready for the next round
+    _write(chip, 0x1B, [0x13])
+    _write(chip, 0x7E, [0xB6])
+    _CLOCK.advance(_LONGEST_CONVERSION_MS)
+    assert (_read(chip, 0x1B, 1), _read(chip, 0x03, 1)) == (b"\x00", b"\x10")
 
 
 def test_osr_reads_the_bench_parts_0x00_after_power_up_and_a_soft_reset() -> None:
@@ -250,7 +280,7 @@ def test_event_reports_por_detected_after_power_up_and_a_soft_reset_and_clears_o
 
 def test_an_8_byte_read_at_err_reg_returns_err_status_and_the_data_bytes() -> None:
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     block = _read(chip, 0x02, 8)
     assert block[0] == 0x00
     assert block[1] == 0x70  # STATUS as the burst passes it, before the data bytes clear its drdy bits
@@ -348,7 +378,7 @@ def test_two_raises_of_one_queued_fault_are_distinct_fresh_exceptions() -> None:
 
 def test_power_cycle_restores_the_power_up_registers_and_keeps_the_walk() -> None:
     chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
-    _write(chip, 0x1B, [0x13])
+    _convert(chip)
     _write(chip, 0x1C, [0x15])
     _write(chip, 0x1F, [0x06])
     assert _read(chip, 0x10, 1) == b"\x01"  # the construction's power-up, now read and cleared
