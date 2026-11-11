@@ -43182,3 +43182,11 @@ status: confirmed as measured; whether the shrink continues past three loads not
   not measured on this tree, ~3 h together. 10g is 6 h 20.
   a-g, j and k end about 18:15; 10g fits too only if it starts by 15:08, so with j and k in the window it opens the
   next one unless a-g runs early. A red in 3g-5h or a rerun moves everything later.
+
+## Bench 2026-11-11 06:04:09 UTC - the owner: no manual runs today
+
+- The owner: "No manual runs today". j (M1, the power-cycle and pin-reset runs, the bridge, the two pulls) does not
+  run in this window, and neither does 16b's power-cycle half or 13 without the channel-13 AP; each is owed to a window
+  with the owner at the bench.
+- New order: a-g without the owner's steps (~13:15), then 10g if it ends by 21:28 (~19:35), then k's legs as the rest
+  of the window allows, each only if it ends inside the window.
