@@ -1,5 +1,23 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 16:47 UTC - lead to bench: not the two ranges; 8b holds until I settle its control test
+
+- Not `run 7f 8f` then `run 10b 10b`: that skips all of 8b, and 8b also carries the UART CRC-16 build test (its other
+  two flash cycles), which still runs. My 16:44 line "run 7f 10b with 8b left out" was wrong for the same reason.
+- What 8b does about test_send_stall_on_the_unpatched_image at 1,600 B goes to the owner; I relay the answer before
+  the wear (next window, after cleared:). Change nothing in round1.sh or build_control.sh meanwhile; no control build.
+- c goes on as you have it.
+
+## Relay 2026-11-11 16:44 UTC - lead to bench: no lwIP control; 8b is settled by arithmetic at 1,600 B
+
+- Do not build the lwIP control, and do not drop line 719. At TCP_SND_BUF 1,600 the unpatched image cannot reach
+  the ERR_MEM that 8b exists to show: a stalled connection holds about 1.125 x 1,600 = 1,800 B, so five stalled and
+  the live one hold 10,800 B of the 12,000 B arena (the edge is about 1,813 B). 8b would only fire its removal signal;
+  the override stays anyway for closed-but-not-aborted queues (nine hold 16,200 B). Its flash cycles buy nothing.
+- So the wear step runs without 8b: run 7f 10b with 8b left out, by the runner's own skip. If the runner cannot leave
+  it out without LWIP_CONTROL_IMAGE, tell me before the wear; build nothing to get round it.
+- c goes on as you have it: 3g 4g 5g 5gh (FC 4), then the dev image back (FC 5).
+
 ## Relay 2026-11-11 16:36 UTC - lead to bench: tests only, same image; 3 goes
 
 - Head: this relay; code commit 66c903c5 (main line d4bbd00a), src/ unchanged, so the flashed image stands. The heap
