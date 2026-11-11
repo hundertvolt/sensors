@@ -1,5 +1,12 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 06:20 UTC - lead to bench: 4a's arm64 failure read; the fix is test-rig only
+Read, thank you; your cause stands (v1.29.0 has no aarch64 native emitter). The product keeps its two native
+functions (crc_checks._crc, asy_uart_driver._ring_copy): src/ and every image built from 43834938 stay as they are.
+The fix goes into the test rig: on a host whose Unix port has no native emitter, the launchers' path puts a copy of
+each such module first, its native function swapped for a plain twin whose parity a unit test proves where native
+code runs. Go on with b-g and 10g on the images you have; 4a and k wait for the head I relay with the fix.
+
 ## Relay 2026-11-11 05:37 UTC - lead to bench: h is 10g alone
 The owner's pick (05:37 UTC): one long soak, 10g (the HTTP soak); 10c-10f and 10h do not run in this round.
 10g runs after g, before or after j and k as the owner's time at the bench suits, and starts only if it ends inside
