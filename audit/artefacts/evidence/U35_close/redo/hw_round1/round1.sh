@@ -125,8 +125,14 @@ from bench_control import BenchBridge; BenchBridge().kick_all_stations()" || ech
 }
 
 evidence() {  # row 1: /status if the product answers (it touches nothing), then the raw FRAM on the image as found
-  py get status 5 "$L/status_before.json"
-  timeout 600 "$MPC" mount src run "$(render fram_raw_dump.py)"; echo "rc=$?"  # src mounted: a bare image has no project code
+  if py get status 5 "$L/status_before.json"; then  # a product image: frozen drivers, main.py's watchdog running
+    timeout 600 uv run --no-sync python -c "import sys; sys.path[:0] = ['tests_hardware', '.']; import harness
+from bench_control import BenchBridge
+b = harness.Board(harness.resolve_board_device()); print(b.run_isolated('tests_hardware/device_scripts/fram_raw_dump.py'), flush=True)
+harness.restore_board_to_serving(b, BenchBridge(), '${DUT_IP:-}')"; echo "rc=$?"  # re-armed watchdog first, then the dump
+  else
+    timeout 600 "$MPC" mount src run "$(render fram_raw_dump.py)"; echo "rc=$?"  # src mounted: a bare image has no project code
+  fi
   saved
 }
 
