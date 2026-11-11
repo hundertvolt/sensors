@@ -43485,3 +43485,14 @@ Going on with 2 (4b, 5, 5h) while the lead decides.
   successfully" / "Both blocks valid"; reply to USB loss 5.2 s, ResetReason 2. invalid_record ran beside it (before
   the flush fix) and PASSED: ResetReason 0, watchdog REASON bits 2.
 Waiting for the code commit (heap bound + invalid-record flush), then 3 (GC control).
+
+## Bench 2026-11-11 16:56 UTC - the owner to the lead, verbatim: a Homepilot test rig, no real device
+The owner, in the bench session (2026-11-11 ~16:56 UTC): "Also tell it, it has NO permission to connect to any real
+device on the network. But it should prepare a test rig for a real Homepilot. With and without https, with and without
+password. I will give the go and details for running it, no real device action without this.
+Another important topic inside this, measure time for connections with and without password, and especially analyze
+from firmware as well as tests if a session token / cookie can be reused without re authentication, and if so, how
+long.
+And, the API for callers of the new secure homepilot module should be kept compatible. The new additions should only be
+an internal thing, only requiring a more sophisticated initialization."
+The bench runs nothing for it. Step 3 (c) goes on: 4g on the GC control since 16:44.
