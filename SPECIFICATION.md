@@ -3179,17 +3179,17 @@ as both lock layers (C.8) stay genuinely distinct. What differs:
   `_KNOWN_PRODUCT_IDS` entry and the `@limits max_size` set
   (`asy_fram_manager.py`; checked equal by `tests_scripts/test_buildgen_limits.py`), so the build
   refuses any other size.
-- **`FRAM_SPI`'s general-purpose API** — `set_write_protected()`, `get_write_protected()`,
-  `get_size()` and the one-call `get_values()`/`set_values()` complete the driver for the chip
-  (owner, 2026-09-26: 'These are functions of the hardware items … So they remain as they are.');
-  each is a plain synchronous function like the chunk layer's commands (C.8), `setup()` the one
-  coroutine; of them only the manager's erase reads `get_size()` and `get_write_protected()`.
-  Record: `verify_present()`, which that ruling kept, went with the driver's lock: nothing in `src/`
-  called it, decided under the owner's 2026-11-09 20:43:39 direction (agent, 2026-11-09).
-  `set_write_protected()`, `get_write_protected()`, `get_size()` and `set_values()` never raise on a
-  live bus: each checks `initialized` before touching the chip, and their transfers are writes or
-  reads under 32 bytes. `get_values()` into a buffer of 32 bytes or more can raise `OSError(EIO)` on
-  an RX overrun (F.5.2); its caller handles that as the chunk layer's `_read_chunk()` does. A WREN
+- **`FRAM_SPI`'s general-purpose API** — `verify_present()`, `set_write_protected()`,
+  `get_write_protected()`, `get_size()` and the one-call `get_values()`/`set_values()` complete the
+  driver for the chip (owner, 2026-09-26: 'These are functions of the hardware items … So they
+  remain as they are.'); each is a plain synchronous function like the chunk layer's commands
+  (C.8), `setup()` the one coroutine; of them only the manager's erase reads `get_size()` and
+  `get_write_protected()`. `verify_present()` re-reads the chip's ID: a chip that no longer
+  identifies leaves the driver uninitialized, every other call refusing until `setup()` succeeds.
+  `verify_present()`, `set_write_protected()`, `get_write_protected()`, `get_size()` and
+  `set_values()` never raise on a live bus: each checks `initialized` before touching the chip, and
+  their transfers are writes or reads under 32 bytes. `get_values()` into a buffer of 32 bytes or
+  more can raise `OSError(EIO)` on an RX overrun (F.5.2); its caller handles that as the chunk layer's `_read_chunk()` does. A WREN
   whose latch did not set is repeated once, like WRDI. `setup()` reads the chip as write-protected
   only when WPEN, BP1 and BP0 are all set, the one protected state the firmware writes; a register
   only partly set, which nothing in the product writes, reads as unprotected, and WPEN alone protects
@@ -4501,7 +4501,8 @@ and `None` otherwise — `SensorReader` and its subclasses, `ConfigManager` (its
 `FRAMManager` and `SystemService` answer nothing, the boot's setup list reading no answer; a protocol-layer setup
 keeps its documented raise for a chip that fails identification, which its reader's init catches. A
 class whose constructor refused persists that code in `setup()`. **Which classes carry the
-`initialized` flag**: only those whose product code reads it — `FRAM_SPI` (set by its `setup()`),
+`initialized` flag**: only those whose product code reads it — `FRAM_SPI` (set by its `setup()`,
+cleared by a failed `verify_present()`),
 `FRAMManager` (set by its first successful `setup()` and never cleared: the chip
 watch and the erase gate read it), `SPIDevice`, `UARTComm`, `UARTLinkDriver` and the logging classes
 (`asy_print_log.py`); a class where only a test would read it carries none (`SystemService`,
@@ -5290,7 +5291,8 @@ scripts/_run_checks.sh mpy:tests/test_math_helpers.py
 The unit and twin layouts are defined once, in `scripts/micropypath.toml`; every launcher reads
 them there (`scripts/_unix_port.sh`'s `micropypath`, `tomllib`, `tests_js/_micropypath.js`), and
 `tests_scripts/test_twin_never_needs_tests_on_its_path.py` fails a twin launch whose path is spelled
-out instead or reaches `tests/`.
+out instead or reaches `tests/`. Both start with `build/portable_src/`, which holds files only on a host whose
+Unix port compiles no native code (F.1).
 
 `.frozen` is required in `MICROPYPATH` because it replaces the interpreter's default `sys.path`
 rather than extending it, and the default path is what makes frozen-in modules (`asyncio` included)
@@ -6177,7 +6179,12 @@ v1.29.0); a plain `mpy-cross` refuses such a module. The limits that bind: no de
 `ptr8` has no bounds check, so its caller sizes the buffer; the word is 32 bits on silicon and 64 on
 the Unix port, so a result is masked to its width; no 64-bit product; a body runs without the
 scheduler (docs `reference/speed_python.rst`). ruff reads the viper names as builtins
-(`pyproject.toml`), and mypy wants one `arg-type` ignore per function.
+(`pyproject.toml`), and mypy wants one `arg-type` ignore per function. The Unix port compiles native code
+on x86, x86-64, 32-bit ARM and RV32 only (`ports/unix/mpconfigport.h:67-85`, v1.29.0), so on an arm64 host
+(the bench Pi4) `scripts/_generate_sensortask_modules.py` copies each such module into `build/portable_src/`,
+first in both `scripts/micropypath.toml` layouts, with the function swapped for its plain twin in
+`fakes/_native_twins.py`; `tests/test_native_twins.py` proves each twin equal to its original where native code
+compiles (CI), and a native function with no twin fails the generator on every host.
 
 **Which stores wear.** The flash filesystem (W25Q16JV: at least 100K program-erase cycles per
 sector, datasheet section 2) and the SCD30's NVM (no published endurance figure, M.2) are the

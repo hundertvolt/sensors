@@ -24,11 +24,12 @@ from buildgen.twin_wiring import compute_twin_wiring
 
 
 def _one_device_tree(repo_root: Path, tmp_path: Path) -> Path:
-    # A stand-in repo root holding one real device, its src/ and ext/; returns the output directory.
+    # A stand-in repo root holding one real device, its src/, ext/ and fakes/; returns the output directory.
     (tmp_path / "devices").mkdir()
     (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").symlink_to(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml")
     (tmp_path / "src").symlink_to(repo_root / "src")
     (tmp_path / "ext").symlink_to(repo_root / "ext")
+    (tmp_path / "fakes").symlink_to(repo_root / "fakes")
     return tmp_path / "build" / "generated_src"
 
 
@@ -37,6 +38,7 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
     (tmp_path / "devices").symlink_to(repo_root / "devices")
     (tmp_path / "src").symlink_to(repo_root / "src")
     (tmp_path / "ext").symlink_to(repo_root / "ext")
+    (tmp_path / "fakes").symlink_to(repo_root / "fakes")
     # Pins the one build_date main() computes for its whole batch, so this test's own separate
     # reference generate_device() calls below embed the exact same timestamp instead of racing a
     # real wall clock against main()'s already-completed run (SPECIFICATION.md Part L.7).
@@ -93,6 +95,7 @@ def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(ge
     (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").symlink_to(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml")
     (tmp_path / "src").symlink_to(repo_root / "src")
     (tmp_path / "ext").symlink_to(repo_root / "ext")
+    (tmp_path / "fakes").symlink_to(repo_root / "fakes")
 
     def failing_stage(*_args: object, **_kwargs: object) -> SimpleNamespace:
         raise BuildError(DEVICE_NAMES[0], f"simulated {stage} failure", rule="test.simulated-failure", fix="repair the fixture")

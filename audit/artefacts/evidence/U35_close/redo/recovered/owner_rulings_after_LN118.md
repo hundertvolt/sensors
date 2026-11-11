@@ -1429,3 +1429,43 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-10 20:37:10 UTC - last round's wear steps: only on final code
 "Is there anything about the wear related tests which could become subject to change expectably and need to be retested? I'm fine with the wear cycles if the code behind them can be deemed final except these wear tests."
 (The owner accepts the wear cycles, on condition that the code the wear tests exercise is final apart from the wear tests themselves; they ask whether anything could be expected to change and force a retest.)
+
+## 2026-11-10 21:23:14 UTC - last round: option (a), wear steps last
+"Yes, option A is fine under these circumstances"
+(The owner chooses (a): the last bench round with the wear steps included, under the stated circumstances: the wear steps run last, after every other step is green and the lead has read every result and settled the heap question, so the code behind them is final.)
+
+## 2026-11-10 21:26:30 UTC - is everything waiting on the bench now?
+"But this means you are done with the pending work here, and everything waits on the bench results now?"
+(The owner asks whether all work on this side is finished, so that everything now waits on the bench's results.)
+
+## 2026-11-10 21:32:13 UTC - the PR's line counts and their cleanup
+"I actually wonder, when looking at the PR: Almost 2M lines of code added, 75K removed. Long time ago, I asked about these tremendous numbers, and you told me most of it  are session logs. So I expect a huge number of added lines being cleaned up, do you have a stage for that already planned?"
+(The owner notes the PR's size, nearly 2 million lines added and 75 thousand removed, recalls being told most of it is session logs, and asks whether a stage that removes those lines is already planned.)
+
+## 2026-11-10 21:34:58 UTC - is the audit's evidence kept in git history after the removal?
+"In case we would need any kind of evidence from the audit, I assume all is preserved in the Git history and can still be found after removal from the actual head of the branch?"
+(The owner assumes that all audit evidence stays in the git history and can still be found after it is removed from the branch head, and asks for confirmation.)
+
+## 2026-11-10 21:38:00 UTC - integration history backed up now
+"A"
+(Option (a): the lead pushes the integration head now as the tag u35-int-backup and moves it forward as the tree advances; at D it becomes the fixed final tag. D also tags the bench branch's last commit and the integration head, or folds the bench's files into the last snapshot, all named in the final report.)
+
+## 2026-11-10 21:55:27 UTC - D's archive refs are branches
+"Use option (I)"
+(Option (i): at D the evidence is kept on three archive branches instead of tags - the audit branch's last commit holding audit/ (named like claude/u35-audit-archive), the bench branch, and the integration backup branch - none deleted, all named in the final report.)
+
+## 2026-11-10 22:00:20 UTC - is anything really running in the background
+"Is there really anything running in the background at the moment?"
+(The owner asks whether any background work is actually running now.)
+
+## 2026-11-11 05:28:33 UTC - bench time for the last round
+"You have 16 hours of bench time now"
+(The owner grants a 16-hour bench window, starting now, for the last round on head 43834938.)
+
+## 2026-11-11 05:37:36 UTC - long soaks before the wear: option (b), 10g only
+"B"
+(Option (b): one long soak, 10g (the 6 h HTTP soak with /status polled as openHAB does), runs before the wear steps; 10c-10f and 10h do not run in this round; the wear steps likely move to a later window.)
+
+## 2026-11-11 06:04:24 UTC - no manual runs today (said in the bench session, relayed by the bench)
+"No manual runs today"
+(Said to the bench session, received here at this time: no owner-attended steps in today's window, so j, 16b's power-cycle half and 13 (no channel-13 AP) move to the next window. The bench's order: a-g without them (about 13:15 UTC), then 10g if it ends by 21:28 (about 19:35), then k's legs as the window allows. This settles the lead's 05:55 question as option (2).)

@@ -2098,3 +2098,98 @@ Open from W1a: (c) uart_ring_under_concurrent_load 32768 1/8 on W1a's tree - to 
 - gate61 green on int bfa240fa: test_e 0, test_f 0 (gate61), twin -1 suite/harness 0/0, twin 32768 suite/harness 0/0,
   npm 0 (gate61b, 1,671 s). The suite outputs' 40 marker lines are its own "log carries none of" OK lines (as gate60).
   Lock released.
+- Snapshot 61 4a0f1b76 (parent 37216f41, tree = int bfa240fa + records; SNAP_EXCLUDE + ftmp_lr): PAT matches in the
+  added lines 0. Pushed; its CI is the rest of the re-verification (coverage, twin on every device, every firmware
+  build, web). Next PARENT once green: 4a0f1b76.
+
+## 12.185 Owner (21:23:14): last round option (a), wear last; bench commits prepared (lead, 21:3x)
+- C1 609e4606 = bench_commit.sh bfa240fa on fc4e5708 (outside audit/ = int, audit/ = the bench's; both halves checked).
+- C2 7cfeee71 on C1: round1.sh per ftmp_lr/round1_u1.diff (5gh, 5h heap loads on both images; 12g FRAM chunk
+  re-measure; 12f and held_sda() gone; 304 lines, bash -n clean, mode 100644 kept - a first build with 100755 was
+  discarded unpushed), ring_peak_final.py:33 "2 s" (the lead's scratch copy synced). The new steps' probes exist on
+  the branch (probes_20261110: snap58_heap_loads.py with the exact gc.threshold(32768) line and print("DONE"),
+  heap_loads_host.py with its SCRIPT line, heap_loads_summary.py, fram_chunk_timing_frozen.py with "FRAMCHUNK done");
+  the heap probe's names exist at bfa240fa (write_reset_record, RR_INTERRUPTED 21, SystemService.boot_phase,
+  sensortask_dev.main(*, watchdog)); src/ since snapshot 58 changed only the CS settles, comments and the version.
+- Relay commit C3 and the fast-forward push after snapshot 61's CI (run 42899683439) is green.
+
+## 12.186 Owner asked (21:26:30) whether everything now waits on the bench: no - W3 split (lead, 21:4x)
+- Done now: H36 (int's six untracked build_*.out deleted, literal paths; figures already in the records); CLAUDE.md:688
+  "each pass's shrinking per-module baseline is BACKLOG.md's open item" -> "no pass exempts a module" (int 51c9c75f;
+  matches SPEC :2899 and W1a's removal).
+- W3a (read-only, BRIEF_W3A.md) out: N01/N02 terminal states, O4's agent-credit list 11-06..11-10, the load entries
+  re-read, D's do-not-reopen check, the final report's draft with <BENCH>/<D> placeholders.
+- W3b after the bench: U05 + X1 + B49 (BACKLOG's owed list rewritten to what the round leaves), F.3/Part N figures
+  (L04, L05), L06 twin corrections, H34, B27's bench half, U17 (needs the final coverage run), P01's second pass, D.
+
+## 12.187 Snapshot 61 CI green; the last round's relay pushed (lead, 21:3x)
+- Snapshot 61 4a0f1b76 CI green (run 42899683439): with gate61 the first re-verification pass is green (P01 pass 1:
+  lint, 3 mypy, test.sh -1 and 32768, coverage, twin on every device, every firmware build, web, tests_hardware
+  collect). Next PARENT = 4a0f1b76.
+- Bench branch fast-forward fc4e5708 -> 609e4606 (final tree) -> 7cfeee71 (runner + probe) -> c972ea2b (relay
+  21:29 UTC, stamped from date -u; 31 lines; PAT matches in the pushed lines 3, all 8-char hex commit ids, 0 withheld).
+  Int head 51c9c75f differs from the bench's tree only by CLAUDE.md:688 (docs).
+- Wear: the cleared: line goes into WEAR.txt only after every a-h result is read and H34 settled (owner 20:37:10).
+
+## 12.188 Owner asked (21:32:13) about the PR's ~2M added lines and their cleanup (lead, 21:3x)
+- Measured snapshot 61 4a0f1b76 against main's merge base 798e5a72 (numstat, ':!arduino'): +1,848,790 / -165,623.
+  audit/ +1,639,270 (89 %; 14,817 files: artefacts/evidence 945,752, sweeps and index JSON ~450k, plans/harvest/
+  consolidation ~245k). Outside audit/ +209,520 / -165,623: tests/ +71,330/-32,368, tests_scripts/ +52,486/-5,727,
+  tests_hardware/ +22,630/-10,195, tests_js/ +8,501/-1,504, src/ +10,199/-8,673, root files +15,917/-7,829 (the
+  plan file among them), datasheets/ -87,264 (a tree in main, a submodule here).
+- The stage is D (PLAN; CLOSE_STATUS S05, S06): the last commit holding audit/ tagged and named in the final report,
+  then audit/ and PROJECT_AUDIT_PLAN.md deleted, one merge into main as v2.0 with the owner's agreement. After D the PR
+  reads about +210k / -166k. A merge keeps the history and the tag keeps audit/, so the repository's size keeps them.
+
+## 12.189 Owner asked (21:34:58) whether all audit evidence survives D in git history: two gaps found (lead, 21:4x)
+- Kept: everything under audit/ at the last snapshot (the scratch records are in it: FINDINGS.md and the owner record
+  among 3 matches), reachable from the tag D names and from main's history after a normal merge.
+- Gap 1: the bench branch's evidence is not on the audit branch: 112 files under audit/ only there (its HANDBACK.md,
+  LEAD_RELAY.md, probes, logs), and its head c972ea2b is not in the audit branch's history.
+- Gap 2: snapshot.sh commits the int tree with the previous snapshot as the only parent, so no int commit is on any
+  remote branch (checked: bfa240fa, f3886cb0, e1958815, 20629434 on none); 541 commits reachable from int 51c9c75f are
+  not reachable from snapshot 61. The records cite them by id; they exist only in this container.
+- Proposed (to the owner): D also tags the bench head and the int head (or folds the bench's audit/ files into the
+  last snapshot), all named in the final report; and the int history pushed now to a backup ref, since a container
+  loss would lose it before D (the trees are safe in the snapshots, the commits are not).
+- Owner 21:38:00 chose (a), backup now. The tag push (refs/tags/u35-int-backup) was refused twice with HTTP 403 by
+  this session's git access (branch pushes to claude/* work), so the backup is a branch: claude/u35-int-backup at
+  9d31adf2, a [skip ci] wrapper commit whose parent is int 51c9c75f and whose tree is the same (no CI run). Pre-push
+  scan of the 5,816 newly published objects (541 commits, 3,279 blobs): PAT 3,124 = 1,543 IPv4-like + 1,581 8-char
+  hex, 0 other, 0 withheld. Each later update: a new wrapper with parents (new int head, previous wrapper), so the
+  branch only fast-forwards.
+- Consequence for D: this session cannot create tags. D's archive refs become branches (or the owner tags them).
+- Owner 21:55:27: D's archive refs are branches (option (i)): claude/u35-audit-archive (the audit branch's last
+  commit holding audit/), claude/u35-bench-campaign (kept, never deleted), claude/u35-int-backup (its final update at
+  D); all three named in the final report. Replaces PLAN D's "tagged" and CLOSE_STATUS S06's tag (this session's git
+  access refuses tags, 12.189).
+
+## 12.190 W3a handed back; verify_present() restored before the last round; two manual pulls join step j (lead, 22:2x)
+- W3a (HANDBACK_W3A.md; W3A/N01.tsv, O4.tsv, LOAD.md, DNR.md; REPORT_DRAFT.md saved by the lead, the harness having
+  refused the agent's write): N01 73 rows DONE 35 / PLACED 13 / TO PLACE 9 / DROPPED 8 / BENCH 7 / OWNER 1 (+5 unfilled:
+  DONE 3, TO PLACE 2); 12 rows U24 closed at aa3530f7 still read open; N02 = DECREV 4's ninth place, done (87c14760),
+  two record lines owed before the archive commit. O4 64 credits / 62 lines at 51c9c75f, 62 / 60 at eb8a214e. LOAD:
+  LD 52 cells 43 right / 8 corrected / 1 owed (captive-DNS flood on silicon); R3 13: 8 / 5; OR49.a (3) 6 entries.
+  DNR 271: 244 current, 6 superseded, 5 moot, 1 contradicted (V14), 11 not located, 4 filtered.
+- V14: 1547690d (lead's merge, 2026-11-09 23:28) removed FRAM_SPI.verify_present() with the driver's lock, credited
+  "(agent, 2026-11-09)" under the 20:43:39 direction - after the owner's 18:30:08 rule (ask before removing a function
+  that is merely unused) and against the 2026-09-26 ruling that keeps it. A slip of mine: decided topic reversed
+  without the ask. Not re-asked (decided): restored as a plain synchronous re-probe (int eb8a214e: 7 lines, 3 tests,
+  the pinning assert in test_get_and_set_values_are_plain_calls_with_no_session_to_take narrowed to __aenter__,
+  SPEC's FRAM API paragraph and initialized-flag line). The test comment at test_asy_webserver_service.py:1283 now
+  credits the owner (2026-11-07), as src/asy_webserver_service.py:815 does.
+- Checks at eb8a214e: the FRAM file 77/77 at -1, 32768 and under settrace, no allocation-failure text; the webserver
+  file 225/225 at both stages; lint clean; the three mypy passes clean; 20 doc readers 1088 passed. gate62 (full unit
+  gate) running as confirmation.
+- The image changed after the 21:29 relay: bench C4 f02afce1 (main line eb8a214e), relay 22:19 C5 43834938 (pushed):
+  every image from this head; a control or 3g-5h result taken on 7cfeee71 is redone. Step j gains
+  manual_bus_electrical.py's test_fram_unplug_replug_recovery and test_uart_crossover_pull_recovery (OF-60, OF-70;
+  owner's hands, no flash or NVM write). int backup 3f0933a2.
+- Owed to W3b: OF-193 (_unix_port.sh check misses a stale binary; FINDINGS 12.174 is its evidence) - fix or one
+  BACKLOG line; OF-239 (disallow_any_unimported) - to the owner at the phase stop with O4; CLOSE_STATUS P07's premise
+  wrong: the load cells go into audit/b3/load.md at the next snapshot (scratch is not archived); the 12 stale "open"
+  rows and N02's two record lines corrected; DNR's 11 not-located and 4 filtered rows read.
+- Slip (W3a): one git grep ran unfiltered and printed a test function name holding a filtered word
+  (tests/test_asy_wifi_service.py:2027); no secret value.
+- Addendum (23:10): gate62 on eb8a214e green on every step (test.sh e and f, twin -1/32768 suite and harness, npm);
+  allocation-failure text only in the twin checker's own "log carries none of" lines (40 each, as gate61b).

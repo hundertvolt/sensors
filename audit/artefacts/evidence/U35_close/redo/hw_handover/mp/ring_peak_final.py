@@ -30,7 +30,7 @@ def level(drv: object) -> int:
 
 async def run() -> None:
     asyncio.create_task(device.main(watchdog=wdt))
-    await asyncio.sleep(15)  # past the setup batch (the SCD30 reset alone waits 2.5 s): the rings exist
+    await asyncio.sleep(15)  # past the setup batch (the SCD30 reset alone waits 2 s): the rings exist
     names = [n for n in ("uart0", "uart1") if hasattr(device, n)]
     drvs = [getattr(device, n) for n in names]
     peak, laps0 = [0] * len(drvs), [d.rx_overruns for d in drvs]

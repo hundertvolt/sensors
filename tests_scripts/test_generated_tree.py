@@ -134,7 +134,7 @@ def generator(repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     shutil.copy(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml", tmp_path / "devices")
     (tmp_path / "scripts").mkdir()
     shutil.copy(repo_root / _GENERATOR, tmp_path / _GENERATOR)
-    for shared in ("src", "buildgen", "ext", "toolchain"):
+    for shared in ("src", "buildgen", "ext", "fakes", "toolchain"):
         (tmp_path / shared).symlink_to(repo_root / shared)
     return module
 

@@ -81,3 +81,12 @@
 - 20:2x: last-round relay prepared (12.184); owner asked (go, wear in or out). gate61 at the twin stage.
 - 20:3x: gate61 cut by the 30 min limit after e/f green; gate61b (twin + npm) running. Waiting: owner's (a)/(b) for the last round.
 - 20:4x: bench day 5 end (fc4e5708). Relay builds on fc4e5708. Waiting: owner's confirmation of (a) with wear last; gate61b.
+- 20:5x: gate61 green; snapshot 61 4a0f1b76 pushed (CI = P01's device-wide half). Waiting: CI; owner's confirmation of (a) with wear last.
+- 21:2x: owner chose (a), wear last (21:23:14). Prepare bench commits on fc4e5708 (code = int bfa240fa, runner diff, probe edit, relay); push after snapshot 61 CI green.
+- 21:3x: C1/C2 built (12.185); waiting snapshot 61 CI (run 42899683439); then C3 relay + push + show the owner.
+- 21:4x: W3a out (read-only); H36 done; CLAUDE.md:688 fixed (int 51c9c75f). Waiting: snapshot 61 CI -> relay push.
+- 21:3x: relay pushed (bench c972ea2b, 12.187); snapshot 61 green (PARENT 4a0f1b76). Running: W3a. Waiting: the bench round; then W3b, P01 pass 2, D.
+- 21:4x: int history backed up as branch claude/u35-int-backup (9d31adf2; tags refused 403). D's archive refs: branches or owner-made tags (to the owner).
+- 21:5x: D archive = 3 branches (owner 21:55:27). W3a running; the bench round pending.
+- 22:2x: W3a back (12.190). verify_present() restored (int eb8a214e); bench C4 f02afce1 + relay 22:19 C5 43834938 (image from this head; FRAM + crossover pulls join j); backup 3f0933a2. Running: gate62 (heavy.lock). Waiting: the bench round; then W3b, P01 pass 2, D.
+- 23:10: gate62 green on eb8a214e (heavy.lock released). Nothing running. Waiting: the bench round on 43834938; then W3b, P01 pass 2, D.

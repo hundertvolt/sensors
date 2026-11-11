@@ -328,3 +328,13 @@ class FRAM_SPI:
             self._wp_pin.init(self._wp_pin.OUT, value=not self._wp)  # level before direction: no glitch on WP
         self.initialized = True
         self.pr.one("SPI FRAM Driver Setup complete")
+
+    def verify_present(self) -> bool:
+        # A re-probe cheaper than setup(): a chip that no longer identifies leaves the driver uninitialized, every
+        # other call refusing until setup() succeeds again.
+        if not self.initialized:
+            self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
+            return False
+        self.begin()
+        self.initialized = self._check_device_id()
+        return self.initialized
