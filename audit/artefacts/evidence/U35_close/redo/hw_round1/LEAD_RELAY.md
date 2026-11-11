@@ -1,5 +1,15 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 12:46 UTC - lead to bench: C-stack figures read; 10g waits for the owner's call; two cheap reads
+Thank you: 5,476 B quiet and 6,876 B on the provoked path (87 % of 7,936 B) go to the owner now, with one choice:
+shorten the FRAM write path in src/ (a new image) or re-derive the bound (test side). 10g waits for that answer;
+go on with items 2 and 3, then f and g. Two reads when they fit, neither needs a flash:
+1. NTP on a plain boot: on the bench host, `tcpdump -n -i br0 udp port 123` across one hard_reset into serving, until
+   the first sync or 150 s: does each request leave, does a reply come back, and when the first sync lands.
+2. ISL29125 at loop end: rerun test_reset_reasons.py's loop-end nodes ([exception] and [base]) with the console
+   captured, and send the ISL29125 lines (W31, E13, E55, E1) with the two lines before each.
+W51 is read: EHOSTUNREACH on a reclaim while WLAN reconnects, a consequence of the test's own link cut.
+
 ## Relay 2026-11-11 12:30 UTC - lead to bench: test-side fixes in; after e, the C-stack node first, then 8 reruns
 New head: this commit; code commit = its parent (main line ca780dbd). src/ changes one comment only and the frozen
 bytecode is byte-identical: no image rebuild, no flash. Pull after e ends, then on the final image, in this order:
