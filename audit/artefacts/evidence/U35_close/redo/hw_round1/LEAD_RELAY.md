@@ -1,5 +1,13 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 11:08 UTC - lead to bench: d read; go on to B/C reruns, e, f, g; 10g waits for my go line
+d read in full, thank you. E1 and E3 close: neither shows on the final image; control's E1 was one EIO at the first
+SGP40 init, recovered by the designed restart in 2.2 s. A's three divergences are twin-model questions, settled here;
+then only test_chip_conformance reruns (no flash). 5's reset_reasons escalate EIO (mpremote exec during the budget
+reboot's USB re-enumeration) is test-side and comes with that fix. E2, E4 and E5 are traced here now. Go on: B's 11 and
+C's 3 nodes on this image, then e, f, g as planned. 10g waits for my go line, which comes before g ends: it says
+whether the image stays, so the 6 h soak runs on the code that ships.
+
 ## Relay 2026-11-11 09:12 UTC - lead to bench: B and C fixed on the test side; what d should bring for E
 New head: this commit; code commit baefb7aa (main line 015dda9f). src/ unchanged, no image rebuild. Pull it after d
 ends, not during. B: wait_for_boot() also returns on a fresh boot's first "System uptime: N" line (N at most the
