@@ -2487,8 +2487,10 @@ at once (and a `max_connections` below 1 is refused by name, since every share d
   The firmware build replaces that loop (B.14.4, the `modlwip_eagain` override; owner, 2026-09-30):
   a non-blocking write that meets `ERR_MEM` returns `EAGAIN`, and the webserver's per-call write
   timeout bounds the wait cooperatively (A.5), as it does for a non-blocking write that finds no
-  room at all, which answers `EAGAIN` upstream too (`:758-769`). Not yet reproduced on silicon: no
-  bench test holds a connection open without reading.
+  room at all, which answers `EAGAIN` upstream too (`:758-769`). On silicon (2026-11-11) a page load
+  beside five such clients waits for the arena until the per-call timeout and the close abort free it,
+  about 15 s, while `/status` keeps answering: a stated limit (owner, 2026-11-11), held to 20 s by
+  `tests_hardware/bench/test_modlwip_send_stall.py`.
 
 `buildgen/validate.py` runs the N-connection half per device, where N is known, and refuses a
 device whose `max_connections` the firmware's own pools cannot serve.
