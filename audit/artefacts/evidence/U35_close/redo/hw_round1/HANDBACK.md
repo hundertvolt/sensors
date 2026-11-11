@@ -43160,3 +43160,25 @@ status: confirmed as measured; whether the shrink continues past three loads not
 - Status at end: SysUptime 29,329 s since the 12:38 restore, ResetReason 21, STA; errcount unchanged since the heap load
   series' end (NTP 2, SGP40 27, WEBSERVER 208, WIFI 26; logs/day5_20261110/*Z_status.json). Flash cycles today: 1.
 - Open: the next image (FRAM CS settle pauses dropped) needs the owner's reflash OK, then item 1 again.
+
+## Bench 2026-11-11 05:54:08 UTC - last round, a: steps 1 and 2 done, 4a running; the window estimate
+
+- Start: the bench host rebooted before the window (host up 05:25); the board came up with it, ResetReason 1, joined
+  STA at 05:33 by itself, snapshot 58 (BuildDate 2026-11-10T11:02:16Z). uv 0.13.7 in .uvpin/bin (0.8.17 kept aside).
+- Step 1 (FRAM evidence, nothing cleared): /status 05:52:17 errcount NTP 2 (E67,E71), SGP40 46 (W65,W35,W33),
+  WEBSERVER 208 (W60), WIFI 38 (W37,W38,W79,W81); every other module 0. Against day 5's end (SGP40 27, WIFI 26): SGP40
+  +19 and WIFI +12, all boot and join codes, over three boots (host power-up 05:24, 05:34, 05:52) and step 2's bridge.
+  Raw dump 05:52: dump_size 262144, 8 non-zero pieces of 1024, read_failed_at null, status register 0, not write
+  protected, RDID 047f4803, DONE. The verbatim dump is in logs/1.log on the Pi.
+- Runner fix (2910f6a6): the first dump (05:33) mounted src/ on the autostarting image; the board reset 20 s in (USB
+  disconnect 05:34:03, mpremote EIO, then ResetReason 21). A product image now dumps through Board.run_isolated
+  (watchdog re-armed first, frozen drivers), then restore_board_to_serving; a bare image keeps the mount.
+- Step 2 (env --tier bench, the new pins): rc 0, 781 s; apt packages listed in logs/2.log.
+- Flash cycles today: 0. The owner approved 3g and 3 at 05:3x (one cycle each).
+- Estimate, from this bench's measured step times (11-05 to 11-07), ends in UTC if every tier is green first time:
+  a 4a ~60 min -> 06:55; b two control builds -> 07:10; c 3g, 4g ~25 min, 5g ~35-75 min, 5gh 16 min -> ~09:30;
+  d 3, 4b ~25 min, 5 ~75 min, 5h 16 min -> ~11:30; e 9, 10a ~15, 10m ~33 -> ~12:20; f 12a-12g ~35 -> ~13:00;
+  g 16b (the owner's power cycle) and 13 (only with the CH13 AP) -> ~13:15. j with the owner ~2 h; k two chroot legs,
+  not measured on this tree, ~3 h together. 10g is 6 h 20.
+  a-g, j and k end about 18:15; 10g fits too only if it starts by 15:08, so with j and k in the window it opens the
+  next one unless a-g runs early. A red in 3g-5h or a rerun moves everything later.
