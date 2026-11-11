@@ -37,16 +37,17 @@ _SCRATCH_CFG_PATH = "hwtest-scratch/"
 # @tunable l3.heap_headroom_after_full_system_build_worst_case_factor = 2
 _WORST_CASE_FACTOR = 2
 _MIN_LARGEST_BLOCK = _WORST_CASE_FACTOR * BENCH["worst_case_allocation"]
-# Survivor volume: every reading of a fully built dev graph is 87,760-87,968 B, so this is ~14 % over the graph's own
-# cost and catches a regression that adds permanent objects rather than one that scatters them.
-# @tunable l3.heap_headroom_after_full_system_build_max_used = 100_000
-_MAX_USED = 100_000
+# Survivor volume: what build_system() and the setups keep over the heap in use before them, 35,984 B on dev, so ~14 %
+# over it; the script's own size and the imports do not move it (owner, 2026-11-11).
+# @tunable l3.heap_headroom_after_full_system_build_max_added = 41_000
+_MAX_ADDED = 41_000
 
 
 async def _main() -> None:
     stages = [gc.threshold()]
     free, largest = report_checked("baseline")
-    fact("heap_baseline", {"free": free, "largest_block": largest, "alloc": gc.mem_alloc()})
+    base = gc.mem_alloc()
+    fact("heap_baseline", {"free": free, "largest_block": largest, "alloc": base})
     # The "before" half of the placement delta: what the BOOT adds up high is attributable only against what was
     # already there, which makes the host's placement check independent of the suite position.
     dump_map("baseline")
@@ -81,7 +82,8 @@ async def _main() -> None:
         free_p, largest_p = report_checked("after_build_system_production_threshold")
         fact("heap_after_build_system_production_threshold", {"free": free_p, "largest_block": largest_p, "alloc": gc.mem_alloc()})
         fact("used", used)
-        fact("max_used", _MAX_USED)
+        fact("added", used - base)
+        fact("max_added", _MAX_ADDED)
         fact("largest_block", largest)
         fact("min_largest_block", _MIN_LARGEST_BLOCK)
     finally:
