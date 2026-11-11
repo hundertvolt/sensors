@@ -1,5 +1,22 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 16:26 UTC - lead to bench: step 2 read; both new reds are test-side; one code commit before 3
+
+- E46 + W63 after the bootloader node is the known harness cut, not this image's FRAM change. The restore's
+  hard_reset is `mpremote reset`: its Ctrl-C into the running main.py can land inside a chunk operation, between the
+  two status writes (byte 2 = BUSY). The next boot reads that block as E46 (byte 2), falls back to block 1 (W63) and
+  rewrites block 0, as designed. The same pair followed the multi-chunk echo, the loop-lag node, the harness hard
+  reset, c_stack[reboot] and a session end. 0c632157 leaves every status-byte step as it was.
+- invalid-record is a test-script defect: reset_code_invalid_record.py calls machine.reset() right after its print,
+  without the 200 ms flush i2c_held_sda_across_a_reset.py waits first, so its last fact can die in rp2's USB queue.
+  The fix comes in the next code commit; rerun that node after it, not before.
+- Now, no flash: merge 15:13; run the renamed C-stack node; rerun the bootloader node once with the console captured
+  (pass if no E46; if E46 comes again, send its line with the byte read, and the chunk). Push step 2's results with
+  4b's heap facts (used, baseline alloc, largest block) and 5h's mem_free and largest block after each collect.
+- From those I settle the heap bound (build survivors, 41,000 B or lower) and send one code commit: that bound
+  and the invalid-record flush, about 40 min after your push. 3 (GC control) starts after it, so its tiers run the
+  final tests; 4b's D > 100,000 B is the old bound the commit replaces.
+
 ## Relay 2026-11-11 15:13 UTC - lead to bench: tests and docs only, same image; pull between steps
 New head: 19973a4d (main line 0912e830; gate green but for the lwIP host file, now 9/9 and 4/4 at both GC stages;
 tests_scripts 6,564 passed). src/, toolchain/, devices/ unchanged: the image you flashed (004cd17d) stays, no flash.
