@@ -152,7 +152,7 @@ export function sleep(ms) {
 }
 
 /**
- * Boots `device`'s twin on `port` under the captive-DNS lock: build/generated_src first, sensortask_<device>.py's one
+ * Boots `device`'s twin on `port` under the captive-DNS lock: build/generated_src ahead of src/, sensortask_<device>.py's one
  * home (SPECIFICATION.md Part L.2), its own site (build/generated_html/<device>, package.json's "pretest" hooks), the
  * caller's config directory (makeConfigDir()), the rest in memory.
  * @param {{device: string, port: number, configDir: string}} twin

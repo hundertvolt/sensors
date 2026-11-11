@@ -51,7 +51,7 @@ _TWIN_HOST_ENV = "TEST_TWIN_HOST"
 
 
 def _twin_layout() -> str:
-    # The twin layout of the one MICROPYPATH definition: build/generated_src first, where every device module is generated.
+    # The twin layout of the one MICROPYPATH definition: build/portable_src (arm64 copies), then build/generated_src.
     value = tomllib.loads(LAYOUT_FILE.read_text(encoding="utf-8")).get("twin")
     if isinstance(value, str):
         return value
