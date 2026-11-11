@@ -391,6 +391,9 @@ gates, traps).
   - **Fewer jobs, nothing installed** (2026-11-09): `scripts/test.sh` and the twin legs take one device
     per `hardware_family` (`scripts/_devices.sh`'s `distinct_devices`: bash and `sed`), and
     `GC_THRESHOLD=32768 scripts/test.sh` runs no pytest tier, its summary listing it as skipped.
+  - **An arm64 leg runs two functions as plain twins** (2026-11-11): the Unix port compiles no native code
+    on arm64 (v1.29.0), so the CRC engine and the UART ring copy run as `build/portable_src/` copies there
+    (SPECIFICATION.md F.1); nothing installed. Before this, every arm64 Unix-port run failed at import.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
   fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
   `sensortask-*.py` built as part of the real rewrite needs a full Unix-port equivalent, runnable on

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+import tomllib
 from _devices import bench_device
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests_hardware"))
@@ -24,7 +25,7 @@ _SCRIPTS = Path(__file__).resolve().parents[1] / "tests_hardware" / "device_scri
 _RAW_CALLS = frozenset({"set_values", "get_values", "set_values_sync", "get_values_sync"})
 _REGIONS = ("_SCRATCH_REGIONS", "_EVIDENCE_REGIONS")
 # The twin boot test_digital_twin_boot_contiguity.py measures with: scripts/test.sh's own path and heap size.
-_MICROPYPATH = "build/generated_src:src:tests:fakes:frozen_modules:.frozen"
+_MICROPYPATH = tomllib.loads((Path(__file__).resolve().parents[1] / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["unit"]
 # @tunable l1.unix_heapsize = 16M
 _HEAPSIZE = "16M"
 _BOOT_TIMEOUT_S = 120

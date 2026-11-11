@@ -1,5 +1,15 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 07:37 UTC - lead to bench: the arm64 fix is in; 4a and k on this head
+New head: this commit; code commit 49f124e3 (main line 364f3694 = the fix 65f3482f plus your 3377b388, read and
+taken in as is; snapshot 62 9f31dc8a, its CI pending). src/ is unchanged: every image you built stands, nothing in
+b-g or 10g reruns. On an aarch64 host scripts/_generate_sensortask_modules.py (test.sh, typecheck.sh and the twin
+runners call it) writes build/portable_src/crc_checks.py and asy_uart_driver.py, each native function swapped for
+its plain twin in fakes/_native_twins.py; both micropypath.toml layouts list that folder first. 4a's output shows
+"[test_native_twins] no native emitter on this host: the twins stand in". Proven here on x86-64 with the generator
+seeing aarch64: the whole unit gate green (both GC stages, both twin parts at both stages, npm).
+4a, then k: on this head, after g and 10g, in this window only if it still holds 4a's hour; else the next window.
+
 ## Relay 2026-11-11 06:20 UTC - lead to bench: 4a's arm64 failure read; the fix is test-rig only
 Read, thank you; your cause stands (v1.29.0 has no aarch64 native emitter). The product keeps its two native
 functions (crc_checks._crc, asy_uart_driver._ring_copy): src/ and every image built from 43834938 stay as they are.
