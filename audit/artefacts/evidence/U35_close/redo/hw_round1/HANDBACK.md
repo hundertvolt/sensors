@@ -43415,3 +43415,22 @@ status: confirmed as measured; whether the shrink continues past three loads not
   after): 2 passed, 184 s. No ISL29125 W31/E13/E55/E1 this time, and no ISL29125 line other than its routine
   trigger/read/stored/config ones in the tap; so the d codes did not reproduce and there is nothing to quote.
   Tap: logs/day6_20261111/loopend_1246/console_tap.txt.
+
+## Bench 2026-11-11 13:55 UTC - 13:39's two baselines on the image as flashed (TCP_SND_BUF 6,400), no flash
+
+- Scripts and output: logs/day6_20261111/baselines_1339/ (ad hoc, from the test's own helpers; nothing committed).
+  Board serving, nothing else loading it; max_connections 6.
+- The page: GET / is the whole page. index.html is served gzip (Content-Encoding: gzip, 15,602 B on the wire,
+  74,891 B decoded) and is self-contained: an inline module script and inline JSON, a data: icon, no src/href asset.
+  So "/ then every asset" is "/" alone (the test's _page_assets() also finds none, rightly). /js/app.js is still served
+  (200, 26,826 B), used by the hammer only as its largest file.
+- 1. Speed: 20 sequential full page loads median 0.580 s, p90 0.684, max 0.702, min 0.480 (a second set with the
+  decoded index: median 0.597, p90 0.680, max 0.756). 20 GET /status: median 0.599 s, p90 0.725, max 0.741, min 0.500.
+- 2. Calibration (non-readers of /js/app.js, 2 s + 2 s settle, then a timed GET / with the 20 s timeout, /status polled
+  every 0.5 s beside it; slots drained between runs):
+  - 1 non-reader (zero_window 1): page 0.563 / 0.529 / 0.703 s (200); /status max beside it 0.608 / 0.614 / 0.805 s.
+  - 2 non-readers (zero_window 2): page refused each time at 5.271 / 5.325 / 5.314 s - CeilingRefusedError, the server
+    closed without a response byte; /status max beside it 5.705 / 5.673 / 5.670 s (it froze about 5 s too).
+  So at 6,400 one stalled client costs nothing measurable and two stop the page and /status for about 5 s, then refuse
+  the page, as the arithmetic says (6,400 tolerates one).
+- Waiting for the new image's code commit (owner approved its flash and the control's two at 13:31 in this session).
