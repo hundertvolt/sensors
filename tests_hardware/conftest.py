@@ -307,9 +307,15 @@ def dut_ip(board: Board, bench: BenchBridge, request: pytest.FixtureRequest) -> 
     def note(text: str, *, recovery: bool = False) -> None:
         record_session_note(config, text, recovery=recovery, source="dut_ip")
 
+    last_ip = config.getoption("--dut-ip")
+
     def sta_connected() -> bool:
+        # The console drops what it prints while no tail holds the port, the second between two tails, so the board
+        # answering GET /status at its last known address counts as joined too; a raising probe is "not yet".
         seen.extend(board.tail_log(duration_s=_STA_TAIL_STEP_S))
-        return "WLAN connection established" in "\n".join(seen)
+        if "WLAN connection established" in "\n".join(seen):
+            return True
+        return bool(last_ip) and http_client.fetch(last_ip, 80, "GET", "/status", timeout_s=_HTTP_READY_PROBE_TIMEOUT_S).status_code == 200
 
     harness.kick_then_reset(board, bench)
     try:
