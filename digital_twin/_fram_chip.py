@@ -153,9 +153,12 @@ class FRAMChip:
         self.rdid_response = rdid_response
         # rp2's SPI raises only on a reading transfer (ports/rp2/machine_spi.c:312-315): only readinto() takes a fault.
         self.fault = FaultInjector(raisable_ops=("readinto",))
+        # WEL after a WRITE or WRSR: kept by the MB85RS2MTA, the table's one part past 64 KB (continual programming,
+        # DS501-00032-3v0-E p.6), cleared at CS by the MB85RS64V (DS501-00015-4v0-E p.6).
+        self._status_after_write = 0xFF if size > _ADDR_16BIT_MAX else 0xFF & ~_WEL_BIT
         self.drop_next_wren = 0  # twin-only test knob: each WREN while > 0 leaves WEL clear and counts down
         # Twin-only test knob: each WRDI while > 0 leaves WEL set and counts down - a WRDI lost while WEL holds, as the
-        # MB85RS2MTA's does after a WRITE (continual programming, p.6); this model clears WEL at the WRITE, so it sets it.
+        # MB85RS2MTA's does after a WRITE (continual programming, p.6); on the MB85RS64V, which clears it there, it sets it.
         self.stick_next_wrdi = 0
         # Twin-only test knob: each payload WRITE while > 0 stores its first byte with bit 0 flipped and counts down - a
         # bit error on SI, written as received (MB85RS64V p.9): the array then disagrees with what the product sent.
@@ -324,7 +327,7 @@ class FRAMChip:
                 self._write_wrapped(self._pending_addr, data)
                 if len(data) > 1:  # a chunk copy, a clear or an erase unit, never a one-byte status write
                     self._count_write(self._pending_addr)
-            self.status &= ~_WEL_BIT  # WEL auto-clears at the CS rising edge after WRITE recognition
+            self.status &= self._status_after_write
             self._pending_op = None
             self._pending_addr = None
             return
@@ -343,7 +346,7 @@ class FRAMChip:
         elif opcode == _OPCODE_WRSR:
             if self._wel:
                 self.status = (data[1] & ~_WEL_BIT) | (self.status & _WEL_BIT)
-            self.status &= ~_WEL_BIT  # WEL auto-clears at the CS rising edge after WRSR recognition
+            self.status &= self._status_after_write
         elif opcode == _OPCODE_WRITE:
             if len(data) > self._header_len():
                 raise ValueError("FRAM fake: opcode, address and data in one write() - the fake frames by write() pairing (fidelity table)")

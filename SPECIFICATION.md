@@ -2469,26 +2469,45 @@ at once (and a `max_connections` below 1 is refused by name, since every share d
   drain the pool, leaving the rest holding data the stack has accepted but cannot push. The
   override therefore requires `MEMP_NUM_TCP_SEG >= max_connections x (TCP_SND_BUF / TCP_MSS)` —
   a full window of full-MSS segments per admitted connection. It does not stop the pool running
-  out: a connection queues up to `TCP_SND_QUEUELEN` (32) segments, one per short write, and a
-  closing pcb keeps its queue, so the pool is one of the three `ERR_MEM` sources below.
+  out: a connection queues up to `TCP_SND_QUEUELEN` segments (4 x `TCP_SND_BUF` / `TCP_MSS`,
+  rounded up: 8 at 1,600 B), one per short write, so six admitted connections' queues alone can fill
+  the 48 at any value from lwIP's floor up, and a closing pcb keeps its queue, so the pool is one of
+  the three `ERR_MEM` sources below.
 - **`MEM_SIZE` is the arena every outbound byte passes through.** `extmod/modlwip.c:802` calls
   `tcp_write()` with `TCP_WRITE_FLAG_COPY` unconditionally, so the payload is copied into a
   `PBUF_RAM` pbuf, which `pbuf_alloc()` takes from `mem_malloc()` — that heap. The override
   requires its per-connection share to stay at or above **2,000 B**, which is what the
   4-connection design gave (8000 / 4). A relationship, not a tuning target. A floor, not a bound on
-  demand: a page-load connection queues up to `TCP_SND_BUF` (6,400 B) plus pbuf overhead, about
-  7.2 KB, and a closing pcb keeps its queue until it is acknowledged or aborted 10 s after close
-  (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`), so two clients that stop reading mid page load fill the
-  12,000 B arena. `tcp_write()` then answers `ERR_MEM` while the socket still reports room — from
-  the arena, the global segment pool, or the connection's `TCP_SND_QUEUELEN` pbuf limit — and the
+  demand: a page-load connection queues up to `TCP_SND_BUF` plus pbuf overhead, and a closing pcb
+  keeps its queue until it is acknowledged or aborted 10 s after close
+  (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`). When the arena is full, `tcp_write()` answers `ERR_MEM`
+  while the socket still reports room — as it does for the global segment pool and for the
+  connection's `TCP_SND_QUEUELEN` pbuf limit — and the
   pinned `extmod/modlwip.c` retries it up to 200 x 50 ms inside one call (`:801-813`), even on a
   non-blocking socket: up to 10 s with the whole VM frozen, past the 8,388 ms watchdog, and no
   asyncio timeout can interrupt it (a live peer's ACK ends the wait sooner, still in 50 ms steps).
   The firmware build replaces that loop (B.14.4, the `modlwip_eagain` override; owner, 2026-09-30):
   a non-blocking write that meets `ERR_MEM` returns `EAGAIN`, and the webserver's per-call write
   timeout bounds the wait cooperatively (A.5), as it does for a non-blocking write that finds no
-  room at all, which answers `EAGAIN` upstream too (`:758-769`). Not yet reproduced on silicon: no
-  bench test holds a connection open without reading.
+  room at all, which answers `EAGAIN` upstream too (`:758-769`).
+
+**`TCP_SND_BUF` sets how many clients that stop reading the arena tolerates** (owner, 2026-11-11:
+"decide on the measurements, some value between 1600 and 6400 might be the actual sweet spot!").
+Such a client's connection queues up to `TCP_SND_BUF`, about 1.125 x `TCP_SND_BUF` of the arena
+(100 B of pbuf, headers and allocator per 800 B segment), and a live connection beside them needs
+about 1.8 KB, two full segments, to keep sending a segment per acknowledgement. The 12,000 B arena
+therefore tolerates floor(10,200 / (1.125 x `TCP_SND_BUF`)) of them: 5 at 1,600 B (lwIP's floor,
+2 x `TCP_MSS`), 3 at 2,400 B, 2 at 3,200 B, 1 at MicroPython's 6,400 B, where on silicon
+(2026-11-11) a page load beside five took 7.6 s to 20.2 s, waiting for the per-call timeout and the
+close abort to free the arena. Within the tolerance the stalled connections reach a zero send
+buffer (`POLLOUT` clear) before the arena fills, so they wait in the poller instead of spinning;
+past it (at most six admitted connections and three closing pcbs) the arena still fills, so the
+override stays. The shipped 1,600 B is chosen on silicon (agent, 2026-11-11, on the owner's "decide
+on the measurements"): 20 full page loads take 0.648/0.720/0.801 s (median/p90/max) against 6,400 B's
+0.580/0.684/0.702 s, `GET /status` 0.671/0.758/0.833 s against 0.599/0.725/0.741 s, and a page load
+beside five clients that stopped reading 0.547 s (dev, 2026-11-11).
+`tests_hardware/bench/test_modlwip_send_stall.py` holds a page load beside `max_connections` - 1
+such clients, and `GET /status` beside it, to 3 s.
 
 `buildgen/validate.py` runs the N-connection half per device, where N is known, and refuses a
 device whose `max_connections` the firmware's own pools cannot serve.
@@ -2603,7 +2622,7 @@ connection is non-blocking (`extmod/asyncio/stream.py:172`), and `src/` otherwis
 `Stream.write()` keeps the unsent rest (`:66-74`) and `drain()` retries it through the event loop
 (`:77-87`), so the watchdog feeder and every other task keep running, and the webserver's per-call
 write timeout reclaims a connection whose peer never drains (A.5). No `TCP_NODELAY` call is made
-anywhere, and `[lwip]` keeps its values (owner, 2026-09-30; F.9).
+anywhere, and `[lwip]` keeps its values (owner, 2026-09-30; F.9), `TCP_SND_BUF` apart (B.14.2.1).
 
 **The second patch: no listener callbacks at close** (owner, 2026-10-26). `close()` on a TCP socket
 (`MP_STREAM_CLOSE`, `extmod/modlwip.c:1678-1690`) calls `tcp_err()` and `tcp_recv()` on every pcb
@@ -2716,12 +2735,16 @@ printing `True` and then that sentinel, exiting 0 — lwIP's own
 timers have then run through two IPv6 reassembly ticks. Where the host build differs from rp2 is
 F.7.
 
-**What the host build shows** (both GC stages). `tests/lwip_host/test_modlwip_eagain.py`: every
-non-blocking write returns within 0.16 ms at the arena, queue-limit (32 segments) and segment-pool
-(48) edges, each the patched branch (`POLLOUT` still set); a reading peer gets every byte in order;
-capacity (10,400 B to a peer that never reads) comes back after the peers close, the same in 20
-rounds. Without the insertion all seven tests fail (single writes of 10,000-10,065 ms, or another
-edge). `tests/lwip_host/test_modlwip_listener_close.py`: a listener with an accept-queue array, one
+**What the host build shows** (both GC stages, `TCP_SND_BUF` 1,600 B, 2026-11-11).
+`tests/lwip_host/test_modlwip_eagain.py`, its counts derived from `[lwip]`: every non-blocking write
+returns within 0.06 ms at the arena (filled by two pairs whose peers never read), queue-limit
+(8 segments) and segment-pool (48, seven writers) edges, each the patched branch (`POLLOUT` still
+set); a reading peer gets every byte in order across that edge; capacity (8,000 B, `TCP_WND` +
+`TCP_SND_BUF`, to a peer that never reads) comes back after the peers close, the same in 20 rounds.
+On this loopback netif a filling write can also meet the arena at the copy for its peer, after
+`tcp_write()` took the piece: upstream answers `ENOMEM` there, with the piece queued. Without the
+insertion all seven edge and data tests failed at 6,400 B (single writes of 10,000-10,065 ms, or
+another edge); there is no unpatched host build at 1,600 B. `tests/lwip_host/test_modlwip_listener_close.py`: a listener with an accept-queue array, one
 with a single slot, a second listener on a closed one's port, and a socket whose heap-locked
 `listen(4)` raised each close and leave the port free. Each patch is needed: without the second the
 first close aborts at `tcp.c:2070`; with the second alone the last close segfaults in `pbuf_free()`;
@@ -6406,8 +6429,10 @@ await chain in C, so the budget is the longest await chain times the per-level c
 `mem.max_await_depth`); on silicon one await level inside a task costs about 200 B, and at depth 28
 three plain calls of headroom remained while 32 failed (dev, 2026-10-29, under `mpremote run`, a few
 frames deeper than the frozen entry). The longest chain: a `GET /status` through Microdot's dispatch whose system
-source reads a damaged NTP config, so that config store's FRAM-backed log write meets a failed
-status-byte read in its verify pass and the FRAM manager's own log records it. Its analysis (`tests_scripts/_await_depth.py`) starts a chain
+source reads NTP's config store while it is not valid, 12 await levels down to `ConfigManager._get_values()`,
+whose `CFGMGR_NTP` entry (E34) then reaches the chip through 10 plain calls from `err_s()` to the SPI command
+`_send_and_read()`, about 264 B each on silicon (dev, 2026-11-10), no pass-through helper among them (agent,
+2026-11-11). Its analysis (`tests_scripts/_await_depth.py`) starts a chain
 at every coroutine a task-creating call is handed in `src/` and the generated modules
 (`create_task()`, `asyncio.run()`, the server callback; `wait_for()`, `wait_for_ms()` and `gather()`
 run theirs as tasks of their own), Microdot calling every registered handler through
@@ -6424,7 +6449,7 @@ level, so the test also checks that the walk reaches every task top it names. A 
 fails the check at any depth; a chain is memoised with the stack's members on its own cycle, so no
 top's chain depends on which top reached a shared function first; one await holding a project
 coroutine or an asyncio awaitable counts the deeper. The board's peak is
-`tests_hardware/device_scripts/c_stack_budget.py`'s reading, held to half the limit (agent, 2026-09-27; owner-reviewed, 2026-10-02) and owed to the flash tier. A
+`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` of the limit (owner, 2026-11-11). A
 stack-check error is recorded by the logger call of the handler that catches it, or by that handler's
 own `report_if_fatal()` where no logger sees it (C.7, G.2), and the supervisor reboots (reset code 20,
 A.8); a handler too deep to log raises afresh and the first outer handler that logs records it
@@ -6904,7 +6929,7 @@ would raise there when real hardware could not.
 - **Only transfers of ≥ 32 bytes are affected** — `dma_min_size_threshold` is 32; anything shorter
   uses `spi_write_read_blocking()`, which has no overrun check.
 
-Reachable in this codebase: `asy_fram_driver.py`'s `_read_address()` reads the SGP40 VOC parameter
+Reachable in this codebase: `asy_fram_driver.py`'s `get_values()` reads the SGP40 VOC parameter
 chunk in one 260-byte `readinto()` (`_VOC_PARAMS_MEMSIZE` 256 + CRC32 4), well past the threshold.
 It propagates uncaught out of `get_values()`, matching `asy_i2c_driver.py`'s "a real `OSError`
 always propagates" contract — an overrun leaves garbage in the buffer, so reporting success would
@@ -7443,7 +7468,7 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 | 20 | `random`'s boot seed | the host's randomness (`ports/unix/mpconfigport.h:190-196`) | `get_rand_32()` (`ports/rp2/mpconfigport.h:163`), used by the boot signature's `random.getrandbits(32)` | — | — | none |
 | 21 | C-stack limit | 80,000 B on the 64-bit host, no margin (`ports/unix/main.c:443-451`, `py/mpconfig.h:819-820`) | the 8 KB stack less a 256 B margin (`ports/rp2/CMakeLists.txt:661`, `ports/rp2/mpconfigport.h:125`): a call or await depth that passes on the rig can raise `RuntimeError` on the board | `tests_scripts/test_await_depth.py` pins the longest static await chain (F.1) | L3: `tests_hardware/device_scripts/c_stack_budget.py` | none |
 | 22 | `sys.settrace` | compiled into `build-settrace` only, with the three settings it implies (`MICROPY_PERSISTENT_CODE_SAVE`, `MICROPY_PY_BUILTINS_CODE` full, `MICROPY_EXPOSE_MP_COMPILE_TO_RAW_CODE`); `build-standard` differs from rp2 in none of them | none | only `scripts/test.sh --coverage` uses `build-settrace`; its allocation figures are inflated (E.5.2) | — | none |
-| 23 | lwIP's network interface (`build-lwip`, B.14.4) | a loopback netif (`MICROPY_PY_LWIP_LOOPBACK=1`, `extmod/extmod.mk:413-414`) with both ends of every connection in one process, so each connection holds two pcbs and `MEMP_NUM_TCP_PCB` 9 admits 4 pairs, about half rp2's connections; every sent packet is copied into the lwIP arena on its way back (`netif_loop_output()`, a `PBUF_RAM` pbuf, `lib/lwip/src/core/netif.c:1147`), so the arena fills sooner and a write at its edge can raise `ENOMEM` from `tcp_output()` with its bytes already queued (`extmod/modlwip.c:817-826`) before the zero-window `EAGAIN` comes; a fresh connection takes 10,400 B (13 MSS) to a peer that never reads | the CYW43 netif: the peer is another host and the driver takes the outgoing pbufs | `tests/lwip_host/test_modlwip_eagain.py` measures the pool in-process, loads with whole-MSS writes so every edge is the zero-window `EAGAIN`, and never accepts `ENOMEM` in its place | L4: the modlwip send-stall round on `dev` (owed, BACKLOG.md) | none (the instrument's design) |
+| 23 | lwIP's network interface (`build-lwip`, B.14.4) | a loopback netif (`MICROPY_PY_LWIP_LOOPBACK=1`, `extmod/extmod.mk:413-414`) with both ends of every connection in one process, so each connection holds two pcbs and `MEMP_NUM_TCP_PCB` 9 admits 4 pairs, about half rp2's connections; every sent packet is copied into the lwIP arena on its way back (`netif_loop_output()`, a `PBUF_RAM` pbuf, `lib/lwip/src/core/netif.c:1147`), so the arena fills sooner and a write at its edge can raise `ENOMEM` from `tcp_output()` with its bytes already queued (`extmod/modlwip.c:817-826`) before the zero-window `EAGAIN` comes; a fresh connection takes `TCP_WND` + `TCP_SND_BUF` (8,000 B, 10 MSS) to a peer that never reads | the CYW43 netif: the peer is another host and the driver takes the outgoing pbufs | `tests/lwip_host/test_modlwip_eagain.py` measures the pool in-process, loads the arena with whole-MSS writes, counting a loader's `ENOMEM` as its piece queued (the drain then checks every byte), and never accepts `ENOMEM` at an edge under test | L4: the modlwip send-stall round on `dev` (owed, BACKLOG.md) | none (the instrument's design) |
 | 24 | lwIP struct sizes and `MEM_ALIGNMENT` (`build-lwip`) | 64-bit pointers make lwIP's structs and pool elements larger, and `MEM_ALIGNMENT` is the host's pointer size, 8, against `extmod/lwip-include/lwipopts_common.h:42`'s 4: every pool and arena threshold falls elsewhere than on rp2 | 32-bit, `MEM_ALIGNMENT` 4 | the host test reads its edges from `versions.toml`'s `[lwip]` and measures them, never asserting an rp2 figure | L4 | none |
 | 25 | IPv6 fragment reassembly (`build-lwip`) | `IPV6_FRAG_COPYHEADER` 1: with 8-byte pointers `struct ip6_reass_helper` outgrows `IP6_FRAG_HLEN`, which `ip6_reass_tmr()` asserts every second (`lib/lwip/src/core/ipv6/ip6_frag.c:117-120`); lwIP's own setting for `sizeof(void*) > 4` (`lib/lwip/src/include/lwip/ip6_frag.h:60-72`) | 0, lwIP's default | the generated host `lwipopts.h`; the build's readback runs lwIP's timers through two reassembly ticks (B.14.4) | — (nothing here reassembles fragments) | none (a pointer-width setting) |
 | 26 | what runs lwIP (`build-lwip`) | the variant's `MICROPY_INTERNAL_EVENT_HOOK` (`netif_poll_all(); sys_check_timeouts();`) in `mp_event_handle_nowait()` on every `mp_event_wait_ms()` (`py/scheduler.c:259-266`, `ports/unix/unix_mphal.c:244-252`), so lwIP advances only while MicroPython waits | PendSV and a soft timer every 64 ms (`ports/rp2/mpnetworkport.c:39, :137-171`), whatever Python is doing | `lwip_host_port.c` (B.14.4); the host tests pump with `time.sleep_ms(1)` | L4 | none |
@@ -12073,7 +12098,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `lwip.memp_num_udp_pcb` | 5 | `toolchain/versions.toml` — `5` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
 | `lwip.tcp_mss` | 800 | `toolchain/versions.toml` — `800` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
 | `lwip.tcp_wnd` | 6400 | `toolchain/versions.toml` — `6400` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
-| `lwip.tcp_snd_buf` | 6400 | `toolchain/versions.toml` — `6400` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
+| `lwip.tcp_snd_buf` | 1600 | `toolchain/versions.toml` — `1600` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | measured on silicon, 2026-11-11: the first value the bench measures (agent, 2026-11-11, on the owner's 2026-11-11 "decide on the measurements, some value between 1600 and 6400 might be the actual sweet spot!"); lwIP's floor, 2 x `lwip.tcp_mss` | the arena tolerates 5 clients that stop reading beside a live connection, floor(10,200 / (1.125 x value)) (B.14.2.1); lwIP refuses a value below 2 x `lwip.tcp_mss` | the bench measures another value, the pin moves (B.14.2's anchors), or `lwip.tcp_mss`, `MEM_SIZE` or `max_connections` changes |
 | `lwip.mem_size_per_connection_floor` | 2000 B | `toolchain/micropython_overrides.py` — `2000` | `MEM_SIZE` (derived per `max_connections`, `toolchain/versions.toml`) | estimated (agent, `31da2b3`) — measurement owed: a connection's arena share at the ceiling, L4 | unknown until measured | the pin moves or the serving piece size changes |
 | `lwip.spare_tcp_pcbs` | 3 | `toolchain/micropython_overrides.py` — `3` | `MEMP_NUM_TCP_PCB` and `MEMP_NUM_TCP_SEG` (derived per `max_connections`) | estimated (agent, `58b14ac`) — measurement owed: pcbs in TIME_WAIT at the ceiling, L4 | unknown until measured | the pin moves or the close linger changes |
 | `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30`; `.github/actions/playwright-chromium/action.yml` — `30`; `.github/actions/apt-cache-restore/action.yml` — `30`; `scripts/setup_cross_browser_toolchain.sh` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the install once, apt retrying each failed fetch itself (B.4); the same bound in the shared Playwright action's apt drop-in before its install (CI, B.10.1), which on the 20261012 runner image the image's own later-sorting `zz-retries` (15 s, one retry) overrides; in the `-o` options of `.github/actions/apt-cache-restore`'s list update, which win over every drop-in; and on every apt fetch `scripts/setup_cross_browser_toolchain.sh` makes (H.7) | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | attention; three 30 s attempts fit the firmware job's 20-minute limit 13x over | a mirror's failure pattern changes |
@@ -12092,7 +12117,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `l0.vitest_test_timeout_ms` | 20000 ms | `vitest.config.js` — `20000` | — | estimated (agent, `803ffaf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.vitest_timeout_retries` | 2 | `vitest.config.js` — `2` | `retry.count`, on vitest's own `Test timed out in <n>ms` or `Hook timed out in <n>ms` message only (`retry.condition`), inside a test with its `beforeEach`/`afterEach` (a suite's `beforeAll`/`afterAll` runs once); three of a test's timeouts (`l0.vitest_test_timeout_ms`, or a live file's own), the first attempt and the two retries, are its retry budget inside its web job's minutes (B.10.1); a pass after a retry reads `Passed only on retry` | owner decision (owner, 2026-10-20: 'Simply put, do the consistent rule adaptation to tests only and only for those running into timeout.') | two transient timeouts absorbed | the timeout retry rule changes (E.3.1) |
-| `mem.max_await_depth` | 25 levels | `tests_scripts/test_await_depth.py` — `25` | the C-stack budget (F.1): the board peak from `c_stack_budget.py` held to half the 7,936 B limit (`flash/test_memory_stress.py`) | measured 2026-11-04, the longest static await chain `tests_scripts/_await_depth.py` finds over src/ and every device's generated modules at fb447c7e, the change that set it (a `GET /status` through Microdot's dispatch and a config store's FRAM-backed log write to the FRAM manager's own log, F.1); the per-level cost is owed to the flash tier | none: a tripwire at the measured depth | a chain grows past it, or the board reading lands |
+| `mem.max_await_depth` | 25 levels | `tests_scripts/test_await_depth.py` — `25` | the C-stack budget (F.1): the deepest chain's end from `c_stack_budget.py` leaving `l3.c_stack_reserve_b` of the 7,936 B limit (`flash/test_memory_stress.py`) | measured 2026-11-04, the longest static await chain `tests_scripts/_await_depth.py` finds over src/ and every device's generated modules at fb447c7e, the change that set it (a `GET /status` through Microdot's dispatch and a config store's FRAM-backed log write to the FRAM manager's own log, F.1); the per-level cost is owed to the flash tier | none: a tripwire at the measured depth | a chain grows past it, or the board reading lands |
 
 **L1 (unit tier)**
 
@@ -12126,6 +12151,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l3.heap_headroom_after_full_system_build_worst_case_factor` | 2 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `2` | × the script's worst-case allocation (16,384 B) = the largest free block it requires (32,768 B) | the requirement the script states with the check (`3fe0fb2`, 2026-09-19): room for the worst-case allocation twice over; nothing here may be raised to fit a reading | none: the factor is the requirement | the worst-case allocation or the heap budget changes |
 | `l3.settle_budget_ms` | 2000 ms | `tests_hardware/device_scripts/_shared/settle.py` — `2000` | `_shared/settle.py`: the join's budget | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
 | `l3.c_stack_budget_window_ms` | 10000 ms | `tests_hardware/device_scripts/c_stack_budget.py` — `10000` | about ten read cycles of every reader the build starts; the flash tier's 60 s script timeout covers it | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
+| `l3.c_stack_reserve_b` | 1024 B | `tests_hardware/flash/test_memory_stress.py` — `1024` | the C stack the deepest FRAM-backed log entry (`provoked_end`, F.1) leaves of the 7,936 B limit: about four call levels at ~264 B | owner decision (owner, 2026-11-11: the deepest chain carries the bound); measured 6,060 B, 1,876 B left (dev, 2026-11-11) | none: the reserve is the requirement | the deepest chain or the stack size changes |
 | `l3.wifi_radio_reinit_connect_budget_ms` | 20000 ms | `tests_hardware/device_scripts/wifi_radio_reinit_recovery.py` — `20000` | one attempt's own poll (5 s) plus the DHCP lease the bench AP gives | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
 
 **CI (`.github/`)**

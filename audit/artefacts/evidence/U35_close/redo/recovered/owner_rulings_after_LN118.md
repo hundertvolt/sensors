@@ -1469,3 +1469,35 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-11 06:04:24 UTC - no manual runs today (said in the bench session, relayed by the bench)
 "No manual runs today"
 (Said to the bench session, received here at this time: no owner-attended steps in today's window, so j, 16b's power-cycle half and 13 (no channel-13 AP) move to the next window. The bench's order: a-g without them (about 13:15 UTC), then 10g if it ends by 21:28 (about 19:35), then k's legs as the window allows. This settles the lead's 05:55 question as option (2).)
+
+## 2026-11-11 10:52:23 UTC - budget forecast at 51 %
+"we are at 51% usage now. what would you expect when the audit is done?"
+(The owner reads 51 % on the weekly meter and asks what it will read when the audit is finished.)
+
+## 2026-11-11 12:12:45 UTC - E2 (page load beside clients that stop reading): option A, the page's limit past 15 s
+"E2: Option A, and how about just raising the timeout limit above the 15s, so even if loading takes so long and finally succeeds is a "green"?"
+(Option A: the lwIP send pool's hold by clients that stop reading is a stated limit; no image change, `[lwip]` keeps its values. The page load's client timeout and its bound go above the ~15 s reclaim horizon, so a page that loads late but completely passes; every other bound of the test stays.)
+
+## 2026-11-11 13:05:33 UTC - decision options after E2 reopened
+"now what are my decision options?"
+(The owner asks for the decision options now open: the C-stack question and E2, reopened by the 13:00 rerun, and what each means for today's bench plan.)
+
+## 2026-11-11 13:24:56 UTC - rebuild and reflash when it fits; act on the bench's results
+"you can rebuild and reflash the image whenever it fits, and act according to the results from the bench"
+(The owner allows a new image and its flash cycles whenever they fit, and delegates the E2 and C-stack calls to the lead, to be made from the bench's results: the C stack takes option A (shorten the FRAM write path) into the new image; E2's fix follows the bench's two reads.)
+
+## 2026-11-11 13:34:58 UTC - why the send buffer is reduced now
+"why did you decide to reduce the send buffer now?"
+(The owner asks for the reasons behind the lead's call to take TCP_SND_BUF 6400 -> 1600 into the new image under the 13:24 delegation, which overrides the 2026-09-30 ruling and the 12:12 stated limit.)
+
+## 2026-11-11 13:38:57 UTC - TCP_SND_BUF chosen by measurement
+"decide on the measurements, some value between 1600 and 6400 might be the actual sweet spot!"
+(The send buffer's value is to be chosen from silicon measurements, not fixed at 1,600 B up front: a value between 1,600 and 6,400 B may give the best balance of normal page speed and behaviour beside clients that stop reading.)
+
+## 2026-11-11 14:12:33 UTC - no runaway chains: fix root causes, not derived steps
+"Whichever finding you trace, ensure you do not encounter a runaway situation again, where one thing leads to another in a chain, always be sure to address the root causes of issues, not something derived over multiple steps!"
+(Every finding is traced to its root cause and fixed there; no chain of follow-on fixes where each step is derived from the previous one.)
+
+## 2026-11-11 14:43:51 UTC - C-stack test bound: option A
+"A"
+(The hardware test bounds the deepest chain instead of half the limit: the provoked end must leave at least 1,024 B (about four call levels) of the 7,936 B limit; the quiet peak stays reported. Test change only, no new image. Replaces the half-limit bound owner-reviewed 2026-10-02.)

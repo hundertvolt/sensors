@@ -452,8 +452,10 @@ def test_wait_until_ends_at_its_bound_and_checks_once_more_there(clock: _Clock) 
     assert clock.waits == [1.0, 1.0, 0.5] and checks == [0.0, 1.0, 2.0, 2.5]
 
 
-def test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_for_http(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_for_http_and_usb(monkeypatch: pytest.MonkeyPatch, clock: _Clock) -> None:
+    # A serving board can still be re-enumerating on USB, and the next test's first mpremote call then fails (bench, 2026-11-11).
     fake = _Recorder()
+    present = iter([False, True])
 
     def kick_then_reset(board: object, bench: object) -> None:
         assert board is fake and bench is fake
@@ -463,10 +465,16 @@ def test_restore_board_to_serving_goes_through_kick_then_reset_and_then_waits_fo
         fake.calls.append("fetch")
         return http_client.HttpResponse(200, {}, b"{}")
 
+    def is_device_present() -> bool:
+        fake.calls.append("is_device_present")
+        return next(present)
+
     monkeypatch.setattr(harness, "kick_then_reset", kick_then_reset)
     monkeypatch.setattr(http_client, "fetch", fetch)
+    monkeypatch.setattr(fake, "is_device_present", is_device_present, raising=False)
     harness.restore_board_to_serving(fake, fake, "dut")  # type: ignore[arg-type]
-    assert fake.calls == ["kick_then_reset", "kick_all_stations", "hard_reset", "fetch"]
+    assert fake.calls == ["kick_then_reset", "kick_all_stations", "hard_reset", "fetch", "is_device_present", "is_device_present"]
+    assert clock.waits == [harness._WAIT_UNTIL_POLL_S]
 
 
 def test_kick_then_reset_kicks_the_stations_before_the_one_reset() -> None:
@@ -848,6 +856,13 @@ def test_boot_lines_need_a_completion_marker_never_a_bare_tag() -> None:
     assert harness.boot_lines(lines) == [lines[2]]
 
 
+def test_boot_lines_take_an_uptime_below_the_one_before_it_as_a_reboot() -> None:
+    # The markers print in the boot's first second, which a reset's USB gap can hide; the uptime falling cannot hide.
+    lines = ["SYSTEM System uptime: 41", "SYSTEM System uptime: 42", "SYSTEM System uptime: 1", "SYSTEM System uptime: 2"]
+    assert harness.boot_lines(lines) == [lines[2]]
+    assert harness.boot_lines(lines[:2]) == []
+
+
 def test_crash_lines_take_a_traceback_and_both_allocation_spellings() -> None:
     lines = ["Traceback (most recent call last):", "SYSTEM memory allocation failed, allocating 512 bytes", "MemoryError:", "WIFI connected"]
     assert harness.crash_lines(lines) == lines[:3]
@@ -893,6 +908,14 @@ def test_wait_for_boot_returns_once_a_boot_line_arrived_and_names_the_debug_leve
     with pytest.raises(TimeoutError, match="DebugLevel >= 3"):
         harness.wait_for_boot(_LogBoard([["CFGMGR_SYSTEM loading"]]), 2.5)  # type: ignore[arg-type]
     assert clock.now == pytest.approx(2 * harness._OBSERVE_TAIL_STEP_S + 2.5), "the tail ran past its bound"
+
+
+def test_wait_for_boot_takes_a_fresh_boots_first_uptime_line_never_a_board_the_reset_missed(clock: _Clock) -> None:
+    lines = harness.wait_for_boot(_LogBoard([["noise"], ["SYSTEM System uptime: 3"]]), 60.0)  # type: ignore[arg-type]
+    assert lines == ["noise", "SYSTEM System uptime: 3"]
+    stale = [f"SYSTEM System uptime: {harness._FRESH_BOOT_UPTIME_SLACK_S + 100 + n}" for n in range(3)]
+    with pytest.raises(TimeoutError, match="no fresh uptime line"):
+        harness.wait_for_boot(_LogBoard([[line] for line in stale]), 5.0)  # type: ignore[arg-type]
 
 
 def test_retryable_picotool_exit_is_the_no_bootsel_device_status_only() -> None:

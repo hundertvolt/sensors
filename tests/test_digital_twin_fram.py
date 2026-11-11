@@ -405,6 +405,20 @@ def test_wrsr_requires_wel_and_preserves_the_wel_bit_itself() -> None:
     assert status & 0x02 == 0  # WEL auto-clears after WRSR recognition, same as after WRITE
 
 
+def test_the_mb85rs2mta_keeps_wel_through_a_write_and_a_wrsr_until_a_wrdi() -> None:
+    # Continual programming: WEL resets only at power-up and WRDI (DS501-00032-3v0-E p.6, status register).
+    chip = FRAMChip(0x40000, _MB85RS2MTA_RDID)
+    _wren(chip)
+    _write_mem24(chip, 0x0000, b"\x01")
+    assert _rdsr(chip) & 0x02 == 0x02
+    _write_mem24(chip, 0x0001, b"\x02")  # no WREN in between
+    chip.write(bytes([_OPCODE_WRSR, 0x08]))
+    assert _rdsr(chip) & 0x0A == 0x0A
+    chip.write(bytes([_OPCODE_WRDI]))
+    _write_mem24(chip, 0x0002, b"\x03")
+    assert (_rdsr(chip) & 0x02, _read_mem24(chip, 0x0000, 3)) == (0, b"\x01\x02\x00")
+
+
 def test_save_state_then_construct_a_fresh_chip_from_the_same_path_reads_back_identical_data() -> None:
     path = _tmp_path("fram_state.json")
     try:

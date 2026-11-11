@@ -133,8 +133,8 @@ if TYPE_CHECKING:
 
 
 def _conversion_wait_ms(osr_p: int, osr_t: int) -> int:
-    # DS001/DS002/DS003 3.9.2's typical conversion time in us; Table 22's maximum is at most 1.183x it (x1/x1), so 6/5
-    # covers every row. Whole ms rounded up, plus the tick an asyncio sleep may wake early by.
+    # Typical time in us per DS002 3.9.2, as every Table 22/23 Typ column (DS001/DS003 3.9.2 say 2000/313); Max is at most
+    # 1.183x it (x1/x1), so 6/5 covers every row. Whole ms rounded up, plus the tick an asyncio sleep may wake early by.
     return ((234 + 392 + 163 + 2020 * (osr_p + osr_t)) * 6 // 5 + 999) // 1000 + 1
 
 

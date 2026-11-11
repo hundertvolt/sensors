@@ -4,6 +4,7 @@ walked pressure and temperature. The calibration block is synthetic (digital_twi
 
 import random as _random_module
 import struct
+import time
 
 from _fault_injection import FaultInjector
 from _twin_common import Walk
@@ -14,7 +15,19 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Protocol
+
+    from _mpy_shed.time_mp import _TicksUs
+
+    class _Clock(Protocol):
+        # The `time` functions a conversion reads, as the module itself provides them (a driven test clock too).
+        @property
+        def ticks_add(self) -> "Callable[[_TicksUs, int], _TicksUs]": ...
+        @property
+        def ticks_diff(self) -> "Callable[[_TicksUs, _TicksUs], int]": ...
+        @property
+        def ticks_us(self) -> "Callable[[], _TicksUs]": ...
 
     class _RandomSource(Protocol):
         # Structural stand-in for the `random` module (the default) or a seeded random.Random -
@@ -53,6 +66,12 @@ _PRESSURE_WALK_DEFAULT = Walk(950.0, 1050.0, 5.0)  # hPa
 # T1-T3, P1-P11 raw coefficients: synthetic, chosen so the inverted compensation round-trips across the walk's range
 # (fidelity table).
 _CAL_RAW = bytes.fromhex("6c6b5014fd9065a041ec05381868101ef4e0fc03fe")
+
+
+def _conversion_us(osr: int) -> int:
+    # A forced conversion's time, both enables set: DS001 3.9.2, the bench's BMP384/BMP388 (DS003 the same; DS002's BMP390
+    # within 3 %), osr_p in OSR bits 2:0 and osr_t in bits 5:3 (4.3.17).
+    return 234 + 392 + 313 + 2000 * ((1 << (osr & 0x07)) + (1 << (osr >> 3 & 0x07)))
 
 
 def _decode_calibration(raw: bytes) -> "tuple[tuple[float, float, float], tuple[float, ...]]":
@@ -110,11 +129,16 @@ class BMP3XXChip:
         random_source: "_RandomSource | None" = None,
         temp: Walk = _TEMP_WALK_DEFAULT,
         pressure: Walk = _PRESSURE_WALK_DEFAULT,
+        clock: "Callable[[], _Clock] | None" = None,
     ) -> None:
         self._random = random_source if random_source is not None else _random_module
+        # The `time` a conversion runs on, looked up at each use: machine.py passes its own, so a clock a test lends
+        # machine reaches the chip too; constructed directly, this module's.
+        self._clock: Callable[[], _Clock] = clock if clock is not None else lambda: time
         self._min_temp_c, self._max_temp_c = temp.lo, temp.hi
         self._min_pressure_hpa, self._max_pressure_hpa = pressure.lo, pressure.hi
         self._temp_step_c, self._pressure_step_hpa = temp.step, pressure.step
+        self._conversion_end: _TicksUs | None = None  # the ticks_us() a running forced conversion ends at
         self._power_up()  # the register state a powered-up chip holds
         self.fault = FaultInjector()
         self._temp_calib, self._pressure_calib = _decode_calibration(_CAL_RAW)
@@ -132,12 +156,21 @@ class BMP3XXChip:
         self._soft_reset()
         self._burst = bytes(6)
 
+    def _settle(self) -> None:
+        # A forced conversion ended by now lands: its reading and data ready, the mode back to sleep (DS001 Table 40).
+        clock = self._clock()
+        if self._conversion_end is not None and clock.ticks_diff(clock.ticks_us(), self._conversion_end) >= 0:
+            self._conversion_end = None
+            self._trigger_measurement()
+            self._pwr_ctrl &= _CONTROL_ENABLES
+
     def _soft_reset(self) -> None:
         # 0xB6: "all user configuration settings are overwritten with their default state" (DS001 4.3.22).
         self._status = _STATUS_CMD_RDY
         self._pwr_ctrl = 0x00  # PWR_CTRL's default value (DS001 register map)
         self._osr = _OSR_RESET
         self._config = _CONFIG_RESET
+        self._conversion_end = None
         self._event |= _EVENT_POR_DETECTED  # por_detected "'1' after device power up or softreset" (DS001 4.3.7)
 
     def _trigger_measurement(self) -> None:
@@ -167,6 +200,7 @@ class BMP3XXChip:
     def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes:
         self.fault.maybe_hang("readfrom_mem")
         self.fault.maybe_raise("readfrom_mem", key=reg_addr)
+        self._settle()
         if reg_addr == _REGISTER_CHIPID:
             reply = bytes([_BMP390_CHIP_ID])
         elif _REGISTER_ERR <= reg_addr <= _REGISTER_PRESSUREDATA + 5:
@@ -202,11 +236,12 @@ class BMP3XXChip:
     def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None:
         self.fault.maybe_hang("writeto_mem")
         self.fault.maybe_raise("writeto_mem", key=reg_addr)
+        self._settle()
         if reg_addr == _REGISTER_CONTROL:
             self._pwr_ctrl = data[0]
             if data and data[0] == _CONTROL_FORCED_MODE:
-                self._trigger_measurement()
-                self._pwr_ctrl = data[0] & _CONTROL_ENABLES
+                clock = self._clock()
+                self._conversion_end = clock.ticks_add(clock.ticks_us(), _conversion_us(self._osr))
         elif reg_addr == _REGISTER_OSR:
             self._osr = data[0]
         elif reg_addr == _REGISTER_CONFIG:

@@ -840,18 +840,28 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 - **Both instruments that wait for a device script's own server** first let main.py's go quiet
   (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
-**The C-stack budget** (`flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit`,
+**The C-stack budget** (`flash/test_memory_stress.py::test_c_stack_deepest_chain_leaves_the_reserve`,
 `device_scripts/c_stack_budget.py`, L3, ungated) boots the bench device's generated system over the
-scratch config directory `hwtest-scratch/`, wraps every I2C bus leaf and the FRAM driver's two sync
-leaves from outside to record `micropython.stack_use()`, runs the started tasks and timers for a fed
-10 s window (`l3.c_stack_budget_window_ms`), then dispatches one `GET /status` in-process through the
-app's own `dispatch_request()`: the top of the longest static await chain
-`tests_scripts/test_await_depth.py` pins (SPECIFICATION.md Part F.1), which must answer 200, since
-Microdot answers a raising handler with a 500. The host holds the peak to half
-the 7,936 B limit; the twin's figure (`twin_c_stack_peak`) is reported, never compared. No flash
-cycle and no production config file: each setup writes its defaults once into the scratch
-directory, removed afterwards; the booted modules' logs go into FRAM, which the session start saved
-first.
+scratch config directory `hwtest-scratch/` and wraps every I2C bus leaf and the FRAM driver's three
+SPI command functions (`_send_and_read()`, `_send_and_write()`, `_send_command()`: where every FRAM
+chain ends, three plain calls below `set_values()`, whose own wrapper would add a frame under them,
+944 B on the twin; agent, 2026-11-11) from outside to record `micropython.stack_use()` per phase:
+the setup batch, the started tasks and timers over a fed 10 s window
+(`l3.c_stack_budget_window_ms`), then one `GET /status` dispatched in-process through the app's own
+`dispatch_request()`: the top of the longest static await chain `tests_scripts/test_await_depth.py`
+pins (SPECIFICATION.md Part F.1), which must answer 200, since Microdot answers a raising handler
+with a 500. The peak's leaf and phase are reported (`chain`, `phase`). A second `GET /status` then
+takes, once, that route's deepest static chain ending in a FRAM-backed log entry: after a sync
+(`set_utc_valid()`), the system source's local time reads NTP's config store as `setup()` leaves it
+on a directory at its path (`valid` False; agent, 2026-11-11), and `CFGMGR_NTP` logs E34
+`CFG_NOT_VALID` (`asy_config_manager.py` `_get_values()`, 12 await levels from the request's top,
+then 10 nested plain calls down to `_send_and_read()`); its end is its own fact (`provoked_end`,
+beside `provoked_logged`, the entries it logged). The host holds the provoked end to leave
+`l3.c_stack_reserve_b` (1,024 B) of the 7,936 B limit and notes the quiet peak beside it (owner,
+2026-11-11); the twin's figures (`twin_c_stack_peak`) are reported, never
+compared. No flash cycle and no production config file: each setup writes its defaults once into the
+scratch directory, removed afterwards; the booted modules' logs, the provoked E34 among them, go
+into FRAM, which the session start saved first.
 
 **The routine no-yield stretches**
 (`flash/test_memory_stress.py::test_routine_no_yield_stretches_stay_under_the_gc_term`,
@@ -1165,8 +1175,10 @@ assumption, not at a product bug.
     the FRAM's SPI bus and heavy allocation churn at once, asserting both ways - the link keeps
     transferring *and* nothing else was starved.
   - The bench tier carries a multi-chunk SET under serving load (`uart_link_echo_under_serving_load.py`
-    driving the initiator's public `uart_set()`), with no `src/` change, besides the link's
-    transfer/failure count in `/status`'s `UARTLINK`, asserted advancing while the API is hammered.
+    driving the initiator's public `uart_set()` in the exerciser's sleep after each of its banner GETs,
+    since the initiator refuses a second transaction: SPECIFICATION.md J.2), with no `src/` change,
+    besides the link's transfer/failure count in `/status`'s `UARTLINK`, asserted advancing while the
+    API is hammered.
     The comm hazards run under API load through `PUT /uart`'s dispatch-only `UartHazards` on `dev`
     (SPECIFICATION.md A.8 and E.6.6): the bench tier's
     `test_a_hazard_run_under_the_readers_load_reports_every_verdict` starts one hazard run while 3
@@ -1248,7 +1260,9 @@ assumption, not at a product bug.
   one-time-per-`setup()` lines (`harness.BOOT_COMPLETION_MARKERS`, read through `wait_for_boot()` and
   `boot_lines()`) and `asy_wifi_service.py`'s `pr.one()` lines, all printed at `DebugLevel` >= 3
   (`asy_print_log.py`'s `_LOG_ONCE`); `test_real_ntp_sync_succeeds_over_genuine_udp` needs
-  `asy_ntp_client.py`'s `pr.all()` lines at 5. At the shipped `DebugLevel` 0 none of these print, so a
+  `asy_ntp_client.py`'s `pr.all()` lines at 5. The one-time lines print in the boot's first second, which a
+  reset's USB gap can hide, so both helpers also take SYSTEM's per-second `System uptime:` line at 5: a fresh
+  low value after a reset, or one below the line before it. At the shipped `DebugLevel` 0 none of these print, so a
   board left there reads as a dead link. The standard-state fixture stops such a session at its
   start naming the level, or repairs it with `--repair-standard-state` ("Prerequisites").
 - **WS2812 bit timing is specified in `datasheets/ws2812/WS2812.pdf` p.4** ("Data transfer time":
