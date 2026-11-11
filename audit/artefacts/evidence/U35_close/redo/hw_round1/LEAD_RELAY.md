@@ -1,5 +1,22 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-11 14:13 UTC - lead to bench: the new image (TCP_SND_BUF 1,600 B, FRAM path 3 levels shorter)
+New head: 004cd17d (main line 0c632157; lint, mypy, tests_scripts 6,564 green, dev image builds, 71,292 B free; the
+full gate runs now). src/ and toolchain/versions.toml changed: a new image, and both control images again from this
+head (the owner approved this image's flash and the control's two flash cycles in your session at 13:31). In order:
+1. `run 3` (builds and flashes this head's dev image). Then, nothing else loading the board, the same reads as on 6,400:
+   20 sequential full page loads (GET / then every asset, as page_after does) and 20 GET /status, median/p90/max each;
+   then the send-stall node (test_modlwip_send_stall, all of it) and the C-stack node (c_stack_budget: quiet peak,
+   provoked_end, provoked_logged, leaf peaks per phase; its half-limit assertion is expected red, send the figures).
+   Send me these first and go on with 2 while I decide: 1,600 stays if its pages cost little against 6,400's (page
+   0.580/0.684/0.702 s, /status 0.599/0.725/0.741 s); otherwise one intermediate image follows and 2-3 wait for it.
+2. 4b, 5 and 5h as in d (per tier: verdict, every ResetReason, errcount after each step, the UART figures, the FRAM
+   command hold, C-stack peak, free alarms, ISL29125 G01/G02, the SGP40 samples).
+3. c: `GC_CONTROL_IMAGE=<abs>/gc_control.uf2 run 3g 5gh` with the GC control built from this head, then flash this
+   head's dev image back. Build the lwIP control from this head too, for the wear step (next window); whether its
+   proof still applies at 1,600 is my part.
+A red anywhere: stop and send it.
+
 ## Relay 2026-11-11 13:39 UTC - lead to bench: TCP_SND_BUF chosen by measurement; two baselines now, no flash
 Owner, 13:38:57: "decide on the measurements, some value between 1600 and 6400 might be the actual sweet spot!" The
 arithmetic: a stalled connection holds about 1.125 x TCP_SND_BUF of the 12,000 B arena and a live one needs about
