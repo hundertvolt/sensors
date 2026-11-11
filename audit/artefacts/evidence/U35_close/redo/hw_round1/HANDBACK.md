@@ -43205,3 +43205,16 @@ status: confirmed as measured; whether the shrink continues past three loads not
   chroot legs on this Pi (arm64) will fail the same way at scripts/test.sh. The fix is in the tree, not the bench.
 - The hardware tiers (flash, bench) run the board and do not use the Unix port; their runs keep --skip-lower-levels as
   the sheet has them. b, c and d go on as planned. Log: logs/4a.log (from line 151104).
+
+## Bench 2026-11-11 06:23:29 UTC - b: GC control built; the lwIP control waits for one line
+
+- GC control (06:18-06:22): logs/images/gc_control.uf2, record BuildDate 2026-11-11T06:18:21Z, commit f7637c3a (this
+  head; audit/ only past 43834938), dirty true, overrides [modlwip_eagain], maxConnections 6; codegen.py's
+  `"gc.threshold(32768)\n\n"` the one line out. Image 1,158,980 B, 69,820 B free. 11-05's copy kept as gc_control_20261105.*.
+- lwIP control (06:13-06:18): the build compiled, then setup_toolchain.py:719
+  `verify_modlwip_eagain_in_build(..., make_vars["USER_C_MODULES"] ...)` raised KeyError 'USER_C_MODULES': with line
+  697's override call out, the post-build proof that the patch is in the image (U21, 65088dec) has nothing to check.
+  No control.uf2 was written. The control needs line 719 out too; I did not widen the control on my own. It is used only
+  by 8b (wear, after cleared:). On your word I add the second line to build_control.sh's lwip case and build it
+  (about 5 min, then it is the last rp2 build before... nothing: 3 builds the final image after it anyway).
+- c starts now: GC_CONTROL_IMAGE=<abs>/gc_control.uf2 run 3g 5gh (FC +1 at 3g, approved by the owner).
