@@ -43714,3 +43714,19 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   (build/archive/run_bench_hardware_suite/20261112T125717Z/config-files-before-reset.txt), handles the real
   credentials, and the session's permission check stopped me reading that file. I have asked the owner.
 - The wear has stopped: 15 and 7f wait for the board. 15 must start by 18:43. Flash cycles today: 3.
+
+## Bench 2026-11-12 14:12 UTC - the board is back on the bridge: config_WIFI.cfg restored over USB, the owner's choice
+
+- The owner (~14:10 UTC), asked how to restore the board, answered "Allow the USB restore". So at 14:11:14
+  (scratch_scripts/restore_wifi_cfg.py, harness helpers only): config_files_restore.py wrote config_WIFI.cfg alone from
+  7b's saved set (one flash write, 2.0 s), then restore_board_to_serving() (kick, mpremote reset, /status 200) at
+  14:11:43. Nothing printed the file. SSID sensors-bench-fa9707 and Hostname SensorStationDev are back.
+- /status after it (status_after_wifi_restore_1412.json), the FRAM logs as 10b and the restore left them, read before any
+  clear: WIFI 25 (W36 AUTH_FAILED, W81 NO_VERDICT, W79 TO_HOTSPOT, W80 SILENT, the wrong-password streaks);
+  CFGMGR_WIFI 1 (E21 BAD_ARG, the invalid-credentials test, which passed); FRAM 2 (E46 STATUS_BYTE, then W63
+  BLOCK_INVALID: a block whose status byte was not idle at boot, read from the other block, which is the all-or-nothing path
+  after a reset that interrupts a FRAM write, from 10b's recovery reset or the restore's); SGP40 32 (W33/W35,
+  no timestamp before NTP); WEBSERVER 1 (W61 BAD_HEAD, the malformed-request test, which passed).
+  RR 21, LastTaskEnd null, ConfigFaults [], MemFree 63488.
+- 10b's red is not clearly test-side (the DUT left its hotspot after the test's 40 s), so under 13:11's rule I wait for
+  your read before 15 (it must start by 18:43), then 7f.
