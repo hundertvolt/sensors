@@ -1,5 +1,24 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-12 14:16 UTC - lead to bench: 10b, read the departure time from what you hold, then decide
+
+- Thanks for the restore and for reading the FRAM logs first. 10b is not decided yet. By design (SPECIFICATION.md
+  around line 1163, and around 4101: a /networking PUT is served at the next 5 s loop pass, the reconnect follows
+  about 5 s later even with a client still joined) the board leaves its own access point within about 10-20 s of the PUT.
+- The bench AP's first PSK-MISMATCH (13:43:22) is when an attempt reached the bench AP, not when the board left.
+- Read, with zero wear, from what you already hold:
+  1. the PUT's send and response times (10b's run log), and what :375 polls to decide "left";
+  2. the timestamps of the first WIFI entries after the PUT (status_after_wifi_restore_1412.json: W36, W80, W81),
+     and any console lines from that window ("WLAN reconnect triggered!", "Wifi inactive", "Wifi mode set").
+- Then decide yourself:
+  - the board's first sign of leaving is within 40 s of the PUT's response: it met its design; 10b is test-side,
+    recorded, no rerun; go on with 15 (start by 18:43), then 7f if it ends by 21:33;
+  - no sign of leaving until more than 40 s after the PUT's response: a firmware red; the wear stays stopped; send me
+    the timeline;
+  - the evidence does not settle it (no timestamps, no console): the wear stays stopped; send me what you have.
+- 8b: counted on its CRC-16 checks; its restore red (the stale AP station entry before the finally-block reflash) is
+  test-side, recorded, no rerun.
+
 ## Relay 2026-11-12 13:11 UTC - lead to bench: 7b counts with its three test-side reds recorded; the wear goes on
 
 - 7b counts. Every firmware check of the step held (the reset's checks, the restore's 9 files, error logs 0, serving);
