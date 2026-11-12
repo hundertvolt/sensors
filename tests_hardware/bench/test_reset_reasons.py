@@ -179,11 +179,13 @@ def test_an_incomplete_command_is_attributed(board: "Board", bench: "BenchBridge
         result_note(f"erase cut by an EIO: ResetReason {reason}")
         assert reason == _RR["COMMAND_INCOMPLETE"], f"the cut erase read ResetReason {reason}, not {_RR['COMMAND_INCOMPLETE']}"
         after = get_errcount(dut_ip)  # before the dump, whose exec parks main.py
+        wait_until(board.is_device_present, timeout_s=_SERVING_TIMEOUT_S, description="the cut erase's reset: the board back on USB for the FRAM dump")
         save_fram_raw(board, "reset-reason-command-incomplete-after")
         # The chunks are blanked before any unit is written: each FRAM-backed log restarted, or kept what it held.
         changed = [name for name in fram_backed_logger_names() if after[name]["history"] != before[name]["history"] and after[name]["counter"] >= before[name]["counter"] > 0 and not _holds_its_boot_warning_alone(after[name])]
         assert not changed, f"a log neither restarted nor kept its saved history across the cut erase: {changed}"
     finally:
+        wait_until(board.is_device_present, timeout_s=_SERVING_TIMEOUT_S, description="the cut erase's reset: the board back on USB for the scratch removal")
         board.exec(_SCRATCH_REMOVE)
         restore_board_to_serving(board, bench, dut_ip)
         _load.wait_for_sgp40_backup(dut_ip)

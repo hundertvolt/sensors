@@ -486,6 +486,7 @@ def _run(row: Row, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypat
         code = generate.main(argv)
     else:
         (tmp_path / "ext").symlink_to(_REPO / "ext")
+        (tmp_path / "fakes").symlink_to(_REPO / "fakes")
         script = load_script_module(_REPO / "scripts" / "_generate_sensortask_modules.py", "_generate_sensortask_modules")
         monkeypatch.setattr(script, "REPO_ROOT", tmp_path)
         code = script.main()

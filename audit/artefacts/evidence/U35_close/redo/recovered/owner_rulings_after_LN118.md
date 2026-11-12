@@ -1687,3 +1687,35 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-12 12:01:40 UTC - ultrareview on the audit branch
 "I will do an ultrareview on that branch. Bring it up to date"
 (The owner will run an ultrareview on the release branch claude/whole-project-audit-plan (#107): push a snapshot carrying the current integration head.)
+
+## 2026-11-12 13:01:58 UTC - aarch64 build-tool tests: fix them (B)
+"B, as an exception from test work rule, as this will be a quirk we will stumble upon in the future again and again, and it's very clear scope."
+(Option B: the 20 tests_scripts tests that fail on an aarch64 host (no native emitter in the v1.29.0 Unix port) get the same native-code stand-ins the unit tier uses, so the Pi4's build-environment check passes in full. An explicit exception to the 11-11 "don't drift into test fixing" rule, because the quirk would recur and the scope is clear.)
+
+## 2026-11-12 13:19:12 UTC - relay 13:11 passed on
+"OK, relayed to the bench"
+(The owner passed the 13:11 relay (7b counts, the wear goes on) to the bench session.)
+
+## 2026-11-12 14:14:20 UTC - 10b: restoring the board's Wi-Fi settings (relayed by the bench, said ~14:10 UTC in the bench session)
+"Allow the USB restore"
+(Relayed, not said to the lead: the owner let the bench write the board's saved Wi-Fi settings file back over USB from 7b's saved set, after 10b left the board on its own access point with the test's wrong password.)
+
+## 2026-11-12 14:34:36 UTC - run 15 (tick rollover) rerun
+"Ok"
+(The owner takes the lead's recommendation: rerun 15 in the later window, at 2 more flash cycles and about 2.5 h, with the shared reflash helper kicking the AP's stale station entry during every reflash.)
+
+## 2026-11-12 15:01:28 UTC - moving three later-window items into today's bench window
+"OK"
+(The owner agrees to run the run-15 rerun (its 2 approved flash cycles), the float round-trip rerun (one scratch write) and the trixie chroot leg (the real aarch64 proof, no reflash) in today's remaining window to 21:33, so today's flash cycles go from 5 to 7; the rest of the later window stays where it is.)
+
+## 2026-11-12 15:02:58 UTC - the review's handover file
+"Note that a handover file from the review was pushed, read it in"
+(The owner's review of the branch pushed a handover file; the lead reads it in.)
+
+## 2026-11-12 15:15:18 UTC - the serving demand against the 32,768 B reserve (web.serving_demand_budget_b, H.7)
+"A"
+(Asked: dev's six connections need about 69 KB at peak; about 82 KB is free in operation; H.7 keeps a 32 KB reserve on top, leaving about 49 KB. A: the reserve is the one-time after-build check, not memory held back in operation, so nothing changes on the devices and the design text is corrected; B: hold the reserve in operation and admit 4-5 connections instead of 6. The owner chose A, the lead's recommendation; this replaces the lead's own closing of the row in 67e47fa6.)
+
+## 2026-11-12 15:15:45 UTC - the serving demand: A's condition
+"As long as it doesn't get close to a critical mark"
+(The owner's A holds on the condition that the serving demand stays clear of a critical margin against the memory actually free in operation.)

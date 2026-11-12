@@ -10,10 +10,7 @@ go-ahead session can work it in one pass; `tests_hardware/README.md` stays the r
 
 ## Refactor targets not yet done
 
-- **`I2C.writeto_then_readfrom()` passes through the class's own `writeto()` and
-  `readfrom_into()`** (`src/asy_i2c_driver.py:352-353`): one extra C-stack frame per I2C read of
-  that form, where the FRAM chain carries no pass-through helper (SPECIFICATION.md F.1); within the
-  C-stack bound. Recorded only, no code change.
+None open.
 
 ## Real-hardware work still owed
 
@@ -259,7 +256,7 @@ gates, traps).
   scripts under `--twin`).
 - **The bench `ResetErrors` budget** — on `dev`, after the round's FRAM evidence is saved: the
   `ResetErrors` sweep timed three times each against 0, 1, 2, 3 and 4 concurrent `GET /status`
-  readers, on the reset one source after another (owner, 2026-11-07). Then the bench analogue of
+  readers, on the reset one source after another (agent, 2026-11-07). Then the bench analogue of
   the twin's per-sweep budget check goes into `tests_hardware/error_log_helpers.py`, beside its 30 s
   timeout, which alone asserts nothing about elapsed time. Expected: a curve that leaves room for a
   budget below the server's 15 s `outer_cap_s` that "reliably won't fail the pipeline accidentally
@@ -370,9 +367,11 @@ gates, traps).
   - **Fewer jobs, nothing installed** (2026-11-09): `scripts/test.sh` and the twin legs take one device
     per `hardware_family` (`scripts/_devices.sh`'s `distinct_devices`: bash and `sed`), and
     `GC_THRESHOLD=32768 scripts/test.sh` runs no pytest tier, its summary listing it as skipped.
-  - **An arm64 leg runs two functions as plain twins** (2026-11-11): the Unix port compiles no native code
-    on arm64 (v1.29.0), so the CRC engine and the UART ring copy run as `build/portable_src/` copies there
-    (SPECIFICATION.md F.1); nothing installed. Before this, every arm64 Unix-port run failed at import.
+  - **An arm64 leg runs two functions as plain twins** (2026-11-11, 2026-11-12): the Unix port compiles no
+    native code on arm64 (v1.29.0), so the CRC engine and the UART ring copy run as `build/portable_src/`
+    copies there, regenerated with the generated tree whenever its stamp no longer holds (SPECIFICATION.md
+    F.1, E.3); every launcher's path carries them; nothing installed. Before this, every arm64 Unix-port
+    run failed at import.
   - **`[lwip]` `TCP_SND_BUF` 6,400 → 1,600 B** (2026-11-11): nothing installed; a reused chroot's changed
     `toolchain/versions.toml` runs setup once, as above, and `build-lwip` takes the new value.
 - **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —

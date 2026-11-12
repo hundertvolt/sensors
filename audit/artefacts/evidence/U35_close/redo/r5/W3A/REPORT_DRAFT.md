@@ -133,7 +133,12 @@ its npm tree; a third Unix-port binary (`build-lwip`); the installer's lwIP read
 GC mark-stack and qstr variant header, bounded network steps, one apt install with apt's own retries; host needs
 `flock`, `timeout` and a writable runtime dir; one device per hardware family in the per-device runs.
 Since then also `TCP_SND_BUF` 1,600 in `toolchain/versions.toml` [lwip].
-Final legs: `<BENCH: step k, 2026-11-12>`.
+Final legs (step k, 2026-11-12, bench Pi4, arm64): noble in its 11-07 chroot: env generic, lint and typecheck rc 0;
+test.sh's MicroPython tier green (5,261 tests); tests_scripts 6,544 passed, 20 red on one host cause (no native
+emitter in v1.29.0's aarch64 Unix port, in five files that built their own paths). Fixed on the owner's B (13:01):
+int 33c7d0d9, proven under an arm64 simulation (20 red before, 251 passed after); the real proof is the trixie leg,
+moved to the later window (its chroot was gone; rebuilding it would have pushed the wear past 21:33). Recipe finding:
+a reused chroot reinstalls the pinned uv when the pin moves (README, 33c7d0d9).
 
 ## 8. The last round (bench 2026-11-11 and 11-12, dev image at 67e47fa6's src/)
 - **Two-image GC proof** (11-11, FC 4+5): with the shipped `gc.threshold(32768)` the largest free block after a
@@ -153,11 +158,11 @@ Final legs: `<BENCH: step k, 2026-11-12>`.
   after it, MemFree 76,192 B. The BACKLOG question closed (5d7759cb), its fact kept in SPEC B.14.2.
 - **Boot NTP E71** (step d): two pool servers never replied (tcpdump: one request, reply in 46 ms when it came);
   external, not product. **12d** (11-12): 15 `ResetErrors` answered 200 in 0.62-0.91 s, every log 0.
-- **Wear** (11-12, after the owner's clearance, 06:14): `<BENCH: 7b, 8f, 8b (CRC-16), 10b, 15; 7f if it fits>`.
+- **Wear** (11-12, after the owner's clearance, 06:14): 7b counted (three test-side reds recorded: restore order, W22 after a config reset, W81 where the test names NO_AP); 8f PASS; 8b's three CRC-16 link checks passed, its restore reflash then hit the known stale AP station entry (no kick before that reflash) and the board rejoined on its own after its access-point window, test-side; 10b: 21 passed, the wrong-password test failed on its own probe (the board left its access point 35-37 s after the PUT, inside the test's 40 s bound, but the host's network manager reported the link about 15 s late), its later tests cascaded and the board was restored over USB (the owner's choice), test-side; 15 did not reach its check (the tick-offset image hit the same stale AP station entry after its reflash and did not serve within 120 s), test-side, its rollover evidence still missing (the owner chose a rerun in the later window, 14:34, with the reflash now clearing the stale entry) `<BENCH: 15 rerun>`; 7f (the flash tier with the persistence-write gate open, its gated tests run for the first time): 11 of 16 passed; the config-write ring test could never pass with the 512 B responder ring (it read a 4.6 KB stream only afterwards) and was removed, the float probe starved its own watchdog (fixed, rerun owed), config reset met a stray legacy config file on the bench board and the light-sensor scenario saw real light, all test-side or bench environment.
   Later window: j (M1, the FRAM and RUN-pin manual items), 16b's power-cycle half, 13 (an AP on channel 13).
 - **Re-verification (P01)**: gate66 on 67e47fa6 green (unit at both GC stages, twins at both, web tier); CI on
   snapshot 65 26/27, the coverage job's one twin-test timing defect fixed (7c142edd, test only); CI on snapshot 66
-  `503c9c83`: green (run 43175368651, 2026-11-12 07:52); `tests_hardware --collect-only` at 7c142edd: 216 of 249 collected (33 deselected by
+  `503c9c83`: green (run 43175368651, 2026-11-12 07:52); snapshot 67 `e55eccf3`: green (run 43214589908, 12:29); `tests_hardware --collect-only` at 7c142edd: 216 of 249 collected (33 deselected by
   the opt-in gates), no collection error.
 
 ## 9. D

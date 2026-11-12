@@ -1108,6 +1108,7 @@ fi
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
 # uv as pyproject.toml's [tool.uv] required-version names it (any other uv refuses to sync), with pip
 # where the sandbox's egress policy blocks astral.sh.
+# A reused chroot reruns this line whenever that pin moves.
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv==0.13.7"
 # sudo: toolchain/setup_toolchain.py's ensure_apt_packages() always prepends it, and minbase lacks it.
 # libcap2-bin (setcap, for the port-53 DNS test) is in versions.toml's apt_packages too; it stays here

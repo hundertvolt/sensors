@@ -56,9 +56,10 @@ mpy_file() {
     path="$(scripts/_unix_port.sh micropypath unit)" || return 3
     heap="$(grep -o -m 1 'heapsize=[0-9]*[KMG]' scripts/test.sh | cut -d= -f2)"
     [ -n "$heap" ] || { echo "error: scripts/test.sh passes no -X heapsize= to read"; return 3; }
-    if [ ! -d build/generated_src ] || [ ! -f frozen_modules/frozen_html.py ]; then
-        echo "error: generated inputs missing: one scripts/test.sh run builds both, or run"
-        echo "'uv run scripts/_generate_sensortask_modules.py' and 'scripts/build_website.sh <device>'"
+    # build/generated_src/ and build/portable_src/'s copies regenerated first wherever the generator's stamp no longer holds.
+    "${py[@]}" scripts/_generate_sensortask_modules.py --if-stale || return 3
+    if [ ! -f frozen_modules/frozen_html.py ]; then
+        echo "error: frozen_modules/frozen_html.py missing: one scripts/test.sh run builds it, or run 'scripts/build_website.sh <device>'"
         return 3
     fi
     if [ "$stage" = "-1" ]; then

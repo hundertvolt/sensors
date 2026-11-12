@@ -1,6 +1,6 @@
-"""The lwIP send stall on silicon (SPECIFICATION.md B.14.4): clients that stop reading mid-response fill the stack, and
-the pinned modlwip spins the VM on a non-blocking send that meets ERR_MEM; the override returns EAGAIN instead, so the
-normal image must not stall under one hammer and one set of bounds."""
+"""The lwIP send stall on silicon (SPECIFICATION.md B.14.4): beside clients that stop reading mid-response, a page load
+and every GET /status on the normal image stay within one set of bounds. At TCP_SND_BUF 1,600 B those clients stay
+within the arena's tolerance (B.14.2.1); the override's ERR_MEM branch is tested on the host only (tests/lwip_host)."""
 
 import dataclasses
 import fcntl
@@ -72,7 +72,8 @@ class _Verdicts:
     ("WEBSERVER", "W", "HTTP_CALL_TIMEOUT"),
 )
 def test_no_send_stall_with_the_override(board: "Board", dut_ip: str, result_note: "_load.Note") -> None:
-    # A failed bound goes to the owner, never a quietly larger bound.
+    # A failed bound goes to the owner as a change to the override, a short POLLOUT back-off after EAGAIN, not a larger
+    # bound (owner, 2026-09-30).
     verdicts = _measure(board, dut_ip)
     _note(result_note, "the normal image", verdicts)
     assert verdicts.zero_window >= _MIN_ZERO_WINDOW, f"only {verdicts.zero_window} connection(s) reached zero window: the hammer never blocked the board's sends"
@@ -86,8 +87,8 @@ def _boot(dut_ip: str) -> "tuple[object, object]":
 
 
 def _hammer(dut_ip: str) -> _Verdicts:
-    # The segment-pool edge (configured_max_connections() - 1 non-readers of the largest asset) with a timed page load,
-    # then each JSON route and page asset with a dead and a slow client (the arena and per-pcb edges), then the drain.
+    # configured_max_connections() - 1 non-readers of the largest asset (within the arena's tolerance at TCP_SND_BUF
+    # 1,600 B) with a timed page load, then each JSON route and page asset with a dead and a slow client, then the drain.
     verdicts = _Verdicts()
     ceiling = configured_max_connections()
     sockets: list[socket.socket] = []

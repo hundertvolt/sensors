@@ -1172,7 +1172,7 @@ settings.
   its exact word, matched as
   a whole string — no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
   300 s lives in the command callback. `/status` — `{"ResetErrors": true}`: every registered
-  error source, then the webserver's own log, reset one after another (owner, 2026-11-07), `HTTPDropped`'s window included;
+  error source, then the webserver's own log, reset one after another (agent, 2026-11-07), `HTTPDropped`'s window included;
   `result.ResetErrors` answers `"Failed"` when any reset returned false, else `"Valid"`; a reset that
   raises (a defect's path) reaches the catch-all, which answers 500 and persists it (errno 23);
   any other value, and every other key, answers `"Invalid"`; a body without the key resets nothing.
@@ -3615,8 +3615,8 @@ history write record none (A.4). The logging layer's own caught allocation failu
 ring, the chunk allocation, the history read and write) each print one line with the error's text
 from level 1 up, as an allocator refusal (`None`, no heap failure) does.
 
-**`reset()` writes unconditionally; `_store_err()` does not.** The asymmetry is deliberate.
-`_store_err()` refuses to touch FRAM before `setup()` has run — a half-filled ring written over a
+**`reset()` writes unconditionally; `err_s()`/`wrn_s()` do not.** The asymmetry is deliberate.
+An entry never touches FRAM before `setup()` has run (`_record()` returns first) — a half-filled ring written over a
 not-yet-restored chunk is stale state. A cleared ring is the opposite: it is exactly what the
 caller asked to persist, so `reset()` writes it straight away and marks the logger initialized once
 that write succeeds, which makes the later `setup()` return early instead of restoring over it. A
@@ -5318,8 +5318,8 @@ scripts/_run_checks.sh mpy:tests/test_math_helpers.py
 The unit and twin layouts are defined once, in `scripts/micropypath.toml`; every launcher reads
 them there (`scripts/_unix_port.sh`'s `micropypath`, `tomllib`, `tests_js/_micropypath.js`), and
 `tests_scripts/test_twin_never_needs_tests_on_its_path.py` fails a twin launch whose path is spelled
-out instead or reaches `tests/`. Both start with `build/portable_src/`, which holds files only on a host whose
-Unix port compiles no native code (F.1).
+out instead or reaches `tests/`. Both start with `build/portable_src/`, which holds files only on a host not
+known to compile native code (F.1).
 
 `.frozen` is required in `MICROPYPATH` because it replaces the interpreter's default `sys.path`
 rather than extending it, and the default path is what makes frozen-in modules (`asyncio` included)
@@ -5348,9 +5348,9 @@ cannot remove <file>: <strerror>`, exit 1) and writes two stamps last, `.inputs_
 sha256 of every input it read and the name of every file it left) and
 `definitions/inputs_stamp.json` (each TOML's sha256, which the JS loader checks, H.8) — and
 `build/generated_src` prepended to `MICROPYPATH` (ahead of `src`) so the generated module resolves
-before anything else. `scripts/test.sh`/`scripts/typecheck.sh` already do both automatically;
-running one such file directly, as the invocation above does for `test_math_helpers.py`, needs them
-done by hand first or the import fails with `ImportError: no module named 'sensortask_wozi'`. A file
+before anything else. `scripts/test.sh`/`scripts/typecheck.sh` already do both automatically, and
+the `mpy:` invocation above regenerates a stale tree first; running one such file any other way needs
+them done by hand first or the import fails with `ImportError: no module named 'sensortask_wozi'`. A file
 that imports a generated module or reads a plan first calls `tests/_generated_tree.py`'s
 `require_fresh()`, which refuses a missing tree, a changed input, a missing output, an orphan or an
 empty list with `build/generated_src/ is missing or stale - run: uv run
@@ -5549,7 +5549,9 @@ public one keeps the store and therefore does register — which is why `ROLE_IN
 show as covered in `asy_uart_comm.py` while all 58 of its `_`-prefixed constants do not. A decorated function's traced
 event lands on the decorator line, not the `def` line, so every `@staticmethod`/`@classmethod`
 shows missed even when called throughout the suite. A `@micropython.viper` body runs as native code and
-fires no line event at all, so every line of it shows missed (F.1; `build-settrace`, 2026-11-09). A bare `while True:` header never fires its own
+fires no line event at all, so every line of it shows missed (F.1; `build-settrace`, 2026-11-09). On a host not
+known to compile native code the modules holding such a function run from their `build/portable_src/` copies (F.1),
+which the runner does not trace, so all of each reads as missed there; CI's coverage job runs on x86-64. A bare `while True:` header never fires its own
 trace event at any iteration (folds into an unconditional jump at compile time). Nor does a
 multi-line statement's continuation line, an `else:` or `finally:` header, or a `pass` that is an
 `if` body (a `pass` in a loop body does fire), each confirmed on `build-settrace` with a probe
@@ -6207,11 +6209,12 @@ v1.29.0); a plain `mpy-cross` refuses such a module. The limits that bind: no de
 the Unix port, so a result is masked to its width; no 64-bit product; a body runs without the
 scheduler (docs `reference/speed_python.rst`). ruff reads the viper names as builtins
 (`pyproject.toml`), and mypy wants one `arg-type` ignore per function. The Unix port compiles native code
-on x86, x86-64, 32-bit ARM and RV32 only (`ports/unix/mpconfigport.h:67-85`, v1.29.0), so on an arm64 host
-(the bench Pi4) `scripts/_generate_sensortask_modules.py` copies each such module into `build/portable_src/`,
-first in both `scripts/micropypath.toml` layouts, with the function swapped for its plain twin in
-`fakes/_native_twins.py`; `tests/test_native_twins.py` proves each twin equal to its original where native code
-compiles (CI), and a native function with no twin fails the generator on every host.
+on x86, x86-64, 32-bit ARM and RV32 only (`ports/unix/mpconfigport.h:67-85`, v1.29.0), so on any other host
+(arm64: the bench Pi4) `scripts/_generate_sensortask_modules.py` copies each such module into `build/portable_src/`
+as part of regenerating a stale tree (its stamp hashes `src/` and the twins, E.3), first in both
+`scripts/micropypath.toml` layouts, with the function swapped for its plain twin in `fakes/_native_twins.py`;
+`tests/test_native_twins.py` proves each twin equal to its original where native code compiles (CI), and a native
+function with no twin, or not a module-level `def`, fails the generator on every host.
 
 **Which stores wear.** The flash filesystem (W25Q16JV: at least 100K program-erase cycles per
 sector, datasheet section 2) and the SCD30's NVM (no published endurance figure, M.2) are the
@@ -6455,7 +6458,7 @@ level, so the test also checks that the walk reaches every task top it names. A 
 fails the check at any depth; a chain is memoised with the stack's members on its own cycle, so no
 top's chain depends on which top reached a shared function first; one await holding a project
 coroutine or an asyncio awaitable counts the deeper. The board's peak is
-`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` (1,024 B) of the limit (owner, 2026-11-11). A
+`tests_hardware/device_scripts/c_stack_budget.py`'s reading; the deepest FRAM-backed log entry's end must leave `l3.c_stack_reserve_b` (1,024 B) of the limit (owner, 2026-11-11: "A", asked which bound the C-stack check holds). A
 stack-check error is recorded by the logger call of the handler that catches it, or by that handler's
 own `report_if_fatal()` where no logger sees it (C.7, G.2), and the supervisor reboots (reset code 20,
 A.8); a handler too deep to log raises afresh and the first outer handler that logs records it
@@ -8447,8 +8450,10 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
   (2,048 B, I.6); the response side is the device's largest GET body, held once as its encoded
   pieces (I.3), its piece list at 4 B per piece on the RP2040, and one in-flight piece of
   `chunk_bytes`. The device's demand is `max_connections` × their sum — many small pieces, never one
-  block — and must stay within `web.serving_demand_budget_b`: the heap free after boot (about
-  105,000 B, I.6) less the 32,768 B contiguity reserve, 72,232 B, an estimate. The per-device
+  block — and must stay within `web.serving_demand_budget_b`, 72,232 B: set from the heap free after
+  boot (about 105,000 B, I.6) less 32,768 B, it sits about 9.8 KB under the 81,984 B measured free
+  on `dev` in operation; that 32,768 B reserve is the after-build largest-block check (F.5.3), not
+  held back in operation (owner, 2026-11-12, Part N). The per-device
   scenario in `tests/_sensortask_scenarios.py` drives every GET route at a clean boot with a
   non-ASCII SSID, asserts the one-copy identity (the response body yields exactly the writer's own
   pieces, so a second encoded copy fails it) and the budget, and printed on the mock tier
@@ -12132,7 +12137,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `l1.unix_heapsize` | 16M | `scripts/test.sh` — `16M`; `tests_scripts/test_device_script_fram_regions.py` — `16M`; `tests_scripts/test_digital_twin_boot_contiguity.py` — `16M` | every Unix-port file's heap; `test_digital_twin_bus_hazard_concurrency.py`'s dev scenario misses its 9 s budget at 8M (E.3.1) | measured (2026-09-17), full-suite runs: 16M passes every file; 8M fails the bus-hazard dev scenario in every isolated run (E.3.1) | the measured floor itself: changed only with a measurement and a register entry, never raised to make a failing test pass (no per-file override: agent, 2026-09-17, kept as agent design by the owner, 2026-09-26) | a file's peak heap at either GC stage changes |
 | `l1.unix_gc_stack_entries` | 1024 entries | `toolchain/micropython_overrides.py` — `1024` | `MICROPY_ALLOC_GC_STACK_SIZE` in the generated Unix variant header that `build-standard`, `build-settrace` and `build-lwip` compile with, read back after each build by `verify_unix_gc_stack_in_build()` (B.14.6); what a stack overflow costs scales with `l1.unix_heapsize` | measured 2026-10-20, Unix port v1.29.0, `build-standard` against 1024- and 4096-entry scratch builds, paired runs, two rounds with the trees swapped: at 32768 `test_voc_algorithm.py` 20.0 → 6.3 s, `test_asy_scd30_driver.py` 43.0 → 28.8 s, `test_asy_webserver_service.py` 12.4 → 7.2 s, `test_digital_twin_uart_link.py` 79.4 → 70.3 s, results identical; 4096 saved 1.6 %, 0.0 % and 2.3 % beyond 1024 on the first three | upstream's own large-heap value (`ports/rp2/mpconfigport.h:94`); 4096 saves under 3 % more, below the 10 % that would justify it (agent, 2026-10-20) | the pin moves, `l1.unix_heapsize` changes, or a file's time at 32768 grows |
-| `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,790 B is the closest | measured on `dev` (2026-11-11, 32768): one collect in operation leaves 81,984-82,400 B free, above this budget, set (agent, 2026-10-08) from I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve | holds: `dev`'s 68,790 B demand sits about 13.2 KB under the measured free heap; the 32,768 B reserve is the after-build largest-block check (F.5.3), not held back in operation | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
+| `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,790 B is the closest | measured on `dev` (2026-11-11, 32768): one collect in operation leaves 81,984-82,400 B free, above this budget, set (agent, 2026-10-08) from I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve | holds (owner, 2026-11-12: "A", asked whether the 32,768 B reserve is held back in operation or is the after-build largest-block check (F.5.3); option A: the after-build check, not held back in operation; "As long as it doesn't get close to a critical mark"): `dev`'s 68,790 B demand sits about 13.2 KB under the measured free heap, and this budget, about 9.8 KB under it, is the check that keeps every device's demand clear of it | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
 
 **L2 (digital twin)**
 
@@ -12154,11 +12159,11 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.memory_stress_bench_hammer_duration_s` | 120.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `120.0` | — | estimated (agent, `4dfb00d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.soak_request_failure_rate` | 0.001 | `tests_hardware/bench/test_memory_stress_bench.py` — `0.001` | failed soak requests as a share of those sent, so the bound scales with the chosen `--soak-duration` | estimated (agent, 2026-10-14) — measurement owed: the failed share across the 6 h soak on the dev bench, L4 | attention; against that measurement, once taken | the code under test or the host class changes |
 | `l4.uart_link_under_api_load_request_budget_s` | 15.0 s | `tests_hardware/bench/test_uart_link_under_api_load.py` — `15.0` | — | estimated (agent, `a195c4c`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
-| `l3.heap_headroom_after_full_system_build_max_added` | 41000 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `41_000` | — | owner decision (owner, 2026-11-11: the bound covers what `build_system()` and the setups keep over the heap in use before them, 35,984 B on dev, 2026-11-11, plus the ~14 % the retired 100,000 B total had over its own reading; it changes only through a new derivation of the need, never to fit a reading) | none: the bound is the requirement | the build's survivors or the heap budget change |
+| `l3.heap_headroom_after_full_system_build_max_added` | 41000 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `41_000` | — | owner decision (owner, 2026-11-11: "A", asked which bound the full-build heap check holds; option A: the bound covers what `build_system()` and the setups keep over the heap in use before them, 35,984 B on dev, 2026-11-11, plus the ~14 % the retired 100,000 B total had over its own reading); it changes only through a new derivation of the need, never to fit a reading (owner, 2026-10-02); "anyhow make sure the heap bound does not get close to critical values" (owner, 2026-11-11): the after-build largest free block's 32,768 B floor (F.5.3) is that absolute check | none: the bound is the requirement | the build's survivors or the heap budget change |
 | `l3.heap_headroom_after_full_system_build_worst_case_factor` | 2 | `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `2` | × the script's worst-case allocation (16,384 B) = the largest free block it requires (32,768 B) | the requirement the script states with the check (`3fe0fb2`, 2026-09-19): room for the worst-case allocation twice over; nothing here may be raised to fit a reading | none: the factor is the requirement | the worst-case allocation or the heap budget changes |
 | `l3.settle_budget_ms` | 2000 ms | `tests_hardware/device_scripts/_shared/settle.py` — `2000` | `_shared/settle.py`: the join's budget | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
 | `l3.c_stack_budget_window_ms` | 10000 ms | `tests_hardware/device_scripts/c_stack_budget.py` — `10000` | about ten read cycles of every reader the build starts; the flash tier's 60 s script timeout covers it | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
-| `l3.c_stack_reserve_b` | 1024 B | `tests_hardware/flash/test_memory_stress.py` — `1024` | the C stack the deepest FRAM-backed log entry (`provoked_end`, F.1) leaves of the 7,936 B limit: about four call levels at ~264 B | owner decision (owner, 2026-11-11: the deepest chain carries the bound); measured 6,060 B, 1,876 B left (dev, 2026-11-11) | none: the reserve is the requirement | the deepest chain or the stack size changes |
+| `l3.c_stack_reserve_b` | 1024 B | `tests_hardware/flash/test_memory_stress.py` — `1024` | the C stack the deepest FRAM-backed log entry (`provoked_end`, F.1) leaves of the 7,936 B limit: about four call levels at ~264 B | owner decision (owner, 2026-11-11: "A", asked which bound the C-stack check holds; option A: the deepest chain's end leaves this reserve, in place of half the limit); measured 6,060 B, 1,876 B left (dev, 2026-11-11) | none: the reserve is the requirement | the deepest chain or the stack size changes |
 | `l3.wifi_radio_reinit_connect_budget_ms` | 20000 ms | `tests_hardware/device_scripts/wifi_radio_reinit_recovery.py` — `20000` | one attempt's own poll (5 s) plus the DHCP lease the bench AP gives | estimated (agent, 2026-10-14) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | attention; against that measurement, once taken | the code under test or the host class changes |
 
 **CI (`.github/`)**

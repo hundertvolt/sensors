@@ -44,14 +44,15 @@ from buildgen.validate import _DEVICE_WIRING_CONSUMERS, _owns_config_store  # no
 from buildgen.version import current_build_date  # noqa: E402 - the repo root is on sys.path from the line above
 
 # Every file a generation reads besides the device TOMLs: the catalog and lwIP table (buildgen/definitions.py,
-# model.py), the overrides validate.py loads by path, this script, and the ext/ modules the frozen closure parses.
-_NAMED_INPUTS = ("buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py")
+# model.py), the overrides validate.py loads by path, this script, the twins the portable copies below swap in, and the
+# ext/ modules the frozen closure parses.
+_NAMED_INPUTS = ("buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py", "fakes/_native_twins.py")
 _INPUT_GLOBS = ("buildgen/*.py", "src/*.py", "ext/*.py")
 _STAMP_NAMES = (".inputs_stamp.json", "definitions/inputs_stamp.json")
-# The hosts whose Unix port compiles no native code (MicroPython 1.29, ports/unix/mpconfigport.h): there each src/
-# module with a native function gets a copy in build/portable_src/, first on every launcher's path (micropypath.toml),
-# that function swapped for its plain twin in fakes/_native_twins.py.
-_NO_NATIVE_EMITTER = ("aarch64", "arm64", "riscv64")
+# The platform.machine() prefixes whose Unix port compiles native code: x86, x86-64, 32-bit ARM, RV32 (MicroPython 1.29,
+# ports/unix/mpconfigport.h:67-85). On any other host each src/ module with a native function gets a copy in
+# build/portable_src/, first on every launcher's path (micropypath.toml), that function swapped for its plain twin.
+_NATIVE_EMITTER = ("x86", "amd64", "i386", "i486", "i586", "i686", "armv", "riscv32")
 # The generated main()'s statements in order: each awaited call by name, each boot-phase mark by its
 # constant (SPECIFICATION.md Part A.7). The boot-sequence scenarios record a real run against it.
 BOOT_PHASES = ("build_system", "BOOT_SETUP", "run_setups", "BOOT_TASKS", "start_tasks", "BOOT_TIMERS", "start_timers", "BOOT_NTP", "ntp_force_sync", "BOOT_DONE", "supervise_tasks")
@@ -131,10 +132,12 @@ def _fram_wired(model: DeviceModel) -> "list[str]":
 
 
 def _fresh(out_dir: Path, hashes: "dict[str, str]") -> bool:
-    # The tree's stamp still holds: the same inputs at the same hashes, and every output it lists is there.
+    # The tree's stamp still holds: the same inputs at the same hashes, every output it lists is there, and
+    # build/portable_src/ holds copies exactly where this host needs them (a tree generated on another host is stale).
     try:
         stamp = json.loads((out_dir / _STAMP_NAMES[0]).read_text(encoding="utf-8"))
-        return bool(stamp["inputs"] == hashes and all((out_dir / rel).is_file() for rel in stamp["outputs"]))
+        copies = any((REPO_ROOT / "build" / "portable_src").glob("*.py"))
+        return bool(stamp["inputs"] == hashes and all((out_dir / rel).is_file() for rel in stamp["outputs"]) and copies != _native_emitter())
     except (OSError, ValueError, KeyError, TypeError):
         return False
 
@@ -176,7 +179,7 @@ def _generate_tree(out_dir: Path, *, if_stale: bool) -> int:
         if device_outputs is None:
             return 1
         outputs.update(device_outputs)
-    if not _write_through_rename(outputs):
+    if not _sync_portable_copies() or not _write_through_rename(outputs):
         return 1
     written = set(outputs)
     stamps = _stamps(hashes, device_tomls, [p.relative_to(out_dir).as_posix() for p in written])
@@ -197,18 +200,25 @@ def _input_hashes(device_tomls: "list[Path]") -> "dict[str, str]":
     return {path.relative_to(REPO_ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs if path.is_file()}
 
 
+def _native_emitter() -> bool:
+    # Known to compile native code; any other host takes the plain-twin copies, which run everywhere.
+    return platform.machine().lower().startswith(_NATIVE_EMITTER)
+
+
 def _portable_copies(portable_dir: Path) -> "dict[Path, str] | None":
     # Every src/ module with a @micropython.native or .viper function, each such function replaced by an import of its
-    # twin; checked on every host, so a native function with no twin fails here first, not on an arm64 host later.
+    # twin; checked on every host, so a native function with no twin fails here first, not on an arm64 host later. Only
+    # a module-level def can be swapped for an import, so a native method or nested def counts as having none.
     twins_path = REPO_ROOT / "fakes" / "_native_twins.py"
-    twins = {node.name for node in parse_source(twins_path.read_text(encoding="utf-8"), str(twins_path)).body if isinstance(node, ast.FunctionDef)}
+    twins = {node.name for node in parse_source(twins_path.read_text(encoding="utf-8"), str(twins_path)).body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
     copies: dict[Path, str] = {}
     for path in sorted((REPO_ROOT / "src").glob("*.py")):
         text = path.read_text(encoding="utf-8")
-        native = [node for node in parse_source(text, str(path)).body if isinstance(node, ast.FunctionDef) and any(isinstance(d, ast.Attribute) and isinstance(d.value, ast.Name) and d.value.id == "micropython" and d.attr in ("native", "viper") for d in node.decorator_list)]
+        module = parse_source(text, str(path))
+        native = sorted((node for node in ast.walk(module) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(isinstance(d, ast.Attribute) and isinstance(d.value, ast.Name) and d.value.id == "micropython" and d.attr in ("native", "viper") for d in node.decorator_list)), key=lambda node: node.lineno)
         lines = text.splitlines(keepends=True)
         for node in reversed(native):
-            if node.name not in twins:
+            if node.name not in twins or node not in module.body:
                 print(f"error: src/{path.name}'s native function {node.name}() has no plain twin in fakes/_native_twins.py", file=sys.stderr)
                 return None
             lines[min(d.lineno for d in node.decorator_list) - 1 : node.end_lineno] = [f"from _native_twins import {node.name}\n"]
@@ -250,12 +260,13 @@ def _stamps(hashes: "dict[str, str]", device_tomls: "list[Path]", outputs: "list
 
 
 def _sync_portable_copies() -> bool:
-    # Written on a host without a native emitter, emptied on every other, so a host that compiles native code runs it.
+    # Written on a host not known to have a native emitter, emptied on every other, so a host that compiles native code
+    # runs it; part of a stale tree's regeneration, so the copies keep to the stamp's inputs.
     portable_dir = REPO_ROOT / "build" / "portable_src"
     copies = _portable_copies(portable_dir)
     if copies is None:
         return False
-    if platform.machine().lower() not in _NO_NATIVE_EMITTER:
+    if _native_emitter():
         if not portable_dir.is_dir():
             return True
         copies = {}
@@ -314,7 +325,7 @@ def main(argv: "tuple[str, ...] | list[str]" = ()) -> int:
     # One whole-tree run at a time: two at once rename each other's .tmp files away. A second waits, then finds it current.
     with (out_dir.parent / "generated_src.lock").open("a", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _generate_tree(out_dir, if_stale=args.if_stale) or (0 if _sync_portable_copies() else 1)
+        return _generate_tree(out_dir, if_stale=args.if_stale)
 
 
 if __name__ == "__main__":

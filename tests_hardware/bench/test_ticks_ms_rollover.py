@@ -47,7 +47,7 @@ def test_ticks_ms_rollover_is_survived(board: "Board", bench: "BenchBridge", dut
     # The evidence first: a reflash is a clearing path (CLAUDE.md's FRAM rule). The next round flashes its own image.
     save_errcount(dut_ip, request.node.name)
     save_fram_raw(board, request.node.name)
-    reflash(board, image)
+    reflash(board, image, bench)
     wait_until(lambda: _load.serving(dut_ip), timeout_s=_SERVING_TIMEOUT_S, description="the tick-offset test image serving")
     assert _load.image_deviations(request, dut_ip, record, allow_rollover=True) == [], f"the board does not run the tick-offset test image: {_load.image_deviations(request, dut_ip, record, allow_rollover=True)}"
     interval_h = _load.get_object(dut_ip, "/networking", _PROBE_TIMEOUT_S).get("NTPInterval")

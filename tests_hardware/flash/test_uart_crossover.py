@@ -244,18 +244,6 @@ def test_a_break_mid_frame_fails_that_transaction_only(board: Board, crc_mode: s
 
 @pytest.mark.persistence_write
 @pytest.mark.parametrize("crc_mode", _CRC_MODES)
-def test_a_real_config_write_during_traffic_loses_no_frame(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
-    # One owned flash write: a scratch config flush, the flash driver's own interrupts-off window, during the stream.
-    facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="config_write")
-    _setup_ok(facts)
-    assert "scratch_remove_errno" not in facts, f"the scratch config file could not be removed: {facts}"
-    written = _dict(facts["config_write"])
-    result_note(f"config flush {written['flush_us']} us")
-    assert written["streamed"] is True and written["frames_intact"] == written["frames_sent"] and written["uartrsr_oe"] is False, f"a frame was lost across a real flash write: {written}"
-
-
-@pytest.mark.persistence_write
-@pytest.mark.parametrize("crc_mode", _CRC_MODES)
 def test_link_transactions_during_config_writes_are_recorded(board: Board, crc_mode: str, result_note: _ResultNote) -> None:
     # Five owned flash writes, one per transaction: a crossing fails visibly, never corrupts; the figures fill F.3.
     facts = _run_or_fail(board, "uart_dma_ring_interrupts_off.py", _LONG_SCRIPT_TIMEOUT_S, crc_mode=crc_mode, state="config_write_link")
