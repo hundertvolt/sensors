@@ -43567,3 +43567,18 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   log check.
 - Evidence: logs/day6_20261111/sendstall_dev_2027.out, sendstall_dev_2027/status_after.json,
   invalid_record_dev_2036.out, logs/5.log, archive 20261111T202741Z.
+
+## Bench 2026-11-12 05:54 UTC - the window, 12d done, the order (the owner: no owner steps today)
+
+- Window: the owner's 16 hours from 05:33, so it ends 21:33 UTC (STOP then). The host rebooted before the window (up
+  05:29); the board came up with it, ResetReason 1, and rejoined STA by itself at 05:38 (no reset, no flash).
+- Logs before 12d (logs/day7_20261112/status_at_start_0538.json): WIFI 6 (W37, W81, W79: the boot without the AP),
+  SGP40 20 (W33, E10, W33, W35), SYSTEM 1 (E44), SCD30 2 (E11, E1), NTP 2 (E71), WEBSERVER 112 (W60, W48, W49),
+  CFGMGR_* W22 (1 each). All of them stood at yesterday's end except WIFI and SGP40's W35 (this boot) and NTP +1.
+- 12d (05:39:15-05:39:55, rc 0): errcount and the raw FRAM saved first, then 15 ResetErrors, each 200 Valid in
+  0.62-0.91 s, 0-4 readers, 0 failed GETs. Every log reads 0 after it.
+- The owner (05:4x): "No owner steps today". So j, 16b's power cycle and 13 move to a later window, and with j the
+  lead's cleared: line, so no wear today.
+- Order and estimates from the measured times: 10g (the table's 6 h 20, not measured on this tree) 05:47 -> ~12:10;
+  then k, both chroot legs at this head with /tmp on tmpfs (not measured on this tree, ~3 h together) -> ~15:10. Both
+  end inside the window. Flash cycles today: 0 planned.
