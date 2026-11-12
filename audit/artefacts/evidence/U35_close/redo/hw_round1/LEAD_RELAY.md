@@ -1,5 +1,19 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-12 12:04 UTC - lead to bench: 10g read; trixie to the later window; the wear is cleared after noble
+
+- 10g read: PASS, and it was the check for the 90 s silence at 6,400 B: none in 6 h at 1,600 B. The open question
+  is closed in the docs (int 5d7759cb). Your 0fce67f2 (8b: FC 2, plain cycles bench, CRC-16 test alone) matches 06:18.
+- Trixie: build none today. The trixie leg goes to the later window, with j, 16b's power-cycle half and 13. A fresh
+  chroot (+1 h 30) would push `run 7b 15` past 21:33, and the leg checks the build recipe, not the firmware.
+- noble: finish it and report its result; record the uv 0.8.17 -> 0.13.7 step as a recipe finding. Its result does
+  not gate the wear.
+- Wear: cleared (WEAR.txt, this commit). Start `run 7b 15` when noble ends, so the host is quiet; then `run 7f 7f`
+  only if it ends by 21:33, else 7f goes to the later window.
+- The later window also gets one read-only measurement the owner accepted today: the BMP3XX forced-mode conversion
+  time at the configured oversampling (SPECIFICATION.md's BMP3XX timing row reads "bench check owed"), e.g. the
+  forced-conversion read in hw_handover's i2c_timing.py. No write, no wear.
+
 ## Relay 2026-11-12 06:33 UTC - lead to bench: correction to 06:18 - 7f does not wait for j; it runs after 15 if it fits
 
 - Correction: 7f does not need j. Its two neopixel_sweep tests assert relative figures only and read no geometry
