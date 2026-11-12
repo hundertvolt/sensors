@@ -43611,3 +43611,14 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   its mpremote session ends, after the test's no-reboot check (SPECIFICATION.md A.8), not a firmware reset.
 - Recovery passes: 2, both mpremote (a port in use once, one USB rebind of 1-1.4, 10.4 s), harness-side.
 - Merged the 06:18 and 06:33 relays (head 8ab233e1). Next: 8b's round1.sh change as 06:18 says, its own commit, then k.
+
+## Bench 2026-11-12 12:00 UTC - k: noble running in its existing chroot; the trixie chroot is gone
+
+- 8b's round1.sh change is pushed on its own (0fce67f2): plain `cycles bench`, FC 2, requirement "-"; the
+  `cycles()` comment's "8b FC 4" now reads FC 2.
+- k, noble: started 12:00 in /home/nico/chroots/noble (built 11-07), /tmp on tmpfs, a fresh clone of 0fce67f2
+  copied in; env --tier generic, lint, typecheck, test.sh at 4 jobs (logs/day7_20261112/chroot_noble.log).
+- k, trixie: the chroot is gone. /home/nico/chroots holds only noble, and /var/tmp/trixie-chroot is a 349 MB
+  remnant (dev, root, usr), not a chroot. As 06:18 says, I tell you first and build none. Your call: a fresh trixie
+  chroot (debootstrap plus a toolchain build, about 1 h 30 more on this host, before the wear), or trixie goes to a
+  later window.
