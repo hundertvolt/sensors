@@ -43803,3 +43803,14 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - 3. The trixie leg follows 15 (no heavy host job during a board run): a fresh --variant=minbase chroot at
   /home/nico/chroots/trixie, /tmp on tmpfs, a clone of this head, uv as pyproject pins it; env generic, lint, typecheck,
   test.sh at 4 jobs. Its end by 21:33 depends on the build, about 3 h from ~17:40 (~20:40).
+
+## Bench 2026-11-12 17:14 UTC - 15 PASS on the rerun; trixie starting
+
+- 2. `run 15 15` on ed7848a4 (int 1c7b973e's harness): `test_ticks_ms_rollover_is_survived` PASSED, 15:06:17-17:13:30,
+  7633 s, rc 0. Note: 24 polls over 7247 s of uptime on the tick-offset image: no reboot, NTP kept, every sensor's TS
+  advancing. The stale-station trap did not recur: the board joined the bench AP after the tick-offset reflash.
+  "recovered 1" is an mpremote 'may be in use' retry after 0.4 s, not a board event.
+- The round image is back (BuildDate 2026-11-12T13:13:33Z, match=1); GET /status 200, ResetReason 2, ConfigFaults [],
+  MemFree 77184. Error logs: the CFGMGR W22 entries are the earlier config reset's; no new entry.
+- FC 2 (today 7, as planned). WEAR.txt: `passed: 15 2026-11-12 17:13:30`.
+- 3. The trixie leg starts now; fits 21:33 at about 3 h.
