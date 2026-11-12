@@ -1,9 +1,11 @@
 """The MQTT client against a scripted broker on loopback (tests/_mqtt_fake_broker.py): connect, session and will,
-gating and backoff, QoS 0/1 both ways, the unconfirmed-bytes cap, the publisher, the settings' shapes and its faults."""
+gating (the hotspot's too) and backoff, QoS 0/1 both ways, the unconfirmed-bytes cap, the partner API, its faults."""
 
 import asyncio
+import gc
 import io
 import json
+import socket
 import time
 
 from _async_harness import run
@@ -12,11 +14,10 @@ from _mqtt_fake_broker import FakeBroker, encode_length, publish_packet, read_st
 from _port_bands import PortAllocator
 from _recording_print import record_prints
 from _src_const import src_int
-from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
 
 import asy_mqtt_client
-from asy_mqtt_client import MQTTClient, MqttConfig, MqttConsumer
+from asy_mqtt_client import MQTTClient, MqttConfig
 from asy_print_log import LogConfig
 
 try:
@@ -27,8 +28,10 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from asy_mqtt_client import _Source
+    from asy_mqtt_client import MqttCallback
     from asy_print_log import ErrorLog
+
+    Consumers = tuple[tuple[str, MqttCallback], ...]  # (filter below <base>, callback), registered before the tasks start
 
 # This file's own port band (SPECIFICATION.md E.1: below 32768, outside every neighbour's band); one port per broker.
 _PORTS = PortAllocator("test_asy_mqtt_client")
@@ -48,6 +51,14 @@ _R_STALLED: int = src_int("src/asy_mqtt_client.py", "_R_STALLED")  # the client'
 _R_UNEXPECTED: int = src_int("src/asy_mqtt_client.py", "_R_UNEXPECTED")
 _SLOT_INFLIGHT: int = src_int("src/asy_mqtt_client.py", "_SLOT_INFLIGHT")
 _ST_CONNECTED: int = src_int("src/asy_mqtt_client.py", "_ST_CONNECTED")
+_C_CONSUMER_ERR: int = src_int("src/asy_mqtt_client.py", "_C_CONSUMER_ERR")
+
+
+def _ignore(_topic: memoryview, _payload: memoryview, _flags: int) -> None:
+    pass
+
+
+_COMMANDS: "Consumers" = (("cmd/#", _ignore),)  # a partner's subscription, as the exerciser registers it
 
 
 def count(client: MQTTClient, key: str) -> int:
@@ -60,8 +71,11 @@ def _port() -> int:
     return _PORTS.next()
 
 
-def _make_client(*, link: "Callable[[], bool] | None" = None, consumers: "tuple[MqttConsumer, ...]" = (), sources: "tuple[_Source, ...]" = (), config: MqttConfig = _CFG) -> MQTTClient:
-    return MQTTClient(asyncio.Lock(), link or (lambda: True), lambda: None, config, sources=sources, consumers=consumers, cfg_path=_scratch.dir())
+def _make_client(*, link: "Callable[[], bool] | None" = None, consumers: "Consumers" = (), config: MqttConfig = _CFG) -> MQTTClient:
+    client = MQTTClient(asyncio.Lock(), link or (lambda: True), lambda: None, config, cfg_path=_scratch.dir())
+    for topic_filter, callback in consumers:
+        client.add_consumer(topic_filter, callback)
+    return client
 
 
 async def until(predicate: "Callable[[], bool]", timeout_ms: int = _WAIT_MS) -> bool:
@@ -82,7 +96,7 @@ async def configure(client: MQTTClient, port: int, **fields: "int | str | bool")
 
 async def start(client: MQTTClient) -> "list[asyncio.Task[None]]":
     await client.setup()
-    return [client.start_asy_connection(), client.start_asy_publish()]
+    return [client.start_asy_connection()]
 
 
 async def stop(client: MQTTClient, tasks: "list[asyncio.Task[None]]", broker: "FakeBroker | None" = None) -> None:
@@ -106,12 +120,11 @@ async def errnums(client: MQTTClient) -> "list[int]":
 
 
 async def broker_and_client(
-    *, link: "Callable[[], bool] | None" = None, consumers: "tuple[MqttConsumer, ...]" = (), sources: "tuple[_Source, ...]" = (), config: MqttConfig = _CFG,
-    fields: "dict[str, int | str | bool] | None" = None,
+    *, link: "Callable[[], bool] | None" = None, consumers: "Consumers" = (), config: MqttConfig = _CFG, fields: "dict[str, int | str | bool] | None" = None,
 ) -> "tuple[FakeBroker, MQTTClient, list[asyncio.Task[None]]]":
     broker = FakeBroker(_port())
     await broker.start()
-    client = _make_client(link=link, consumers=consumers, sources=sources, config=config)
+    client = _make_client(link=link, consumers=consumers, config=config)
     tasks = await start(client)
     await configure(client, broker.port, **(fields or {}))
     client.reconnect()  # the settings group's post_fct, as a PUT runs it
@@ -120,7 +133,7 @@ async def broker_and_client(
 
 def test_connects_with_a_clean_session_and_a_will_then_subscribes_and_publishes_online() -> None:
     async def scenario() -> None:
-        broker, client, tasks = await broker_and_client()
+        broker, client, tasks = await broker_and_client(consumers=_COMMANDS)
         try:
             assert await until(lambda: len(broker.published(b"sensors/t1/status")) == 1)
             connect = broker.connects[0]
@@ -503,22 +516,22 @@ def test_a_full_ring_lets_qos0_give_way_first() -> None:
 
 
 def test_inbound_qos1_is_acknowledged_by_the_keeper_and_dispatched() -> None:
-    got: list[tuple[bytes, bytes, bool]] = []
+    got: list[tuple[bytes, bytes, int]] = []
 
-    def consumer(topic: memoryview, payload: memoryview, retained: bool) -> None:
-        got.append((bytes(topic), bytes(payload), retained))
+    def consumer(topic: memoryview, payload: memoryview, flags: int) -> None:
+        got.append((bytes(topic), bytes(payload), flags))
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
-        broker.after_subscribe = [publish_packet(b"ext/temp", b"21.5", qos=1, pid=0x0102, retain=True)]
+        broker.after_subscribe = [publish_packet(b"sensors/t1/ext/temp", b"21.5", qos=1, pid=0x0102, retain=True)]
         await broker.start()
-        client = _make_client(consumers=(MqttConsumer("ext/#", consumer),))
+        client = _make_client(consumers=(("cmd/#", _ignore), ("ext/#", consumer)))
         tasks = await start(client)
         try:
             await configure(client, broker.port)
             client.reconnect()
             assert await until(lambda: len(got) == 1)
-            assert got[0] == (b"ext/temp", b"21.5", True)
+            assert got[0] == (b"sensors/t1/ext/temp", b"21.5", 0x03)  # the flag bits: QoS 1, retained
             subscribes = [body for first, body in broker.packets if first == 0x82]
             filters = []
             i = 2
@@ -526,11 +539,11 @@ def test_inbound_qos1_is_acknowledged_by_the_keeper_and_dispatched() -> None:
                 flt, i = read_str(subscribes[0], i)
                 filters.append(flt)
                 i += 1
-            assert filters == [b"sensors/t1/cmd/#", b"ext/#"]
+            assert filters == [b"sensors/t1/cmd/#", b"sensors/t1/ext/#"]  # each below the base, in registration order
             assert await until(lambda: any(first == 0x40 and body == b"\x01\x02" for first, body in broker.packets))
             status = client.get_link_status()
             assert status["MQTTRxMsgs"] == 1
-            assert status["MQTTLastRxTopic"] == "ext/temp"
+            assert status["MQTTLastRxTopic"] == "sensors/t1/ext/temp"
         finally:
             await stop(client, tasks, broker)
 
@@ -538,20 +551,20 @@ def test_inbound_qos1_is_acknowledged_by_the_keeper_and_dispatched() -> None:
 
 
 def test_a_raising_consumer_is_logged_and_its_message_still_acknowledged() -> None:
-    def consumer(_topic: memoryview, _payload: memoryview, _retained: bool) -> None:
+    def consumer(_topic: memoryview, _payload: memoryview, _flags: int) -> None:
         raise ValueError("consumer fault")
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
-        broker.after_subscribe = [publish_packet(b"ext/x", b"1", qos=1, pid=7)]
+        broker.after_subscribe = [publish_packet(b"sensors/t1/ext/x", b"1", qos=1, pid=7)]
         await broker.start()
-        client = _make_client(consumers=(MqttConsumer("ext/#", consumer),))
+        client = _make_client(consumers=(("ext/#", consumer),))
         tasks = await start(client)
         try:
             await configure(client, broker.port)
             client.reconnect()
             assert await until(lambda: any(first == 0x40 for first, _b in broker.packets))
-            assert await until(lambda: client._counts[8] == 1)
+            assert await until(lambda: client._counts[_C_CONSUMER_ERR] == 1)
             await asyncio.sleep_ms(100)
             assert code("E", "CALLBACK") in await errnums(client)
             assert client.is_connected()
@@ -561,9 +574,9 @@ def test_a_raising_consumer_is_logged_and_its_message_still_acknowledged() -> No
     run(scenario())
 
 
-def test_the_own_cmd_topic_is_counted_and_shown() -> None:
+def test_a_message_on_a_partners_filter_is_counted_and_its_topic_shown() -> None:
     async def scenario() -> None:
-        broker, client, tasks = await broker_and_client()
+        broker, client, tasks = await broker_and_client(consumers=_COMMANDS)
         try:
             assert await until(client.is_connected)
             await broker.send(publish_packet(b"sensors/t1/cmd/hello", b"yo"))
@@ -578,14 +591,14 @@ def test_the_own_cmd_topic_is_counted_and_shown() -> None:
 def test_an_oversize_packet_is_discarded_and_the_next_one_parsed() -> None:
     got: list[bytes] = []
 
-    def consumer(_topic: memoryview, payload: memoryview, _retained: bool) -> None:
+    def consumer(_topic: memoryview, payload: memoryview, _flags: int) -> None:
         got.append(bytes(payload))
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
-        broker.after_subscribe = [publish_packet(b"ext/big", b"B" * 5000), publish_packet(b"ext/small", b"ok")]
+        broker.after_subscribe = [publish_packet(b"sensors/t1/ext/big", b"B" * 5000), publish_packet(b"sensors/t1/ext/small", b"ok")]
         await broker.start()
-        client = _make_client(consumers=(MqttConsumer("ext/#", consumer),))
+        client = _make_client(consumers=(("ext/#", consumer),))
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -633,7 +646,7 @@ def test_a_refused_subscription_is_logged_and_the_connection_stays() -> None:
         broker = FakeBroker(_port())
         broker.suback_code = 0x80
         await broker.start()
-        client = _make_client()
+        client = _make_client(consumers=_COMMANDS)
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -682,8 +695,8 @@ def test_put_refuses_strings_outside_their_mqtt_shape() -> None:
         good = {"MQTTHost": "", "MQTTClientId": "node-1", "MQTTPrefix": "home/sensors", "MQTTUser": "", "MQTTPW": "pw"}
         results = await client._set_dict_cfg(good, schema)
         assert all(v in ("Valid", "Unchanged") for v in results.values()), results
-        results = await client._set_dict_cfg({"MQTTPort": 0, "MQTTPubInterval": 5}, schema)
-        assert results == {"MQTTPort": "Invalid", "MQTTPubInterval": "Invalid"}
+        results = await client._set_dict_cfg({"MQTTPort": 0}, schema)
+        assert results == {"MQTTPort": "Invalid"}
 
     run(scenario())
 
@@ -697,8 +710,8 @@ def test_get_masks_the_password() -> None:
         assert cfg["MQTTPW"] == "********"
         assert cfg["MQTTClientId"] == "t1"  # the build's default (the device hostname)
         assert set(cfg) == {
-            "MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval",
-            "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain",
+            "MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPingInterval",
+            "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain",
         }
 
     run(scenario())
@@ -718,7 +731,7 @@ def test_a_stored_value_out_of_shape_keeps_the_client_off_with_one_warning() -> 
         await configure(client, broker.port)
         await client.cfgmgr.flush_pending()
         client.cfgmgr._cache["MQTTPrefix"] = "a/#"  # as a hand-edited file would hold it
-        tasks = [client.start_asy_connection(), client.start_asy_publish()]
+        tasks = [client.start_asy_connection()]
         try:
             await asyncio.sleep_ms(700)
             assert broker.connections == 0
@@ -743,7 +756,7 @@ def test_a_host_out_of_shape_is_refused_at_put_and_a_stored_one_keeps_the_client
         await configure(client, broker.port)
         await client.cfgmgr.flush_pending()
         client.cfgmgr._cache["MQTTHost"] = "bad host"  # as a hand-edited file would hold it
-        tasks = [client.start_asy_connection(), client.start_asy_publish()]
+        tasks = [client.start_asy_connection()]
         try:
             await asyncio.sleep_ms(700)
             assert broker.connections == 0
@@ -794,19 +807,17 @@ def _kinds(broker: FakeBroker, n: int) -> "list[int]":
     return [first & 0xF0 for first, _body in _sent_on(broker, n)] if len(broker.connect_packets) > n else []
 
 
-def test_the_ping_and_publish_intervals_take_off_and_default_to_three_minutes_and_off() -> None:
-    # Owner, 2026-10-13: the ping interval a setting that can be turned off ('3 min' its default), the measurement
-    # publisher off-able and off by default.
+def test_the_ping_interval_takes_off_and_defaults_to_three_minutes() -> None:
+    # Owner, 2026-10-13: the ping interval a setting that can be turned off, '3 min' its default.
     async def scenario() -> None:
         client = _make_client()
         await client.setup()
         cfg = (await client.get_dict_cfg())["MQTT"]
-        assert (cfg["MQTTPingInterval"], cfg["MQTTPubInterval"]) == (180, 0)
+        assert cfg["MQTTPingInterval"] == 180
         schema = client.get_cfg_schema()
         cases = (
             ("MQTTPingInterval", 0, "Valid"), ("MQTTPingInterval", 10, "Valid"), ("MQTTPingInterval", 3600, "Valid"),
             ("MQTTPingInterval", 9, "Invalid"), ("MQTTPingInterval", 3601, "Invalid"),
-            ("MQTTPubInterval", 10, "Valid"), ("MQTTPubInterval", 0, "Valid"), ("MQTTPubInterval", 9, "Invalid"),
         )
         for key, value, verdict in cases:
             assert (await client._set_dict_cfg({key: value}, schema))[key] == verdict, (key, value)
@@ -882,7 +893,7 @@ def test_a_publish_written_while_a_ping_is_out_gets_a_ping_of_its_own() -> None:
         broker = FakeBroker(_port())
         broker.ping_delay_ms = 300
         await broker.start()
-        client = _make_client()
+        client = _make_client(consumers=_COMMANDS)
         tasks = await start(client)
         try:
             await configure(client, broker.port)
@@ -915,26 +926,6 @@ def test_with_pings_off_a_publish_into_a_silent_broker_ends_the_link_and_a_qos1_
             broker.ack_publishes = True
             assert await until(lambda: len(broker.connects) == 2)
             assert await until(lambda: any(_publish_fields(first, body)[0] == b"sensors/t1/event" for first, body in _sent_on(broker, 1) if first & 0xF0 == 0x30))
-        finally:
-            await stop(client, tasks, broker)
-
-    run(scenario())
-
-
-def test_the_measurement_publisher_is_off_by_default_and_runs_once_given_an_interval() -> None:
-    class Source:
-        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
-            return {"BMP3XX": {"Pres": 1005.3}}
-
-    async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(sources=(Source(),))
-        try:
-            assert await until(lambda: _pings(broker, 0) == 1)
-            await asyncio.sleep_ms(300)
-            assert not broker.published(b"sensors/t1/measurements/BMP3XX")
-            await configure(client, broker.port, MQTTPubInterval=60)
-            client.reconnect()
-            assert await until(lambda: len(broker.published(b"sensors/t1/measurements/BMP3XX")) == 1)
         finally:
             await stop(client, tasks, broker)
 
@@ -1044,90 +1035,6 @@ def test_an_unexpected_reader_fault_is_logged_once_by_its_task_top() -> None:
     assert run(scenario()) == (_R_UNEXPECTED, [code("E", "UNEXPECTED")], 1)
 
 
-def test_measurements_are_published_as_json_with_null_for_non_finite() -> None:
-    class Source:
-        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
-            return {"SCD30": {"CO2": 612, "Temp": float("nan"), "Hum": float("inf"), "TS": None, "RGB": {"R": float("-inf"), "G": 0.5}}}
-
-    config = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100)
-
-    async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(sources=(Source(),), config=config, fields={"MQTTPubInterval": 60})
-        try:
-            assert await until(client.is_connected)  # the publisher's first round follows the CONNACK by itself
-            assert await until(lambda: len(broker.published(b"sensors/t1/measurements/SCD30")) == 1)
-            first, payload = broker.published(b"sensors/t1/measurements/SCD30")[0]
-            assert first == 0x30  # QoS 0, not retained
-            assert strict_loads(payload) == {"CO2": 612, "Temp": None, "Hum": None, "TS": None, "RGB": {"R": None, "G": 0.5}}
-            assert b"nan" not in payload and b"inf" not in payload
-        finally:
-            await stop(client, tasks, broker)
-
-    run(scenario())
-
-
-class _DumpsRecorder:
-    # Shadows asy_mqtt_client's module-global `json` for one round, recording every value it is handed to write.
-    def __init__(self) -> None:
-        self.values: list[object] = []
-
-    def dump(self, value: object, stream: "io.BytesIO") -> None:
-        self.values.append(value)
-        json.dump(value, stream)
-
-    def dumps(self, value: object) -> str:
-        self.values.append(value)
-        return json.dumps(value)
-
-
-def _round_on_a_connected_client(*sources: "_Source") -> MQTTClient:
-    # One publisher round with no socket: the measurements stay queued in their slots for the test to read.
-    client = _make_client(sources=sources)
-    client._state = _ST_CONNECTED
-    client._base = b"sensors/t1"
-    run(client._publish_measurements())
-    return client
-
-
-def _queued(client: MQTTClient) -> "dict[bytes, bytes]":
-    return {bytes(client._slot_topic[i] or b""): client._slots[i].getvalue()[: client._slot_len[i]] for i in range(8) if client._slot_state[i] == 1}
-
-
-def test_a_measurement_is_written_into_its_slot_one_key_or_scalar_at_a_time() -> None:
-    # Part I.3's bound on the publisher: no measurement object is built as one string, and its slot still holds
-    # exactly json.dumps()'s text, nesting, quoting and every scalar kind included.
-    fields = {
-        "Lux": 245.3125, "RGB": {"R": 0.1843137254901961, "G": 0.5}, "HSB": [217.4, 0.55], "CCT": 5200, "Overrange": False, "GainMeas": None,
-        "Note": 'a "q"', "Ctl": "a\x01", "Keys": {7: "a", True: 1}, "Empty": {}, "NoItems": [], "Big": 2**40, "TS": 1755000000,
-    }
-
-    class Source:
-        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
-            return {"ISL29125": fields}
-
-    recorder = _DumpsRecorder()
-    asy_mqtt_client.json = recorder  # type: ignore[assignment]
-    try:
-        client = _round_on_a_connected_client(Source())
-    finally:
-        asy_mqtt_client.json = json
-    assert recorder.values, "nothing was dumped"
-    assert not [v for v in recorder.values if isinstance(v, (dict, list, tuple))], recorder.values
-    assert _queued(client) == {b"sensors/t1/measurements/ISL29125": json.dumps(fields).encode()}
-
-
-def test_a_measurement_outgrowing_its_slot_is_dropped_and_counted() -> None:
-    # {"T": "<n x>"} is 9 + n bytes: 375 fills the 384 B slot exactly, one more is dropped like an oversize publish().
-    class Source:
-        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
-            return {"FITS": {"T": "x" * 375}, "BIG": {"T": "x" * 376}}
-
-    client = _round_on_a_connected_client(Source())
-    assert _queued(client) == {b"sensors/t1/measurements/FITS": json.dumps({"T": "x" * 375}).encode()}
-    assert count(client, "MQTTTxDropped") == 1
-    assert sum(1 for i in range(8) if client._slot_state[i] == 0) == 7  # the dropped one's slot is free again
-
-
 def test_no_client_buffer_needs_more_contiguous_heap_than_the_receive_buffer() -> None:
     # Contiguous chunk splitting: the outbound ring is one preallocated stream per slot, never one 3 KB block.
     client = _make_client()
@@ -1138,144 +1045,42 @@ def test_no_client_buffer_needs_more_contiguous_heap_than_the_receive_buffer() -
 
 
 def test_settings_and_topics_are_born_at_setup_and_kept_while_unchanged() -> None:
-    # Survivor placement: an enabled client's encoded settings and topics are built inside the boot list, and a
-    # reconnect with the same settings keeps those objects rather than re-birthing them in the run phase.
-    class Source:
-        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
-            return {"BMP3XX": {"Pres": 1005.3}}
-
+    # Survivor placement: an enabled client's encoded settings and its partners' topics and filters are built inside the
+    # boot list, and a reconnect with the same settings keeps those objects rather than re-birthing them in the run phase.
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
         cfg_dir = _scratch.dir()
         writer = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, cfg_path=cfg_dir)
         await writer.setup()
-        await configure(writer, broker.port, MQTTPubInterval=60)
+        await configure(writer, broker.port)
         await writer.cfgmgr.flush_pending()  # on disk before the next client's setup() reads it
-        client = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, sources=(Source(),), cfg_path=cfg_dir)
+        client = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, cfg_path=cfg_dir)
+        topic_id = client.add_topic("link/echo")  # a partner registers at its construction, before any setup()
+        client.add_consumer("cmd/#", _ignore)
         await client.setup()  # a boot with the client enabled
-        born = (client._base, client._status_topic, client._client_id, client._host, client._meas_topics["BMP3XX"])
+        born = (client._base, client._status_topic, client._client_id, client._host, client._topics[topic_id], client._filters[0])
         assert born[:2] == (b"sensors/t1", b"sensors/t1/status"), born
-        tasks = [client.start_asy_connection(), client.start_asy_publish()]
+        assert born[4:] == (b"sensors/t1/link/echo", b"sensors/t1/cmd/#"), born
+        tasks = [client.start_asy_connection()]
         try:
-            assert await until(lambda: len(broker.published(b"sensors/t1/measurements/BMP3XX")) == 1)
+            assert await until(client.is_connected)
+            assert client.publish_under(topic_id, b"one", qos=1)
+            assert await until(lambda: len(broker.published(b"sensors/t1/link/echo")) == 1)
             client.reconnect()  # unchanged settings: a new connection, the same long-lived objects
             assert await until(lambda: count(client, "MQTTConnects") == 2 and client.is_connected())
-            kept = (client._base, client._status_topic, client._client_id, client._host, client._meas_topics["BMP3XX"])
+            kept = (client._base, client._status_topic, client._client_id, client._host, client._topics[topic_id], client._filters[0])
             assert all(kept[i] is born[i] for i in range(len(born))), kept
             await configure(client, broker.port, MQTTPrefix="other")
             client.reconnect()
             assert await until(lambda: count(client, "MQTTConnects") == 3 and client.is_connected())
-            assert (client._base, client._status_topic) == (b"other/t1", b"other/t1/status")
-            assert await until(lambda: len(broker.published(b"other/t1/measurements/BMP3XX")) == 1)
+            assert (client._base, client._status_topic, client._filters) == (b"other/t1", b"other/t1/status", (b"other/t1/cmd/#",))
+            assert client.publish_under(topic_id, b"two", qos=1)
+            assert await until(lambda: len(broker.published(b"other/t1/link/echo")) == 1)
         finally:
             await stop(client, tasks, broker)
 
     run(scenario())
-
-
-def test_a_raising_source_is_logged_and_the_others_still_published() -> None:
-    class Broken:
-        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
-            raise ValueError("source fault")
-
-    class Good:
-        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
-            return {"BMP3XX": {"Pres": 1005.3}}
-
-    async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(sources=(Broken(), Good()), fields={"MQTTPubInterval": 60})
-        try:
-            assert await until(client.is_connected)
-            assert await until(lambda: len(broker.published(b"sensors/t1/measurements/BMP3XX")) == 1)
-            assert code("E", "SOURCE") in await errnums(client)
-        finally:
-            await stop(client, tasks, broker)
-
-    run(scenario())
-
-
-class _StallingLoop:
-    # The publisher's clock and sleep, virtual: a wake that falls in one of the loop's stalls runs at the stall's end,
-    # as the board's did under a GET /status every 5 s (0.70-0.85 s each, bench console 2026-10-08). Each stall's
-    # start and length vary, as there, so the 1 s steps cannot lock onto the stalls' ends.
-    def __init__(self, stall_every_ms: int, stall_ms: int, spread_ms: int = 0, *, now: int = 0) -> None:
-        self.now = now
-        self._every = stall_every_ms
-        self._stall = stall_ms
-        self._spread = spread_ms  # the most a stall starts late; each is also up to a fifth shorter than stall_ms
-
-    def _window(self, k: int) -> "tuple[int, int]":
-        start = k * self._every + 337 + (k * 7919) % (self._spread + 1)  # 337: off the publisher's 1 s grid
-        return start, start + self._stall - (k * 104729) % (self._stall // 5 + 1)
-
-    async def sleep_ms(self, ms: int) -> None:
-        wake = self.now + ms
-        start, end = self._window(wake // self._every)
-        if start <= wake < end:
-            wake = end
-        self.now = wake
-        await asyncio.sleep_ms(0)
-
-    def ticks_add(self, ticks: int, delta: int) -> int:
-        return ticks + delta
-
-    def ticks_diff(self, end: int, start: int) -> int:
-        return end - start
-
-    def ticks_ms(self) -> int:
-        return self.now
-
-
-def _rounds_on(loop: _StallingLoop, interval_ms: int, rounds: int) -> "list[int]":
-    # The virtual times at which the publisher starts its first `rounds` rounds, connected from the start.
-    client = _make_client()
-    client._pub_interval_ms = interval_ms
-    client._state = _ST_CONNECTED
-    client._pub_due = True  # as the CONNACK sets it
-    fired: list[int] = []
-
-    async def record() -> None:
-        fired.append(loop.now)
-
-    client._publish_measurements = record  # type: ignore[method-assign]
-
-    async def scenario() -> None:
-        task = asyncio.create_task(client._publish_loop())
-        while len(fired) < rounds:
-            await asyncio.sleep_ms(0)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    shim = type("StallingAsyncio", (), {})()
-    shim.sleep_ms = loop.sleep_ms
-    real_time, real_asyncio = asy_mqtt_client.time, asy_mqtt_client.asyncio
-    asy_mqtt_client.time, asy_mqtt_client.asyncio = loop, shim  # type: ignore[assignment]
-    try:
-        run(scenario())
-    finally:
-        asy_mqtt_client.time, asy_mqtt_client.asyncio = real_time, real_asyncio
-    return fired
-
-
-def test_rounds_keep_their_interval_through_the_loop_stalls_the_board_showed() -> None:
-    # The board's rounds came 10.56 s apart at 10 s: each landed at the first 1 s step after its due time, and the
-    # next interval counted from that late start. Now each round is due one interval after the last one's due time.
-    fired = _rounds_on(_StallingLoop(5000, 850, 600, now=600), 10000, 31)
-    late = [t - fired[0] - k * 10000 for k, t in enumerate(fired)]
-    assert all(0 <= ms <= 850 for ms in late), late  # never behind by more than the one stall it woke in
-    assert any(ms > 0 for ms in late), late  # some rounds did fall due inside a stall
-    assert abs((fired[-1] - fired[0]) / 30 - 10000) <= 30, fired  # the mean is the setting
-
-
-def test_a_stall_longer_than_the_interval_never_bunches_rounds() -> None:
-    # A round whose due time passed during a stall starts a fresh interval rather than firing the missed ones at once.
-    fired = _rounds_on(_StallingLoop(30000, 25000), 10000, 8)
-    gaps = [fired[i + 1] - fired[i] for i in range(len(fired) - 1)]
-    assert min(gaps) >= 10000, gaps
 
 
 def test_online_goes_out_with_the_subscribe_not_a_tick_later() -> None:
@@ -1409,7 +1214,7 @@ def test_the_link_status_has_every_published_field() -> None:
 
 def test_the_starters_and_fan_in_follow_the_service_shape() -> None:
     client = _make_client()
-    assert client.get_task_starters() == [client.start_asy_connection, client.start_asy_publish]
+    assert client.get_task_starters() == [client.start_asy_connection]
     assert client.get_timer_starters() == []
     assert client.get_error_sources() == [client, client.cfgmgr]
     assert client.name == "MQTT"
@@ -1419,15 +1224,15 @@ def test_the_starters_and_fan_in_follow_the_service_shape() -> None:
 def test_a_long_length_prefix_is_split_across_reads() -> None:
     got: list[bytes] = []
 
-    def consumer(_topic: memoryview, payload: memoryview, _retained: bool) -> None:
+    def consumer(_topic: memoryview, payload: memoryview, _flags: int) -> None:
         got.append(bytes(payload))
 
     async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(consumers=(MqttConsumer("ext/#", consumer),), config=_QUIET_CFG)
+        broker, client, tasks = await broker_and_client(consumers=(("ext/#", consumer),), config=_QUIET_CFG)
         try:
             assert await until(client.is_connected)
-            packet = publish_packet(b"ext/p", b"P" * 200)  # a two-byte remaining length
-            assert packet[1:3] == encode_length(207)
+            packet = publish_packet(b"sensors/t1/ext/p", b"P" * 200)  # a two-byte remaining length
+            assert packet[1:3] == encode_length(218)
             await broker.send_split(packet)  # one byte per write: every split point the parser can meet
             assert await until(lambda: got == [b"P" * 200])
         finally:
@@ -1528,7 +1333,7 @@ def test_a_resumed_session_gets_its_unacknowledged_qos1_again_first_with_their_i
         broker = FakeBroker(_port())
         broker.ack_publishes = False
         await broker.start()
-        client = _make_client(config=_SESSION_CFG)
+        client = _make_client(config=_SESSION_CFG, consumers=_COMMANDS)
         tasks = await start(client)
         try:
             await configure(client, broker.port, MQTTPersistent=True)
@@ -1684,7 +1489,7 @@ def test_a_changed_client_id_retires_the_old_persistent_session_first() -> None:
 
 
 def test_a_prefix_change_retires_the_session_even_under_the_same_client_id() -> None:
-    # The session would keep the old <base>/cmd/# subscription; a clean connect is the only way to drop it.
+    # The session would keep the partners' subscriptions under the old base; a clean connect is the only way to drop them.
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
@@ -1790,7 +1595,7 @@ def test_a_session_left_by_the_previous_boot_is_retired_too() -> None:
         client = _make_client(link=lambda: link[0])
         await client.setup()
         await configure(client, broker.port, MQTTPersistent=True)  # as the previous boot stored it
-        tasks = [client.start_asy_connection(), client.start_asy_publish()]
+        tasks = [client.start_asy_connection()]
         try:
             await asyncio.sleep_ms(100)
             await configure(client, broker.port, MQTTClientId="t2")
@@ -1802,6 +1607,292 @@ def test_a_session_left_by_the_previous_boot_is_retired_too() -> None:
             assert broker.connects[0]["flags"] == 0x02
             assert broker.connects[1]["client_id"] == b"t2"
         finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+# ---- the partner API: filters and topics below <base>, registered before the tasks start ----
+
+
+def _subscribed(broker: FakeBroker, n: int) -> "list[list[bytes]]":
+    # The filters of each SUBSCRIBE on the broker's n-th connection, in order; none before it exists.
+    found: list[list[bytes]] = []
+    for first, body in _sent_on(broker, n) if len(broker.connect_packets) > n else []:
+        if first == 0x82:
+            filters = []
+            i = 2
+            while i < len(body):
+                flt, i = read_str(body, i)
+                assert body[i] == 1, body  # QoS 1 asked for every filter
+                i += 1
+                filters.append(flt)
+            found.append(filters)
+    return found
+
+
+def test_without_a_partner_no_subscribe_goes_out() -> None:
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client()
+        try:
+            assert await until(lambda: len(broker.published(b"sensors/t1/status")) == 1)
+            await asyncio.sleep_ms(100)
+            assert _subscribed(broker, 0) == []
+            assert client._filters == ()
+            assert await errnums(client) == []
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_partners_filters_are_subscribed_below_the_base_at_every_connect() -> None:
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(consumers=(("link/echo", _ignore), ("cmd/#", _ignore)))
+        try:
+            assert await until(lambda: len(_subscribed(broker, 0)) == 1)
+            assert _subscribed(broker, 0) == [[b"sensors/t1/link/echo", b"sensors/t1/cmd/#"]]  # one SUBSCRIBE, registration order
+            await broker.drop()
+            assert await until(lambda: len(broker.connects) == 2 and len(_subscribed(broker, 1)) == 1)
+            assert _subscribed(broker, 1) == [[b"sensors/t1/link/echo", b"sensors/t1/cmd/#"]]
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_each_message_reaches_every_partner_whose_filter_matches_and_no_other() -> None:
+    got: list[tuple[str, bytes, int]] = []
+
+    def on_cmd(topic: memoryview, _payload: memoryview, flags: int) -> None:
+        got.append(("cmd", bytes(topic), flags))
+
+    def on_all(topic: memoryview, _payload: memoryview, flags: int) -> None:
+        got.append(("all", bytes(topic), flags))
+
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(consumers=(("cmd/#", on_cmd), ("#", on_all)), config=_QUIET_CFG)
+        try:
+            assert await until(lambda: len(_subscribed(broker, 0)) == 1)
+            assert _subscribed(broker, 0) == [[b"sensors/t1/cmd/#", b"sensors/t1/#"]]
+            await broker.send(publish_packet(b"sensors/t1/cmd/a", b"1"))
+            await broker.send(publish_packet(b"sensors/t1/other", b"2", retain=True))
+            await broker.send(publish_packet(b"sensors/t2/cmd/a", b"3"))  # another device's tree
+            await broker.send(publish_packet(b"cmd/a", b"4"))  # outside every base
+            assert await until(lambda: count(client, "MQTTRxMsgs") == 4)
+            assert got == [("cmd", b"sensors/t1/cmd/a", 0), ("all", b"sensors/t1/cmd/a", 0), ("all", b"sensors/t1/other", 1)], got
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_partners_topic_is_published_below_the_base_and_follows_a_prefix_change() -> None:
+    got: list[bytes] = []
+
+    def on_echo(topic: memoryview, _payload: memoryview, _flags: int) -> None:
+        got.append(bytes(topic))
+
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = _make_client(consumers=(("link/echo", on_echo),))
+        first = client.add_topic("link/echo")
+        second = client.add_topic("x/y")
+        assert (first, second) == (0, 1)
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port)
+            client.reconnect()
+            assert await until(client.is_connected)
+            assert client.publish_under(second, b"p", qos=1)
+            assert await until(lambda: broker.published(b"sensors/t1/x/y") == [(0x32, b"p")])
+            await configure(client, broker.port, MQTTPrefix="home")
+            client.reconnect()
+            assert await until(lambda: len(broker.connects) == 2 and client.is_connected())
+            assert client.publish_under(second, "q")
+            assert await until(lambda: broker.published(b"home/t1/x/y") == [(0x30, b"q")])
+            await broker.send(publish_packet(b"sensors/t1/link/echo", b"old"))  # the old base: no partner's any more
+            await broker.send(publish_packet(b"home/t1/link/echo", b"new"))
+            assert await until(lambda: count(client, "MQTTRxMsgs") == 2)
+            assert got == [b"home/t1/link/echo"], got
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_publish_under_refuses_an_unknown_id_and_a_topic_not_built_yet_and_counts_both() -> None:
+    client = _make_client()
+    topic_id = client.add_topic("link/echo")
+    client._state = _ST_CONNECTED  # connected with no socket and no settings read: the base is not known
+    assert client._topics == []
+    assert not client.publish_under(topic_id, b"x")
+    assert not client.publish_under(topic_id + 1, b"x")
+    assert not client.publish_under(-1, b"x")
+    assert count(client, "MQTTTxDropped") == 3
+    client._base = b"sensors/t1"
+    later = client.add_topic("late")  # registered once the base is known: built at once
+    assert client._topics == [b"sensors/t1/link/echo", b"sensors/t1/late"]
+    assert client.publish_under(later, b"x")
+    assert not client.publish_under(later + 1, b"x")
+    assert count(client, "MQTTTxDropped") == 4
+
+
+def test_a_partners_publish_allocates_no_more_than_a_publish_on_the_same_topic() -> None:
+    # The topic is built once per settings change, so a round of a partner's publishing allocates nothing of its own.
+    client = _make_client()
+    topic_id = client.add_topic("link/echo")
+    client._base = b"sensors/t1"
+    client._build_topics()
+    client._state = _ST_CONNECTED  # no keeper runs: each QoS 0 message takes a slot, the oldest giving way
+    topic = client._topics[topic_id]
+    payload = bytearray(4)
+
+    def direct(n: int) -> int:
+        gc.collect()  # the baseline of the measurement (SPECIFICATION.md I.4)
+        before = gc.mem_alloc()
+        for _ in range(n):
+            client.publish(topic, payload)
+        return gc.mem_alloc() - before
+
+    def under(n: int) -> int:
+        gc.collect()
+        before = gc.mem_alloc()
+        for _ in range(n):
+            client.publish_under(topic_id, payload)
+        return gc.mem_alloc() - before
+
+    direct(1)
+    under(1)
+    assert under(50) <= direct(50), (under(50), direct(50))
+
+
+# ---- the hotspot (owner, 2026-11-12: "... inactive when in Hotspot mode - limited available ports!") ----
+
+
+class _CountingSocket:
+    # Shadows asy_mqtt_client's module-global `socket` for one test: every socket() and getaddrinfo() call counted.
+    AF_INET = socket.AF_INET
+    SOCK_STREAM = socket.SOCK_STREAM
+
+    def __init__(self) -> None:
+        self.sockets = 0
+        self.lookups = 0
+
+    def getaddrinfo(self, *args: object) -> object:
+        self.lookups += 1
+        return socket.getaddrinfo(*args)  # type: ignore[arg-type]
+
+    def socket(self, *args: int) -> object:
+        self.sockets += 1
+        return socket.socket(*args)
+
+
+def test_in_hotspot_mode_the_client_opens_no_socket_and_asks_for_no_name() -> None:
+    # network_available_locked() reads false in hotspot mode: no socket, no DNS or mDNS question and no DNS server read,
+    # a session left behind waiting too; the same client connects once the link is back, so the counters do count.
+    link = [False]
+    asked: list[str] = []
+    dns_reads = [0]
+    real_resolve = asy_mqtt_client.resolve_ipv4
+    counting = _CountingSocket()
+
+    async def resolve(host: str, *_args: object, **_kw: object) -> str:
+        asked.append(host)
+        return "127.0.0.1"
+
+    def dns_server() -> None:
+        dns_reads[0] += 1
+
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = MQTTClient(asyncio.Lock(), lambda: link[0], dns_server, _CFG, cfg_path=_scratch.dir())
+        await client.setup()
+        await configure(client, broker.port, MQTTHost="broker.local", MQTTPersistent=True)
+        tasks = [client.start_asy_connection()]
+        try:
+            await asyncio.sleep_ms(100)
+            await configure(client, broker.port, MQTTHost="broker.local", MQTTClientId="t2")  # leaves t1's session behind
+            client.reconnect()
+            await asyncio.sleep_ms(8 * _CFG.link_poll_ms)
+            assert (asked, dns_reads[0], counting.sockets, counting.lookups, broker.connections) == ([], 0, 0, 0, 0)
+            assert client.get_link_status()["MQTTState"] == "waiting"
+            assert await errnums(client) == []
+            link[0] = True
+            assert await until(lambda: len(broker.connects) == 2 and client.is_connected())
+            assert [c["client_id"] for c in broker.connects] == [b"t1", b"t2"]  # the retire, then the new identity
+            assert asked == ["broker.local", "broker.local"] and counting.sockets == 2
+        finally:
+            await stop(client, tasks, broker)
+
+    asy_mqtt_client.resolve_ipv4 = resolve
+    asy_mqtt_client.socket = counting  # type: ignore[assignment]
+    try:
+        run(scenario())
+    finally:
+        asy_mqtt_client.resolve_ipv4 = real_resolve
+        asy_mqtt_client.socket = socket
+
+
+async def _closed_after(client: MQTTClient) -> int:
+    # Milliseconds from the call until the connection's socket is closed, polled at 2 ms; -1 past _WAIT_MS.
+    since = time.ticks_ms()
+    while time.ticks_diff(time.ticks_ms(), since) < _WAIT_MS:
+        if client._stream is None and not client.is_connected():
+            return time.ticks_diff(time.ticks_ms(), since)
+        await asyncio.sleep_ms(2)
+    return -1
+
+
+_HOTSPOT_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 200, 300, 20, 200, 200, 100)  # a 200 ms link poll, 20 ms ticks
+_POLL_SLACK_MS = 40  # the test's own 2 ms polling and a scheduler turn or two
+
+
+def test_entering_the_hotspot_closes_the_connection_within_a_link_poll_and_a_tick_with_no_entry() -> None:
+    link = [True]
+
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(link=lambda: link[0], config=_HOTSPOT_CFG)
+        try:
+            assert await until(client.is_connected)
+            await asyncio.sleep_ms(_HOTSPOT_CFG.link_poll_ms // 3)  # off the keeper's poll grid
+            link[0] = False
+            took = await _closed_after(client)
+            assert 0 <= took <= _HOTSPOT_CFG.link_poll_ms + _HOTSPOT_CFG.tick_ms + _POLL_SLACK_MS, took
+            assert await until(lambda: broker.closed_by_client == 1)
+            status = client.get_link_status()
+            assert (status["MQTTState"], status["MQTTLastReason"]) == ("waiting", "link down")
+            await asyncio.sleep_ms(4 * _HOTSPOT_CFG.link_poll_ms)
+            assert broker.connections == 1  # nothing new while the hotspot runs
+            assert await errnums(client) == []
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_link_lost_under_a_busy_wifi_lock_closes_at_the_first_tick_after_it() -> None:
+    # A mode switch holds the WiFi lock: the check waits for it rather than a whole further link poll.
+    link = [True]
+
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(link=lambda: link[0], config=_HOTSPOT_CFG)
+        lock = client.wifi_mode_lock
+        try:
+            assert await until(client.is_connected)
+            await lock.acquire()  # as WifiService holds it across the switch to the hotspot
+            link[0] = False
+            await asyncio.sleep_ms(_HOTSPOT_CFG.link_poll_ms * 3 // 2)  # a poll falls due while the lock is held
+            assert client.is_connected()  # the availability call needs the lock
+            lock.release()
+            took = await _closed_after(client)
+            assert 0 <= took <= _HOTSPOT_CFG.tick_ms + _POLL_SLACK_MS, took
+            assert await errnums(client) == []
+        finally:
+            if lock.locked():
+                lock.release()
             await stop(client, tasks, broker)
 
     run(scenario())

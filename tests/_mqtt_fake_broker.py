@@ -1,6 +1,6 @@
-"""A scripted MQTT 3.1.1 broker for tests/test_asy_mqtt_client.py on a real loopback socket (asyncio.start_server): it
-records every packet and answers by its flags, so a test produces faults a real broker shows only on demand (a refused
-CONNACK, a lost PINGRESP or PUBACK, a bad length, a stall); it keeps a session per client id not asking a clean one."""
+"""A scripted MQTT 3.1.1 broker for the MQTT client and exerciser tests on a real loopback socket: it records every
+packet and answers by its flags, so a test produces faults a real broker shows only on demand (a refused CONNACK, a lost
+PINGRESP or PUBACK, a bad length, a stall); it keeps a session per client id not asking a clean one, and can route."""
 
 import asyncio
 
@@ -15,6 +15,13 @@ if TYPE_CHECKING:
     class _Server(Protocol):
         def close(self) -> None: ...
         async def wait_closed(self) -> None: ...
+
+
+def _routes_to(flt: bytes, topic: bytes) -> bool:
+    # Enough of section 4.7 for the tests, apart from the client's own matcher: an exact filter, or a "/#" one.
+    if flt.endswith(b"/#"):
+        return topic == flt[:-2] or topic.startswith(flt[:-1])
+    return flt == topic
 
 
 def encode_length(value: int) -> bytes:
@@ -56,6 +63,9 @@ class FakeBroker:
         self.force_session_present = False  # answer Session Present 1 even to a clean session (a broker defect)
         self.disconnects = 0  # DISCONNECT packets received
         self.closed_by_client = 0  # EOFs seen
+        self.route = False  # deliver each PUBLISH to every connection subscribed to its topic, the sender's own included
+        self.routed = 0  # PUBLISH packets delivered by routing
+        self._subs: list[tuple[asyncio.StreamWriter, list[bytes]]] = []  # each connection's filters, as subscribed
         self._writers: list[asyncio.StreamWriter] = []
         self._server: _Server | None = None
         self._wire = asyncio.Lock()  # whole packets on the wire, as a real broker writes them
@@ -85,6 +95,7 @@ class FakeBroker:
         finally:
             if writer in self._writers:
                 self._writers.remove(writer)
+            self._subs = [(w, filters) for w, filters in self._subs if w is not writer]
             try:
                 await writer.wait_closed()
             except OSError:
@@ -129,17 +140,7 @@ class FakeBroker:
                 await asyncio.sleep_ms(50)
             return True
         if kind == 0x80:
-            filters = 0
-            i = 2
-            while i < len(body):
-                _flt, i = read_str(body, i)
-                i += 1
-                filters += 1
-            async with self._wire:
-                writer.write(bytes([0x90, 2 + filters, body[0], body[1]] + [self.suback_code] * filters))
-                for packet in self.after_subscribe:
-                    writer.write(packet)
-                await writer.drain()
+            await self._subscribe(body, writer)
             return True
         if kind == 0x30:
             qos = (first >> 1) & 3
@@ -148,6 +149,8 @@ class FakeBroker:
                 async with self._wire:
                     writer.write(bytes([0x40, 2, body[2 + tlen], body[3 + tlen]]))
                     await writer.drain()
+            if self.route:
+                await self._route(first, body)
             return True
         if kind == 0xC0:
             if self.ping_delay_ms:
@@ -161,6 +164,34 @@ class FakeBroker:
             self.disconnects += 1
             return False
         return True
+
+    async def _route(self, first: int, body: bytes) -> None:
+        # Section 3.3.1.3: an established subscription gets the message with RETAIN 0, at QoS 1 when it was sent at 1.
+        topic, i = read_str(body, 0)
+        qos = 1 if (first >> 1) & 3 else 0
+        packet = publish_packet(topic, body[i + (2 if qos else 0) :], qos, 0x7001 + self.routed % 0x0FFF)
+        targets = [w for w, filters in self._subs if any(_routes_to(flt, topic) for flt in filters)]
+        async with self._wire:
+            for target in targets:
+                target.write(packet)
+                await target.drain()
+                self.routed += 1
+
+    async def _subscribe(self, body: bytes, writer: "asyncio.StreamWriter") -> None:
+        # The SUBACK, one code per filter, then after_subscribe's packets; a granted subscription routes from here on.
+        subscribed: list[bytes] = []
+        i = 2
+        while i < len(body):
+            flt, i = read_str(body, i)
+            i += 1
+            subscribed.append(flt)
+        if self.suback_code != 0x80:
+            self._subs.append((writer, subscribed))
+        async with self._wire:
+            writer.write(bytes([0x90, 2 + len(subscribed), body[0], body[1]] + [self.suback_code] * len(subscribed)))
+            for packet in self.after_subscribe:
+                writer.write(packet)
+            await writer.drain()
 
     async def drop(self) -> None:
         # Closes every live connection from the broker's side and keeps listening, its sessions kept.

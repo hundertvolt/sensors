@@ -1,12 +1,10 @@
-"""MQTT 3.1.1 client service (QoS 0/1, clean or persistent session, plain TCP): a supervised keeper owns the
-connection's writes, deadlines and reconnects, one reader per connection its reads, and a publisher sends each module's
-measurements. The radio stays WifiService's alone; the contract is SPECIFICATION.md Part A.12."""
+"""MQTT 3.1.1 client service with its packet codec (QoS 0/1, clean or persistent session, plain TCP): a supervised
+keeper owns the connection's writes, deadlines and reconnects, one reader per connection its reads; wired partners
+subscribe and publish under the device's base topic. WifiService owns the radio; the contract: SPECIFICATION.md A.12."""
 
 import asyncio
 import errno
 import io
-import json
-import math
 import socket
 import time
 from collections import namedtuple
@@ -17,29 +15,6 @@ from asy_base_classes import COUNTER_CAP, SensorReaderConfig, TickSeconds, utc_n
 from asy_config_manager import INVALID, make_dict, name_cfg, schema_dict
 from asy_dns_client import host_name_ok, resolve_ipv4
 from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
-from mqtt_codec import (
-    CONNACK,
-    LENGTH_INCOMPLETE,
-    LENGTH_MALFORMED,
-    PINGRESP,
-    PUBACK,
-    PUBLISH,
-    SUBACK,
-    SUBACK_FAILURE,
-    client_id_ok,
-    decode_remaining_length,
-    encode_connect,
-    encode_puback,
-    encode_publish,
-    encode_publish_head,
-    encode_subscribe,
-    prefix_ok,
-    remaining_length_bytes,
-    status_topic_ok,
-    text_ok,
-    topic_matches,
-    topic_name_ok,
-)
 
 try:
     from typing import TYPE_CHECKING
@@ -47,7 +22,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
     from typing import NamedTuple, Protocol, TypeVar
 
     # A ticks_ms() value: the stubs type it opaque, so it only ever reaches time.ticks_diff()/ticks_add().
@@ -58,6 +33,12 @@ if TYPE_CHECKING:
     from asy_print_log import ErrorLog
 
     _T = TypeVar("_T")
+    Buf = bytearray | memoryview
+    Bytes = bytes | bytearray | memoryview
+    Will = tuple[Bytes, Bytes, int, bool]  # topic, message, QoS, retain
+    # A wired partner's receiver (owner, 2026-10-07, paraphrase: inbound messages may trigger behaviours or carry values,
+    # no flash writes): run on the reader, synchronously, with views of the topic and payload and the PUBLISH's flag bits.
+    MqttCallback = Callable[[memoryview, memoryview, int], None]
 
     class _Stream(Protocol):
         # MicroPython's one asyncio Stream class, which the stubs split into StreamReader and StreamWriter.
@@ -70,10 +51,6 @@ if TYPE_CHECKING:
         async def wait_closed(self) -> None: ...
 
         def write(self, buf: bytes | bytearray | memoryview) -> None: ...
-
-    class _Source(Protocol):
-        # A module whose /measurements object the publisher sends (C.4.2's get_dict_data()).
-        async def get_dict_data(self) -> Mapping[str, object]: ...
 
     # Build-time values the generated module passes whole: the client id default and every timing (Part N's mqtt.*).
     class MqttConfig(NamedTuple):
@@ -90,12 +67,6 @@ if TYPE_CHECKING:
         idle_recheck_ms: int
         dns_timeout_ms: int
 
-    # A wired receiver of inbound messages (owner, 2026-10-07: they may trigger behaviours or carry values; no flash
-    # writes). The callback runs on the reader, synchronously, and must copy what it keeps from the two views.
-    class MqttConsumer(NamedTuple):
-        topic_filter: str
-        callback: "Callable[[memoryview, memoryview, bool], None]"
-
 else:
     MqttConfig = namedtuple(
         "MqttConfig",
@@ -104,11 +75,43 @@ else:
             "stable_after_ms", "qos1_retry_ms", "drain_timeout_ms", "tick_ms", "link_poll_ms", "idle_recheck_ms", "dns_timeout_ms",
         ),
     )
-    MqttConsumer = namedtuple("MqttConsumer", ("topic_filter", "callback"))
+
+# Fixed-header first bytes (MQTT 3.1.1 section 2.2), the low nibble already holding the flags each type requires.
+_CONNECT = const(0x10)
+_CONNACK = const(0x20)
+_PUBLISH = const(0x30)
+_PUBACK = const(0x40)
+_SUBSCRIBE = const(0x82)
+_SUBACK = const(0x90)
+_PINGRESP = const(0xD0)
+_SUBACK_FAILURE = const(0x80)
+_MAX_REMAINING = const(268435455)  # four length bytes (section 2.2.3); below COUNTER_CAP, so never a heap int
+_LENGTH_INCOMPLETE = const(-1)  # decode_remaining_length(): more bytes needed
+_LENGTH_MALFORMED = const(-2)  # a fifth length byte (section 2.2.3)
+_PROTOCOL_LEVEL = const(4)  # 3.1.1 (section 3.1.2.2)
+_FLAG_USER = const(0x80)
+_FLAG_PASSWORD = const(0x40)
+_FLAG_WILL_RETAIN = const(0x20)
+_FLAG_WILL_QOS1 = const(0x08)
+_FLAG_WILL = const(0x04)
+_FLAG_CLEAN = const(0x02)
+_PUBLISH_DUP = const(0x08)
+_PUBLISH_RETAIN = const(0x01)
+_MAX_TOPIC = const(128)  # a PUBLISH topic name; with a full payload slot it still fits the client's transmit buffer
+_MAX_CLIENT_ID = const(23)  # the length every 3.1.1 server must accept (section 3.1.3.1)
+_MAX_LABEL = const(63)
+_MAX_PREFIX = const(64)
+_LEN_1_BYTE = const(0x80)  # remaining lengths below these take one, two and three bytes
+_LEN_2_BYTES = const(0x4000)
+_LEN_3_BYTES = const(0x200000)
+_SLASH = const(0x2F)
+_HASH = const(0x23)
+_PLUS = const(0x2B)
+_DOLLAR = const(0x24)
+_NUL = const(0x00)
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and MQTT's band.
 _ERR_CALLBACK = const(14)
-_ERR_SOURCE = const(15)
 _ERR_ALLOC = const(20)
 _ERR_BAD_ARG = const(21)
 _ERR_UNEXPECTED = const(23)
@@ -144,19 +147,14 @@ _MAX_OUT_BACKLOG = const(2048)  # bytes the socket has not taken yet; past it th
 _QOS1_MAX_TRIES = const(3)
 # @tunable mqtt.short_session_warn = 3
 _SHORT_SESSION_WARN = const(3)
-# @tunable mqtt.pub_step_ms = 1000
-_PUB_STEP_MS = const(1000)  # the longest the publisher sleeps toward a due round: how late the first follows a CONNACK
 # @tunable mqtt.unconfirmed_max_bytes = 2000
 _UNCONFIRMED_MAX = const(2000)  # bytes written but not yet proven received: the connection's lwIP MEM_SIZE share
 _MAX_TEXT_BYTES = const(64)  # MQTTUser/MQTTPW and the two status payloads
-_FLOAT_TEXT_MAX = const(36)  # mp_print_float()'s stack buffer (py/mpprint.c), the longest float json.dump() writes
-_SMALL_INT_MAX = const(0x3FFFFFFF)  # the RP2040's small-int range: printed from a stack buffer, in 11 characters
-_SMALL_INT_TEXT_MAX = const(11)
 _ID_BYTES = const(2)  # a packet id, and a string's length prefix (MQTT 3.1.1 section 1.5.3)
 _SUBACK_MIN = const(3)  # a packet id and at least one return code
 _CONNACK_LEN = const(4)
 _TEXT_FIELDS = const(8)  # host, user, password, client id, prefix, status topic, online and offline payloads
-_INT_FIELDS = const(4)  # port, publish interval, ping interval, status QoS
+_INT_FIELDS = const(3)  # port, ping interval, status QoS
 _BOOL_FIELDS = const(3)  # enable, persistent session, status retain
 _PW_MASK = "********"
 
@@ -214,7 +212,6 @@ _VAL_MQTT_USER = const((("MQTTUser", "str", "", 0, 64, None),))
 _VAL_MQTT_PW = const((("MQTTPW", "str", "", 0, 64, None),))
 _VAL_MQTT_CLIENT_ID = const((("MQTTClientId", "str", "SensorNode", 1, 23, None),))
 _VAL_MQTT_PREFIX = const((("MQTTPrefix", "str", "sensors", 1, 64, None),))
-_VAL_MQTT_PUB_INTERVAL = const((("MQTTPubInterval", "int", 0, 10, 3600, 0),))  # special 0: no measurement rounds
 _VAL_MQTT_PING_INTERVAL = const((("MQTTPingInterval", "int", 180, 10, 3600, 0),))  # special 0: no idle ping, keep-alive 0
 _VAL_MQTT_PERSISTENT = const((("MQTTPersistent", "bool", False, None, None, None),))
 _VAL_MQTT_WILL_TOPIC = const((("MQTTWillTopic", "str", "", 1, 128, ""),))  # special "": <base>/status
@@ -230,8 +227,7 @@ _VAL_MQTT_WILL_RETAIN = const((("MQTTWillRetain", "bool", True, None, None, None
 # @web MQTTUser section=networking submitGroup=mqtt label="User Name" description="Leave empty for an anonymous broker." bytes=true
 # @web MQTTPW section=networking submitGroup=mqtt label="Password" mask=true bytes=true
 # @web MQTTClientId section=networking submitGroup=mqtt label="Client ID" description="Also the device's topic level." bytes=true shape=hostLabel
-# @web MQTTPrefix section=networking submitGroup=mqtt label="Topic Prefix" description="Topics are <prefix>/<client id>/status, /measurements/<module> and /cmd/#." bytes=true
-# @web MQTTPubInterval section=networking submitGroup=mqtt label="Publish Interval" unit="s" description="Seconds between measurement messages." special:0="Off"
+# @web MQTTPrefix section=networking submitGroup=mqtt label="Topic Prefix" description="The device's topics live under <prefix>/<client id>: its status and those of the modules wired to the client." bytes=true
 # @web MQTTPingInterval section=networking submitGroup=mqtt label="Ping Interval" unit="s" description="Seconds between keep-alive pings on an idle link; each message gets one of its own. The broker fires the will about 1.5 x (interval + 10 s) after the device drops off; Off lets the broker wait for ever." special:0="Off"
 # @web MQTTPersistent section=networking submitGroup=mqtt label="Persistent Session" description="The broker keeps the subscriptions and queues QoS 1 messages while the device is away." onLabel="On" offLabel="Off"
 # @web MQTTWillTopic section=networking submitGroup=mqtt label="Status Topic" description="Carries the will and the online message." bytes=true special:""="<prefix>/<client id>/status"
@@ -244,9 +240,208 @@ _VAL_MQTT_WILL_RETAIN = const((("MQTTWillRetain", "bool", True, None, None, None
 # @wiring fram_target FRAMManager log optional kwarg
 
 
+def _byte_ok_for_topic(ch: int) -> bool:
+    # A topic level byte: no NUL (section 1.5.3) and no wildcard ('+' 0x2B, '#' 0x23).
+    return ch not in (_NUL, _HASH, _PLUS)
+
+
 def _kept(old: "_T", new: "_T") -> "_T":
     # The object already held when equal: a setting read again at each connect re-births no long-lived copy.
     return old if old == new else new
+
+
+def _label_ok(label: str) -> bool:
+    # An RFC 1123 host label: letters, digits and '-', not at either end, 1-63 characters.
+    if not 0 < len(label) <= _MAX_LABEL or label[0] == "-" or label[-1] == "-":
+        return False
+    return all("0" <= ch <= "9" or "A" <= ch <= "Z" or "a" <= ch <= "z" or ch == "-" for ch in label)
+
+
+def _put_fixed(buf: "Buf", first: int, remaining: int) -> int:
+    # Writes the fixed header and returns its length, or -1 when the header and body cannot fit.
+    size = 2 if remaining < _LEN_1_BYTE else 3 if remaining < _LEN_2_BYTES else 4 if remaining < _LEN_3_BYTES else 5
+    if remaining > _MAX_REMAINING or size + remaining > len(buf):
+        return -1
+    buf[0] = first
+    i = 1
+    value = remaining
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        buf[i] = byte | 0x80 if value else byte
+        i += 1
+        if not value:
+            return i
+
+
+def _put_str(buf: "Buf", i: int, data: "Bytes") -> int:
+    # A two-byte length then the bytes; the caller has sized the buffer, so this only writes.
+    n = len(data)
+    buf[i] = n >> 8
+    buf[i + 1] = n & 0xFF
+    buf[i + 2 : i + 2 + n] = data
+    return i + 2 + n
+
+
+def client_id_ok(value: str) -> bool:
+    # A host label of 1-23 bytes: the letters and digits every broker accepts, plus the hostname's inner hyphen.
+    return len(value) <= _MAX_CLIENT_ID and len(value.encode()) == len(value) and _label_ok(value)
+
+
+def decode_remaining_length(buf: "Bytes", start: int, end: int) -> int:
+    # The remaining length whose bytes start at buf[start] (section 2.2.3), _LENGTH_INCOMPLETE when buf[start:end]
+    # holds only part of it, _LENGTH_MALFORMED past four bytes. A non-minimal encoding is read as written.
+    value = 0
+    shift = 0
+    for i in range(start, min(end, start + 4)):
+        byte = buf[i]
+        value |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return value
+        shift += 7
+    return _LENGTH_MALFORMED if end >= start + 4 else _LENGTH_INCOMPLETE
+
+
+def encode_connect(buf: "Buf", client_id: "Bytes", keepalive_s: int, will: "Will | None", user: "Bytes", password: "Bytes", *, clean: bool) -> int:
+    # Section 3.1: `will` is (topic, message, QoS, retain), None for none, whose QoS and retain flags are then 0
+    # ([MQTT-3.1.2-11], -13); user and password only when non-empty, a password never without a user (3.1.2.9). The
+    # length, or -1 if it does not fit.
+    flags = _FLAG_CLEAN if clean else 0
+    remaining = 10 + 2 + len(client_id)
+    if will is not None:
+        flags |= _FLAG_WILL | (_FLAG_WILL_QOS1 if will[2] else 0) | (_FLAG_WILL_RETAIN if will[3] else 0)
+        remaining += 2 + len(will[0]) + 2 + len(will[1])
+    if user:
+        flags |= _FLAG_USER
+        remaining += 2 + len(user)
+        if password:
+            flags |= _FLAG_PASSWORD
+            remaining += 2 + len(password)
+    i = _put_fixed(buf, _CONNECT, remaining)
+    if i < 0:
+        return -1
+    i = _put_str(buf, i, b"MQTT")
+    buf[i] = _PROTOCOL_LEVEL
+    buf[i + 1] = flags
+    buf[i + 2] = (keepalive_s >> 8) & 0xFF
+    buf[i + 3] = keepalive_s & 0xFF
+    i = _put_str(buf, i + 4, client_id)
+    if will is not None:
+        i = _put_str(buf, i, will[0])
+        i = _put_str(buf, i, will[1])
+    if flags & _FLAG_USER:
+        i = _put_str(buf, i, user)
+    if flags & _FLAG_PASSWORD:
+        i = _put_str(buf, i, password)
+    return i
+
+
+def encode_puback(buf: "Buf", pid: int) -> int:
+    # A PUBACK (section 3.4) into a buffer of at least four bytes.
+    buf[0] = _PUBACK
+    buf[1] = 2
+    buf[2] = pid >> 8
+    buf[3] = pid & 0xFF
+    return 4
+
+
+def encode_publish(buf: "Buf", topic: "Bytes", payload: "Bytes", qos: int, pid: int, *, retain: bool, dup: bool) -> int:
+    # A PUBLISH (section 3.3) with its payload. Returns the length, or -1.
+    i = encode_publish_head(buf, topic, len(payload), qos, pid, retain=retain, dup=dup)
+    if i < 0:
+        return -1
+    buf[i : i + len(payload)] = payload
+    return i + len(payload)
+
+
+def encode_publish_head(buf: "Buf", topic: "Bytes", length: int, qos: int, pid: int, *, retain: bool, dup: bool) -> int:
+    # A PUBLISH (section 3.3) up to its payload of `length` bytes, which the caller writes from the index returned;
+    # -1 when the whole packet cannot fit. The packet id is written only at QoS 1.
+    first = _PUBLISH | (qos << 1) | (_PUBLISH_RETAIN if retain else 0) | (_PUBLISH_DUP if dup and qos else 0)
+    i = _put_fixed(buf, first, 2 + len(topic) + (2 if qos else 0) + length)
+    if i < 0:
+        return -1
+    i = _put_str(buf, i, topic)
+    if qos:
+        buf[i] = pid >> 8
+        buf[i + 1] = pid & 0xFF
+        i += 2
+    return i
+
+
+def encode_subscribe(buf: "Buf", pid: int, filters: tuple[bytes, ...]) -> int:
+    # One SUBSCRIBE (section 3.8) requesting QoS 1 for every filter. Returns the length, or -1.
+    if not filters:
+        return -1
+    i = _put_fixed(buf, _SUBSCRIBE, 2 + sum(3 + len(f) for f in filters))
+    if i < 0:
+        return -1
+    buf[i] = pid >> 8
+    buf[i + 1] = pid & 0xFF
+    i += 2
+    for flt in filters:
+        i = _put_str(buf, i, flt)
+        buf[i] = 1
+        i += 1
+    return i
+
+
+def prefix_ok(value: str) -> bool:
+    # The topic prefix: 1-64 bytes, no wildcard or NUL, no empty level at either end (so <prefix>/<id> is one tree).
+    data = value.encode()
+    return 0 < len(data) <= _MAX_PREFIX and data[0] != _SLASH and data[-1] != _SLASH and all(_byte_ok_for_topic(ch) for ch in data)
+
+
+def remaining_length_bytes(buf: "Bytes", start: int, end: int) -> int:
+    # How many bytes the remaining length starting at buf[start] occupies; call only once
+    # decode_remaining_length() returned a value.
+    for i in range(start, min(end, start + 4)):
+        if not buf[i] & 0x80:
+            return i - start + 1
+    return 4
+
+
+def status_topic_ok(value: str) -> bool:
+    # The will's topic: a topic name outside the '$' tree brokers reserve (mosquitto refuses a will under $CONTROL/).
+    data = value.encode()
+    return topic_name_ok(data) and data[0] != _DOLLAR
+
+
+def text_ok(value: "Bytes", max_bytes: int) -> bool:
+    # A UTF-8 user name or password: at most max_bytes and no NUL (section 1.5.3).
+    return len(value) <= max_bytes and 0 not in value
+
+
+def topic_matches(flt: "Bytes", topic: "Bytes") -> bool:
+    # Section 4.7: '+' one level, '#' the rest (its parent level included); a '$' topic matches no leading wildcard.
+    if topic and topic[0] == _DOLLAR and flt and flt[0] in (_HASH, _PLUS):
+        return False
+    fi = 0
+    ti = 0
+    nf = len(flt)
+    nt = len(topic)
+    while fi < nf:
+        ch = flt[fi]
+        if ch == _HASH:
+            return True
+        if ch == _PLUS:  # one level of the topic, possibly empty
+            while ti < nt and topic[ti] != _SLASH:
+                ti += 1
+            fi += 1
+            continue
+        if ti >= nt:
+            # "a/#" also matches "a": the topic ended exactly where "/#" begins.
+            return ch == _SLASH and fi + 2 == nf and flt[fi + 1] == _HASH
+        if topic[ti] != ch:
+            return False
+        fi += 1
+        ti += 1
+    return ti == nt
+
+
+def topic_name_ok(value: "Bytes") -> bool:
+    # A PUBLISH topic name: 1-128 bytes, no wildcard and no NUL (section 4.7.3); a wildcard would end the session.
+    return 0 < len(value) <= _MAX_TOPIC and all(_byte_ok_for_topic(ch) for ch in value)
 
 
 class MQTTClient(SensorReaderConfig):
@@ -276,8 +471,6 @@ class MQTTClient(SensorReaderConfig):
         network_available_locked: "Callable[[], bool]",
         get_dns_server: "Callable[[], str | None]",
         config: MqttConfig,
-        sources: "tuple[_Source, ...]" = (),
-        consumers: "tuple[MqttConsumer, ...]" = (),
         cfg_path: str = "",
         log: LogConfig = DEFAULT_LOG,
     ) -> None:
@@ -287,7 +480,7 @@ class MQTTClient(SensorReaderConfig):
         super().__init__(
             MQTT(Connected=False, TS=None),
             _NAME,
-            _VAL_MQTT_ENABLE + _VAL_MQTT_HOST + _VAL_MQTT_PORT + _VAL_MQTT_USER + _VAL_MQTT_PW + self._val_client_id + _VAL_MQTT_PREFIX + _VAL_MQTT_PUB_INTERVAL
+            _VAL_MQTT_ENABLE + _VAL_MQTT_HOST + _VAL_MQTT_PORT + _VAL_MQTT_USER + _VAL_MQTT_PW + self._val_client_id + _VAL_MQTT_PREFIX
             + _VAL_MQTT_PING_INTERVAL + _VAL_MQTT_PERSISTENT + _VAL_MQTT_WILL_TOPIC + _VAL_MQTT_ONLINE_MSG + _VAL_MQTT_WILL_MSG + _VAL_MQTT_WILL_QOS + _VAL_MQTT_WILL_RETAIN,
             max_module_error=0,  # no failure streak: a broker outage is routine, never a restart (Part C.7.2)
             cfg_path=cfg_path,
@@ -297,7 +490,6 @@ class MQTTClient(SensorReaderConfig):
         self._network_available_locked = network_available_locked
         self._get_dns_server = get_dns_server
         self._cfg = config
-        self._sources = sources
         self._alloc_error: Exception | None = None
         try:
             self._rx = bytearray(_RX_BYTES)
@@ -306,8 +498,8 @@ class MQTTClient(SensorReaderConfig):
             self._last_topic = bytearray(_LAST_TOPIC_BYTES)
             self._rxmv = memoryview(self._rx)
             self._txmv = memoryview(self._tx)
-            # One preallocated stream per slot, never one ring: no long-lived block here needs more contiguous heap
-            # than _rx does, and json.dump() writes into a slot without allocating (io.BytesIO(alloc_size)).
+            # One preallocated stream per slot (io.BytesIO(alloc_size)), never one ring: no long-lived block here needs
+            # more contiguous heap than _rx does.
             self._slots = [io.BytesIO(_OUT_PAYLOAD) for _ in range(_OUT_SLOTS)]
             self._slot_len = [0] * _OUT_SLOTS
             self._slot_topic: list[bytes | None] = [None] * _OUT_SLOTS
@@ -323,13 +515,15 @@ class MQTTClient(SensorReaderConfig):
             self._alloc_error = e
             self.pr.err("MQTT buffers could not be allocated:", e)
         self._wake = asyncio.Event()  # set by reconnect(): ends an idle or backoff wait at once
-        self._pub_interval_ms = _VAL_MQTT_PUB_INTERVAL[0][2] * 1000  # read with the other settings at each connect
         self._ping_s = _VAL_MQTT_PING_INTERVAL[0][2]  # 0: no idle ping
-        self._pub_due = False  # set at each CONNACK: the first round follows it instead of a whole interval
         self._uptime = TickSeconds()
-        self._meas_topics: dict[str, bytes] = {}
-        self._consumer_pairs = tuple((c.topic_filter.encode(), c.callback) for c in consumers)  # zip() has no strict= on MicroPython
-        self._consumer_filters = tuple(flt for flt, _callback in self._consumer_pairs)  # the same bytes, encoded once
+        # The wired partners' registrations, each "/" + its level below <base>, and the full topics and filters built from
+        # them once per settings change (_build_topics()); a filter's index is its callback's.
+        self._rel_filters: list[bytes] = []
+        self._callbacks: list[MqttCallback] = []
+        self._rel_topics: list[bytes] = []
+        self._filters: tuple[bytes, ...] = ()
+        self._topics: list[bytes] = []
         self._consumer_errors_logged = 0
         self._last_topic_len = 0
         self._seq = 0
@@ -385,6 +579,12 @@ class MQTTClient(SensorReaderConfig):
         except asyncio.TimeoutError:
             pass
         self._backoff_ms = min(self._backoff_ms * 2, self._cfg.backoff_max_ms)
+
+    def _build_topics(self) -> None:
+        # Every partner's topic and filter under the current base: built once per settings change, kept until the next.
+        base = self._base
+        self._topics = [base + rel for rel in self._rel_topics]
+        self._filters = tuple(base + rel for rel in self._rel_filters)
 
     def _bump(self, i: int) -> None:
         count = self._counts[i]
@@ -536,24 +736,24 @@ class MQTTClient(SensorReaderConfig):
         # One complete packet at rx[0:total]; a reason other than _R_NONE ends the connection.
         rx = self._rx
         kind = rx[0] & 0xF0
-        if kind == PUBLISH:
+        if kind == _PUBLISH:
             return self._on_publish(hdr, total)
-        if kind == PUBACK and total - hdr == _ID_BYTES:
+        if kind == _PUBACK and total - hdr == _ID_BYTES:
             pid = (rx[hdr] << 8) | rx[hdr + 1]
             for i in range(_OUT_SLOTS):
                 if self._slot_state[i] == _SLOT_INFLIGHT and self._slot_pid[i] == pid:
                     self._free(i)
                     break
             return _R_NONE
-        if kind == PINGRESP and total == hdr:
+        if kind == _PINGRESP and total == hdr:
             # TCP delivers in order, so everything written up to the PINGREQ has arrived and lwIP has freed it.
             self._ping_out = False
             self._unconfirmed = max(0, self._unconfirmed - self._ping_mark)
             self._ping_mark = 0
             return _R_NONE
-        if kind == SUBACK and total - hdr >= _SUBACK_MIN:
+        if kind == _SUBACK and total - hdr >= _SUBACK_MIN:
             for j in range(hdr + _ID_BYTES, total):
-                if rx[j] == SUBACK_FAILURE:
+                if rx[j] == _SUBACK_FAILURE:
                     self._sub_refused = True
             return _R_NONE
         self._detail = rx[0]
@@ -585,14 +785,6 @@ class MQTTClient(SensorReaderConfig):
 
     async def _mask_pw(self) -> dict[str, int | float | str | bool | None]:
         return {name_cfg(_VAL_MQTT_PW): _PW_MASK}
-
-    def _meas_topic(self, name: str) -> bytes:
-        # <base>/measurements/<module>, built once per base and kept: setup() builds them inside the boot list.
-        topic = self._meas_topics.get(name)
-        if topic is None:
-            topic = self._base + b"/measurements/" + name.encode()
-            self._meas_topics[name] = topic
-        return topic
 
     def _new_connection(self) -> None:
         # Per-connection state, reset before each connect; the outbound ring survives, its QoS 1 sorted at the CONNACK.
@@ -643,11 +835,12 @@ class MQTTClient(SensorReaderConfig):
         self._last_topic[0:n] = topic[0:n]
         self._last_topic_len = n
         payload = self._rxmv[p0:total]
-        retained = bool(rx[0] & 1)
-        for flt, callback in self._consumer_pairs:
-            if topic_matches(flt, topic):
+        flags = rx[0] & 0x0F  # DUP, QoS and RETAIN (section 3.3.1)
+        filters = self._filters
+        for i in range(len(filters)):
+            if topic_matches(filters[i], topic):
                 try:
-                    callback(topic, payload, retained)
+                    self._callbacks[i](topic, payload, flags)
                 except Exception as e:  # a consumer's fault never ends the reader; the keeper logs it
                     report_if_fatal(e)
                     self._bump(_C_CONSUMER_ERR)
@@ -656,85 +849,6 @@ class MQTTClient(SensorReaderConfig):
     def _protocol(self, first: int) -> int:
         self._detail = first
         return _R_PROTOCOL
-
-    async def _publish_loop(self) -> None:
-        # A round right after each CONNACK, then every MQTTPubInterval; the interval is read at connect, so a changed
-        # setting, which reconnects, applies at once. Each round falls due one interval after the last one fell due, not
-        # after it ran, so a late wake delays that round alone, never the cadence (Part A.12).
-        due = time.ticks_ms()
-        while True:
-            if self._state != _ST_CONNECTED or not self._pub_interval_ms:  # 0: the publisher is off
-                await asyncio.sleep_ms(_PUB_STEP_MS)
-                continue
-            if self._pub_due:
-                self._pub_due = False
-                due = time.ticks_ms()
-            wait = time.ticks_diff(due, time.ticks_ms())
-            if wait > 0:
-                await asyncio.sleep_ms(min(wait, _PUB_STEP_MS))  # re-checks the state and a CONNACK at least each step
-                continue
-            due = time.ticks_add(due, self._pub_interval_ms)
-            if time.ticks_diff(due, time.ticks_ms()) <= 0:
-                due = time.ticks_add(time.ticks_ms(), self._pub_interval_ms)  # a stall past a whole interval: no catch-up
-            await self._publish_measurements()
-
-    async def _publish_measurements(self) -> None:
-        # One QoS 0 message per module, its /measurements object as JSON (owner, 2026-10-07: 'Also measurements JSON').
-        for source in self._sources:
-            try:
-                data = await source.get_dict_data()
-            except Exception as e:  # a producer's get_dict_data() never raises by contract; guarded all the same
-                self.pr.err_s("Measurement source failed:", e, errno=_ERR_SOURCE)
-                continue
-            for name in data:  # keys, then a lookup: iterating items() would allocate a tuple per module
-                self._queue_json(self._meas_topic(name), data[name])
-
-    def _put_json(self, slot: io.BytesIO, value: object) -> bool:
-        # json.dumps(value)'s exact text with non-finite floats as null, written into a slot and never built as one
-        # string: only keys and scalars are written, each by json.dump(), so writing one allocates nothing.
-        if isinstance(value, dict):
-            first = True
-            for key in value:
-                # json.dumps() quotes a non-str key's own JSON text (True -> "true"), never str(key).
-                if not (self._put_raw(slot, b"{" if first else b", ") and self._put_scalar(slot, key if isinstance(key, str) else json.dumps(key)) and self._put_raw(slot, b": ") and self._put_json(slot, value[key])):
-                    return False
-                first = False
-            return self._put_raw(slot, b"{}" if first else b"}")
-        if isinstance(value, (list, tuple)):
-            first = True
-            for item in value:
-                if not (self._put_raw(slot, b"[" if first else b", ") and self._put_json(slot, item)):
-                    return False
-                first = False
-            return self._put_raw(slot, b"[]" if first else b"]")
-        return self._put_scalar(slot, value)
-
-    def _put_raw(self, slot: io.BytesIO, data: bytes) -> bool:
-        # False when data would take the slot past its preallocated size, which a write would then grow.
-        if slot.tell() + len(data) > _OUT_PAYLOAD:
-            return False
-        slot.write(data)
-        return True
-
-    def _put_scalar(self, slot: io.BytesIO, value: object) -> bool:
-        # Dumped straight into the slot when its text provably fits: MicroPython prints a float from a 36 B stack buffer
-        # and a small int in 11 characters, and escapes a character in at most 6. Anything else is dumped apart first.
-        if value is None or (isinstance(value, float) and not math.isfinite(value)):
-            return self._put_raw(slot, b"null")  # json.dumps() writes bare nan/inf, which JSON rejects (Part G.2)
-        if isinstance(value, bool):
-            return self._put_raw(slot, b"true" if value else b"false")
-        if isinstance(value, float):
-            bound = _FLOAT_TEXT_MAX
-        elif isinstance(value, int) and -_SMALL_INT_MAX <= value <= _SMALL_INT_MAX:
-            bound = _SMALL_INT_TEXT_MAX
-        elif isinstance(value, str):
-            bound = 6 * len(value) + 2
-        else:
-            return self._put_raw(slot, json.dumps(value).encode())  # a long int or another type: no bound known
-        if slot.tell() + bound > _OUT_PAYLOAD:
-            return self._put_raw(slot, json.dumps(value).encode())  # near the slot's end: its exact length decides
-        json.dump(value, slot)
-        return True
 
     def _queue(self, topic: bytes, payload: bytes | bytearray | memoryview, qos: int, *, retain: bool) -> bool:
         i = self._free_slot()
@@ -746,21 +860,6 @@ class MQTTClient(SensorReaderConfig):
         slot.write(payload)  # within the slot: publish() refuses a payload above _OUT_PAYLOAD
         self._queued(i, len(payload), topic, qos, retain=retain)
         return True
-
-    def _queue_json(self, topic: bytes, value: object) -> None:
-        # publish()'s QoS 0 path for one measurement object, its JSON written straight into the slot (Part A.12).
-        if self._alloc_error is not None or self._state != _ST_CONNECTED or not topic_name_ok(topic):
-            self._bump(_C_TX_DROP)
-            return
-        i = self._free_slot()
-        if i >= 0:
-            slot = self._slots[i]
-            slot.seek(0)
-            if self._put_json(slot, value):
-                self._queued(i, slot.tell(), topic, 0, retain=False)
-                return
-            self._free(i)  # the object outgrew the slot: dropped, as publish() drops an oversize payload
-        self._bump(_C_TX_DROP)
 
     def _queued(self, i: int, n: int, topic: bytes, qos: int, *, retain: bool) -> None:
         # Slot i, its n payload bytes already in place, joins the queue as its newest message.
@@ -786,7 +885,7 @@ class MQTTClient(SensorReaderConfig):
             self._rx_len += n
         rx = self._rx
         # Bit 0 is Session Present, never an error (mqtt_as A4), but always 0 on a clean session (section 3.2.2.2).
-        if rx[0] != CONNACK or rx[1] != _ID_BYTES or rx[2] & 0xFE or (clean and rx[2]):
+        if rx[0] != _CONNACK or rx[1] != _ID_BYTES or rx[2] & 0xFE or (clean and rx[2]):
             if not quiet:
                 self.pr.err_s("Malformed CONNACK:", rx[0], rx[1], rx[2], errno=_ERR_MQTT_PROTOCOL)
             return _R_CONNECT
@@ -805,7 +904,7 @@ class MQTTClient(SensorReaderConfig):
         texts = await self.cfgmgr.get_str_values(
             _VAL_MQTT_HOST + _VAL_MQTT_USER + _VAL_MQTT_PW + self._val_client_id + _VAL_MQTT_PREFIX + _VAL_MQTT_WILL_TOPIC + _VAL_MQTT_ONLINE_MSG + _VAL_MQTT_WILL_MSG,
         )
-        ints = await self.cfgmgr.get_int_values(_VAL_MQTT_PORT + _VAL_MQTT_PUB_INTERVAL + _VAL_MQTT_PING_INTERVAL + _VAL_MQTT_WILL_QOS)
+        ints = await self.cfgmgr.get_int_values(_VAL_MQTT_PORT + _VAL_MQTT_PING_INTERVAL + _VAL_MQTT_WILL_QOS)
         if bools is None or texts is None or ints is None or len(bools) != _BOOL_FIELDS or len(texts) != _TEXT_FIELDS or len(ints) != _INT_FIELDS:
             if not self._cfg_warned:
                 self._cfg_warned = True
@@ -826,17 +925,16 @@ class MQTTClient(SensorReaderConfig):
         base = (prefix + "/" + client_id).encode()
         if base != self._base or will_topic != self._will_setting:
             if base != self._base:
-                self._meas_topics.clear()
                 self._base = base
+                self._build_topics()
             self._will_setting = will_topic
             self._status_topic = will_topic.encode() if will_topic else base + b"/status"
         # Read anew at each connect, but an unchanged value keeps the object already held, born at setup().
-        self._host, self._port = _kept(self._host, host), ints[0]
-        self._pub_interval_ms, self._ping_s = ints[1] * 1000, ints[2]
+        self._host, self._port, self._ping_s = _kept(self._host, host), ints[0], ints[1]
         self._user, self._password = _kept(self._user, user_b), _kept(self._password, password_b)
         self._client_id = _kept(self._client_id, client_id.encode())
         self._online, self._offline = _kept(self._online, online_b), _kept(self._offline, offline_b)
-        self._status_qos, self._status_retain = ints[3], retain
+        self._status_qos, self._status_retain = ints[2], retain
         self._settle_session((self._host, self._port, self._client_id), persistent=persistent)
         self._persistent = persistent
         return True
@@ -966,7 +1064,7 @@ class MQTTClient(SensorReaderConfig):
         cfg = self._cfg
         if self._session_present:
             self._resend_inflight(stream, time.ticks_ms())  # before anything new (section 4.6)
-        subscribe = encode_subscribe(self._txmv, self._next_pid(), self._subscriptions())
+        subscribe = encode_subscribe(self._txmv, self._next_pid(), self._filters)  # every partner's filter; none: no SUBSCRIBE
         if subscribe > 0:
             self._write(stream, self._txmv[:subscribe])
         self._queue(self._status_topic, self._online, self._status_qos, retain=self._status_retain)
@@ -978,10 +1076,12 @@ class MQTTClient(SensorReaderConfig):
             if self._reader_end != _R_NONE:
                 return self._reader_end
             now = time.ticks_ms()
-            if time.ticks_diff(now, self._last_link) >= cfg.link_poll_ms:
+            if time.ticks_diff(now, self._last_link) >= cfg.link_poll_ms and not self.wifi_mode_lock.locked():
+                # A busy lock (a mode switch, a connect attempt) defers the check to the first tick after it, so a link lost
+                # under it ends the connection then (owner, 2026-10-08: 'when the device is in hotspot mode, the MQTT client is off.').
                 self._last_link = now
-                if not self.wifi_mode_lock.locked() and not await self._safe_link_up():
-                    return _R_LINK  # WIFI logs its own loss; a busy lock is no news, the ping covers it
+                if not await self._safe_link_up():
+                    return _R_LINK  # WIFI logs its own loss
             if self._ping_out:
                 if time.ticks_diff(now, self._ping_sent) >= cfg.response_timeout_ms:
                     self._bump(_C_PING_TIMEOUTS)
@@ -1032,7 +1132,6 @@ class MQTTClient(SensorReaderConfig):
             self._uptime.restart(0)
             self._bump(_C_CONNECTS)
             self._set_state(_ST_CONNECTED)
-            self._pub_due = True
             await self._set_meas_data(MQTT(Connected=True, TS=utc_now()))
             self.pr.evt("Connected to", self._broker_ip, "port", self._port)
             self._reader = asyncio.create_task(self._reader_loop(stream))
@@ -1091,16 +1190,13 @@ class MQTTClient(SensorReaderConfig):
             return text_ok(value.encode(), _MAX_TEXT_BYTES)
         return True
 
-    def _subscriptions(self) -> tuple[bytes, ...]:
-        return (self._base + b"/cmd/#",) + self._consumer_filters
-
     def _take_packets(self) -> int:
         # Every complete packet in the receive buffer, in order; an oversize one switches to discarding its bytes.
         while self._rx_len >= _ID_BYTES:  # a first byte and at least one length byte
             rem = decode_remaining_length(self._rx, 1, self._rx_len)
-            if rem == LENGTH_INCOMPLETE:
+            if rem == _LENGTH_INCOMPLETE:
                 return _R_NONE
-            if rem == LENGTH_MALFORMED:
+            if rem == _LENGTH_MALFORMED:
                 return self._protocol(self._rx[0])
             total = 1 + remaining_length_bytes(self._rx, 1, self._rx_len) + rem
             if total > _RX_BYTES:
@@ -1122,16 +1218,13 @@ class MQTTClient(SensorReaderConfig):
         self._unconfirmed += len(data)
 
     def get_task_starters(self) -> "list[TaskStarter]":
-        return [self.start_asy_connection, self.start_asy_publish]
+        return [self.start_asy_connection]
 
     def get_timer_starters(self) -> "list[TimerStarter]":
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape)
 
     def start_asy_connection(self) -> asyncio.Task[None]:
         return asyncio.create_task(self._connection_loop())
-
-    def start_asy_publish(self) -> asyncio.Task[None]:
-        return asyncio.create_task(self._publish_loop())
 
     async def get_data(self) -> MQTT:
         # Narrows to this Reader's concrete MQTT - see SPECIFICATION.md C.4.2's get_data() convention.
@@ -1175,6 +1268,23 @@ class MQTTClient(SensorReaderConfig):
     def is_connected(self) -> bool:
         return self._state == _ST_CONNECTED
 
+    def add_consumer(self, topic_filter: str, callback: "MqttCallback") -> None:
+        # A wired partner's receiver, registered before the tasks start; its filter is relative to <base> ("cmd/#") and
+        # subscribed at every connect. The callback is synchronous, copies what it keeps and must not raise: a raise is
+        # counted and logged as CALLBACK, its message still acknowledged; a retained one (flags bit 0) comes again (A.12).
+        self._rel_filters.append(b"/" + topic_filter.encode())
+        self._callbacks.append(callback)
+        if self._base:
+            self._build_topics()
+
+    def add_topic(self, topic: str) -> int:
+        # A wired partner's outbound topic, relative to <base> and registered before the tasks start; the id is what
+        # publish_under() takes. Its full form is built once per settings change, so no publish allocates a topic.
+        self._rel_topics.append(b"/" + topic.encode())
+        if self._base:
+            self._build_topics()
+        return len(self._rel_topics) - 1
+
     def publish(self, topic: str | bytes, payload: str | bytes | bytearray | memoryview, *, qos: int = 0, retain: bool = False) -> bool:
         # Never blocks, never raises on load: a copy into a free ring slot, or False (counted) - Part A.12.
         if self._alloc_error is not None:
@@ -1186,6 +1296,11 @@ class MQTTClient(SensorReaderConfig):
             return False
         return self._queue(name, data, qos, retain=retain)
 
+    def publish_under(self, topic_id: int, payload: str | bytes | bytearray | memoryview, *, qos: int = 0, retain: bool = False) -> bool:
+        # publish() on add_topic()'s <base>/<topic>; an id with no topic built yet (no settings read) is refused, counted.
+        topics = self._topics
+        return self.publish(topics[topic_id] if 0 <= topic_id < len(topics) else b"", payload, qos=qos, retain=retain)
+
     def reconnect(self) -> None:
         # The settings group's post_fct: the keeper ends the connection on its next tick and reads the new settings.
         self._reconfigure = True
@@ -1195,14 +1310,7 @@ class MQTTClient(SensorReaderConfig):
         await super().setup()  # the logger first, so the failure below persists
         if self._alloc_error is not None:
             self.pr.err_s("MQTT buffers could not be allocated, client off", errno=_ERR_ALLOC)
-        elif self.cfgmgr.valid and await self._read_params():
-            # The settings' encoded forms and the measurement topics live as long as the settings do: born here,
-            # inside the boot list's placement reset (Part I.4(f.1)), not in the first round after it.
-            for source in self._sources:
-                try:
-                    data = await source.get_dict_data()
-                except Exception as e:  # never raises by contract; the publisher logs a fault at its own call
-                    report_if_fatal(e)
-                    data = {}
-                for name in data:
-                    self._meas_topic(name)
+        elif self.cfgmgr.valid:
+            # The settings' encoded forms and the partners' topics live as long as the settings do: born here, inside the
+            # boot list's placement reset (Part I.4(f.1)), not at the first connect after it.
+            await self._read_params()

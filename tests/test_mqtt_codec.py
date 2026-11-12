@@ -1,7 +1,14 @@
-"""mqtt_codec.py: the remaining-length table, every encoder's exact bytes and its no-room answer, topic-filter matching
-and the configuration shape checks (MQTT 3.1.1)."""
+"""asy_mqtt_client.py's packet codec: the remaining-length table, every encoder's exact bytes and its no-room answer,
+topic-filter matching and the configuration shape checks (MQTT 3.1.1)."""
 
-import mqtt_codec as mc
+from _src_const import src_int
+
+import asy_mqtt_client as mc
+
+_PUBLISH: int = src_int("src/asy_mqtt_client.py", "_PUBLISH")  # the module's const()-folded first byte
+_LENGTH_INCOMPLETE: int = src_int("src/asy_mqtt_client.py", "_LENGTH_INCOMPLETE")
+_LENGTH_MALFORMED: int = src_int("src/asy_mqtt_client.py", "_LENGTH_MALFORMED")
+_MAX_REMAINING: int = src_int("src/asy_mqtt_client.py", "_MAX_REMAINING")
 
 
 def _publish_bytes(topic: bytes, payload: bytes, qos: int, pid: int, *, retain: bool = False, dup: bool = False) -> bytes:
@@ -34,19 +41,19 @@ def test_remaining_length_decodes_every_boundary_of_the_specification_table() ->
 def test_remaining_length_encodes_every_boundary_of_the_specification_table() -> None:
     for value, encoded in _LENGTH_TABLE[:5]:  # the larger ones need a buffer of their own size
         buf = bytearray(value + 8)
-        n = mc._put_fixed(buf, mc.PUBLISH, value)
+        n = mc._put_fixed(buf, _PUBLISH, value)
         assert bytes(buf[1:n]) == encoded, (value, bytes(buf[1:n]))
 
 
 def test_a_remaining_length_split_across_reads_is_incomplete_not_malformed() -> None:
-    assert mc.decode_remaining_length(b"\x30\x80", 1, 2) == mc.LENGTH_INCOMPLETE
-    assert mc.decode_remaining_length(b"\x30\xff\xff", 1, 3) == mc.LENGTH_INCOMPLETE
-    assert mc.decode_remaining_length(b"\x30", 1, 1) == mc.LENGTH_INCOMPLETE
+    assert mc.decode_remaining_length(b"\x30\x80", 1, 2) == _LENGTH_INCOMPLETE
+    assert mc.decode_remaining_length(b"\x30\xff\xff", 1, 3) == _LENGTH_INCOMPLETE
+    assert mc.decode_remaining_length(b"\x30", 1, 1) == _LENGTH_INCOMPLETE
 
 
 def test_a_fifth_length_byte_is_malformed() -> None:
     buf = b"\x30\xff\xff\xff\xff\x01"
-    assert mc.decode_remaining_length(buf, 1, len(buf)) == mc.LENGTH_MALFORMED
+    assert mc.decode_remaining_length(buf, 1, len(buf)) == _LENGTH_MALFORMED
 
 
 def test_a_non_minimal_length_encoding_is_read_as_written() -> None:
@@ -56,9 +63,9 @@ def test_a_non_minimal_length_encoding_is_read_as_written() -> None:
 
 
 def test_a_header_past_the_maximum_or_the_buffer_is_refused() -> None:
-    assert mc._put_fixed(bytearray(8), mc.PUBLISH, mc.MAX_REMAINING + 1) == -1
-    assert mc._put_fixed(bytearray(8), mc.PUBLISH, 7) == -1  # 2 + 7 > 8
-    assert mc._put_fixed(bytearray(9), mc.PUBLISH, 7) == 2
+    assert mc._put_fixed(bytearray(8), _PUBLISH, _MAX_REMAINING + 1) == -1
+    assert mc._put_fixed(bytearray(8), _PUBLISH, 7) == -1  # 2 + 7 > 8
+    assert mc._put_fixed(bytearray(9), _PUBLISH, 7) == 2
 
 
 def test_connect_matches_the_specification_layout_byte_for_byte() -> None:

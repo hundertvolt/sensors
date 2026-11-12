@@ -24,6 +24,7 @@ BANDS = {
     "_digital_twin_construction_scenarios": (19500, 19599, "tcp"),
     "test_digital_twin_loop_end": (19600, 19719, "tcp"),
     "test_asy_mqtt_client": (19720, 19819, "tcp"),
+    "test_asy_mqtt_link_driver": (19820, 19869, "tcp"),
     "_digital_twin_scenarios": (20000, 20999, "tcp"),
     "asy_udp_socket": (21000, 21999, "udp"),
     "test_asy_captive_dns": (22000, 22999, "udp"),
