@@ -686,6 +686,19 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
             {"key": f"{hazard}_Runs", "label": "UART Hazard Runs", "kind": "readonly", "path": [hazard, "Runs"], "description": "Hazard runs completed since boot; each run's facts are in GET /status."},
             {"key": f"{hazard}_Pending", "label": "UART Hazard Run Pending", "kind": "readonly", "path": [hazard, "Pending"]},
         ]
+    if "mqtt_link" in have:
+        mqtt = MAINTENANCE_NAMES["mqtt_link"]
+        maintenance_fields += [
+            {
+                "key": f"{mqtt}_Transfers", "label": "MQTT Link Transfers", "kind": "readonly", "path": [mqtt, "Transfers"],
+                "description": "Echo probes that came back through the broker since boot. Dev-only test traffic - a deployed unit has no exerciser.",
+            },
+            {
+                "key": f"{mqtt}_Failures", "label": "MQTT Link Failures", "kind": "readonly", "path": [mqtt, "Failures"],
+                "description": "Echo probes that were refused or did not come back before the next one since boot.",
+            },
+            {"key": f"{mqtt}_Commands", "label": "MQTT Link Commands", "kind": "readonly", "path": [mqtt, "Commands"], "description": "Messages received on the device's cmd/# topics since boot."},
+        ]
     if maintenance_fields:
         groups.append({"key": "sensors", "label": "Sensor Maintenance", "fields": maintenance_fields})
     if "notification" in have:

@@ -97,14 +97,14 @@ def test_resolve_driver_override_table_missing_file(tmp_path: Path) -> None:
 
 
 def test_service_drivers_frozenset_matches_override_table() -> None:
-    assert {"fram", "mqtt", "neopixel", "notification", "uart_link"} == SERVICE_DRIVERS
+    assert {"fram", "mqtt", "mqtt_link", "neopixel", "notification", "uart_link"} == SERVICE_DRIVERS
 
 
 def test_singleton_service_drivers_excludes_uart_link() -> None:
     # uart_link resolves via the same override table (not a SensorReader/SensorReaderConfig
     # subclass either) but isn't a singleton - a device wires exactly two instances
     # (initiator/responder), disambiguated by name_ext like any other multi-instance driver.
-    assert {"fram", "mqtt", "neopixel", "notification"} == SINGLETON_SERVICE_DRIVERS
+    assert {"fram", "mqtt", "mqtt_link", "neopixel", "notification"} == SINGLETON_SERVICE_DRIVERS
     assert "uart_link" not in SINGLETON_SERVICE_DRIVERS
 
 

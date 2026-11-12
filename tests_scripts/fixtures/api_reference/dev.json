@@ -990,19 +990,6 @@
               "minLength": 1
             },
             {
-              "key": "MQTTPubInterval",
-              "kind": "number",
-              "max": 3600,
-              "min": 10,
-              "specialValues": [
-                {
-                  "meaning": "Off",
-                  "value": 0
-                }
-              ],
-              "unit": "s"
-            },
-            {
               "key": "MQTTPingInterval",
               "kind": "number",
               "max": 3600,
@@ -1219,19 +1206,6 @@
               "kind": "string",
               "maxLength": 64,
               "minLength": 1
-            },
-            {
-              "key": "MQTTPubInterval",
-              "kind": "number",
-              "max": 3600,
-              "min": 10,
-              "specialValues": [
-                {
-                  "meaning": "Off",
-                  "value": 0
-                }
-              ],
-              "unit": "s"
             },
             {
               "key": "MQTTPingInterval",
@@ -1665,6 +1639,30 @@
               "path": [
                 "UART_init",
                 "Pending"
+              ]
+            },
+            {
+              "key": "MQTTLINK_Transfers",
+              "kind": "readonly",
+              "path": [
+                "MQTTLINK",
+                "Transfers"
+              ]
+            },
+            {
+              "key": "MQTTLINK_Failures",
+              "kind": "readonly",
+              "path": [
+                "MQTTLINK",
+                "Failures"
+              ]
+            },
+            {
+              "key": "MQTTLINK_Commands",
+              "kind": "readonly",
+              "path": [
+                "MQTTLINK",
+                "Commands"
               ]
             }
           ],

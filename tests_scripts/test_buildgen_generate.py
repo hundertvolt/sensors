@@ -28,7 +28,7 @@ from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import GeneratedDevice, generate_device, main
 from buildgen.graph import build_construction_order
-from buildgen.model import DeviceModel, TomlDoc, instance_label
+from buildgen.model import MAINTENANCE_NAMES, DeviceModel, TomlDoc, instance_label
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, build_model, module_int_const
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
@@ -944,7 +944,7 @@ def _uart_bus_calls(source: str) -> "dict[str, str]":
 def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(device: str) -> None:
     # HotspotPW reconnects with the identity group; DNSFallback needs no hook, the next NTP attempt reads it.
     source = _real(device).module_source
-    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"), {"post_fct": "mqtt.reconnect"})]
+    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"), {"post_fct": "mqtt.reconnect"})]
     assert _settings_groups(source, "networking") == [
         ("conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), {"post_fct": "conn.reconnect_wifi"}),
         ("conn", ("LEDWifiOn",), {}),
@@ -1263,20 +1263,39 @@ def _mqtt_doc() -> TomlDoc:
     return doc
 
 
-def test_mqtt_is_built_after_conn_and_every_sensor_it_publishes(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    source = generate_device(write_doc(tmp_path, "mqtt", _mqtt_doc()), src_dir, ext_dir).module_source
+def test_mqtt_is_built_after_conn_and_wired_to_no_sensor(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # The client sends only what a wired partner hands it (owner, 2026-11-12, paraphrase: no interval of its own, a
+    # sensor publishing would be wired to it in the TOML): declared first, it is built right after conn, ahead of them.
+    doc = _mqtt_doc()
+    entries = array_at(doc, "instance")
+    entries.insert(0, entries.pop())
+    source = generate_device(write_doc(tmp_path, "mqtt", doc), src_dir, ext_dir).module_source
     ast.parse(source)
     line = next(text for text in source.splitlines() if text.strip().startswith("mqtt = MQTTClient("))
     assert 'MQTTClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, MqttConfig("SensorStationTest", _MQTT_RESPONSE_TIMEOUT_MS,' in line
-    assert line.rstrip().endswith("_MQTT_IDLE_RECHECK_MS, _DNS_TIMEOUT_MS), sources=(scd30, sgp40), cfg_path=cfg_path, log=log_fram)")
-    for earlier in ("conn = WifiService(", "scd30 = SCD30_Reader(", "sgp40 = SGP40_Reader("):
-        assert source.index(earlier) < source.index(line)
+    assert line.rstrip().endswith("_MQTT_IDLE_RECHECK_MS, _DNS_TIMEOUT_MS), cfg_path=cfg_path, log=log_fram)")
+    assert source.index("conn = WifiService(") < source.index(line) < source.index("scd30 = SCD30_Reader(")
     assert "from asy_mqtt_client import MQTTClient, MqttConfig" in source
     assert "_MQTT_RESPONSE_TIMEOUT_MS = const(10000)" in source
     assert "_MQTT_PING_INTERVAL_MS" not in source and "_MQTT_KEEPALIVE_S" not in source  # both follow the MQTTPingInterval setting
     assert "SettingsGroup(mqtt, cm.schema_names(mqtt.get_cfg_schema()), post_fct=mqtt.reconnect)" in source
     assert "status.update(mqtt.get_link_status())" in source
     assert "mqtt.setup" in source  # in the boot's collected setup list
+
+
+def test_the_mqtt_exerciser_is_built_on_its_wired_client_and_reports_its_maintenance_status(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # Its client through the generic @wiring path and nothing else - no log, since it logs through the client's logger
+    # (owner, 2026-11-12: "The wire up of the module shall also be done withhin the TOML file"); its counters on /status.
+    doc = _mqtt_doc()
+    array_at(doc, "instance").insert(0, {"driver": "mqtt_link", "wiring": {"mqtt_target": "mqtt"}})
+    source = generate_device(write_doc(tmp_path, "mqtt_link", doc), src_dir, ext_dir).module_source
+    ast.parse(source)
+    assert "    mqtt_link = MQTTLinkDriver(client=mqtt)" in source.splitlines()
+    assert source.index("mqtt = MQTTClient(") < source.index("mqtt_link = MQTTLinkDriver(")  # declared first, built after its client
+    assert "from asy_mqtt_link_driver import MQTTLinkDriver" in source
+    assert f'("{MAINTENANCE_NAMES["mqtt_link"]}", mqtt_link.get_link_status)' in source
+    assert "mqtt_link.setup" not in source  # nothing to set up: no config store, no logger of its own
+    assert "mqtt_link" in _collected_modules(source, "_collect_task_starters")
 
 
 def test_a_device_without_mqtt_carries_none_of_its_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:

@@ -14,10 +14,11 @@ _READER_BASES = {"SensorReader", "SensorReaderConfig"}
 
 # Drivers that cannot follow the asy_<name>_driver.py/*_Reader convention (Part L.1's criterion
 # 1): no asy_<name>_driver.py, or no reader subclass in it (mqtt's MQTTClient is one, in a _client
-# file, and is no sensor). asy_uart_link_driver.py fits the name and still needs the override.
+# file, and is no sensor). The two link exercisers fit the name and still need the override.
 _OVERRIDES: dict[str, tuple[str, str]] = {
     "fram": ("asy_fram_manager", "FRAMManager"),
     "mqtt": ("asy_mqtt_client", "MQTTClient"),
+    "mqtt_link": ("asy_mqtt_link_driver", "MQTTLinkDriver"),
     "neopixel": ("asy_neopixel_driver", "NeopixelDriver"),
     "notification": ("asy_notification_service", "NotificationService"),
     "uart_link": ("asy_uart_link_driver", "UARTLinkDriver"),
@@ -30,7 +31,7 @@ SERVICE_DRIVERS = frozenset(_OVERRIDES)
 
 # Singleton services: never more than one per device (Part C.14). uart_link is excluded on
 # purpose - it needs the same override, but a device wires two instances (initiator/responder)
-# disambiguated by name_ext, rather than being forced to name_ext="" like the other three.
+# disambiguated by name_ext, rather than being forced to name_ext="" like the rest.
 SINGLETON_SERVICE_DRIVERS = SERVICE_DRIVERS - {"uart_link"}
 
 

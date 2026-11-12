@@ -157,6 +157,15 @@ driver = "mqtt"
 [instance.wiring]
 fram_target = "fram"
 
+# Dev's MQTT test target (owner, 2026-11-12, asked what it should do: "Exerciser (Recommended)"): an echo probe
+# through the broker each period and the cmd/# messages counted, as uart_link exercises UART. It logs through the
+# client, so it takes no fram_target.
+[[instance]]
+driver = "mqtt_link"
+
+[instance.wiring]
+mqtt_target = "mqtt"
+
 # --- multi-instance services ----------------------------------------------------------------------
 #
 # Each end gets its own fram_target chunk, so a fault on one end stays attributable (only the

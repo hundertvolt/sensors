@@ -24,7 +24,7 @@ from buildgen.driver_registry import resolve_driver
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
-from buildgen.model import DeviceModel, InstanceSpec, lwip_macros
+from buildgen.model import MAINTENANCE_NAMES, PARTNER_LOGGED_DRIVERS, DeviceModel, InstanceSpec, lwip_macros
 from buildgen.validate import (
     _check_default_provider_params,
     _check_default_value_selection,
@@ -2084,6 +2084,35 @@ def test_a_device_carrying_mqtt_pays_its_connection_from_the_web_ceiling(tmp_pat
     assert info.value.field == "max_connections"
     device["max_connections"] = _lwip_pcbs() - overrides.SPARE_TCP_PCBS - 1
     _build(tmp_path, src_dir, doc)
+
+
+def test_the_mqtt_exerciser_fails_the_build_without_a_client_to_drive(tmp_path: Path, src_dir: Path) -> None:
+    # Its one wiring is required: a device with no client to name, or a link naming none, is refused at that field.
+    doc = base_doc()
+    array_at(doc, "instance").append({"driver": "mqtt_link", "wiring": {"mqtt_target": "mqtt"}})
+    with pytest.raises(BuildError, match="mqtt_target") as unresolved:
+        _build(tmp_path, src_dir, doc)
+    assert (unresolved.value.rule, unresolved.value.instance, unresolved.value.field) == ("wiring.target-unresolved", "mqtt_link", "mqtt_target")
+    del instance_of(doc, "mqtt_link")["wiring"]
+    with pytest.raises(BuildError, match=r"missing required wiring\.mqtt_target") as missing:
+        _build(tmp_path, src_dir, doc)
+    assert (missing.value.rule, missing.value.field) == ("wiring.field-missing", "mqtt_target")
+
+
+def test_a_partner_logged_driver_is_named_by_its_maintenance_key(tmp_path: Path, src_dir: Path) -> None:
+    # The exerciser declares no _NAME and keeps no logger (it logs through its client), so its one REST key names it;
+    # a second instance is refused like any singleton's.
+    doc = base_doc()
+    table_at(doc, "device")["max_connections"] = 5  # the client's connection takes the sixth (buildgen/validate.py)
+    array_at(doc, "instance").extend([{"driver": "mqtt"}, {"driver": "mqtt_link", "wiring": {"mqtt_target": "mqtt"}}])
+    model = _build(tmp_path, src_dir, doc)
+    assert {spec.driver: spec.resolved_name for spec in model.instances.values() if spec.driver.startswith("mqtt")} == {"mqtt": "MQTT", "mqtt_link": MAINTENANCE_NAMES["mqtt_link"]}
+    for driver in PARTNER_LOGGED_DRIVERS:
+        assert "_NAME = " not in resolve_driver(driver, src_dir, "fixture").source_path.read_text(encoding="utf-8"), driver
+    instance_of(doc, "mqtt_link")["name_ext"] = "b"
+    with pytest.raises(BuildError, match="singleton service driver 'mqtt_link' must not declare name_ext") as named:
+        _build(tmp_path, src_dir, doc)
+    assert named.value.rule == "instance.name-ext-singleton"
 
 
 def test_a_max_connections_below_one_is_rejected(tmp_path: Path, src_dir: Path) -> None:

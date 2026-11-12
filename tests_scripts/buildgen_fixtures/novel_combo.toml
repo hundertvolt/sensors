@@ -12,7 +12,7 @@
 # warn_* signals (every real device wires all three or none), and a uart_link initiator/responder
 # pair on a GPIO pin pair no real device uses (proving the uart_link driver generalizes beyond the
 # uart_link device's own GP0/1+GP8/9, per CLAUDE.md's standing "synthetic fixture proves generality" rule),
-# and the MQTT client publishing two SCD30s plus SGP40/BMP3xx, with no FRAM wiring of its own.
+# and the MQTT client, with no FRAM wiring of its own.
 
 [device]
 name = "NovelCombo"

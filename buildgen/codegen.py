@@ -257,6 +257,8 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         # semantics" means the responder side has nothing of its own to report here).
         maintenance_entries.append(f'("{MAINTENANCE_NAMES["uart_link"]}", {uart_initiator_var}.get_link_status)')
         maintenance_entries.append(f'("{uart_initiator_name(model)}", {uart_initiator_var}.get_hazard_report)')
+    if "mqtt_link" in have:  # the MQTT exerciser's round trips, failures and commands
+        maintenance_entries.append(f'("{MAINTENANCE_NAMES["mqtt_link"]}", {_singleton_var(ctx, "mqtt_link")}.get_link_status)')
     lines.append("    app = Microdot()")
     if uart_initiator_var is not None:  # the link's own routes, ahead of the webserver's static catch-all
         lines.append(f"    {uart_initiator_var}.add_routes(app)")
@@ -592,15 +594,18 @@ def _build_args_notification(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str],
 
 
 def _build_args_mqtt(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
-    # conn's bound methods as NTP takes them, MqttConfig from the emitted _MQTT_* constants with the device's hostname as
-    # the client id default, and every sensor as a measurement source, in construction order.
-    order = {node: i for i, node in enumerate(ctx.model.construction_order)}
-    sensors = sorted((s for s in ctx.model.instances.values() if s.driver_info is not None and s.driver_info.kind == "sensor"), key=lambda s: order.get(s.key, 0))
+    # conn's bound methods as NTP takes them, and MqttConfig from the emitted _MQTT_* constants with the device's hostname
+    # as the client id default. No sensor: a partner wired to the client in the TOML sends through it (Part A.12).
     timing = ", ".join(name for name, _value in _MQTT_CONSTS)
     config = f"MqttConfig({_lit(_table(ctx.model.doc['device'])['hostname'])}, {timing}, _DNS_TIMEOUT_MS)"
     pos = ["conn.get_wifi_mode_lock()", "conn.network_available_locked", "conn.get_dns_server_ip", config]
-    kw: list[tuple[str, str]] = [("sources", _tuple([ctx.instance_var(s.key) for s in sensors])), ("cfg_path", "cfg_path"), _fram_kw(spec, ctx)]
+    kw: list[tuple[str, str]] = [("cfg_path", "cfg_path"), _fram_kw(spec, ctx)]
     return pos, kw
+
+
+def _build_args_mqtt_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    # Its client through the generic wiring path, and nothing else: no log, since it logs through the client's logger.
+    return [], [(wf.target, ctx.wiring_expr(spec, wf)) for wf in spec.wiring_schema if wf.mode == "kwarg" and wf.toml_field in spec.wiring]
 
 
 def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
@@ -630,6 +635,7 @@ _BUILD_ARGS_HANDLERS: "dict[str, Callable[[InstanceSpec, _Ctx], tuple[list[str],
     "notification": _build_args_notification,
     "uart_link": _build_args_uart_link,
     "mqtt": _build_args_mqtt,
+    "mqtt_link": _build_args_mqtt_link,
 }
 
 

@@ -31,7 +31,6 @@
     "MQTTPingInterval": "int",
     "MQTTPort": "int",
     "MQTTPrefix": "str",
-    "MQTTPubInterval": "int",
     "MQTTUser": "str",
     "MQTTWillMsg": "str",
     "MQTTWillQoS": "int",

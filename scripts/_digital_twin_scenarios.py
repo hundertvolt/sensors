@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, NamedTuple, TypeVar
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
+from buildgen.schema_ast import extract_field_schemas
 from buildgen.validate import device_max_connections, module_float_const, module_int_const, smallest_hard_consumer
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
@@ -850,6 +851,10 @@ def _every_get_endpoint(ctx: Context) -> None:
             _not_self_wrapped(_json(answer), ctx.sensors)
         networking = _object(_request(twin.port, "GET", "/networking"))
         expected = {"SSID": "", "PW": "********", "Country": "DE", "Hostname": ctx.hostname, "HotspotPW": "********", "LEDWifiOn": True, "NTPHost": _responder_host(), "NTPOffset": 0, "NTPInterval": 12, "DNSFallback": ""}
+        if any(spec.driver == "mqtt" for spec in load_device(REPO_ROOT / "devices" / f"{ctx.device}.toml").instances.values()):
+            # The MQTT client's settings at its schema's defaults, its password masked as PW is and its client id the
+            # device's hostname, which the generated module passes as that default.
+            expected |= {name: schema[1] for name, schema in extract_field_schemas(SRC_DIR / "asy_mqtt_client.py").items()} | {"MQTTPW": "********", "MQTTClientId": ctx.hostname}
         _expect(networking == expected, f"GET /networking {networking!r}, expected {expected!r}")
         system = _object(_request(twin.port, "GET", "/system"))
         build = system.pop("build", None)

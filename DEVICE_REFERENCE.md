@@ -193,11 +193,15 @@ another, carries the *Online Message* (`online`) while the device is connected a
 Message* (`offline`) once it is not: the device sets it itself when you change the MQTT settings or
 switch the client off, and the broker sets it (the device's last will) when the device simply
 disappears. *Status QoS* and *Retain Status* say how both go out; with Retain Status on (the
-default), a consumer such as openHAB should read that topic for availability. With a *Publish
-Interval* set (it is Off by default), the device also sends one JSON message per sensor that often on
-`<prefix>/<client id>/measurements/<SENSOR>` (the same keys and values as the REST `/measurements`
-page; a value the sensor cannot give is `null`), the first round as soon as it connects; they are not
-retained.
+default), a consumer such as openHAB should read that topic for availability. The client sends no
+sensor values of its own: a sensor that is to publish is wired to the client in its device's TOML and
+sends through it, and none is today.
+
+**The link test.** While connected, `dev`'s link exerciser publishes a small QoS 1 probe every 10 s on
+`<prefix>/<client id>/link/echo` and receives it back through the broker. The Status page counts each
+probe that came back as an *MQTT Link Transfer*, and one that was refused or did not come back before
+the next as an *MQTT Link Failure*; *MQTT Link Commands* counts the messages on
+`<prefix>/<client id>/cmd/...`.
 
 **Keeping the link checked.** While it sends nothing, the device pings the broker every *Ping
 Interval* seconds (3 minutes by default), and it pings once right after each message it sends, so a
@@ -211,8 +215,8 @@ messages sent to it while it is away. Changing the broker, the client ID or the 
 it off, ends the session left on the broker.
 
 **What it does not do.** Messages sent to `<prefix>/<client id>/cmd/...` are counted and the last
-topic is shown on the Status page; they change no setting and run no command. Nothing received over
-MQTT ever writes to the device's flash.
+topic received is shown on the Status page; they change no setting and run no command. Nothing received
+over MQTT ever writes to the device's flash.
 
 **Two clients must not share a client ID.** The broker drops the older connection whenever a client
 connects with an ID already in use, so two devices with the same ID take turns disconnecting each

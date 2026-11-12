@@ -25,7 +25,7 @@ from buildgen.defaults import default_class_defines_attr, default_class_name, de
 from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.limits import LimitField, parse_limits
-from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, TomlValue, instance_label, load_device, lwip_macros, resolve_instance_key
+from buildgen.model import MAINTENANCE_NAMES, PARTNER_LOGGED_DRIVERS, DeviceModel, InstanceSpec, TomlDoc, TomlValue, instance_label, load_device, lwip_macros, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, UART_ROLE, gpio_exists
 from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
 from buildgen.schema_ast import extract_field_schemas
@@ -618,8 +618,8 @@ def _check_instance_field_types(model: DeviceModel, spec: InstanceSpec) -> None:
 
 def _check_instance_label_collisions(model: DeviceModel) -> None:
     # instance_label(), the codegen-time Python-variable identity, is a different space from
-    # resolved_name's REST-key identity checked above. Unreachable with today's six driver names,
-    # none of which carries an underscore that could line up, but latent for a future one.
+    # resolved_name's REST-key identity checked above. Unreachable with today's driver names: the one
+    # pair that could line up, mqtt + name_ext "link" and mqtt_link, needs a name_ext the singleton refuses.
     seen: dict[str, tuple[str, str]] = {}
     for key in model.instances:
         label = instance_label(key)
@@ -1191,7 +1191,7 @@ def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
                 parse_requires_tags(info.source_path, model.device, spec.label),
                 parse_limits(info.source_path, model.device, spec.label),
                 parse_value_wiring(info.source_path, model.device, spec.label),
-                parse_name_constant(info.source_path, model.device, spec.label),
+                MAINTENANCE_NAMES[spec.driver] if spec.driver in PARTNER_LOGGED_DRIVERS else parse_name_constant(info.source_path, model.device, spec.label),
             )
         spec.wiring_schema, spec.requires_tags, spec.limits_schema, spec.value_wiring_schema, base_name = parsed[info.source_path]
         spec.resolved_name = _instance_name(base_name, spec.name_ext)

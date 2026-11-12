@@ -23,7 +23,7 @@ from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
 from buildgen.jsontypes import JsonDict, JsonValue
-from buildgen.model import DeviceModel, InstanceSpec
+from buildgen.model import MAINTENANCE_NAMES, DeviceModel, InstanceSpec
 from buildgen.schema_ast import _eval_literal, extract_field_schemas
 from buildgen.signals import WARN_SIGNALS
 from buildgen.validate import build_model
@@ -223,7 +223,7 @@ def test_mqtt_settings_status_and_errcount_follow_the_device_instance_set(repo_r
         assert not {"MQTT", "CFGMGR_MQTT"} & errcount
         return
     fields = {_str(f["key"]): f for f in _fields(mqtt_groups[0])}
-    assert list(fields) == ["MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"]
+    assert list(fields) == ["MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"]
     assert fields["MQTTPW"]["mask"] is True
     assert fields["MQTTClientId"]["shape"] == "hostLabel"
     host_special = _objs(fields["MQTTHost"]["specialValues"])
@@ -231,6 +231,23 @@ def test_mqtt_settings_status_and_errcount_follow_the_device_instance_set(repo_r
     assert (fields["MQTTPort"]["min"], fields["MQTTPort"]["max"]) == (1, 65535)
     assert {"MQTTState", "MQTTConnected", "MQTTTxDropped", "MQTTPingTimeouts", "MQTTShortSessions", "MQTTLastRxTopic"} <= status_keys
     assert {"MQTT", "CFGMGR_MQTT"} <= errcount
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_mqtt_exercisers_maintenance_rows_are_its_link_status_keys(repo_root: Path, src_dir: Path, device: str) -> None:
+    # One row per key get_link_status() returns, read from src/asy_mqtt_link_driver.py, on a device carrying it alone;
+    # no errcount row of its own: it logs through the client's.
+    generated = _generate(repo_root, src_dir, device)
+    name = MAINTENANCE_NAMES["mqtt_link"]
+    rows = [_strs(f["path"])[1] for g in _groups(_section(generated, "status")) if g["key"] == "sensors" for f in _fields(g) if _strs(f.get("path", []))[:1] == [name]]
+    if device not in devices_with("mqtt_link"):
+        assert rows == []
+        return
+    link = next(n for n in ast.walk(ast.parse((src_dir / "asy_mqtt_link_driver.py").read_text(encoding="utf-8"))) if isinstance(n, ast.AsyncFunctionDef) and n.name == "get_link_status")
+    returned = next(n.value for n in ast.walk(link) if isinstance(n, ast.Return))
+    assert isinstance(returned, ast.Dict), "get_link_status() returns no dict literal"
+    assert rows == _literal_keys(returned)
+    assert name not in {_str(m["key"]) for _section_key, g in _errcount_groups(generated) for m in _objs(g["modules"])}
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -424,6 +441,7 @@ def test_every_maintenance_field_reads_its_instance_and_field_by_path(repo_root:
     sources = {_strs(f["path"])[0] for f in fields}
     model = build_model(device_toml(device), src_dir)
     links = {"UARTLINK", uart_initiator_name(model)} if any(spec.driver == "uart_link" for spec in model.instances.values()) else set()
+    links |= {MAINTENANCE_NAMES["mqtt_link"]} if any(spec.driver == "mqtt_link" for spec in model.instances.values()) else set()
     expected = {spec.resolved_name for spec in model.instances.values() if spec.driver == "sgp40"} | links
     assert sources == expected
 
