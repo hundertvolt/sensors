@@ -1,0 +1,92 @@
+digital_twin/run_generic_integration.py starting - device='arzi' module='sensortask_arzi' host='127.0.0.1' port=18080 state=StatePaths(fram='digital_twin_ci_logs/arzi/gc_threshold_neg1/state/fram_state.json', scd30='digital_twin_ci_logs/arzi/gc_threshold_neg1/state/scd30_state.json', mem_backup='digital_twin_ci_logs/arzi/gc_threshold_neg1/state/mem_backup_state.json') config_dir='digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/' online_ntp=False debug_level=None injections=Injections(seed=None, faults=[], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=None, gc_threshold=-1, mem_sample_interval_ms=None, stop_file=None)
+digital_twin/run_generic_integration.py [arzi] boot phase: BOOT_CONSTRUCTION
+digital_twin/run_generic_integration.py [arzi] boot phase: BOOT_SETUP
+Serving forever at http://127.0.0.1:18080/ - Ctrl+C to stop
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_WIFI digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_WIFI.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_NTP digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_NTP.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_SCD30 digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_SCD30.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_SGP40 digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_SGP40.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_NOTIFY digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_NOTIFY.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+digital_twin/run_generic_integration.py [arzi] boot phase: BOOT_TASKS
+CFGMGR_WIFI digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_WIFI.cfg - Reading config data into list.
+WIFI Establishing WLAN connection
+CFGMGR_WIFI digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_WIFI.cfg - Reading config data into list.
+WIFI No SSID configured, hotspot mode
+CFGMGR_NOTIFY digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_NOTIFY.cfg - Reading config data into list.
+digital_twin/run_generic_integration.py [arzi] boot phase: BOOT_TIMERS
+SYSTEM Timer started: 0
+SYSTEM Timer started: 1
+SYSTEM Timer started: 2
+SYSTEM Timer started: 3
+SYSTEM Timer started: 4
+SYSTEM Timer started: 5
+SYSTEM All timers running.
+digital_twin/run_generic_integration.py [arzi] boot phase: BOOT_NTP
+NTP Force resync triggered.
+digital_twin/run_generic_integration.py [arzi] boot phase: BOOT_DONE
+SYSTEM All tasks running.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 2
+CFGMGR_SGP40 digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_SGP40.cfg - Reading config data into list.
+FRAM FRAM verification set to 60 write cycles.
+SGP40 initialized with storage
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_SGP40.cfg - Reading config data into list.
+SGP40 VOC backup load trigger
+SGP40 Backup counter: 1 Trigger: 60
+FRAM Uninitialized data in block 0, reading block 1
+SYSTEM All tasks running.
+WIFI Wifi inactive
+FRAM Uninitialized data in block 1
+FRAM Writing both blocks, one not IDLE first
+SYSTEM System uptime: 8
+SGP40 No backup found!
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 2 Trigger: 60
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 9
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin_ci_logs/arzi/gc_threshold_neg1/state/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 3 Trigger: 60
+SGP40 read
+SGP40 data stored
+mem: total=6412301, current=2431110, peak=2431325
+stack: 1440 out of 80000
+GC: total: 2072832, used: 728640, free: 1344192
+ No. of 1-blocks: 5761, 2-blocks: 1262, max blk sz: 1024, max free sz: 10814
+digital_twin/run_generic_integration.py [arzi] shutdown: would_have_triggered_count=0 feed_count=11 largest_feed_gap_ms=6795 wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 gc_block_bytes=32 fram_writes=3 fram_writes_by=SGP40:2,SYSTEM:1 fram_silent_writes=0 fram_silent_wrens=0
+digital_twin/run_generic_integration.py: interrupted

@@ -1,0 +1,383 @@
+16:11:58.407 UART_resp TRACE rx 65805 b'5\x02\x01\x01\x01\x01' err 0
+16:11:59.378 TRACE fram hold 66778 141
+16:11:59.379 TRACE fram wait 66779 133
+16:11:59.456 TRACE fram wait 66856 206
+16:11:59.526 TRACE fram wait 66926 273
+16:11:59.578 TRACE fram wait 66977 321
+16:11:59.658 TRACE fram wait 67058 399
+16:11:59.678 UART_resp TRACE rx 67076 b'6\x02\x01\x01\x01\x01' err 0
+16:11:59.740 TRACE fram wait 67140 478
+16:11:59.829 TRACE fram wait 67228 563
+16:11:59.876 TRACE fram wait 67275 607
+16:11:59.920 TRACE fram wait 67320 650
+16:11:59.998 TRACE fram wait 67397 702
+16:12:00.066 TRACE fram wait 67465 763
+16:12:00.124 TRACE fram wait 67524 816
+16:12:00.230 TRACE fram hold 67630 106
+16:12:00.232 TRACE fram wait 67631 917
+16:12:00.263 TRACE fram wait 67663 945
+16:12:00.295 TRACE fram wait 67694 972
+16:12:00.357 TRACE fram wait 67756 1030
+16:12:00.393 TRACE fram wait 67793 1062
+16:12:00.430 TRACE fram wait 67830 1095
+16:12:00.505 TRACE fram wait 67905 1166
+16:12:00.567 TRACE fram wait 67967 1188
+16:12:00.596 TRACE fram wait 67996 1142
+16:12:00.660 TRACE fram wait 68060 1139
+16:12:00.699 TRACE fram wait 68099 1124
+16:12:00.734 TRACE fram wait 68134 1078
+16:12:00.819 UART_resp TRACE rx 68217 b'7\x02\x01\x01\x01\x01' err 0
+16:12:00.822 TRACE fram wait 68222 1086
+16:12:00.895 TRACE fram wait 68295 1069
+16:12:00.958 TRACE fram wait 68357 1083
+16:12:00.990 TRACE fram wait 68390 1071
+16:12:01.046 TRACE fram wait 68446 1051
+16:12:01.106 TRACE fram wait 68506 1042
+16:12:01.137 TRACE fram wait 68537 1015
+16:12:01.239 TRACE fram hold 68639 102
+16:12:01.242 TRACE fram wait 68642 1011
+16:12:01.327 TRACE fram wait 68726 1064
+16:12:01.354 TRACE fram wait 68754 1061
+16:12:01.413 TRACE fram wait 68813 1057
+16:12:01.464 TRACE fram wait 68863 1071
+16:12:01.513 TRACE fram wait 68912 1083
+16:12:01.602 TRACE fram wait 69002 1101
+16:12:01.648 TRACE fram wait 69048 1082
+16:12:01.919 UART_resp TRACE rx 69315 b'8\x02\x01\x01\x01\x01' err 0
+16:12:02.180 SGP40 Writing backup.
+16:12:03.134 UART_resp TRACE rx 70533 b'9\x04\x01\x04\x01\x02' err 0
+16:12:03.144 UART_resp TRACE acked 70543 2 57 4
+16:12:07.880 TRACE fram hold 75280 5675
+16:12:07.885 TRACE fram wait 75285 4873
+16:12:08.030 TRACE fram hold 75430 145
+16:12:08.037 TRACE fram wait 75437 156
+16:12:11.473 TRACE fram hold 78873 3436
+16:12:11.475 SGP40 Backup written with timestamp.
+16:12:11.510 TRACE fram wait 78910 3479
+16:12:11.603 UART_init UART error: already inside a transaction
+16:12:11.657 UART_resp TRACE rx 79055 b'\x00\x02\x01\x01\x01\x01' err 0
+16:12:12.236 TRACE fram hold 79636 477
+16:12:12.260 TRACE fram wait 79660 486
+16:12:12.743 TRACE fram hold 80143 483
+16:12:12.754 TRACE fram wait 80154 517
+16:12:13.222 TRACE fram hold 80622 468
+16:12:13.223 UART_init UART error: invalid ACK for frame 1
+16:12:13.225 UART_init TRACE fault persisted 81 1467 ms
+16:12:13.227 UART_init TRACE drain start 80624
+16:12:13.247 TRACE fram wait 80647 503
+16:12:13.749 TRACE fram hold 81150 503
+16:12:13.751 UART_resp UART error: a data frame arrived where an ACK was due
+16:12:13.752 UART_resp TRACE fault persisted 88 1980 ms
+16:12:13.752 UART_resp TRACE drain start 81152
+16:12:14.759 UART_init TRACE drain end 82159 53
+16:12:14.760 UART_init Resyncing the link
+16:12:15.258 UART_resp TRACE drain end 82658 0
+16:12:15.258 UART_resp Resyncing the link
+16:12:22.836 UART_resp TRACE rx 90234 b'>\x04\x01\x02\x01\x02' err 0
+16:12:22.882 UART_resp TRACE acked 90281 2 62 2
+16:12:23.046 UART_init TRACE sweep cmd 0 90445
+16:12:23.119 UART_resp TRACE rx 90516 b'\x01\x00\x01\x02\x01\x07' err 80
+16:12:23.628 TRACE fram hold 91027 506
+16:12:24.127 TRACE fram hold 91527 498
+16:12:24.130 UART_resp UART error: unexpected frame while listening
+16:12:24.132 UART_resp TRACE fault persisted 80 1011 ms
+16:12:24.133 UART_resp TRACE drain start 91529
+16:12:25.642 UART_resp TRACE drain end 93041 0
+16:12:25.643 UART_resp Resyncing the link
+16:12:25.645 UART_resp TRACE backoff 93043 500
+16:12:31.117 UART_init TRACE sweep got None 98515
+16:12:31.119 UART_init TRACE sweep cmd 1 98517
+16:12:31.189 UART_resp TRACE rx 98587 b'\x01\x01\x01\x02\x01\x07' err 86
+16:12:31.407 TRACE fram hold 98806 214
+16:12:31.564 TRACE fram hold 98964 157
+16:12:31.566 UART_resp UART error: unexpected frame while listening
+16:12:31.568 UART_resp TRACE fault persisted 86 376 ms
+16:12:31.570 UART_resp TRACE drain start 98966
+16:12:33.104 UART_resp TRACE drain end 100504 0
+16:12:33.105 UART_resp Resyncing the link
+16:12:33.107 UART_resp TRACE backoff 100506 1000
+16:12:39.141 UART_init TRACE sweep got None 106540
+16:12:39.141 UART_init TRACE sweep cmd 2 106541
+16:12:39.199 UART_resp TRACE rx 106598 b'\x01\x02\x01\x02\x01\x07' err 80
+16:12:39.677 TRACE fram hold 107078 476
+16:12:40.157 TRACE fram hold 107558 479
+16:12:40.159 UART_resp UART error: unexpected frame while listening
+16:12:40.160 UART_resp TRACE fault persisted 80 960 ms
+16:12:40.160 UART_resp TRACE drain start 107560
+16:12:41.667 UART_resp TRACE drain end 109067 0
+16:12:41.668 UART_resp Resyncing the link
+16:12:41.669 UART_resp TRACE backoff 109069 2000
+16:12:47.175 UART_init TRACE sweep got None 114574
+16:12:47.176 UART_init TRACE sweep cmd 3 114575
+16:12:47.295 UART_resp TRACE rx 114692 b'\x01\x03\x01\x02\x01\x07' err 80
+16:12:47.779 TRACE fram hold 115179 483
+16:12:48.223 TRACE fram hold 115623 443
+16:12:48.225 UART_resp UART error: unexpected frame while listening
+16:12:48.226 UART_resp TRACE fault persisted 80 932 ms
+16:12:48.227 UART_resp TRACE drain start 115625
+16:12:49.774 UART_resp TRACE drain end 117173 0
+16:12:49.776 UART_resp Resyncing the link
+16:12:49.777 UART_resp TRACE backoff 117175 4000
+16:12:55.231 UART_init TRACE sweep got None 122629
+16:12:55.233 UART_init TRACE sweep cmd 4 122631
+16:12:55.322 UART_resp TRACE rx 122719 b'\x01\x04\x01\x02\x01\x07' err 0
+16:12:55.335 UART_resp TRACE acked 122734 7 1 2
+16:12:55.371 UART_init TRACE sweep got 53 122770
+16:12:55.473 TRACE fram hold 122872 134
+16:12:55.609 TRACE fram hold 123008 134
+16:12:55.611 UART_resp callback rejected command 7
+16:12:55.613 UART_resp TRACE W56 persisted 276 ms
+16:12:55.614 UART_resp TRACE drain start 123012
+16:12:57.160 UART_resp TRACE drain end 124560 0
+16:12:57.162 UART_resp Resyncing the link
+16:12:58.437 UART_init TRACE sweep cmd 5 125836
+16:12:58.505 UART_resp TRACE rx 125903 b'\x01\x05\x01\x02\x01\x07' err 80
+16:12:58.657 TRACE fram hold 126057 150
+16:12:58.781 TRACE fram hold 126181 123
+16:12:58.784 UART_resp UART error: unexpected frame while listening
+16:12:58.785 UART_resp TRACE fault persisted 80 278 ms
+16:12:58.787 UART_resp TRACE drain start 126183
+16:13:00.296 UART_resp TRACE drain end 127695 0
+16:13:00.297 UART_resp Resyncing the link
+16:13:00.299 UART_resp TRACE backoff 127697 500
+16:13:06.448 UART_init TRACE sweep got None 133847
+16:13:06.450 UART_init TRACE sweep cmd 255 133848
+16:13:06.540 UART_resp TRACE rx 133938 b'\x01\xff\x01\x02\x01\x07' err 80
+16:13:06.938 TRACE fram hold 134337 395
+16:13:07.369 TRACE fram hold 134768 429
+16:13:07.372 UART_resp UART error: unexpected frame while listening
+16:13:07.374 UART_resp TRACE fault persisted 80 831 ms
+16:13:07.376 UART_resp TRACE drain start 134771
+16:13:08.876 UART_resp TRACE drain end 136275 0
+16:13:08.877 UART_resp Resyncing the link
+16:13:08.878 UART_resp TRACE backoff 136277 1000
+16:13:10.373 SGP40 Writing backup.
+16:13:14.507 UART_init TRACE sweep got None 141906
+16:13:15.516 TRACE fram hold 142917 5144
+16:13:18.982 TRACE fram hold 146381 3463
+16:13:18.984 SGP40 Backup written with timestamp.
+16:13:22.636 UART_resp TRACE rx 150035 b'@\x04\x01\x02\x01\x02' err 0
+16:13:22.658 UART_resp TRACE acked 150058 2 64 2
+16:13:22.851 UART_init TRACE sweep size 0 150251
+16:13:22.945 UART_resp TRACE rx 150344 b'\x01\x04\x00\x02\x01\x07' err 80
+16:13:23.377 TRACE fram hold 150777 429
+16:13:23.864 TRACE fram hold 151264 486
+16:13:23.866 UART_resp UART error: unexpected frame while listening
+16:13:23.867 UART_resp TRACE fault persisted 80 920 ms
+16:13:23.867 UART_resp TRACE drain start 151267
+16:13:25.380 UART_resp TRACE drain end 152780 0
+16:13:25.381 UART_resp Resyncing the link
+16:13:25.382 UART_resp TRACE backoff 152782 500
+16:13:30.895 UART_init TRACE sweep got None 158293
+16:13:30.896 UART_init TRACE sweep size 1 158294
+16:13:30.931 UART_resp TRACE rx 158329 b'\x01\x04\x01\x02\x01\x07' err 0
+16:13:30.963 UART_resp TRACE acked 158361 7 1 2
+16:13:31.073 UART_init TRACE sweep got 53 158471
+16:13:31.507 TRACE fram hold 158906 537
+16:13:31.897 TRACE fram hold 159297 389
+16:13:31.899 UART_resp callback rejected command 7
+16:13:31.901 UART_resp TRACE W56 persisted 935 ms
+16:13:31.902 UART_resp TRACE drain start 159299
+16:13:33.420 UART_resp TRACE drain end 160819 0
+16:13:33.421 UART_resp Resyncing the link
+16:13:34.095 UART_init TRACE sweep size 2 161494
+16:13:34.191 UART_resp TRACE rx 161590 b'\x01\x04\x02\x02\x01\x07' err 80
+16:13:34.654 TRACE fram hold 162053 459
+16:13:35.120 TRACE fram hold 162520 464
+16:13:35.122 UART_resp UART error: unexpected frame while listening
+16:13:35.124 UART_resp TRACE fault persisted 80 930 ms
+16:13:35.125 UART_resp TRACE drain start 162522
+16:13:36.646 UART_resp TRACE drain end 164042 0
+16:13:36.647 UART_resp Resyncing the link
+16:13:36.649 UART_resp TRACE backoff 164048 500
+16:13:42.128 UART_init TRACE sweep got None 169527
+16:13:42.130 UART_init TRACE sweep size 8 169528
+16:13:42.176 UART_resp TRACE rx 169574 b'\x01\x04\x08\x02\x01\x07' err 80
+16:13:42.391 TRACE fram hold 169790 211
+16:13:42.537 TRACE fram hold 169937 146
+16:13:42.541 UART_resp UART error: unexpected frame while listening
+16:13:42.543 UART_resp TRACE fault persisted 80 364 ms
+16:13:42.545 UART_resp TRACE drain start 169942
+16:13:44.075 UART_resp TRACE drain end 171474 0
+16:13:44.076 UART_resp Resyncing the link
+16:13:44.078 UART_resp TRACE backoff 171475 1000
+16:13:50.149 UART_init TRACE sweep got None 177547
+16:13:50.150 UART_init TRACE sweep size 9 177548
+16:13:50.258 UART_resp TRACE rx 177656 b'\x01\x04\t\x02\x01\x07' err 80
+16:13:50.655 TRACE fram hold 178054 394
+16:13:51.140 TRACE fram hold 178539 484
+16:13:51.143 UART_resp UART error: unexpected frame while listening
+16:13:51.145 UART_resp TRACE fault persisted 80 884 ms
+16:13:51.147 UART_resp TRACE drain start 178543
+16:13:52.656 UART_resp TRACE drain end 180055 0
+16:13:52.658 UART_resp Resyncing the link
+16:13:52.659 UART_resp TRACE backoff 180057 2000
+16:13:58.222 UART_init TRACE sweep got None 185621
+16:13:58.224 UART_init TRACE sweep size 255 185622
+16:13:58.338 UART_resp TRACE rx 185736 b'\x01\x04\xff\x02\x01\x07' err 80
+16:13:58.846 TRACE fram hold 186245 505
+16:13:59.177 TRACE fram hold 186576 330
+16:13:59.179 UART_resp UART error: unexpected frame while listening
+16:13:59.181 UART_resp TRACE fault persisted 80 841 ms
+16:13:59.183 UART_resp TRACE drain start 186579
+16:14:00.687 UART_resp TRACE drain end 188086 0
+16:14:00.689 UART_resp Resyncing the link
+16:14:00.690 UART_resp TRACE backoff 188088 4000
+16:14:06.241 UART_init TRACE sweep got None 193640
+16:14:14.402 UART_resp TRACE rx 201800 b'B\x04\x01\x02\x01\x02' err 0
+16:14:14.488 UART_resp TRACE acked 201887 2 66 2
+16:14:14.660 UART_init TRACE sweep chunks 0 202060
+16:14:14.716 UART_resp TRACE rx 202115 b'\x01\x04\x01\x00\x01\x07' err 80
+16:14:15.190 TRACE fram hold 202589 470
+16:14:15.583 TRACE fram hold 202983 392
+16:14:15.586 UART_resp UART error: unexpected frame while listening
+16:14:15.588 UART_resp TRACE fault persisted 80 868 ms
+16:14:15.589 UART_resp TRACE drain start 202985
+16:14:17.118 UART_resp TRACE drain end 204516 0
+16:14:17.120 UART_resp Resyncing the link
+16:14:17.122 UART_resp TRACE backoff 204518 500
+16:14:17.422 SGP40 Writing backup.
+16:14:22.337 TRACE fram hold 209736 4914
+16:14:22.702 UART_init TRACE sweep got None 210100
+16:14:22.704 UART_init TRACE sweep chunks 1 210101
+16:14:22.763 UART_resp TRACE rx 210160 b'\x01\x04\x01\x01\x01\x07' err 80
+16:14:26.282 TRACE fram hold 213681 3944
+16:14:26.284 SGP40 Backup written with timestamp.
+16:14:26.310 TRACE fram wait 213709 3544
+16:14:26.809 TRACE fram hold 214208 499
+16:14:27.111 TRACE fram hold 214510 301
+16:14:27.114 UART_resp UART error: unexpected frame while listening
+16:14:27.116 UART_resp TRACE fault persisted 80 4350 ms
+16:14:27.118 UART_resp TRACE drain start 214513
+16:14:28.626 UART_resp TRACE drain end 216024 0
+16:14:28.627 UART_resp Resyncing the link
+16:14:28.629 UART_resp TRACE backoff 216026 1000
+16:14:30.715 UART_init TRACE sweep got None 218113
+16:14:30.717 UART_init TRACE sweep chunks 2 218114
+16:14:30.811 UART_resp TRACE rx 218208 b'\x01\x04\x01\x02\x01\x07' err 0
+16:14:30.837 UART_resp TRACE acked 218236 7 1 2
+16:14:30.902 UART_init TRACE sweep got 53 218301
+16:14:31.308 TRACE fram hold 218707 467
+16:14:31.724 TRACE fram hold 219123 415
+16:14:31.727 UART_resp callback rejected command 7
+16:14:31.729 UART_resp TRACE W56 persisted 888 ms
+16:14:31.730 UART_resp TRACE drain start 219126
+16:14:33.231 UART_resp TRACE drain end 220629 0
+16:14:33.232 UART_resp Resyncing the link
+16:14:33.940 UART_init TRACE sweep chunks 255 221338
+16:14:34.036 UART_resp TRACE rx 221433 b'\x01\x04\x01\xff\x01\x07' err 0
+16:14:34.061 UART_resp TRACE acked 221460 7 1 255
+16:14:34.125 UART_init TRACE sweep got 53 221524
+16:14:34.596 TRACE fram hold 221996 532
+16:14:34.922 TRACE fram hold 222322 325
+16:14:34.924 UART_resp callback rejected command 7
+16:14:34.926 UART_resp TRACE W56 persisted 862 ms
+16:14:34.927 UART_resp TRACE drain start 222324
+16:14:36.432 UART_resp TRACE drain end 223830 0
+16:14:36.433 UART_resp Resyncing the link
+16:14:45.221 UART_resp TRACE rx 232619 b'D\x04\x01\x02\x01\x02' err 0
+16:14:45.230 UART_resp TRACE acked 232629 2 68 2
+16:14:45.366 UART_init TRACE sweep cur_chunk 0 232764
+16:14:45.445 UART_resp TRACE rx 232842 b'\x01\x04\x01\x02\x00\x07' err 80
+16:14:45.592 TRACE fram hold 232991 144
+16:14:45.719 TRACE fram hold 233118 125
+16:14:45.721 UART_resp UART error: unexpected frame while listening
+16:14:45.723 UART_resp TRACE fault persisted 80 276 ms
+16:14:45.724 UART_resp TRACE drain start 233120
+16:14:47.252 UART_resp TRACE drain end 234651 0
+16:14:47.253 UART_resp Resyncing the link
+16:14:47.255 UART_resp TRACE backoff 234653 500
+16:14:53.377 UART_init TRACE sweep got None 240775
+16:14:53.379 UART_init TRACE sweep cur_chunk 1 240776
+16:14:53.523 UART_resp TRACE rx 240920 b'\x01\x04\x01\x02\x01\x07' err 0
+16:14:53.544 UART_resp TRACE acked 240943 7 1 2
+16:14:53.627 UART_init TRACE sweep got 53 241025
+16:14:53.933 TRACE fram hold 241332 385
+16:14:54.325 TRACE fram hold 241724 391
+16:14:54.327 UART_resp callback rejected command 7
+16:14:54.329 UART_resp TRACE W56 persisted 782 ms
+16:14:54.331 UART_resp TRACE drain start 241727
+16:14:55.829 UART_resp TRACE drain end 243229 0
+16:14:55.830 UART_resp Resyncing the link
+16:14:56.661 UART_init TRACE sweep cur_chunk 2 244060
+16:14:56.706 UART_resp TRACE rx 244104 b'\x01\x04\x01\x02\x02\x07' err 80
+16:14:57.117 TRACE fram hold 244517 409
+16:14:57.586 TRACE fram hold 244986 468
+16:14:57.588 UART_resp UART error: unexpected frame while listening
+16:14:57.589 UART_resp TRACE fault persisted 80 882 ms
+16:14:57.589 UART_resp TRACE drain start 244989
+16:14:59.095 UART_resp TRACE drain end 246494 0
+16:14:59.095 UART_resp Resyncing the link
+16:14:59.096 UART_resp TRACE backoff 246496 500
+16:15:04.716 UART_init TRACE sweep got None 252115
+16:15:04.718 UART_init TRACE sweep cur_chunk 255 252116
+16:15:04.756 UART_resp TRACE rx 252152 b'\x01\x04\x01\x02\xff\x07' err 80
+16:15:05.153 TRACE fram hold 252552 395
+16:15:05.682 TRACE fram hold 253082 529
+16:15:05.683 UART_resp UART error: unexpected frame while listening
+16:15:05.684 UART_resp TRACE fault persisted 80 928 ms
+16:15:05.708 UART_resp TRACE drain start 253084
+16:15:07.225 UART_resp TRACE drain end 254624 0
+16:15:07.226 UART_resp Resyncing the link
+16:15:07.228 UART_resp TRACE backoff 254627 1000
+16:15:12.747 UART_init TRACE sweep got None 260145
+16:15:20.818 UART_resp TRACE rx 268215 b'F\x04\x01\x02\x01\x02' err 0
+16:15:20.865 UART_resp TRACE acked 268263 2 70 2
+16:15:21.013 UART_init TRACE sweep uid 0 268411
+16:15:21.115 UART_resp TRACE rx 268512 b'\x00\x04\x01\x02\x01\x07' err 0
+16:15:21.139 UART_resp TRACE acked 268538 7 0 2
+16:15:21.229 UART_init TRACE sweep got 53 268627
+16:15:21.638 TRACE fram hold 269037 472
+16:15:22.118 TRACE fram hold 269517 478
+16:15:22.120 UART_resp callback rejected command 7
+16:15:22.121 UART_resp TRACE W56 persisted 979 ms
+16:15:22.123 UART_resp TRACE drain start 269519
+16:15:23.637 UART_resp TRACE drain end 271036 0
+16:15:23.639 UART_resp Resyncing the link
+16:15:24.239 UART_init TRACE sweep uid 254 271637
+16:15:24.333 UART_resp TRACE rx 271729 b'\xfe\x04\x01\x02\x01\x07' err 0
+16:15:24.355 UART_resp TRACE acked 271753 7 254 2
+16:15:24.447 UART_init TRACE sweep got 53 271845
+16:15:24.760 TRACE fram hold 272159 402
+16:15:25.233 TRACE fram hold 272633 450
+16:15:25.235 UART_resp callback rejected command 7
+16:15:25.236 UART_resp TRACE W56 persisted 879 ms
+16:15:25.237 UART_resp TRACE drain start 272635
+16:15:25.552 SGP40 Writing backup.
+16:15:26.747 UART_resp TRACE drain end 274146 0
+16:15:26.749 UART_resp Resyncing the link
+16:15:27.480 UART_init TRACE sweep uid 255 274878
+16:15:27.575 UART_resp TRACE rx 274972 b'\xff\x04\x01\x02\x01\x07' err 80
+16:15:29.573 TRACE fram hold 276971 4019
+16:15:29.588 TRACE fram wait 276987 2010
+16:15:29.946 TRACE fram hold 277345 358
+16:15:29.970 TRACE fram wait 277369 396
+16:15:35.071 TRACE fram hold 282471 5101
+16:15:35.073 SGP40 Backup written with timestamp.
+16:15:35.124 TRACE fram wait 282523 5177
+16:15:35.464 TRACE fram hold 282863 340
+16:15:35.467 UART_resp UART error: unexpected frame while listening
+16:15:35.469 UART_resp TRACE fault persisted 80 7892 ms
+16:15:35.471 UART_resp TRACE drain start 282865
+16:15:35.519 UART_init TRACE sweep got None 282917
+16:15:36.972 UART_resp TRACE drain end 284370 0
+16:15:36.973 UART_resp Resyncing the link
+16:15:36.975 UART_resp TRACE backoff 284372 500
+16:15:43.644 UART_resp TRACE rx 291041 b'H\x04\x01\x02\x01\x02' err 0
+16:15:43.666 UART_resp TRACE acked 291064 2 72 2
+16:15:43.942 UART_resp TRACE rx 291340 b'J\x02\x01\x01\x01\x01' err 0
+16:15:45.339 UART_resp TRACE rx 292735 b'K\x02\x01\x01\x01\x01' err 0
+16:15:46.520 UART_resp TRACE rx 293917 b'L\x02\x01\x01\x01\x01' err 0
+16:15:47.941 UART_resp TRACE rx 295339 b'M\x02\x01\x01\x01\x01' err 0
+16:15:49.345 UART_resp TRACE rx 296743 b'N\x02\x01\x01\x01\x01' err 0
+16:15:50.784 UART_resp TRACE rx 298181 b'O\x02\x01\x01\x01\x01' err 0
+16:15:52.114 UART_resp TRACE rx 299511 b'P\x02\x01\x01\x01\x01' err 0
+16:15:53.255 UART_resp TRACE rx 300653 b'Q\x02\x01\x01\x01\x01' err 0
+16:15:54.330 UART_resp TRACE rx 301729 b'R\x02\x01\x01\x01\x01' err 0
+16:15:55.437 UART_resp TRACE rx 302836 b'S\x02\x01\x01\x01\x01' err 0
+16:15:56.520 UART_resp TRACE rx 303919 b'T\x02\x01\x01\x01\x01' err 0
+16:15:57.618 UART_resp TRACE rx 305016 b'U\x02\x01\x01\x01\x01' err 0
+16:15:58.741 UART_resp TRACE rx 306139 b'V\x02\x01\x01\x01\x01' err 0
+16:15:59.844 UART_resp TRACE rx 307241 b'W\x02\x01\x01\x01\x01' err 0
+16:16:00.936 UART_resp TRACE rx 308333 b'X\x02\x01\x01\x01\x01' err 0
+16:16:02.069 UART_resp TRACE rx 309466 b'Y\x02\x01\x01\x01\x01' err 0
