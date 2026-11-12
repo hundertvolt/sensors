@@ -43693,3 +43693,24 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   (console_1334.txt, status_after_8b_1335.json).
 - Not rerun, not fixed. Under 13:11's rule (go on after a red on test-side causes alone) the wear goes on: 10b, 15
   (if it ends by 21:33), then 7f. If you read this red as firmware, say so and I stop after the step that is running.
+
+## Bench 2026-11-12 14:10 UTC - 10b red; the board is on its own hotspot with the wrong-password test's credentials; the wear stopped
+
+- 10b (13:37:11-13:48:02, 651 s, rc 1, the hotspot module whole): 21 passed. `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot`
+  FAILED at :375, "timed out after 40.0s waiting for: the DUT to leave its hotspot for the fresh streak" (its wrong-
+  password PUT was answered Valid/Valid). Every test after it errored or failed for the same reason: the board was not
+  reachable, neither at 192.168.4.1 nor on the bridge. That covers real_credentials_put (setup), second_failed_streak
+  (setup), role_flips_back (FAILED, and the recovery pass "kick + hard_reset()") and uart_link_across_the_mode_switch.
+- Host journal: br0-wifi-ap back on wlan0 at 13:41:39. From 13:43:22 to 13:46:27, 46 AP-STA-POSSIBLE-PSK-MISMATCH from
+  the DUT's MAC. So it left its hotspot and tried the bench AP with the wrong password, as the test wanted, but after
+  the test's 40 s. Whether that delay is the firmware's or the bench's (the AP down/up around the PUT), I cannot tell
+  from here; the lead's read is needed.
+- Now (13:53, console read passively for 45 s): the board runs normally on its own hotspot ("WIFI Connected stations:
+  []", uptime ~430 after the recovery reset). No bridge address, and the wrong password stays in config_WIFI.cfg, so it
+  will not rejoin by itself. The test that writes the real credentials back never ran.
+- Restoring it: the owner chose (13:5x) a narrow run of the real-credentials and flip-back tests. It cannot work: the
+  module's joined_hotspot fixture reads GET /networking over the bridge first (stage 0). The other route, writing
+  config_WIFI.cfg back over USB with the harness's config_files_restore.py from 7b's saved set
+  (build/archive/run_bench_hardware_suite/20261112T125717Z/config-files-before-reset.txt), handles the real
+  credentials, and the session's permission check stopped me reading that file. I have asked the owner.
+- The wear has stopped: 15 and 7f wait for the board. 15 must start by 18:43. Flash cycles today: 3.
