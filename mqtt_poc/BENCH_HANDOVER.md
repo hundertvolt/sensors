@@ -68,22 +68,24 @@ And on 2026-10-08:
 
 - **Branch** `claude/whole-project-audit-plan-followup`, draft PR hundertvolt/sensors#110. It is stacked on the
   whole-project audit branch `claude/whole-project-audit-plan` (PR hundertvolt/sensors#107) at its head
-  `0103283` (U22: the LED re-check, the Wi-Fi silent mode and the fresh-boot settings change). It merges only
+  `1989c83` (U35, merged in `a8d075cc`). It merges only
   after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
-- **Verified on the host** (`46671ce`, the ping interval and the publisher as settings; the 2026-11-12 restructure
-  came after it, and the runner's lower levels run every host tier on the head first), each tier run on its own:
+- **Verified on the host** (`827c5f0b` to `b1586d5b`, the 2026-11-12 restructure; the later two commits change
+  only test files, each rerun), each tier run on its own (the runner's lower levels run every
+  host tier on the head first):
   - lint and all three typecheck passes;
-  - `scripts/test.sh` at both GC stages: 96 files, 4,984 MicroPython tests, zero memory errors;
-  - the full `tests_scripts/` tier: 4,275 tests passed, 11 skipped;
-  - the `dev` twin suite, Run 12 (Run 14 since the audit merge) included (the client against a real
-    mosquitto: kill, stall, takeover, flood, the will, a persistent session across a restart, the keep-alive
-    the ping interval sets, pings off, the retire): 372 of 372 checks across both stages;
-  - `npm test` under the `.nvmrc` Node 24, the website's settings matrix with it: 1,367 passed, 8 skipped.
-- **CI**: 26 of 27 checks passed on `46671ce`. The 27th, `Unit tests (shipped gc.threshold)`, failed one test each in
-  `tests/test_digital_twin_sensortask_integration.py` (wozi only) and `tests/test_digital_twin_isl29125_autorange.py`:
-  both files and the code under them match the audit base, whose own run `38443106827` failed the first the
-  same way, and both passed here at both stages (the PR comment has the trace). The PR's checks show the current head.
+  - `scripts/test.sh` at both GC stages: 124 files, 5,383 MicroPython tests, zero memory errors; the two MQTT
+    test files also under `build-settrace`, the coverage run's binary;
+  - the full `tests_scripts/` tier: 6,695 passed, 6 skipped, its one failure the variant literal `bc7c951b`
+    fixed (that file and `tests_scripts/test_no_variant_literals.py` pass since);
+  - the `dev` twin suite at both stages, Run 14 included (the client against a real mosquitto: the exerciser's
+    echo, kill, stall, takeover, flood, the will, a persistent session across a restart, the keep-alive the
+    ping interval sets, pings off, the retire, and the client idle in the boot hotspot): 734 of 734 checks,
+    plus 26 of 26 in its CRC16 variant;
+  - `npm test` under the `.nvmrc` Node 26: 1,282 passed;
+  - `dev`'s image: 1,178,020 B of the 1,228,800 B before the filesystem (95.9 %).
+- **CI**: the PR's checks show the current head.
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
@@ -92,7 +94,8 @@ And on 2026-10-08:
   the `online` timing (`43b5373`), the memory layout (DESIGN.md §5: one stream per outbound slot, the
   settings and topics born at boot), and the audit's U20 to U22 (merged in `1efe566`): a controlled shutdown
   for every system command, the generated boot entries, the Wi-Fi silent mode, and the `modlwip_eagain`
-  override (SPECIFICATION.md B.14.4). The client is now built before the UART links. Since 2026-10-13 the will
+  override (SPECIFICATION.md B.14.4), and U23 to U35 (merged in `f26f227f` and `a8d075cc`). The client is now
+  built before the UART links. Since 2026-10-13 the will
   and its topic, the online and offline messages and a persistent session are settings (DESIGN.md §15), with
   three bench tests of their own (section 5); so is the ping interval (180 s, or off), and every message now gets
   a ping of its own (DESIGN.md §16). Since 2026-11-12 (DESIGN.md §17) the client is one self-contained file with
