@@ -43730,3 +43730,19 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   RR 21, LastTaskEnd null, ConfigFaults [], MemFree 63488.
 - 10b's red is not clearly test-side (the DUT left its hotspot after the test's 40 s), so under 13:11's rule I wait for
   your read before 15 (it must start by 18:43), then 7f.
+
+## Bench 2026-11-12 14:18 UTC - 10b read as 14:16 asks: the board left its hotspot within 40 s; the probe lagged; the wear goes on
+
+- What :375 polls: `_on_dut_hotspot(bench)` is `bench.gateway_ip()`, i.e. `nmcli -g IP4.GATEWAY device show wlan0`, every
+  ~2 s. Each poll is a sudo line in the host journal, so the journal timestamps the window (journalctl -o short-precise).
+- The PUT: no timestamp in 10b's log; it lies between the last join-stage poll (13:40:37.8) and the first :375 poll
+  (13:40:39.9). :375's polls run 13:40:39.9 -> 13:41:26.7 (22 polls, the 40 s wait), and the failure follows.
+- The board's first sign of leaving: 13:41:14.46, wpa_supplicant on wlan0 "CTRL-EVENT-DISCONNECTED bssid=<the DUT's>
+  reason=0 locally_generated=1", the bench client losing the DUT's access point. That is 34.6-36.7 s after the PUT's
+  response, inside 40 s. NM kept wlan0's IP4.GATEWAY until "activated -> failed (reason 'ssid-not-found')" at
+  13:41:29.5, so the probe read "still on the hotspot" for about 15 s after the board had gone. Then at 13:41:34 the
+  client rejoined the reopened hotspot: the failed streak and the hotspot reopening, as designed.
+- No console from that window and the FRAM entries carry no timestamps; the journal is the evidence.
+- Decision under 14:16's first branch: the board met its design; 10b's red is test-side (the departure probe reads NM's
+  retained gateway, not the association), recorded, no rerun. Its cascade (the AP back up at 13:41:39 under the
+  wrong password, the board ending silent) followed from it. Going on: 15 (start by 18:43), then 7f if it ends by 21:33.
