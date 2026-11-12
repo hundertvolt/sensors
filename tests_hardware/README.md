@@ -1087,8 +1087,7 @@ check" paragraph.
   that never delivered fails as "the injection never reached the DUT", never as a pass. `REDIRECT`
   targets the ingress interface's own address: a DNAT to 127.0.0.1 never delivered on this bench,
   whose `net.ipv4.conf.*.route_localnet` reads `0` on every interface, the Linux condition under
-  which DNAT to 127.0.0.1 from a non-loopback interface fails. The garbage tests' next bench run
-  settles the `REDIRECT` (agent, 2026-11-06).
+  which DNAT to 127.0.0.1 from a non-loopback interface fails.
 - **A garbage DNS reply and silence log the same code** (`NTP_DNS`: `resolve_ipv4()` keeps no log
   of its own), so the DNS garbage test's delivery proof is the responder's count, not the log.
 - **The redirect cannot exercise the DUT's source filter**: conntrack rewrites the redirected
