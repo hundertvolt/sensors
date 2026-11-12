@@ -43789,3 +43789,17 @@ meant for this campaign: nothing to act on. Sent to the lead too.
 - Today's wear, all run: 7b (counts, 3 test-side), 8f PASS, 8b (counts on its CRC-16 checks), 10b (test-side by the
   journal), 15 (test-side, the rollover not checked), 7f (above). Flash cycles: 5 (8f 1, 8b 2, 15 2). Nothing else is
   planned for this window (to 21:33). I wait for your read; nothing is rerun.
+
+## Bench 2026-11-12 15:06 UTC - 15:05's three items: floats PASS on 1c7b973e; 15 rerunning; trixie after it
+
+- Merged 7d8697ca (int 90fdb77a's code at 1c7b973e: tests and docs only, no change under src/, devices/, buildgen/; the round
+  image stands).
+- The float timing you asked for: not settled from the log. pytest's log and the run record carry no timestamps, so
+  "FACT fields=17" has no time. The kernel shows the board re-enumerating at 14:33:05.4 and 14:33:08.3, in the slot of
+  the float test (4th of 16), but nothing ties either to the Errno 5. The rerun answers it instead:
+- 1. `test_config_floats_round_trip_unchanged` alone (PYTEST_K, `run 7f 7f`, --allow-persistence-write via gated):
+  PASSED, 15:04:01-15:05:52, 110 s, rc 0 (NOT CLEAN only for the lower levels it skips). One scratch write.
+- 2. `run 15 15` started 15:07 (about 2.5 h, ends ~17:40, FC 2, today 5 -> 7).
+- 3. The trixie leg follows 15 (no heavy host job during a board run): a fresh --variant=minbase chroot at
+  /home/nico/chroots/trixie, /tmp on tmpfs, a clone of this head, uv as pyproject pins it; env generic, lint, typecheck,
+  test.sh at 4 jobs. Its end by 21:33 depends on the build, about 3 h from ~17:40 (~20:40).
