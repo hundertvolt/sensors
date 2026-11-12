@@ -1,16 +1,17 @@
-# The whole-project audit: final report (draft, W3a, 2026-11-10; tree 51c9c75f; lead's edits at eb8a214e)
+# The whole-project audit: final report (draft; W3a 2026-11-10 at 51c9c75f; lead update 2026-11-12 at 67e47fa6)
 
-Pre-audit tree `25caf528` (2026-09-25). Final tree `<BENCH: head after the last round and P01's green pass>`,
+Pre-audit tree `25caf528` (2026-09-25). Final tree `67e47fa6` unless the bench's last steps change code
+(`<BENCH: 10g, k, wear>`; P01: `<gate66 on 67e47fa6>`, CI run 43167146357 on snapshot 65 `4d4d8a60`),
 merged into `main` as release 2.0 with the owner's agreement (release number: owner, 2026-11-10, "It's 2.0").
 The audit's records (`audit/`, `PROJECT_AUDIT_PLAN.md`) are deleted at D. Every record stays reachable from three
 branches that are never deleted (owner, 2026-11-10 21:55:27): `claude/u35-audit-archive` at `<D: sha>`, the last
 commit holding them; `claude/u35-bench-campaign`, the bench's evidence; `claude/u35-int-backup`, the integration history.
 
 ## 1. What the audit changed against 25caf528 (current fact, by area)
-Volume, outside `audit/` and `arduino/`: 1,306 commits, 928 files (+205,158 / -164,148 lines). `src/` keeps 28
-modules (seven now carry the `asy_` prefix), 13,214 -> 14,744 lines; `buildgen/` 3,681 -> 5,755; `tests/`
-62,532 -> 101,601 lines; files: `tests_scripts/` 65 -> 213, `tests_hardware/` 98 -> 178, `scripts/` 20 -> 52,
-`fakes/` new (5). Image and free-flash figures per device: `<BENCH: P01's firmware builds>`.
+Volume at 67e47fa6, outside `audit/` and `arduino/`: 1,327 commits (1,197 without merges), 929 files
+(+204,547 / -163,742 lines). `src/` keeps 28 modules (seven now carry the `asy_` prefix), 13,214 -> 14,738 lines;
+`buildgen/` 3,681 -> 5,755; `tests/` 62,532 -> 101,776 lines; files: `tests_scripts/` 65 -> 213, `tests_hardware/`
+98 -> 178, `scripts/` 20 -> 52, `fakes/` new (6). Image and free-flash figures per device: `<BENCH: P01's firmware builds>`.
 - **Errors and logs.** One global error catalog; one entry per fault per level (an error at its level, a warning
   at the level that degrades); every module's history under `GET /status` `errcount`, FRAM-backed for the FRAM
   wired modules; one history slot per repeat (the newest-entry rule).
@@ -30,7 +31,8 @@ modules (seven now carry the `asy_` prefix), 13,214 -> 14,744 lines; `buildgen/`
   arrival order, an external command is refused while a signal runs.
 - **Network and REST.** Six endpoints from one generated reference; a head guard before Microdot; refusals at the
   connection ceiling counted; `/status` streamed one response at a time; a patched lwIP copy (EAGAIN on a full send
-  queue, no callbacks on a closing listener) in every image; `DNSFallback` a user setting.
+  queue, no callbacks on a closing listener) in every image, with `TCP_SND_BUF` 1,600 B: five clients that stop
+  reading cannot fill the 12,000 B send pool (6,400 B let two block every route); `DNSFallback` a user setting.
 - **UART link.** Bounded piece receives on a DMA ring, never blocking the loop; its own `PUT /uart` route on `dev`;
   every protocol change in `UART_C_PORT_CHANGELOG.md` for the C side's reconciliation (post-audit).
 - **Build chain.** `buildgen` generates each device's task module, boot entry, page definitions and website from
@@ -49,10 +51,10 @@ modules (seven now carry the `asy_` prefix), 13,214 -> 14,744 lines; `buildgen/`
 73 rows open or partly closed at 51c9c75f: DONE 35, PLACED 13, TO PLACE 9, DROPPED 8, BENCH 7, OWNER 1. The five
 rows whose state cell was never filled: DONE 3, TO PLACE 2. OF-16's record and DECREV 4's ninth place are one
 item: done in code (87c14760, SPECIFICATION.md N.2), its two record lines corrected before the archive commit `<D>`.
-- TO PLACE (one doc line each, W3b or D): the `WaitTimeNTP` 0 wording, the mock's stateless system commands
-  (H.4), the stage-only wipe's root, a pre-check Edge keyring, the UART soak's stale-root note, one twin fidelity
-  row (AP `isconnected()`, unlinked rssi), the escalation hold in the feed-gap check, the flash-stall model, the
-  `_unix_port.sh check` gap; and two from the unfilled rows.
+- TO PLACE: W3b (f3c4fe9f, 67e47fa6) placed the firmware facts: the `WaitTimeNTP` 0 wording (DEVICE_REFERENCE.md;
+  no warning is logged, as code and legacy show) and the stage-only wipe's root (build_device_websites.sh). The
+  test, twin and tooling lines (H.4 mock, Edge keyring, UART soak root, twin fidelity row, feed-gap hold,
+  flash-stall model, `_unix_port.sh check`, two unfilled rows) stay in the archived record: firmware facts only.
 - BENCH: `<BENCH: each row's step result>` (VOC stretch, serving heap at the ceiling, lwIP send stall, the two
   ResetErrors refusals, the SGP40 raw walk, the owed-hardware rows; the FRAM pull and the crossover pull, step j).
 - OWNER: `disallow_any_unimported` in the three mypy passes (one site left), a question the audit planned and
@@ -72,7 +74,7 @@ item: done in code (87c14760, SPECIFICATION.md N.2), its two record lines correc
 - **O5** The release number: the owner, 2026-11-10 16:40:55, "It's 2.0" (5b8c3446).
 - **O6** The clean-chroot legs: option (a), reused chroots with their scratch in RAM, which the owner's 2026-11-07
   words ("better style yes, but no blocker") and the recipe meet; run at the final head in the last round's
-  step k: `<BENCH: noble and trixie results>`.
+  step k (2026-11-12): `<BENCH: noble and trixie results>`.
 
 ## 4. The agent decisions for review (W3A/O4.tsv)
 62 credits on 60 lines at eb8a214e (2026-11-06 28, 11-07 9, 11-09 15, 11-10 10), in eleven topics: rules of method
@@ -113,7 +115,8 @@ twin harness failures read as microSD write stalls). Changed since: uv 0.13.7 an
 its npm tree; a third Unix-port binary (`build-lwip`); the installer's lwIP readback, patched `modlwip.c` copy,
 GC mark-stack and qstr variant header, bounded network steps, one apt install with apt's own retries; host needs
 `flock`, `timeout` and a writable runtime dir; one device per hardware family in the per-device runs.
-Final legs: `<BENCH: step k>`.
+Since then also `TCP_SND_BUF` 1,600 in `toolchain/versions.toml` [lwip].
+Final legs: `<BENCH: step k, 2026-11-12>`.
 
 ## 8. The last round (filled after the bench)
 - Two-image GC proof (the shipped threshold against a control image without it, default flash and bench tiers):

@@ -1587,3 +1587,11 @@ Not to forget - don't drop real features and don't introduce or reintroduce gaps
 ## 2026-11-12 06:15:32 UTC - wear clearance after today's plan (relayed by the bench, 06:14 UTC)
 "Once you are done with the plan for today, you have clearance for the wear tests" (relayed)
 (The owner clears the wear steps for today, after today's plan (10g, then k), ahead of the manual checks; the lead's own read of the results still precedes the cleared: line.)
+
+## 2026-11-12 06:28:11 UTC - lead idle after the W3b report; go on
+"Are you actually doing anything at the moment? Go on with the steps you named"
+(The owner asks whether work is running and directs the lead to proceed with the named steps: the final verification pass, the report draft, the close-out prep.)
+
+## 2026-11-12 06:31:47 UTC - NeoPixel rig prepared (relayed by the bench, ~06:16 UTC, bench note 524a0d8c)
+"Neopixel rig is prepared" (relayed)
+(The owner reports the NeoPixel rig for 7f's light-program tests is set up; read by the lead at 06:31, after relay 06:18 had held 7f back for j.)
