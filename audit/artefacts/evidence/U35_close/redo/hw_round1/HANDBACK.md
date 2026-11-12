@@ -43839,3 +43839,11 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   only saved set on the Pi) now holds those 8; the config_MQTT.cfg entry is gone, no copy kept.
 - WEAR.txt: `write: 2026-11-12 19:17:00 config_MQTT.cfg removed from the board, 1 filesystem write`.
 - config_reset not rerun. The trixie chroot stays. Nothing else starts today; STOP at 21:33.
+
+## Bench 2026-11-12 21:05 UTC - day 7 end: STOP early on the owner's word
+
+- The owner, 21:05 UTC: "no, sorry, stop immediately". STOP touched 21:05 (planned 21:33); the relay watcher stopped.
+  No relay after 19:13. Nothing was running: the board is idle on the round image, serving, 8 config files.
+- Day 7: 7 flash cycles (ledger logs/day7_20261112/fc_ledger.txt), 1 filesystem write (config_MQTT.cfg removed).
+  The plan and the three 15:05 items done. The trixie chroot stays at /home/nico/chroots/trixie.
+- The later window, unchanged: j (M1 first), 16b's power-cycle half, 13, the BMP3XX forced-mode conversion-time read.
