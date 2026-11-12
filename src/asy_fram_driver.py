@@ -87,6 +87,7 @@ _W_WEL_RETRIED = const(256)  # console only: a recovered transient
 # Error-catalog codes this module logs (buildgen/error_catalog.json, SPECIFICATION.md Part C.7.1).
 _ERR_NOT_INIT = const(18)
 _ERR_BAD_ARG = const(21)
+_ERR_UNEXPECTED = const(23)
 _ERR_FRAM_WP_MISMATCH = const(45)
 _WRN_FRAM_WEL_NOT_SET = const(26)
 _WRN_FRAM_WEL_STUCK = const(27)
@@ -330,6 +331,10 @@ class FRAM_SPI:
         if not self.initialized:
             self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
-        self.begin()
+        try:
+            self.begin()
+        except Exception as e:  # another device's async session holds the bus: refused, as the chunk layer's _begin()
+            self.pr.err_s("FRAM bus not available:", e, errno=_ERR_UNEXPECTED)
+            return False
         self.initialized = self._check_device_id()
         return self.initialized
