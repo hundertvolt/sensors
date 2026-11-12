@@ -871,8 +871,10 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     TOML carries `driver = "mqtt"`) — the suite starts its own `mosquitto` on a free loopback port
     (`tests_hardware/mqtt_probe.py`, shared with the bench tier; the package comes from
     `toolchain/versions.toml`'s `apt_packages`, and a missing broker fails the run rather than skipping
-    it), enables the client over `PUT /networking`, and watches the broker through a `Probe`
-    subscriber. The traffic is the device's link exerciser (`driver = "mqtt_link"`, A.12), the client
+    it), and watches the broker through a `Probe` subscriber. The client is enabled first, over
+    `PUT /networking`, in the hotspot the fresh twin boots into: there it waits, and over three link
+    polls `MQTTConnects` stays 0 and the broker logs no connect from it (A.12's hotspot rule); then the
+    station gets its SSID. The traffic is the device's link exerciser (`driver = "mqtt_link"`, A.12), the client
     itself sending no sensor values: `online` retained on `<base>/status`, the exerciser's echo probes
     on `<base>/link/echo` with `GET /status`'s `MQTTLINK` `Transfers` advancing and `Failures` still,
     an inbound `cmd` message counted as a `Command` and shown as `MQTTLastRxTopic`, and the keep-alive

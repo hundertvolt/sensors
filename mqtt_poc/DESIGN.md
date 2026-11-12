@@ -388,8 +388,9 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
   while the client is off or the hotspot runs, a stale or retained echo counting nothing, commands counted,
   saturating counters, no allocation and no raise in its callbacks. (The publisher's cadence on a virtual clock,
   §13 item 13, left with the publisher, §17.)
-- **L2** (Run 14 of the twin CI suite, devices carrying `mqtt`): a real mosquitto on a free port; enable over
-  REST; `online` retained; the exerciser's echo probes on `<base>/link/echo` and its `MQTTLINK` counters
+- **L2** (Run 14 of the twin CI suite, devices carrying `mqtt`): a real mosquitto on a free port; enabled over
+  REST first in the hotspot the fresh twin boots into, where it waits and the broker logs no connect from it
+  over three link polls, then the station gets its SSID; `online` retained; the exerciser's echo probes on `<base>/link/echo` and its `MQTTLINK` counters
   advancing; an inbound `cmd` message counted as a command; broker
   SIGKILL and restart, SIGSTOP stall, client-id takeover and an inbound flood, each recovered by the rules
   above; REST serving throughout; no task restarted; then (§15) a configured status topic and payloads, the
