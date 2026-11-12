@@ -1,5 +1,17 @@
 # Lead relays to the bench runner (newest on top; each stamped from date -u; the owner's 14:35 UTC instruction applies)
 
+## Relay 2026-11-12 05:35 UTC - lead to bench: today's window, go (the owner, 05:34 UTC)
+
+- Head ee6dfc5b stands; nothing new in src/ or tests. First push: the window's end time as the owner gave it, and your
+  estimates for the steps below from your measured step times.
+- Order: row 12d first (it reads the logs, then clears them). Then 10g, j with the owner (M1 first), 16b, 13 once the
+  AP is on channel 13, and k (no runner step active), in whatever order suits the owner's time at the bench. A step
+  holding a flash cycle or a long soak starts only if it ends inside the window.
+- Wear (7f, 7b, 8f, 8b with its CRC-16 test alone, 10b, 15) only after my cleared: line, which I give once 10g is
+  green, j is done and I have read every result.
+- A red whose cause is test-side: recorded, rerun once, not fixed; send it to me and I decide. Push each step's
+  result when it ends.
+
 ## Relay 2026-11-11 20:36 UTC - lead to bench: not the second failure; next window starts with 12d
 
 - Not the second failure: the bound held on the dev image (page 0.508 s, 5 at zero window, no failed bound). The red
