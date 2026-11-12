@@ -175,7 +175,8 @@ def test_no_output_is_ever_opened_for_writing_under_its_final_name(generate_sens
         return real_open(file, mode, *args, **kwargs)  # type: ignore[call-overload]
 
     def recording_replace(src: "str | Path", dst: "str | Path") -> None:
-        renamed.append((Path(src), Path(dst)))
+        if Path(dst).is_relative_to(out_dir):  # build/portable_src (a host with no native emitter) is not this test's
+            renamed.append((Path(src), Path(dst)))
         real_replace(src, dst)
 
     monkeypatch.setattr(io, "open", recording_open)
@@ -250,7 +251,8 @@ def test_both_freshness_stamps_hash_every_input_and_land_after_every_other_outpu
     real_replace = os.replace
 
     def recording_replace(src: "str | Path", dst: "str | Path") -> None:
-        renamed.append(Path(dst))
+        if Path(dst).is_relative_to(out_dir):  # build/portable_src (a host with no native emitter) is not stamped
+            renamed.append(Path(dst))
         real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", recording_replace)

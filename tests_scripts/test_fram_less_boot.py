@@ -80,7 +80,7 @@ def _boot(repo_root: Path, micropython_bin: Path, tmp_path: Path, toml_text: str
     (tmp_path / "cfg").mkdir()
     script = tmp_path / "boot.py"
     script.write_text(_BOOT % {"device": _DEVICE, "cfg": tmp_path / "cfg", "marker": _FACTS}, encoding="utf-8")
-    env = {"MICROPYPATH": f"{tmp_path}:src:tests:fakes:.frozen", "TZ": "UTC", "PATH": "/usr/bin:/bin"}  # .frozen: the port's own asyncio
+    env = {"MICROPYPATH": f"{tmp_path}:build/portable_src:src:tests:fakes:.frozen", "TZ": "UTC", "PATH": "/usr/bin:/bin"}  # .frozen: the port's own asyncio
     result = subprocess.run([str(micropython_bin), "-X", "heapsize=16M", str(script)], cwd=repo_root, env=env, capture_output=True, text=True, timeout=_BOOT_TIMEOUT_S, check=False)
     lines = [line for line in result.stdout.splitlines() if line.startswith(_FACTS)]
     assert result.returncode == 0 and len(lines) == 1, f"rc={result.returncode}\n{result.stdout}\n{result.stderr}"

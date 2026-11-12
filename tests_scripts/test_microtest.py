@@ -14,6 +14,9 @@ import pytest
 from _devices import DEVICE_NAMES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# scripts/micropypath.toml's order: build/portable_src (a host with no native emitter's copies) before src/, and
+# fakes/ for the plain twins those copies import.
+_MICROPYPATH = f"{REPO_ROOT / 'build' / 'portable_src'}:{REPO_ROOT / 'tests'}:{REPO_ROOT / 'src'}:{REPO_ROOT / 'fakes'}:.frozen"
 _TESTS = REPO_ROOT / "tests"
 _TRAILER = 'if __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n'
 _HARNESS = "_async_harness.py"
@@ -59,7 +62,7 @@ def _interrupted(micropython_bin: Path, tmp_path: Path, source: str) -> "tuple[i
     marker = tmp_path / "hung"
     test_file = tmp_path / "test_case.py"
     test_file.write_text(source.format(marker=str(marker)) + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n', encoding="utf-8")
-    env = {**os.environ, "MICROPYPATH": f"{REPO_ROOT / 'tests'}:{REPO_ROOT / 'src'}:.frozen"}
+    env = {**os.environ, "MICROPYPATH": _MICROPYPATH}
     with subprocess.Popen([str(micropython_bin), str(test_file)], cwd=tmp_path, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as proc:
         deadline = time.monotonic() + 30
         while not marker.exists() and proc.poll() is None and time.monotonic() < deadline:
@@ -246,7 +249,7 @@ def _public_double_problems(directory: Path) -> "list[str]":
 def _run(micropython_bin: Path, tmp_path: Path, source: str) -> subprocess.CompletedProcess[str]:
     test_file = tmp_path / "test_case.py"
     test_file.write_text(source + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n', encoding="utf-8")
-    env = {**os.environ, "MICROPYPATH": f"{REPO_ROOT / 'tests'}:{REPO_ROOT / 'src'}:.frozen"}
+    env = {**os.environ, "MICROPYPATH": _MICROPYPATH}
     return subprocess.run([str(micropython_bin), str(test_file)], cwd=tmp_path, env=env, capture_output=True, text=True, check=False, timeout=60)
 
 
