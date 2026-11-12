@@ -43595,3 +43595,8 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   window.
 - WEAR.txt's guard needs a cleared: line. I ask the lead to write it once it has judged 10g and k. If none is there
   when the wear is due, I write it myself, citing the owner's words above.
+
+## Bench 2026-11-12 06:16 UTC - the NeoPixel rig is ready for 7f
+
+- The owner (~06:16 UTC): "Neopixel rig is prepared". So 7f's neopixel_sweep tests (`--allow-neopixel-sweep`, ~10 min of
+  light programs on the rig) have what the table names. 10g is still running; the wear follows k, as at 06:14.
