@@ -43663,3 +43663,11 @@ meant for this campaign: nothing to act on. Sent to the lead too.
   ConfigFaults [], MemFree 66080. ResetReason 21 is the harness's console Ctrl-C.
 - Not rerun and not fixed, as a red in a wear step goes to the lead. Waiting for your relay: whether 7b counts with
   these three recorded, and whether 8f, 8b, 10b and 15 go on. 15 (170 min) must start by 18:43 to end by 21:33.
+
+## Bench 2026-11-12 13:21 UTC - the owner's go for the wear; 8f PASS (FC 1); 8b running
+
+- The owner (~13:15 UTC), verbatim: "wear tests os go from my side". With the lead's 13:11 relay, the wear goes on:
+  8f, 8b (PYTEST_K=test_uart_link_crc16), 10b, 15 (if it starts by 18:43), then 7f (if it ends by 21:33).
+- 8f (13:12:52-13:18:56, 370 s, rc 0): `test_real_uf2_reflash_and_boot_smoke_test` PASSED; NOT CLEAN only for the
+  lower levels it skips by design. Recovery passes 2 (harness-side). WEAR.txt: passed: 8f. Flash cycles today: 1.
+- 8b started 13:19:22. Host load at its start 3.79 (the 8f reflash's own build).
